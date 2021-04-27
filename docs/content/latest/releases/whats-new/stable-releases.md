@@ -77,36 +77,26 @@ docker pull yugabytedb/yugabyte:2.4.2.0-b42
 #### Yugabyte Platform
 
 * [[1342](https://github.com/yugabyte/yugabyte-db/issues/1342)] [Platform] Fixing the error message when the get host info call to cloud providers fails
+* [[6698](https://github.com/yugabyte/yugabyte-db/issues/6698)] [[7262](https://github.com/yugabyte/yugabyte-db/issues/7262)] Platform: Cascade delete alert and alert_definition
+* [[7054](https://github.com/yugabyte/yugabyte-db/issues/7054)] [Platform] Add conditional checks for hiding specific platform elements in non-platform mode.
 * [[7268](https://github.com/yugabyte/yugabyte-db/issues/7268)] [Platform] Use the correct SSH user for on-prem node preflight checks
 * [[7385](https://github.com/yugabyte/yugabyte-db/issues/7385)] [Platform] Missing package for s3cmd dependency for airgapped GCP VMs
 * [[7390](https://github.com/yugabyte/yugabyte-db/issues/7390)] [Platform] Preflight checks should handle sudo passwords when given
 * [[7402](https://github.com/yugabyte/yugabyte-db/issues/7402)] [Platform] parsing of df output is fragile and may fail in case of "safe" error in df
 * [[7408](https://github.com/yugabyte/yugabyte-db/issues/7408)] [Platform] Insufficient user feedback in platform for Task Retry
+* [[7416](https://github.com/yugabyte/yugabyte-db/issues/7416)] [Platform] Changed default port of On-Prem provider to 22 (#7599)
+* [[7475](https://github.com/yugabyte/yugabyte-db/issues/7475)] [Platform] Use more recent CentOS-7 base image for GCP universe VMs
 * [[7597](https://github.com/yugabyte/yugabyte-db/issues/7597)] [Platform] Add python modules to PYTHONPATH in non-replicated installations
 * [[7656](https://github.com/yugabyte/yugabyte-db/issues/7656)] [Platform] Use the correct SSH user + port for onprem workflow.
 * [[7698](https://github.com/yugabyte/yugabyte-db/issues/7698)] [Platform] Custom SMTP Configuration API returns unmasked SMTP password
 * [[7703](https://github.com/yugabyte/yugabyte-db/issues/7703)] [Platform] Can't send email for custom SMTP settings without authentication (empty username)
-* [[7704](https://github.com/yugabyte/yugabyte-db/issues/7704)] [Platform] Backup to S3 fails using Yugaware instance's IAM role
+* [[7704](https://github.com/yugabyte/yugabyte-db/issues/7704)] [Platform] Backup to S3 fails using Platform instance's IAM role
 * [[7769](https://github.com/yugabyte/yugabyte-db/issues/7769)] Prevent adding on-prem node instance with duplicate IP
 * [[7771](https://github.com/yugabyte/yugabyte-db/issues/7771)] [Platform] A lot of exceptions in logs "Error querying for alerts..."
-* [[7909](https://github.com/yugabyte/yugabyte-db/issues/7909)] [Platform] Fix issue with signature could not be verified for google-cloud-sdk for GCP VMs
-* [[7988](https://github.com/yugabyte/yugabyte-db/issues/7988)] [Platform] Fix yb_backup.py exit handlers
-* [[7989](https://github.com/yugabyte/yugabyte-db/issues/7989)] [Platform] Fix TableManagerTest.testCreateBackupWithSSHUser
-
-### Uncategorized issues
-
-#### Yugabyte Platform
-
-* Update sbt version to 0.13.18
-* [[6698](https://github.com/yugabyte/yugabyte-db/issues/6698)] [[7262](https://github.com/yugabyte/yugabyte-db/issues/7262)] Platform: Cascade delete alert and alert_definition
-* [[7054](https://github.com/yugabyte/yugabyte-db/issues/7054)] [Platform] Add conditional checks for hiding specific platform elements in non-platform mode.
-* [[7416](https://github.com/yugabyte/yugabyte-db/issues/7416)] [Platform] Changed default port of On-Prem provider to 22 (#7599)
-* [[7475](https://github.com/yugabyte/yugabyte-db/issues/7475)] [Platform] Use more recent CentOS-7 base image for GCP universe VMs
 * [[7780](https://github.com/yugabyte/yugabyte-db/issues/7780)] [Platform] Make backup deletion independent of schedule
-* [[7988](https://github.com/yugabyte/yugabyte-db/issues/7988)] [Platform] Make delete backup task best effort.
-* [[7862](https://github.com/yugabyte/yugabyte-db/issues/7862)] [Platform] Shorten shebangs in virtualenv when packaging platform
-* [[7918](https://github.com/yugabyte/yugabyte-db/issues/7918)] [Platform] Add us-west2 GCP metadata to YW
-* [[8059](https://github.com/yugabyte/yugabyte-db/issues/8059)] [Platform] add stub npm commands for CI
+* [[7909](https://github.com/yugabyte/yugabyte-db/issues/7909)] [Platform] Fix issue with signature could not be verified for google-cloud-sdk for GCP VMs
+* [[7918](https://github.com/yugabyte/yugabyte-db/issues/7918)] [Platform] Add US-West2 GCP metadata to Platform
+* [[7988](https://github.com/yugabyte/yugabyte-db/issues/7988)] [Platform] Backup deletion script shouldn't cause retries
 
 ## v2.4.1.1 - March 30, 2021
 
