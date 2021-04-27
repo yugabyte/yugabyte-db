@@ -63,6 +63,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_splitter.h"
 #include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/locks.h"
@@ -88,11 +89,6 @@ class RaftConfigPB;
 
 namespace tserver {
 class TabletServer;
-class TsTabletManagerListener {
- public:
-  virtual ~TsTabletManagerListener() {}
-  virtual void StartedFlush(const TabletId& tablet_id) {}
-};
 
 using rocksdb::MemoryMonitor;
 
@@ -318,8 +314,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
 
-  // Flush some tablet if the memstore memory limit is exceeded
-  void MaybeFlushTablet();
+  TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
   CHECKED_STATUS UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info);
 
@@ -329,8 +324,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   client::YBClient& client();
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
-
-  std::vector<std::shared_ptr<TsTabletManagerListener>> TEST_listeners;
 
   // Trigger asynchronous compactions concurrently on the provided tablets.
   CHECKED_STATUS TriggerCompactionAndWait(const TabletPtrs& tablets);
@@ -459,9 +452,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const tablet::RaftGroupMetadataPtr& meta,
       const scoped_refptr<TransitionInProgressDeleter>& deleter);
 
-  // Return the tablet with oldest write still in its memstore
-  std::shared_ptr<tablet::TabletPeer> TabletToFlush();
-
   TSTabletManagerStatePB state() const {
     SharedLock<RWMutex> lock(mutex_);
     return state_;
@@ -586,10 +576,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletPeers shutting_down_peers_;
 
-  std::shared_ptr<GarbageCollector> block_based_table_gc_;
-  std::shared_ptr<GarbageCollector> log_cache_gc_;
+  std::shared_ptr<TabletMemoryManager> mem_manager_;
 
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
   std::unordered_set<std::string> bootstrap_source_addresses_;
 
   std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
