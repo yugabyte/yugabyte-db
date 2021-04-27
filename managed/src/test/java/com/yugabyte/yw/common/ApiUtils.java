@@ -85,6 +85,17 @@ public class ApiUtils {
     return mockUniverseUpdater(userIntent, "host", false /* setMasters */);
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdater(final UserIntent userIntent,
+                                                             final PlacementInfo placementInfo) {
+    return mockUniverseUpdater(userIntent, "host", false);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(final UserIntent userIntent,
+                                                             final PlacementInfo placementInfo,
+                                                             boolean setMasters) {
+    return mockUniverseUpdater(userIntent, "host", setMasters, false, placementInfo);
+  }
+
   public static Universe.UniverseUpdater mockUniverseUpdater(UserIntent userIntent,
                                                              boolean setMasters) {
     return mockUniverseUpdater(userIntent, "host", setMasters);
@@ -105,15 +116,23 @@ public class ApiUtils {
                                                              final String nodePrefix,
                                                              final boolean setMasters,
                                                              final boolean updateInProgress) {
+    PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(
+      ClusterType.PRIMARY,
+      userIntent,
+      userIntent.replicationFactor
+    );
+    return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(final UserIntent userIntent,
+                                                             final String nodePrefix,
+                                                             final boolean setMasters,
+                                                             final boolean updateInProgress,
+                                                             final PlacementInfo placementInfo) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(
-          ClusterType.PRIMARY,
-          userIntent,
-          userIntent.replicationFactor
-        );
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
@@ -123,6 +142,12 @@ public class ApiUtils {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
               setMasters && idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
+          if (placementInfo != null) {
+            List<PlacementInfo.PlacementAZ> azList =
+              placementInfo.cloudList.get(0).regionList.get(0).azList;
+            int azIndex = (idx - 1) % azList.size();
+            node.azUuid = azList.get(azIndex).uuid;
+          }
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
@@ -300,7 +325,8 @@ public class ApiUtils {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
@@ -311,7 +337,8 @@ public class ApiUtils {
   public static UserIntent getDefaultUserIntentSingleAZ(Provider p) {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();

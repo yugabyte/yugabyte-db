@@ -26,6 +26,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
@@ -96,7 +97,8 @@ Result<int32_t> SelectRow(
 Result<std::map<int32_t, int32_t>> SelectAllRows(TableHandle* table, const YBSessionPtr& session);
 
 Result<YBqlWriteOpPtr> Increment(
-    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta = 1);
+    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta = 1,
+    Flush flush = Flush::kFalse);
 
 } // namespace kv_table_test
 
@@ -108,6 +110,11 @@ class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
   void CreateIndex(Transactional transactional,
                    int indexed_column_index = 1,
                    bool use_mangled_names = true);
+
+  void PrepareIndex(Transactional transactional,
+                    const YBTableName& index_name,
+                    int indexed_column_index = 1,
+                    bool use_mangled_names = true);
 
   Result<YBqlWriteOpPtr> WriteRow(
       const YBSessionPtr& session, int32_t key, int32_t value,
@@ -157,6 +164,7 @@ class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
 };
 
 extern template class KeyValueTableTest<MiniCluster>;
+extern template class KeyValueTableTest<ExternalMiniCluster>;
 
 CHECKED_STATUS CheckOp(YBqlOp* op);
 

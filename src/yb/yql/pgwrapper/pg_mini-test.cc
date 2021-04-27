@@ -30,7 +30,6 @@ using namespace std::literals;
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
-DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
@@ -39,7 +38,6 @@ DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_bool(rocksdb_use_logging_iterator);
 
 namespace yb {
@@ -686,7 +684,7 @@ class PgMiniTestManualSysTableTxn : public PgMiniTest {
   virtual void BeforePgProcessStart() {
     // Enable manual transaction control for operations on system tables. Otherwise, they would
     // execute non-transactionally.
-    FLAGS_ysql_enable_manual_sys_table_txn_ctl = true;
+    FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
   }
 };
 
@@ -710,6 +708,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
 
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(conn2.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
 
   size_t commit1_fail_count = 0;
   size_t commit2_fail_count = 0;
@@ -1325,6 +1325,17 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithRestart)) {
   TestBigInsert(/* restart= */ true);
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithDropTable)) {
+  constexpr int kNumRows = 10000;
+  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
+  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(id int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT generate_series(1, $0)", kNumRows));
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+}
+
 void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -1360,6 +1371,31 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumn)) 
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWithSelect)) {
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
+}
+
+// Test that we don't sequential restart read on the same table if intents were written
+// after the first read. GH #6972.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
+  FLAGS_max_clock_skew_usec = 1000000000LL * kTimeMultiplier;
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn1.Execute("INSERT INTO t VALUES (1, 1), (2, 1), (3, 1)"));
+  auto start_time = MonoTime::Now();
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "Select1";
+  auto res = ASSERT_RESULT(conn1.FetchValue<int32_t>("SELECT b FROM t WHERE a = 1"));
+  ASSERT_EQ(res, 1);
+  LOG(INFO) << "Update";
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("UPDATE t SET b = 2 WHERE a = 2"));
+  ASSERT_OK(conn2.CommitTransaction());
+  auto update_time = MonoTime::Now();
+  ASSERT_LE(update_time, start_time + FLAGS_max_clock_skew_usec * 1us);
+  LOG(INFO) << "Select2";
+  res = ASSERT_RESULT(conn1.FetchValue<int32_t>("SELECT b FROM t WHERE a = 2"));
+  ASSERT_EQ(res, 1);
+  ASSERT_OK(conn1.CommitTransaction());
 }
 
 } // namespace pgwrapper

@@ -1289,12 +1289,8 @@ DefineIndex(Oid relationId,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
 
-	/*
-	 * Delay after committing pg_index update.  Although it is controlled by a
-	 * test flag, it currently helps (but does not guarantee) correctness
-	 * because commits may not have propagated to all tservers by this time.
-	 */
-	pg_usleep(YBCGetTestIndexStateFlagsUpdateDelayMs() * 1000);
+	/* Delay after committing pg_index update. */
+	pg_usleep(yb_index_state_flags_update_delay * 1000);
 
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();
@@ -1316,12 +1312,8 @@ DefineIndex(Oid relationId,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
 
-	/*
-	 * Delay after committing pg_index update.  Although it is controlled by a
-	 * test flag, it currently helps (but does not guarantee) correctness
-	 * because commits may not have propagated to all tservers by this time.
-	 */
-	pg_usleep(YBCGetTestIndexStateFlagsUpdateDelayMs() * 1000);
+	/* Delay after committing pg_index update. */
+	pg_usleep(yb_index_state_flags_update_delay * 1000);
 
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();

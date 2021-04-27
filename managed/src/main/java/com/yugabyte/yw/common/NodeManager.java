@@ -13,26 +13,14 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.forms.CertificateParams;
-
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -45,7 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.*;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 
 @Singleton
 public class NodeManager extends DevopsBase {
@@ -83,7 +71,7 @@ public class NodeManager extends DevopsBase {
   play.Configuration appConfig;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
-    Universe universe = Universe.get(nodeTaskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
       nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
@@ -170,7 +158,7 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
-      if ((type == NodeCommandType.Provision || type == NodeCommandType.Precheck)
+      if ((type == NodeCommandType.Provision || type == NodeCommandType.Destroy)
           && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
@@ -180,8 +168,14 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--precheck_type");
         if (keyInfo.skipProvisioning) {
           subCommand.add("configure");
+          subCommand.add("--ssh_user");
+          subCommand.add("yugabyte");
         } else {
           subCommand.add("provision");
+          if (keyInfo.sshUser != null) {
+            subCommand.add("--ssh_user");
+            subCommand.add(keyInfo.sshUser);
+          }
         }
 
         if (keyInfo.airGapInstall) {
@@ -241,7 +235,7 @@ public class NodeManager extends DevopsBase {
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     UserIntent userIntent = getUserIntentFromParams(taskParam);
     List<String> subcommand = new ArrayList<String>();
-    Universe universe = Universe.get(taskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
@@ -313,6 +307,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add(node.cloudInfo.private_ip);
           pgsqlProxyBindAddress = "0.0.0.0";
         }
+
         if (taskParam.enableYSQL) {
           extra_gflags.put("enable_ysql", "true");
           extra_gflags.put("pgsql_proxy_bind_address", String.format(
@@ -321,6 +316,15 @@ public class NodeManager extends DevopsBase {
         } else {
           extra_gflags.put("enable_ysql", "false");
         }
+
+        if (taskParam.currentClusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+            && taskParam.setTxnTableWaitCountFlag) {
+          extra_gflags.put(
+              "txn_table_wait_min_ts_count",
+              Integer.toString(
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes));
+        }
+
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
           if (cert == null) {
@@ -331,6 +335,9 @@ public class NodeManager extends DevopsBase {
           }
           if (taskParam.enableClientToNodeEncrypt) {
             extra_gflags.put("use_client_to_server_encryption", "true");
+          }
+          if (taskParam.enableNodeToNodeClientVerification) {
+            extra_gflags.put("node_to_node_encryption_use_client_certificates", "true");
           }
           extra_gflags.put(
             "allow_insecure_connections",
@@ -530,11 +537,12 @@ public class NodeManager extends DevopsBase {
           }
         }
 
-        if (cloudType.equals(Common.CloudType.aws)) {
-          if (taskParam.useTimeSync) {
-            commandArgs.add("--use_chrony");
-          }
+        if (taskParam.useTimeSync
+            && (cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.gcp))) {
+          commandArgs.add("--use_chrony");
+        }
 
+        if (cloudType.equals(Common.CloudType.aws)) {
           if (taskParam.cmkArn != null) {
             commandArgs.add("--cmk_res_name");
             commandArgs.add(taskParam.cmkArn);
@@ -573,10 +581,15 @@ public class NodeManager extends DevopsBase {
           if (deviceInfo.storageType != null) {
             commandArgs.add("--volume_type");
             commandArgs.add(deviceInfo.storageType.toString().toLowerCase());
-            if (deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1) &&
-                deviceInfo.diskIops != null) {
+            if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
               commandArgs.add("--disk_iops");
               commandArgs.add(Integer.toString(deviceInfo.diskIops));
+            }
+            if (deviceInfo.storageType.isThroughputProvisioning() &&
+              deviceInfo.throughput != null) {
+
+              commandArgs.add("--disk_throughput");
+              commandArgs.add(Integer.toString(deviceInfo.throughput));
             }
           }
         }

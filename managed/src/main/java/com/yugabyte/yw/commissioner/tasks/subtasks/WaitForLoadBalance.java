@@ -60,15 +60,16 @@ public class WaitForLoadBalance extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     int numTservers = universe.getTServers().size();
     boolean ret = false;
     YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
-      client = ybService.getClient(hostPorts, certificate);
+      client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
       TimeUnit.SECONDS.sleep(SLEEP_TIME);
       ret = client.waitForLoadBalance(TIMEOUT_SERVER_WAIT_MS, numTservers);
     } catch (Exception e) {

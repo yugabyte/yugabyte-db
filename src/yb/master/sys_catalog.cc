@@ -56,6 +56,7 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/split.h"
@@ -129,6 +130,8 @@ DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
 namespace yb {
 namespace master {
 
+constexpr int32_t kDefaultMasterBlockCacheSizePercentage = 25;
+
 std::string SysCatalogTable::schema_column_type() { return kSysCatalogTableColType; }
 
 std::string SysCatalogTable::schema_column_id() { return kSysCatalogTableColId; }
@@ -157,14 +160,16 @@ SysCatalogTable::~SysCatalogTable() {
 }
 
 void SysCatalogTable::StartShutdown() {
-  if (tablet_peer()) {
-    CHECK(std::atomic_load(&tablet_peer_)->StartShutdown());
+  auto peer = tablet_peer();
+  if (peer) {
+    CHECK(peer->StartShutdown());
   }
 }
 
 void SysCatalogTable::CompleteShutdown() {
-  if (tablet_peer()) {
-    std::atomic_load(&tablet_peer_)->CompleteShutdown();
+  auto peer = tablet_peer();
+  if (peer) {
+    peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
@@ -221,8 +226,7 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
 Status SysCatalogTable::Load(FsManager* fs_manager) {
   LOG(INFO) << "Trying to load previous SysCatalogTable data from disk";
   // Load Metadata Information from disk
-  scoped_refptr<tablet::RaftGroupMetadata> metadata;
-  RETURN_NOT_OK(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
+  auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId));
 
   // Verify that the schema is the current one
   if (!metadata->schema()->Equals(schema_)) {
@@ -287,7 +291,6 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
 Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   LOG(INFO) << "Creating new SysCatalogTable data";
   // Create the new Metadata
-  scoped_refptr<tablet::RaftGroupMetadata> metadata;
   Schema schema = BuildTableSchema();
   PartitionSchema partition_schema;
   RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
@@ -297,21 +300,16 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
 
-  RETURN_NOT_OK(tablet::RaftGroupMetadata::CreateNew(
-      fs_manager,
-      kSysCatalogTableId,
-      kSysCatalogTabletId,
-      "",
-      table_name(),
-      TableType::YQL_TABLE_TYPE,
-      schema,
-      IndexMap(),
-      partition_schema,
-      partitions[0],
-      boost::none /* index_info */,
-      0 /* schema_version */,
-      tablet::TABLET_DATA_READY,
-      &metadata));
+  auto table_info = std::make_shared<tablet::TableInfo>(
+      kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE, schema, IndexMap(),
+      boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+  auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
+    .fs_manager = fs_manager,
+    .table_info = table_info,
+    .raft_group_id = kSysCatalogTabletId,
+    .partition = partitions[0],
+    .tablet_data_state = tablet::TABLET_DATA_READY,
+  }));
 
   RaftConfigPB config;
   RETURN_NOT_OK_PREPEND(SetupConfig(master_->opts(), &config),
@@ -519,13 +517,22 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   consensus::ConsensusBootstrapInfo consensus_info;
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
+
+  block_based_table_mem_tracker_ = docdb::InitBlockCacheMemTracker(
+      kDefaultMasterBlockCacheSizePercentage,
+      master_->mem_tracker());
+  block_based_table_gc_ = docdb::InitBlockCache(
+      GetMetricEntity(),
+      kDefaultMasterBlockCacheSizePercentage,
+      block_based_table_mem_tracker_.get(),
+      &tablet_options);
+
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
       .client_future = master_->async_client_initializer().get_client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
       .parent_mem_tracker = master_->mem_tracker(),
-      .block_based_table_mem_tracker =
-          MemTracker::FindOrCreateTracker("BlockBasedTable", master_->mem_tracker()),
+      .block_based_table_mem_tracker = block_based_table_mem_tracker_,
       .metric_registry = metric_registry_,
       .log_anchor_registry = tablet_peer()->log_anchor_registry(),
       .tablet_options = tablet_options,
@@ -563,7 +570,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           master_->messenger(),
           &master_->proxy_cache(),
           log,
-          tablet->GetMetricEntity(),
+          tablet->GetTableMetricsEntity(),
+          tablet->GetTabletMetricsEntity(),
           raft_pool(),
           tablet_prepare_pool(),
           nullptr /* retryable_requests */,
@@ -643,12 +651,11 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     while (!latch->WaitUntil(std::min(deadline, time + kWarningInterval))) {
       ++num_iterations;
       const auto waited_so_far = num_iterations * kWarningInterval;
-      LOG(WARNING) << "Waited for "
-                   << waited_so_far << " for synchronous write to complete. "
-                   << "Continuing to wait.";
+      LOG(WARNING) << "Waited for " << AsString(waited_so_far) << " for synchronous write to "
+                   << "complete. Continuing to wait.";
       time = CoarseMonoClock::now();
       if (time >= deadline) {
-        LOG(ERROR) << "Already waited for a total of " << waited_so_far << ". "
+        LOG(ERROR) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
                    << "Returning a timeout from SyncWrite.";
         return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
       }
@@ -747,7 +754,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                                uint64_t *catalog_version,
                                                uint64_t *last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
   const auto* meta = tablet->metadata();
   const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
       VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
@@ -796,7 +803,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTablespaceInfo() {
   TRACE_EVENT0("master", "ReadPgTablespaceInfo");
 
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
   const auto& pg_tablespace_info =
       VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
@@ -876,7 +883,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     return STATUS(InternalError, "table_to_tablespace_map not initialized");
   }
 
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   const auto& table_info = VERIFY_RESULT(
@@ -1061,12 +1068,12 @@ Status SysCatalogTable::CopyPgsqlTables(
       "size mismatch between source tables and target tables");
 
   int batch_count = 0, total_count = 0, total_bytes = 0;
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const auto* meta = tablet->metadata();
   for (int i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
     auto& target_table_id = target_table_ids[i];
 
-    const auto* tablet = tablet_peer()->tablet();
-    const auto* meta = tablet->metadata();
     const std::shared_ptr<tablet::TableInfo> source_table_info =
         VERIFY_RESULT(meta->GetTableInfo(source_table_id));
     const std::shared_ptr<tablet::TableInfo> target_table_info =

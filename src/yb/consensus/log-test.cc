@@ -394,8 +394,8 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   // because it has a cached header.
   std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_->env(),
-                            make_scoped_refptr(new LogIndex(log_->wal_dir_)),
-                            kTestTablet, tablet_wal_path_, fs_manager_->uuid(), nullptr, &reader));
+                            make_scoped_refptr(new LogIndex(log_->wal_dir_)), kTestTablet,
+                            tablet_wal_path_, fs_manager_->uuid(), nullptr, nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -432,6 +432,34 @@ TEST_F(LogTest, TestCorruptLogInHeader) {
   DoCorruptionTest(FLIP_BYTE, IN_HEADER, STATUS(Corruption, ""), 3);
 }
 
+// Tests log metrics for WAL files size
+TEST_F(LogTest, TestLogMetrics) {
+  BuildLog();
+// Set a small segment size so that we have roll overs.
+  log_->SetMaxSegmentSizeForTests(990);
+  const int kNumEntriesPerBatch = 100;
+
+  OpIdPB op_id = MakeOpId(1, 1);
+
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 1);
+
+  while (segments.size() < 3) {
+    ASSERT_OK(AppendNoOps(&op_id, kNumEntriesPerBatch));
+    // Update the segments
+    ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  }
+
+  ASSERT_OK(log_->Close());
+
+  int64_t wal_size_old = log_->metrics_->wal_size->value();
+  BuildLog();
+  int64_t wal_size_new = log_->metrics_->wal_size->value();
+
+  ASSERT_EQ(wal_size_old, wal_size_new);
+}
+
 // Tests that segments roll over when max segment size is reached
 // and that the player plays all entries in the correct order.
 TEST_F(LogTest, TestSegmentRollover) {
@@ -457,9 +485,9 @@ TEST_F(LogTest, TestSegmentRollover) {
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(
-      LogReader::Open(fs_manager_->env(), NULL, kTestTablet, tablet_wal_path_, fs_manager_->uuid(),
-                      NULL, &reader));
+  ASSERT_OK(LogReader::Open(
+      fs_manager_->env(), nullptr, kTestTablet, tablet_wal_path_, fs_manager_->uuid(), nullptr,
+      nullptr, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_TRUE(segments.back()->HasFooter());
@@ -793,7 +821,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
 
     std::unique_ptr<LogReader> reader;
     ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, kTestTablet, tablet_wal_path_,
-                              fs_manager_->uuid(), nullptr, &reader));
+                              fs_manager_->uuid(), nullptr, nullptr, &reader));
 
     std::vector<scoped_refptr<ReadableLogSegment> > segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
@@ -819,6 +847,7 @@ TEST_F(LogTest, TestLogReader) {
                    scoped_refptr<LogIndex>(),
                    kTestTablet,
                    fs_manager_->uuid(),
+                   nullptr,
                    nullptr);
   ASSERT_OK(reader.InitEmptyReaderForTests());
   ASSERT_OK(AppendNewEmptySegmentToReader(2, 10, &reader));

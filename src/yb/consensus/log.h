@@ -112,7 +112,8 @@ class Log : public RefCountedThreadSafe<Log> {
                              const std::string& peer_uuid,
                              const Schema& schema,
                              uint32_t schema_version,
-                             const scoped_refptr<MetricEntity>& metric_entity,
+                             const scoped_refptr<MetricEntity>& table_metric_entity,
+                             const scoped_refptr<MetricEntity>& tablet_metric_entity,
                              ThreadPool *append_thread_pool,
                              ThreadPool* allocation_thread_pool,
                              int64_t cdc_min_replicated_index,
@@ -233,7 +234,8 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
-  // entries appended up to this point are available in closed, readable segments.
+  // entries appended up to this point are available in closed, readable segments. Note that this
+  // assumes there is already a valid active_segment_.
   CHECKED_STATUS AllocateSegmentAndRollOver();
 
   // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
@@ -259,7 +261,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // On timeout returns default constructed OpId.
   yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id, MonoDelta duration = MonoDelta());
 
-  // Return a readable segment with the given sequence number, or NULL if it
+  // Return a readable segment with the given sequence number, or nullptr if it
   // cannot be found (e.g. if it has already been GCed).
   scoped_refptr<ReadableLogSegment> GetSegmentBySequenceNumber(int64_t seq) const;
 
@@ -307,6 +309,8 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestMultipleEntriesInABatch);
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
+  FRIEND_TEST(LogTest, TestLogMetrics);
+
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
 
@@ -332,7 +336,8 @@ class Log : public RefCountedThreadSafe<Log> {
       std::string peer_uuid,
       const Schema& schema,
       uint32_t schema_version,
-      const scoped_refptr<MetricEntity>& metric_entity,
+      const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* append_thread_pool,
       ThreadPool* allocation_thread_pool,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
@@ -344,7 +349,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // Initializes a new one or continues an existing log.
   CHECKED_STATUS Init();
 
-  // Make segments roll over.
+  // Make segments roll over. Note this assumes there was an existing valid active_segment_ we are
+  // rolling over from.
   CHECKED_STATUS RollOver();
 
   // Writes the footer and closes the current segment.
@@ -510,7 +516,8 @@ class Log : public RefCountedThreadSafe<Log> {
   std::atomic<SegmentAllocationState> allocation_state_;
   bool allocation_requested_ GUARDED_BY(allocation_mutex_) = false;
 
-  scoped_refptr<MetricEntity> metric_entity_;
+  scoped_refptr<MetricEntity> table_metric_entity_;
+  scoped_refptr<MetricEntity> tablet_metric_entity_;
   gscoped_ptr<LogMetrics> metrics_;
 
   // The cached on-disk size of the log, used to track its size even if it has been closed.

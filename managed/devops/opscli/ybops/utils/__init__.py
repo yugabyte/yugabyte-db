@@ -47,6 +47,7 @@ BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 SSH_RETRY_LIMIT = 20
+SSH_RETRY_LIMIT_PRECHECK = 4
 DEFAULT_SSH_PORT = 22
 # Timeout in seconds.
 SSH_TIMEOUT = 45
@@ -58,6 +59,8 @@ RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
+# Sudo password for remote host.
+YB_SUDO_PASS = os.environ.get("YB_SUDO_PASS")
 
 # TTL in seconds for how long DNS records will be cached.
 DNS_RECORD_SET_TTL = 5
@@ -421,9 +424,9 @@ def get_ssh_host_port(host_info, custom_port, default_port=False):
     }
 
 
-def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key):
+def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key, num_retries=SSH_RETRY_LIMIT):
     """This method would basically wait for the given host's ssh to come up, by looping
-    and checking if the ssh is active. And timesout if it reaches a SSH_RETRY_LIMIT.
+    and checking if the ssh is active. And timesout if retries reaches num_retries.
     Args:
         host_ip (str): IP Address for which we want to ssh
         ssh_port (str): ssh port
@@ -440,7 +443,7 @@ def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key):
 
         time.sleep(1)
 
-        if retry_count > SSH_RETRY_LIMIT:
+        if retry_count > num_retries:
             raise YBOpsRuntimeError(
                 "Timed out trying to SSH to instance: {}:{}".format(host_ip, ssh_port))
 

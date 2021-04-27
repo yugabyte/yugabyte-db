@@ -82,7 +82,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
-  void HandleDeleteTabletSnapshotResponse(SnapshotId snapshot_id, TabletInfo *tablet, bool error);
+  void HandleDeleteTabletSnapshotResponse(
+      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error);
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
@@ -240,32 +241,48 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
-      bool add_indexes,
-      bool include_parent_colocated_table) override;
+      CollectFlags flags);
+
+  Result<SysRowEntries> CollectEntriesForSnapshot(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override {
+    return CollectEntries(
+        tables,
+        CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
+                     CollectFlag::kSucceedIfCreateInProgress});
+  }
 
   server::Clock* Clock() override;
 
   const Schema& schema() override;
 
-  void Submit(std::unique_ptr<tablet::Operation> operation) override;
+  void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id,
+                                       const SnapshotScheduleId& schedule_id,
                                        HybridTime snapshot_hybrid_time,
                                        TabletSnapshotOperationCallback callback) override;
 
   void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                         const std::string& snapshot_id,
                                         HybridTime restore_at,
+                                        SendMetadata send_metadata,
                                         TabletSnapshotOperationCallback callback) override;
 
   void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id,
                                        TabletSnapshotOperationCallback callback) override;
 
+  CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
+
+  CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) override;
+  CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
+
   rpc::Scheduler& Scheduler() override;
 
-  bool IsLeader() override;
+  int64_t LeaderTerm() override;
+
+  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() override;
 
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);
@@ -346,6 +363,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
 
   void Started() override;
+
+  void SysCatalogLoaded(int64_t term) override;
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;

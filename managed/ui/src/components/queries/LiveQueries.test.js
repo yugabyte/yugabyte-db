@@ -1,19 +1,17 @@
 import React from 'react';
 import axios from 'axios';
-import { QueryClient } from 'react-query';
 import { filterBySearchTokens } from './helpers/queriesHelper';
 import { LiveQueries } from './LiveQueries';
 import {
   mockYcqlQueries,
-  mockYsqlQueries,
+  mockLiveYsqlQueries,
   mockKeyMap,
   mockSearchTokens
 } from './helpers/mockQueryData';
-import { render, screen, waitFor } from './helpers/test-utils';
+import { render, screen } from '../../test-utils';
 import userEvent from '@testing-library/user-event';
 
 jest.mock('axios');
-jest.mock('../../pages/Login');
 
 describe('Live query search bar tests', () => {
   it('Search Bar: single filter on column and value', () => {
@@ -52,9 +50,9 @@ const mockLocation = {
   search: ''
 };
 
-beforeEach(() => {  
+beforeEach(() => {
   const ysqlQueries = {
-    queries: mockYsqlQueries
+    queries: mockLiveYsqlQueries
   };
   const ycqlQueries = {
     queries: mockYcqlQueries
@@ -74,16 +72,14 @@ describe('Live query dashboard tests', () => {
     expect(screen.getByRole('heading')).toHaveTextContent('Live Queries');
   });
 
-  // Add async/await to avoid act() error
-  it('render YSQL queries to be displayed in table', async () => {
-    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(2));
+  // "1" in tests below corresponds to table header row
+  it('render YSQL queries to be displayed in table', () => {
+    expect(screen.getAllByRole('row')).toHaveLength(1 + mockLiveYsqlQueries.length);
   });
 
-  it('switch to display YCQL queries in table', async () => {
-    await waitFor(() => {
-      expect(screen.getAllByRole('row')).toHaveLength(2);
-      userEvent.click(screen.getByText('YCQL'));
-      expect(screen.getAllByRole('row')).toHaveLength(4);  
-    });
+  it('switch to display YCQL queries in table', () => {
+    expect(screen.getAllByRole('row')).toHaveLength(1 + mockLiveYsqlQueries.length);
+    userEvent.click(screen.getByRole('menuitem', { name: /ycql/i }));
+    expect(screen.getAllByRole('row')).toHaveLength(1 + mockYcqlQueries.length);
   });
 });

@@ -162,7 +162,8 @@ class TabletPeer : public consensus::ConsensusContext,
       rpc::Messenger* messenger,
       rpc::ProxyCache* proxy_cache,
       const scoped_refptr<log::Log>& log,
-      const scoped_refptr<MetricEntity>& metric_entity,
+      const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
       consensus::RetryableRequests* retryable_requests,
@@ -210,6 +211,7 @@ class TabletPeer : public consensus::ConsensusContext,
       std::unique_ptr<UpdateTxnOperationState> state, int64_t term) override;
 
   HybridTime SafeTimeForTransactionParticipant() override;
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
   void GetLastReplicatedData(RemoveIntentsData* data) override;
 
@@ -333,6 +335,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   int64_t LeaderTerm() const override;
   consensus::LeaderStatus LeaderStatus(bool allow_stale = false) const;
+  Result<HybridTime> LeaderSafeTime() const override;
 
   HybridTime HtLeaseExpiration() const override;
 

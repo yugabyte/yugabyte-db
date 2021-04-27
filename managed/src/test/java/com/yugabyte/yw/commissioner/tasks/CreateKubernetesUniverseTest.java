@@ -84,7 +84,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
-    InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 3;
@@ -96,7 +96,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
-    defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
     nodePrefix1 = String.format("%s-%s", nodePrefix, az1.code);
@@ -152,7 +152,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private void setupUniverse(boolean setMasters, boolean enabledYEDIS, boolean setNamespace) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
-    InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 3;
@@ -164,7 +164,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
-    defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
 
@@ -213,7 +213,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     YBTable mockTable = mock(YBTable.class);
     when(mockTable.getName()).thenReturn("redis");
     when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);

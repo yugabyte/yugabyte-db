@@ -56,9 +56,7 @@ import {
   isEmptyObject
 } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
-import {
-  EXPOSING_SERVICE_STATE_TYPES
-} from './ClusterFields';
+import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
 import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
@@ -206,6 +204,7 @@ const formFieldNames = [
   'primary.tserverGFlags',
   'primary.instanceTags',
   'primary.diskIops',
+  'primary.throughput',
   'primary.numVolumes',
   'primary.volumeSize',
   'primary.storageType',
@@ -271,6 +270,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
+    data[clusterType].throughput = userIntent.deviceInfo.throughput;
     data[clusterType].numVolumes = userIntent.deviceInfo.numVolumes;
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
@@ -318,8 +318,8 @@ function mapStateToProps(state, ownProps) {
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
-      enableNodeToNodeEncrypt: false,
-      enableClientToNodeEncrypt: false,
+      enableNodeToNodeEncrypt: true,
+      enableClientToNodeEncrypt: true,
       enableEncryptionAtRest: false,
       awsArnString: '',
       selectEncryptionAtRestConfig: null
@@ -360,6 +360,7 @@ function mapStateToProps(state, ownProps) {
     userCertificates: state.customer.userCertificates,
     accessKeys: state.cloud.accessKeys,
     initialValues: data,
+    featureFlags: state.featureFlags,
     formValues: selector(
       state,
       'formType',
@@ -375,11 +376,11 @@ function mapStateToProps(state, ownProps) {
       'primary.masterGFlags',
       'primary.tserverGFlags',
       'primary.instanceTags',
-      'primary.diskIops',
       'primary.numVolumes',
       'primary.volumeSize',
       'primary.storageType',
       'primary.diskIops',
+      'primary.throughput',
       'primary.assignPublicIP',
       'primary.mountPoints',
       'primary.useTimeSync',
@@ -414,6 +415,7 @@ function mapStateToProps(state, ownProps) {
       'async.ybSoftwareVersion',
       'async.accessKeyCode',
       'async.diskIops',
+      'async.throughput',
       'async.numVolumes',
       'async.volumeSize',
       'async.storageType',
@@ -477,7 +479,10 @@ const validateProviderFields = (values, props, clusterType) => {
           'GCP Universe name cannot contain capital letters or special characters except dashes';
       }
     }
-    if (values[clusterType].enableEncryptionAtRest && !values[clusterType].selectEncryptionAtRestConfig) {
+    if (
+      values[clusterType].enableEncryptionAtRest &&
+      !values[clusterType].selectEncryptionAtRestConfig
+    ) {
       errors.selectEncryptionAtRestConfig = 'KMS Config is Required for Encryption at Rest';
     }
   }

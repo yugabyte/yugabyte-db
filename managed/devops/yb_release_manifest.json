@@ -7,10 +7,11 @@
     "python_requirements_frozen.txt",
     "python3_requirements_frozen.txt",
     "python*_modules.tar.gz",
+    "preprovision.yml",
     "use_custom_ssh_port.yml",
     "yb-server-ctl.yml",
     "yb-server-provision.yml",
-    "test_connection.yml"
+    "send_sudo_pass.yml"
   ],
   "bin": [
     "bin/cluster_health.py",

@@ -39,25 +39,27 @@ YsqlTransactionDdl::~YsqlTransactionDdl() {
   rpcs_.Shutdown();
 }
 
-void YsqlTransactionDdl::VerifyTransaction(TransactionMetadata transaction,
+void YsqlTransactionDdl::VerifyTransaction(
+    const TransactionMetadata& transaction_metadata,
     std::function<Status(bool)> complete_callback) {
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_bg_task_wait_ms));
 
-  LOG(INFO) << "Verifying Transaction " << transaction.ToString();
+  LOG(INFO) << "Verifying Transaction " << transaction_metadata;
 
   tserver::GetTransactionStatusRequestPB req;
-  req.set_tablet_id(transaction.status_tablet);
-  req.add_transaction_id()->assign(pointer_cast<const char*>(transaction.transaction_id.data()),
-      transaction.transaction_id.size());
+  req.set_tablet_id(transaction_metadata.status_tablet);
+  req.add_transaction_id()->assign(
+      pointer_cast<const char*>(transaction_metadata.transaction_id.data()),
+      transaction_metadata.transaction_id.size());
 
   auto rpc_handle = rpcs_.Prepare();
   if (rpc_handle == rpcs_.InvalidHandle()) {
-    LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction.ToString();
+    LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction_metadata;
     return;
   }
   auto client = master_->async_client_initializer().client();
   if (!client) {
-    LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << transaction.ToString();
+    LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << transaction_metadata;
     return;
   }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
@@ -67,15 +69,16 @@ void YsqlTransactionDdl::VerifyTransaction(TransactionMetadata transaction,
       nullptr /* tablet */,
       client,
       &req,
-      [this, rpc_handle, transaction, complete_callback]
+      [this, rpc_handle, transaction_metadata, complete_callback]
           (Status status, const tserver::GetTransactionStatusResponsePB& resp) {
         auto retained = rpcs_.Unregister(rpc_handle);
-        TransactionReceived(transaction, complete_callback, status, resp);
+        TransactionReceived(transaction_metadata, complete_callback, status, resp);
       });
   (**rpc_handle).SendRpc();
 }
 
-void YsqlTransactionDdl::TransactionReceived(TransactionMetadata transaction,
+void YsqlTransactionDdl::TransactionReceived(
+    const TransactionMetadata& transaction,
     std::function<Status(bool)> complete_callback,
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
   LOG(INFO) << "TransactionReceived: " << txn_status.ToString() << " : " << resp.DebugString();
@@ -144,9 +147,6 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(e_oid_val);
-    // DocPgsqlScanSpec objects stores key components as a pointers.
-    // They should be valid till `spec` object destruction.
-    // For this purpose the `empty_key_components` object is used, which lives longer than `spec`.
     const std::vector<docdb::PrimitiveValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,

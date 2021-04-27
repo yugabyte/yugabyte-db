@@ -58,7 +58,10 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 
@@ -119,7 +122,9 @@ using docdb::ValueType;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;
+using itest::TabletServerMap;
 using itest::TabletServerMapUnowned;
+using itest::TServerDetails;
 using itest::RemoveServer;
 using itest::StartElection;
 using itest::WaitUntilNumberOfAliveTServersEqual;

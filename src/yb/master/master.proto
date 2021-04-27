@@ -136,6 +136,8 @@ message MasterErrorPB {
     INVALID_TABLE_REPLICATION_INFO = 35;
 
     REACHED_SPLIT_LIMIT = 36;
+
+    SPLIT_OR_BACKFILL_IN_PROGRESS = 37;
   }
 
   // The error code.
@@ -714,12 +716,29 @@ message TServerMetricsPB {
   optional int64 uncompressed_sst_file_size = 5;
   optional uint64 uptime_seconds = 6;
   optional uint64 num_sst_files = 7;
+
+  message PathMetrics {
+    // Device path provided by user in --fs_data_dirs
+    required bytes path_id = 1;
+    optional uint64 used_space = 2;
+    optional uint64 total_space = 3;
+  }
+  repeated PathMetrics path_metrics = 8;
 }
 
 message TabletForSplitPB {
   required bytes tablet_id = 1;
   required bytes split_partition_key = 2;
   required bytes split_encoded_key = 3;
+}
+
+message TSSnapshotScheduleInfoPB {
+  optional bytes id = 1;
+  optional fixed64 last_snapshot_hybrid_time = 2;
+}
+
+message TSSnapshotSchedulesInfoPB {
+  repeated TSSnapshotScheduleInfoPB schedules = 1;
 }
 
 // Heartbeat sent from the tablet-server to the master
@@ -761,6 +780,9 @@ message TSHeartbeatRequestPB {
 
   // Hybrid time on tablet server
   optional fixed64 ts_hybrid_time = 11;
+
+  // Roundtrip time for previous heartbeat in microseconds.
+  optional int64 rtt_us = 12;
 }
 
 message TSHeartbeatResponsePB {
@@ -809,6 +831,8 @@ message TSHeartbeatResponsePB {
   optional int64 tablet_split_size_threshold_bytes = 14;
 
   optional int32 tablet_report_limit = 16;
+
+  optional TSSnapshotSchedulesInfoPB snapshot_schedules = 17;
 }
 
 message TSInformationPB {

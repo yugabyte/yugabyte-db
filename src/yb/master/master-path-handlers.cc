@@ -201,7 +201,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
   string redirect;
   // Lock the CatalogManager in a self-contained block, to prevent double-locking on callbacks.
   {
-    CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
 
     // If we are not the master leader, redirect the URL.
     if (!l.first_failed_status().ok()) {
@@ -225,7 +225,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output,
 
   if (viewType == TServersViewType::kTServersClocksView) {
     *output << "      <th>Physical Time (UTC)</th>\n"
-            << "      <th>Hybrid Time (UTC)</th>\n";
+            << "      <th>Hybrid Time (UTC)</th>\n"
+            << "      <th>Heartbeat RTT</th>\n";
   } else {
     DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
     *output << "      <th>User Tablet-Peers / Leaders</th>\n"
@@ -369,6 +370,9 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
           *output << " / Logical: " << ht.GetLogicalValue();
         }
         *output << "</td>";
+        // Render the roundtrip time of previous heartbeat.
+        double rtt_ms = desc->heartbeat_rtt().ToMicroseconds()/1000.0;
+        *output << "    <td>" <<  StringPrintf("%.2fms", rtt_ms) << "</td>";
       } else {
         DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
         *output << "    <td>" << (no_tablets ? 0
@@ -656,6 +660,20 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String(HumanizeBytes(desc->uncompressed_sst_file_size()));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(desc->uncompressed_sst_file_size());
+
+        jw.String("path_metrics");
+        jw.StartArray();
+        for(const auto& path_metric : desc->path_metrics()) {
+          jw.StartObject();
+          jw.String("path");
+          jw.String(path_metric.first);
+          jw.String("space_used");
+          jw.Uint64(path_metric.second.used_space);
+          jw.String("total_space_size");
+          jw.Uint64(path_metric.second.total_space);
+          jw.EndObject();
+        }
+        jw.EndArray();
 
         jw.String("read_ops_per_sec");
         jw.Double(desc->read_ops_per_sec());
@@ -1011,8 +1029,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
 
 namespace {
 
-bool CompareByRole(const TabletReplica& a, const TabletReplica& b) {
-  return a.role < b.role;
+bool CompareByHost(const TabletReplica& a, const TabletReplica& b) {
+    return a.ts_desc->permanent_uuid() < b.ts_desc->permanent_uuid();
 }
 
 } // anonymous namespace
@@ -1119,7 +1137,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
     AppendValuesFromMap(*locations, &sorted_locations);
-    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByRole);
+    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByHost);
 
     auto l = tablet->LockForRead();
 
@@ -1370,7 +1388,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
   if (!l.first_failed_status().ok()) {
     // We are not the leader master, retrieve the response from the leader master.
     RedirectToLeader(req, resp);
@@ -1507,7 +1525,8 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
   (*output) << "<table class='table'>\n";
   (*output) << "  <tr>\n"
             << "    <th>Server</th>\n"
-            << "    <th>RAFT Role</th>"
+            << "    <th>RAFT Role</th>\n"
+            << "    <th>Uptime</th>\n"
             << "    <th>Details</th>\n"
             << "  </tr>\n";
 
@@ -1539,6 +1558,8 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
       reg_text = Substitute("<b>$0</b>", reg_text);
     }
     string raft_role = master.has_role() ? RaftPeerPB_Role_Name(master.role()) : "N/A";
+    auto delta = Env::Default()->NowMicros() - master.instance_id().start_time_us();
+    string uptime = UptimeString(MonoDelta::FromMicroseconds(delta).ToSeconds());
     string cloud = reg.cloud_info().placement_cloud();
     string region = reg.cloud_info().placement_region();
     string zone = reg.cloud_info().placement_zone();
@@ -1546,6 +1567,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     *output << "  <tr>\n"
             << "    <td>" << reg_text << "</td>\n"
             << "    <td>" << raft_role << "</td>\n"
+            << "    <td>" << uptime << "</td>\n"
             << "    <td><div><span class='yb-overview'>CLOUD: </span>" << cloud << "</div>\n"
             << "        <div><span class='yb-overview'>REGION: </span>" << region << "</div>\n"
             << "        <div><span class='yb-overview'>ZONE: </span>" << zone << "</div>\n"
@@ -1741,7 +1763,7 @@ void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
   JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
   {
-    CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
 
     // If we are not the master leader.
     if (!l.first_failed_status().ok()) {

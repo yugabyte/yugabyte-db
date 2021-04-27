@@ -3699,6 +3699,7 @@ static void YBRefreshCache()
 		ereport(LOG,(errmsg("Refreshing catalog cache.")));
 	}
 
+	YBCPgResetCatalogReadTime();
 	/* Get the latest syscatalog version from the master */
 	uint64_t catalog_master_version = 0;
 	YBCGetMasterCatalogVersion(&catalog_master_version);
@@ -3761,6 +3762,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 * Get the latest syscatalog version from the master to check if we need
 	 * to refresh the cache.
 	 */
+	YBCPgResetCatalogReadTime();
 	uint64_t catalog_master_version = 0;
 	YBCGetMasterCatalogVersion(&catalog_master_version);
 	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
@@ -4922,6 +4924,7 @@ PostgresMain(int argc, char *argv[],
 			continue;
 
 		if (IsYugaByteEnabled()) {
+			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
 		}
 

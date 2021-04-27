@@ -17,34 +17,25 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 public class HAAuthenticator extends Action.Simple {
   public static final String HA_CLUSTER_KEY_TOKEN_HEADER = "HA-AUTH-TOKEN";
 
+  private boolean clusterKeyValid(String clusterKey) {
+    return HighAvailabilityConfig.get()
+      .map(config -> config.getClusterKey().equals(clusterKey))
+      .orElse(false);
+  }
+
   @Override
   public CompletionStage<Result> call(Http.Context ctx) {
-    final Optional<String> requestClusterKey = ctx.request().header(HA_CLUSTER_KEY_TOKEN_HEADER);
-
-    if (!requestClusterKey.isPresent()) {
-      return CompletableFuture.completedFuture(
+    return ctx.request().header(HA_CLUSTER_KEY_TOKEN_HEADER)
+      .filter(this::clusterKeyValid)
+      .map(success -> delegate.call(ctx))
+      .orElse(CompletableFuture.completedFuture(
         Results.badRequest("Unable to authenticate request")
-      );
-    }
-
-    final boolean isClusterKeyValid = HighAvailabilityConfig.list()
-      .stream()
-      .map(HighAvailabilityConfig::getClusterKey)
-      .anyMatch(k -> k.equals(requestClusterKey.get()));
-
-    if (!isClusterKeyValid) {
-      return CompletableFuture.completedFuture(
-        Results.badRequest("Unable to authenticate provided cluster key")
-      );
-    }
-
-    return delegate.call(ctx);
+      ));
   }
 }

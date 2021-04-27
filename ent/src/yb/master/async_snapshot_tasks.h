@@ -40,8 +40,20 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
 
   std::string description() const override;
 
+  void SetSnapshotScheduleId(const SnapshotScheduleId& id) {
+    snapshot_schedule_id_ = id;
+  }
+
   void SetSnapshotHybridTime(HybridTime value) {
     snapshot_hybrid_time_ = value;
+  }
+
+  void SetMetadata(uint32_t schema_version, const SchemaPB& schema,
+                   const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
+    has_metadata_ = true;
+    schema_version_ = schema_version;
+    schema_ = schema;
+    indexes_ = indexes;
   }
 
   void SetCallback(TabletSnapshotOperationCallback callback) {
@@ -59,9 +71,14 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   scoped_refptr<TabletInfo> tablet_;
   const std::string snapshot_id_;
   tserver::TabletSnapshotOpRequestPB::Operation operation_;
+  SnapshotScheduleId snapshot_schedule_id_ = SnapshotScheduleId::Nil();
   HybridTime snapshot_hybrid_time_;
   tserver::TabletSnapshotOpResponsePB resp_;
   TabletSnapshotOperationCallback callback_;
+  bool has_metadata_ = false;
+  uint32_t schema_version_;
+  SchemaPB schema_;
+  google::protobuf::RepeatedPtrField<IndexInfoPB> indexes_;
 };
 
 } // namespace master

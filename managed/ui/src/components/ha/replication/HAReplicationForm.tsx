@@ -1,6 +1,6 @@
 import React, { FC, useRef } from 'react';
 import { useMutation, useQueryClient } from 'react-query';
-import { Col, Grid, Row } from 'react-bootstrap';
+import { Alert, Col, Grid, Row } from 'react-bootstrap';
 import * as Yup from 'yup';
 import { Field, FieldProps, Form, Formik, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
@@ -8,9 +8,10 @@ import { YBButton, YBFormInput, YBSegmentedButtonGroup, YBToggle } from '../../c
 import { YBCopyButton } from '../../common/descriptors';
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import './HAReplicationForm.scss';
 
-enum HAInstanceTypes {
+export enum HAInstanceTypes {
   Active = 'Active',
   Standby = 'Standby'
 }
@@ -40,6 +41,7 @@ const validationSchema = Yup.object().shape({
   replicationFrequency: Yup.mixed().when(['instanceType', 'replicationEnabled'], {
     is: (instanceType, replicationEnabled) =>
       instanceType === HAInstanceTypes.Active && replicationEnabled,
+    // eslint-disable-next-line no-template-curly-in-string
     then: Yup.number().min(1, 'Minimum value is ${min}').required('Required field')
   })
 });
@@ -130,7 +132,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
   };
 
   return (
-    <div className="ha-replication-form">
+    <div className="ha-replication-form" data-testid="ha-replication-config-form">
       <Formik<FormValues>
         initialValues={initialValues}
         validationSchema={validationSchema}
@@ -141,8 +143,17 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
           formik.current = formikProps;
 
           return (
-            <Form>
+            <Form role="form">
               <Grid fluid>
+                {formikProps.values.instanceType === HAInstanceTypes.Standby && !isEditMode && (
+                  <Row className="ha-replication-form__alert">
+                    <Col xs={12}>
+                      <Alert bsStyle="warning">
+                        Note: on standby instances you can only access the high availability configuration and other features won't be available until the configuration is deleted.
+                      </Alert>
+                    </Col>
+                  </Row>
+                )}
                 <Row className="ha-replication-form__row">
                   <Col xs={2} className="ha-replication-form__label">
                     Instance Type
@@ -152,6 +163,10 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                       disabled={isEditMode}
                       name="instanceType"
                       options={[HAInstanceTypes.Active, HAInstanceTypes.Standby]}
+                    />
+                    <YBInfoTip
+                      title="Replication Configuration"
+                      content="The initial role for this platform instance"
                     />
                   </Col>
                 </Row>
@@ -168,6 +183,10 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                       placeholder="http://"
                       className="ha-replication-form__input"
                     />
+                    <YBInfoTip
+                      title="Replication Configuration"
+                      content="The current platform's IP address or hostname"
+                    />
                   </Col>
                 </Row>
                 <Row className="ha-replication-form__row">
@@ -180,7 +199,9 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                         name="clusterKey"
                         type="text"
                         component={YBFormInput}
-                        disabled={isEditMode}
+                        disabled={
+                          isEditMode || formikProps.values.instanceType === HAInstanceTypes.Active
+                        }
                         className="ha-replication-form__input"
                       />
                       <YBCopyButton text={formikProps.values.clusterKey} />
@@ -194,9 +215,20 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                         onClick={generateKey.mutate}
                       />
                     )}
+                    <YBInfoTip
+                      title="Replication Configuration"
+                      content={`The key used to authenticate the High Availability cluster ${
+                        formikProps.values.instanceType === HAInstanceTypes.Standby
+                          ? '(generated on active instance)'
+                          : ''
+                      }`}
+                    />
                   </Col>
                 </Row>
-                <div hidden={formikProps.values.instanceType === HAInstanceTypes.Standby}>
+                <div
+                  hidden={formikProps.values.instanceType === HAInstanceTypes.Standby}
+                  data-testid="ha-replication-config-form-schedule-section"
+                >
                   <Row className="ha-replication-form__row">
                     <Col xs={2} className="ha-replication-form__label">
                       Replication Frequency
@@ -210,6 +242,10 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                         className="ha-replication-form__input ha-replication-form__input--frequency"
                       />
                       <span>minute(s)</span>
+                      <YBInfoTip
+                        title="Replication Configuration"
+                        content="How frequently periodic backups are sent to standby platforms"
+                      />
                     </Col>
                   </Row>
                   <Row className="ha-replication-form__row">
@@ -229,6 +265,10 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                           />
                         )}
                       </Field>
+                      <YBInfoTip
+                        title="Replication Configuration"
+                        content="Enable/disable replication to standby platforms"
+                      />
                     </Col>
                   </Row>
                 </div>

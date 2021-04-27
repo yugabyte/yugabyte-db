@@ -26,6 +26,7 @@
 #include <boost/circular_buffer.hpp>
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/random.h"
 #include "yb/master/cluster_balance_util.h"
@@ -35,6 +36,8 @@ DECLARE_int32(load_balancer_max_over_replicated_tablets);
 DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(load_balancer_max_concurrent_removals);
+
+YB_STRONGLY_TYPED_BOOL(StepdownIfLeader);
 
 namespace yb {
 namespace master {
@@ -102,6 +105,9 @@ class ClusterLoadBalancer {
 
   // Get the list of all live TSDescriptors which reported their tablets.
   virtual void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const;
+
+  // Get the list of all TSDescriptors.
+  virtual void GetAllDescriptors(TSDescriptorVector* ts_descs) const;
 
     // Get access to the tablet map across the cluster.
   virtual const TabletInfoMap& GetTabletMap() const REQUIRES_SHARED(catalog_manager_->lock_);
@@ -269,7 +275,7 @@ class ClusterLoadBalancer {
   // Issue the change config and modify the in-memory state for removing a replica on the specified
   // tablet server.
   CHECKED_STATUS RemoveReplica(
-      const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader)
+      const TabletId& tablet_id, const TabletServerId& ts_uuid)
       REQUIRES_SHARED(catalog_manager_->lock_);
 
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
@@ -370,7 +376,7 @@ class ClusterLoadBalancer {
   // global load balancing once all tables are themselves balanced.
   // This value is only set to true once is_idle_ becomes true, and this value is only set to false
   // once we perform a non-global move.
-  bool can_balance_global_load_ = false;
+  bool can_perform_global_operations_ = false;
 
   // Record load balancer activity for tables and tservers.
   void RecordActivity(uint32_t master_errors) REQUIRES_SHARED(catalog_manager_->lock_);

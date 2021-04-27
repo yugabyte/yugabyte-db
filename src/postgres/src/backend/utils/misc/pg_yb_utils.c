@@ -779,6 +779,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 // YB GUC variables.
 
 bool yb_enable_create_with_table_oid = false;
+int yb_index_state_flags_update_delay = 1000;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -854,7 +855,7 @@ YBIncrementDdlNestingLevel()
 {
 	if (ddl_nesting_level == 0)
 	{
-		YBCPgEnterSeparateDdlTxnMode();
+		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 	}
 	ddl_nesting_level++;
 }
@@ -873,7 +874,7 @@ YBDecrementDdlNestingLevel(bool success,
 			increment_done = YBCIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
 		}
 
-		YBCPgExitSeparateDdlTxnMode(success);
+		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(success));
 
 		/*
 		 * Optimization to avoid redundant cache refresh on the current session
@@ -933,6 +934,13 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreatedbStmt:
+		case T_ViewStmt: // CREATE VIEW
+		case T_CompositeTypeStmt: // CREATE TYPE
+		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
+		case T_CommentStmt: // COMMENT (create new comment)
+		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
+		case T_RuleStmt: // CREATE RULE
+		case T_TruncateStmt: // TRUNCATE changes system catalog in case of non-YB (i.e. TEMP) tables
 		{
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require

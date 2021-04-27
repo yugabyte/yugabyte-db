@@ -72,6 +72,8 @@ class TableHandle {
 
   CHECKED_STATUS Open(const YBTableName& table_name, YBClient* client);
 
+  CHECKED_STATUS Reopen();
+
   std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const;
 
   std::shared_ptr<YBqlWriteOp> NewInsertOp() const {

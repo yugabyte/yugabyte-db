@@ -37,14 +37,15 @@ set(INTEGRATION_TESTS_SRCS
   cluster_verifier.cc
   external_mini_cluster.cc
   external_mini_cluster_fs_inspector.cc
+  load_balancer_test_util.cc
+  load_generator.cc
   mini_cluster.cc
   mini_cluster_utils.cc
-  test_workload.cc
-  load_generator.cc
-  load_balancer_test_util.cc
-  yb_table_test_base.cc
-  yb_mini_cluster_test_base.cc
   redis_table_test_base.cc
+  test_workload.cc
+  ts_itest-base.cc
+  yb_mini_cluster_test_base.cc
+  yb_table_test_base.cc
   ${INTEGRATION_TESTS_SRCS_EXTENSIONS}
 )
 
@@ -133,6 +134,7 @@ ADD_YB_TEST(load_balancer_multi_table-test)
 ADD_YB_TEST(load_balancer_colocated_tables-test)
 ADD_YB_TEST(load_balancer_respect_affinity-test)
 ADD_YB_TEST(load_balancer_placement_policy-test)
+ADD_YB_TEST(sys_catalog_respect_affinity-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra cql_test_util)

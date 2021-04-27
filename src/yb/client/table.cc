@@ -243,8 +243,11 @@ Result<bool> YBTable::MaybeRefreshPartitions() {
   {
     std::lock_guard<rw_spinlock> partitions_lock(mutex_);
     if (partitions->version < partitions_->version) {
-      return STATUS_FORMAT(
-          TryAgain, "Received table $0 partitions version: $1, ours is: $2", id(),
+      // This might happen if another split happens after we had fetched partition in the current
+      // thread from master leader and partition list has been concurrently updated to version
+      // newer than version we got in current thread.
+      // In this case we can safely skip outdated partition list.
+      LOG(INFO) << Format("Received table $0 partition list version: $1, ours is newer: $2", id(),
           partitions->version, partitions_->version);
     }
     partitions_ = partitions;

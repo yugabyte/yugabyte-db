@@ -124,6 +124,9 @@ class YBOperation {
 
   void SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet);
 
+  // Resets tablet, so it will be re-resolved on applying this operation.
+  void ResetTablet();
+
   // Returns the partition key of the operation.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
 
@@ -540,6 +543,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
 
   bool should_add_intents(IsolationLevel isolation_level) override;
+  void SetUsedReadTime(const ReadHybridTime& used_time);
+  const ReadHybridTime& used_read_time() const { return used_read_time_; }
 
  protected:
   virtual Type type() const override { return PGSQL_READ; }
@@ -555,6 +560,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   std::unique_ptr<PgsqlReadRequestPB> read_request_;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
   ReadHybridTime read_time_;
+  ReadHybridTime used_read_time_;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on

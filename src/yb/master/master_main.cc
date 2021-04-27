@@ -103,6 +103,8 @@ static int MasterMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType, argv[0]));
   LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
 
+  MemTracker::SetTCMallocCacheMemory();
+
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(GetPrivateIpMode());
 
   auto opts_result = MasterOptions::CreateMasterOptions();

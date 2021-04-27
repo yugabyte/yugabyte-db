@@ -3,7 +3,8 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -27,11 +28,15 @@ import java.util.*;
 import java.text.SimpleDateFormat;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import play.libs.Json;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
@@ -43,7 +48,7 @@ public class Util {
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
   public static List<InetSocketAddress> getNodesAsInet(UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     List<InetSocketAddress> inetAddrs = new ArrayList<>();
     for (String address : universe.getYQLServerAddresses().split(",")) {
       String[] splitAddress = address.split(":");
@@ -322,5 +327,55 @@ public class Util {
 
   public static void moveFile(Path source, Path destination) throws IOException {
     Files.move(source, destination, REPLACE_EXISTING);
+  }
+
+  public static ArrayNode getUniverseDetails(Set<Universe> universes) {
+    ArrayNode details = Json.newArray();
+    for (Universe universe : universes) {
+      ObjectNode universePayload = Json.newObject();
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universePayload.put("name", universe.name);
+      universePayload.put("updateInProgress", universeDetails.updateInProgress);
+      universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
+      universePayload.put("uuid", universe.universeUUID.toString());
+      universePayload.put("creationDate", universe.creationDate.getTime());
+      universePayload.put("universePaused", universeDetails.universePaused);
+      details.add(universePayload);
+    }
+    return details;
+  }
+
+  public static int compareYbVersions(String v1, String v2) {
+    Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
+    Matcher v1Matcher = versionPattern.matcher(v1);
+    Matcher v2Matcher = versionPattern.matcher(v2);
+
+    if (v1Matcher.find() && v2Matcher.find()) {
+      String[] v1Numbers = v1Matcher.group(1).split("\\.");
+      String[] v2Numbers = v2Matcher.group(1).split("\\.");
+      for (int i = 0; i < 4; i++) {
+        int a = Integer.parseInt(v1Numbers[i]);
+        int b = Integer.parseInt(v2Numbers[i]);
+        if (a != b) {
+          return a - b;
+        }
+      }
+
+      String v1BuildNumber = v1Matcher.group(4);
+      String v2BuildNumber = v2Matcher.group(4);
+      // If one of the build number is null (i.e local build) then consider
+      // versions as equal as we cannot compare between local builds
+      // e.g: 2.5.2.0-b15 and 2.5.2.0-custom are considered equal
+      // 2.5.2.0-custom1 and 2.5.2.0-custom2 are considered equal too
+      if (v1BuildNumber != null && v2BuildNumber != null) {
+        int a = Integer.parseInt(v1BuildNumber);
+        int b = Integer.parseInt(v2BuildNumber);
+        return a - b;
+      }
+
+      return 0;
+    }
+
+    throw new RuntimeException("Unable to parse YB version strings");
   }
 }

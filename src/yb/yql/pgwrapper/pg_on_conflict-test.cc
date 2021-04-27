@@ -23,9 +23,6 @@ using namespace std::literals;
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
-METRIC_DECLARE_entity(tablet);
-METRIC_DECLARE_counter(transaction_not_found);
-
 namespace yb {
 namespace pgwrapper {
 
@@ -246,7 +243,7 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
                 return;
               }
               auto msg = status.message().ToBuffer();
-              if (msg.find("Transaction expired") == std::string::npos &&
+              if (msg.find("expired or aborted by a conflict") == std::string::npos &&
                   msg.find("Transaction aborted") == std::string::npos) {
                 ASSERT_OK(status);
               }

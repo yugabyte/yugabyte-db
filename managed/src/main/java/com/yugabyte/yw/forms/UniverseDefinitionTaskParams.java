@@ -2,22 +2,12 @@
 
 package com.yugabyte.yw.forms;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
-import javax.persistence.Column;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -27,10 +17,13 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-
 import io.ebean.annotation.DbJson;
 import play.data.validation.Constraints;
 import play.libs.Json;
+
+import javax.persistence.Column;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -109,6 +102,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // unaffected.
   public boolean allowInsecure = true;
 
+  // Flag to check whether the txn_table_wait_ts_count gflag has to be set
+  // while creating the universe or not. By default it should be false as we
+  // should not set this flag for operations other than create universe.
+  public boolean setTxnTableWaitCountFlag = false;
+
   // Development flag to download package from s3 bucket.
   public String itestS3PackagePath = "";
   public String remotePackagePath = "";
@@ -157,13 +155,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   /**
    * A wrapper for all the clusters that will make up the universe.
    */
+  @JsonInclude(value = JsonInclude.Include.NON_NULL)
   public static class Cluster {
     public UUID uuid = UUID.randomUUID();
     public void setUuid(UUID uuid) { this.uuid = uuid;}
 
     // The type of this cluster.
     @Constraints.Required()
-    public ClusterType clusterType;
+    public final ClusterType clusterType;
 
     // The configuration for the universe the user intended.
     @Constraints.Required()
@@ -193,6 +192,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       this.userIntent = userIntent;
     }
 
+    @Deprecated
     public JsonNode toJson() {
       if (userIntent == null) {
         return null;
@@ -206,6 +206,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return clusterJson;
     }
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    public List<Region> getRegions() {
+      List<Region> regions = ImmutableList.of();
+      if (userIntent.regionList != null && !userIntent.regionList.isEmpty()) {
+        regions = Region.find.query().where().idIn(userIntent.regionList).findList();
+      }
+      return regions.isEmpty() ? null : regions;
+    }
+
 
     public boolean equals(Cluster other) {
       return uuid.equals(other.uuid);
@@ -292,6 +302,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean enableClientToNodeEncrypt = false;
 
+    public boolean enableNodeToNodeClientVerification = false;
+
     public boolean enableVolumeEncryption = false;
 
     public boolean enableIPV6 = false;
@@ -352,7 +364,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+      newUserIntent.enableNodeToNodeClientVerification = enableNodeToNodeClientVerification;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
+      newUserIntent.enableVolumeEncryption = enableVolumeEncryption;
+      newUserIntent.enableIPV6 = enableIPV6;
+      newUserIntent.enableExposingService = enableExposingService;
+      newUserIntent.awsArnString = awsArnString;
+      newUserIntent.useHostname = useHostname;
       return newUserIntent;
     }
 

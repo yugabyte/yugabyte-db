@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -27,36 +28,49 @@ class TSDescriptor;
 typedef std::shared_ptr<TSDescriptor> TSDescriptorPtr;
 typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
-class TSRegistrationPB;
 class EncryptionManager;
 
 class AddUniverseKeysRequestPB;
 class AddUniverseKeysResponsePB;
+class ChangeEncryptionInfoRequestPB;
+class ChangeEncryptionInfoResponsePB;
 class CreateSnapshotScheduleRequestPB;
+class EncryptionInfoPB;
 class GetUniverseKeyRegistryRequestPB;
 class GetUniverseKeyRegistryResponsePB;
 class HasUniverseKeyInMemoryRequestPB;
 class HasUniverseKeyInMemoryResponsePB;
-class EncryptionInfoPB;
-class ChangeEncryptionInfoRequestPB;
-class ChangeEncryptionInfoResponsePB;
 class IsEncryptionEnabledRequestPB;
 class IsEncryptionEnabledResponsePB;
-class ListSnapshotsResponsePB;
 class ListSnapshotRestorationsResponsePB;
 class ListSnapshotSchedulesResponsePB;
+class ListSnapshotsResponsePB;
+class ReportedTabletPB;
 class SnapshotCoordinatorContext;
+class SnapshotScheduleFilterPB;
 class SnapshotState;
 class SysRowEntries;
 class SysSnapshotEntryPB;
-class TabletInfo;
+class SysTablesEntryPB;
+class SysTabletsEntryPB;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
+class TSRegistrationPB;
+class TSSnapshotSchedulesInfoPB;
+class TabletInfo;
+class TabletReportPB;
 
 typedef scoped_refptr<TabletInfo> TabletInfoPtr;
 typedef std::vector<TabletInfoPtr> TabletInfos;
 
+struct SnapshotScheduleRestoration;
+using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestoration>;
+
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
+
+YB_DEFINE_ENUM(
+    CollectFlag, (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress));
+using CollectFlags = EnumBitSet<CollectFlag>;
 
 } // namespace master
 } // namespace yb

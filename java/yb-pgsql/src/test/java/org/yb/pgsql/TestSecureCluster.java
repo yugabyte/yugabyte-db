@@ -20,6 +20,8 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -29,9 +31,9 @@ import static org.yb.AssertionWrappers.assertEquals;
 // But postgres client connections are not encrypted.
 // Some extra work required to adopt BasePgSQLTest for using encrypted connection.
 // Encrypted client connections are tested in pg_wrapper-test test now.
-@RunWith(value= YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestSecureCluster extends BasePgSQLTest {
-  private String certsDir = null;
+  private String certsDir;
 
   public TestSecureCluster() {
     super();
@@ -42,9 +44,33 @@ public class TestSecureCluster extends BasePgSQLTest {
     certFile = String.format("%s/%s", certsDir, "ca.crt");
   }
 
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("use_node_to_node_encryption", "true");
+    flagMap.put("allow_insecure_connections", "false");
+    flagMap.put("certs_dir", certsDir);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("use_node_to_node_encryption", "true");
+    flagMap.put("allow_insecure_connections", "false");
+    flagMap.put("certs_dir", certsDir);
+    return flagMap;
+  }
+
   @Test
   public void testConnection() throws Exception {
     createSimpleTable("test", "v");
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("INSERT INTO test VALUES(1, 1, 1), (2, 2, 2)");
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM test")) {
+        assertEquals(2, getRowSet(rs).size());
+      }
+    }
   }
 
   @Test
@@ -65,14 +91,5 @@ public class TestSecureCluster extends BasePgSQLTest {
                "--certs_dir_name",
                certsDir,
                "list_tablets");
-  }
-
-  @Override
-  protected Map<String, String> getMasterAndTServerFlags() {
-    Map<String, String> flagMap = super.getMasterAndTServerFlags();
-    flagMap.put("use_node_to_node_encryption", "true");
-    flagMap.put("allow_insecure_connections", "false");
-    flagMap.put("certs_dir", certsDir);
-    return flagMap;
   }
 }

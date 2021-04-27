@@ -56,30 +56,25 @@ public class TestSSLClient extends TestYBClient {
     certFile = String.format("%s/%s", certsDir(), "ca.crt");
     useIpWithCertificate = true;
 
-    String certDirs = String.format("--certs_dir=%s", certsDir());
-
-    List<String> flagsToAdd = new LinkedList<String>(Arrays.asList(
-        "--use_node_to_node_encryption=true", "--use_client_to_server_encryption=true",
-        "--allow_insecure_connections=false", certDirs));
+    Map<String, String> flags = new TreeMap<>();
+    flags.put("certs_dir", certsDir());
+    flags.put("use_node_to_node_encryption", "true");
+    flags.put("use_client_to_server_encryption", "true");
+    flags.put("allow_insecure_connections", "false");
 
     // If not basic TLS, set-up the client certs.
     if (mode != TestMode.TLS) {
       clientCertFile = String.format("%s/%s", certsDir(), "node.127.0.0.100.crt");
       clientKeyFile = String.format("%s/%s", certsDir(), "node.127.0.0.100.key");
-      flagsToAdd.add("--node_to_node_encryption_use_client_certificates=true");
+      flags.put("node_to_node_encryption_use_client_certificates", "true");
     }
     // If verify client hostname mode, set the correct host for the client.
     if (mode == TestMode.MUTUAL_TLS_CLIENT_VERIFY) {
       clientHost = "127.0.0.100";
-      flagsToAdd.add("--verify_client_endpoint=true");
+      flags.put("verify_client_endpoint", "true");
     }
 
-    List<List<String>> tserverArgs = new ArrayList<List<String>>();
-    tserverArgs.add(flagsToAdd);
-    tserverArgs.add(flagsToAdd);
-    tserverArgs.add(flagsToAdd);
-
-    createMiniCluster(3, flagsToAdd, tserverArgs);
+    createMiniCluster(3, 3, flags, flags);
   }
 
   /**

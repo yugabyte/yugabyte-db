@@ -3210,8 +3210,10 @@ RenameConstraint(RenameStmt *stmt)
 ObjectAddress
 RenameRelation(RenameStmt *stmt)
 {
-	Oid			relid;
+	Oid           relid;
 	ObjectAddress address;
+	Relation      rel;
+	bool          needs_yb_rename;
 
 	/*
 	 * Grab an exclusive lock on the target table, index, sequence, view,
@@ -3236,10 +3238,16 @@ RenameRelation(RenameStmt *stmt)
 
 	RenameRelationInternal(relid, stmt->newname, false);
 
+	/* YB rename is not needed for a primary key dummy index. */
+	rel             = RelationIdGetRelation(relid);
+	needs_yb_rename = IsYBRelation(rel) &&
+	                  !(rel->rd_rel->relkind == RELKIND_INDEX && rel->rd_index->indisprimary);
+	RelationClose(rel);
+
 	/* Do the work */
-	if (IsYugaByteEnabled())
+	if (needs_yb_rename)
 	{
-      YBCRename(stmt, relid);
+		YBCRename(stmt, relid);
 	}
 
 	ObjectAddressSet(address, RelationRelationId, relid);
@@ -7487,8 +7495,9 @@ YBMoveRelDependencies(Relation old_rel, Relation new_rel,
  * a primary key to an existing table.
  * As a workaround, we create a new table with the desired schema and replace
  * the old table with it.
+ * Returns an address of the new primary key (dummy) index.
  */
-static void
+static ObjectAddress
 YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 {
 	CreateStmt*  create_stmt;
@@ -7507,7 +7516,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	HeapTuple    tuple;
 
 	MemoryContext oldcxt, per_tup_cxt;
-	ObjectAddress address;
+	ObjectAddress result = InvalidObjectAddress, address;
 
 	YBCPgTableDesc       yb_table_desc;
 	YBCPgTableProperties yb_table_props;
@@ -7515,18 +7524,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	old_relid = RelationGetRelid(*mutable_rel);
 
 	constr = RelationGetDescr(*mutable_rel)->constr;
-
-	/*
-	 * Colocation support is further complicated by the fact that we can't
-	 * verify it via pure SQL, see #6159.
-	 * YBCIsTableColocated check also covers tablegroups.
-	 */
-	if (YBCIsTableColocated(MyDatabaseId, old_relid))
-		elog(ERROR, "adding primary key to a colocated table "
-		            "is not yet implemented");
-	if (YBCIsDatabaseColocated(MyDatabaseId))
-		elog(ERROR, "adding primary key to a table within a colocated database "
-		            "is not yet implemented");
 
 	if ((*mutable_rel)->rd_partkey != NULL || (*mutable_rel)->rd_rel->relispartition)
 		elog(ERROR, "adding primary key to a partitioned table "
@@ -7596,6 +7593,23 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	        : NULL);
 	create_stmt->tablespacename = get_tablespace_name((*mutable_rel)->rd_rel->reltablespace);
 	create_stmt->tablegroup     = NULL;
+
+	/*
+	 * Colocation support is further complicated by the fact that we can't
+	 * verify it via pure SQL, see #6159.
+	 */
+	const Oid tablegroup_id = RelationGetTablegroup(*mutable_rel);
+	if (OidIsValid(tablegroup_id))
+	{
+		create_stmt->tablegroup = makeNode(OptTableGroup);
+		create_stmt->tablegroup->has_tablegroup = true;
+		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_id);
+		Assert(create_stmt->tablegroup->tablegroup_name);
+	} else if ((*mutable_rel)->rd_options) {
+		const bool colocated = RelationGetColocated(*mutable_rel);
+		create_stmt->options = lappend(create_stmt->options,
+			makeDefElem("colocated", (Node *) makeInteger(colocated), -1));
+	}
 
 	/*
 	 * While there is little to no sense for a user to be doing
@@ -7729,6 +7743,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	                          NULL /* snapshot */,
 	                          1 /* nkeys */,
 	                          &key);
+	bool has_dummy_pk = false; /* Sanity check that dummy PK index is already defined. */
 	List* checks_list = NIL;
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
@@ -7802,9 +7817,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 				break;
 			}
 			case CONSTRAINT_PRIMARY:
-				/* We are defining a primary key right now, so there would be two. */
-				elog(ERROR, "multiple primary keys for table \"%s\" are not allowed",
-				            orig_table_name);
+				has_dummy_pk = true;
 				break;
 			case CONSTRAINT_UNIQUE:
 				/* UNIQUE constraints are indexes and will be copied as such. */
@@ -7826,6 +7839,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		}
 	}
 	systable_endscan(scan);
+	if (!has_dummy_pk)
+		elog(ERROR, "expected dummy primary key index to be defined");
 	/* We don't close pg_constraint just yet. */
 	AddRelationNewConstraints(new_rel,
 	                          NULL /* newColDefaults - they are already in place */,
@@ -7863,7 +7878,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	List* idx_list = RelationGetIndexList(*mutable_rel);
 	foreach(cell, idx_list)
 	{
-		Relation idx_rel  = index_open(lfirst_oid(cell), AccessExclusiveLock);
+		ObjectAddress idx_addr;
+		Relation      idx_rel = index_open(lfirst_oid(cell), AccessExclusiveLock);
 
 		IndexStmt* idx_stmt =
 		    generateClonedIndexStmt(NULL /* heapRel, we provide an oid instead */,
@@ -7889,21 +7905,63 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		RenameRelation(rename_stmt);
 		CommandCounterIncrement();
 
+		/* The tablegroup attribute of a table is not a reloption at syntax level 
+		 * but it is recorded as a reloption by DefineIndex (which makes a special 
+		 * case only for "tablegroup" to convert it to a reloption). As a result, 
+		 * if the old table has a tablegroup, then every index on the old table 
+		 * including the dummy pkey index has also stored a reloption for the 
+		 * tablegroup when DefineIndex was called for it.
+		 *
+		 * When generateClonedIndexStmt is called to make a new index statement, it
+		 * will have cloned the old index's reloptions, which includes the special
+		 * reloption for "tablegroup".
+		 *
+		 * Next we will call DefineIndex for each cloned index statement. DefineIndex 
+		 * will again make a special case for "tablegroup" and convert "tablegroup"
+		 * to another reloption. This means that the new index statement gets two
+		 * "tablegroup" reloption instances and caused postgres error:
+		 *   ERROR: parameter "tablegroup" specified more than once
+		 * To prevent this error, remove "tablegroup" reloption if there is one.
+		 */
+		if (idx_stmt->options)
+		{
+			ListCell   *option;
+			ListCell   *prev;
+
+			prev = NULL;
+			foreach(option, idx_stmt->options)
+			{
+				DefElem *elem = lfirst_node(DefElem, option);
+				if (strcmp(elem->defname, "tablegroup") == 0)
+				{
+					idx_stmt->options = list_delete_cell(idx_stmt->options, option, prev);
+					break;
+				}
+				else
+					prev = option;
+			}
+		}
+
 		/* Create a new index taking up the freed name. */
 		idx_stmt->idxname = pstrdup(idx_orig_name);
-		DefineIndex(new_relid,
-		            idx_stmt,
-		            InvalidOid, /* no predefined OID */
-		            InvalidOid, /* no parent index */
-		            InvalidOid, /* no parent constraint */
-		            false, /* is_alter_table */
-		            false, /* check_rights */
-		            false, /* check_not_in_use */
-		            false, /* skip_build */
-		            true /* quiet */);
+		idx_addr = DefineIndex(new_relid,
+		                       idx_stmt,
+		                       InvalidOid, /* no predefined OID */
+		                       InvalidOid, /* no parent index */
+		                       InvalidOid, /* no parent constraint */
+		                       false, /* is_alter_table */
+		                       false, /* check_rights */
+		                       false, /* check_not_in_use */
+		                       false, /* skip_build */
+		                       true /* quiet */);
+
+		if (idx_rel->rd_index->indisprimary)
+			result = idx_addr;
+
 		index_close(idx_rel,  AccessExclusiveLock);
 	}
 	list_free(idx_list);
+	Assert(OidIsValid(result.objectId));
 
 	/*
 	 * PHASE 6
@@ -8058,6 +8116,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 	/* Re-target old relation to point to the new one. */
 	*mutable_rel = new_rel;
+
+	return result;
 }
 
 /*
@@ -8093,16 +8153,12 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 	/* suppress notices when rebuilding existing index */
 	quiet = is_rebuild;
 
-	if (IsYBRelation(*mutable_rel) && stmt->primary)
-	{
-		YBCloneRelationSetPrimaryKey(mutable_rel, stmt);
-
-		/*
-		 * Now we proceed with creating PG-side dummy primary key index, as we
-		 * usually do for CREATE TABLE with PRIMARY KEY defined.
-		 */
-	}
-
+	/*
+	 * YB note:
+	 * For a PRIMARY KEY index creation, this will create a dummy index.
+	 * We're doing this before YBCloneRelationSetPrimaryKey for it to run
+	 * all necessary checks - columns existence and types, absence of nulls, etc.
+	 */
 	address = DefineIndex(RelationGetRelid(*mutable_rel),
 						  stmt,
 						  InvalidOid,	/* no predefined OID */
@@ -8113,6 +8169,11 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 						  false,	/* check_not_in_use - we did it already */
 						  skip_build,
 						  quiet);
+	if (IsYBRelation(*mutable_rel) && stmt->primary)
+	{
+		/* Table will be re-created, along with the dummy PK index. */
+		address = YBCloneRelationSetPrimaryKey(mutable_rel, stmt);
+	}
 
 	/*
 	 * If TryReuseIndex() stashed a relfilenode for us, we used it for the new

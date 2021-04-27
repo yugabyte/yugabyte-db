@@ -45,10 +45,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * Unsupported methods are also marked @Deprecated so that IDE finds it easy to tell
  * whats supported and whats not.
  */
-class DelegatingConfig implements Config {
-  AtomicReference<Config> delegate;
+public class DelegatingConfig implements Config {
+  final AtomicReference<Config> delegate;
 
-  protected DelegatingConfig(Config delegatesTo) {
+  public DelegatingConfig(Config delegatesTo) {
     delegate = new AtomicReference<>(delegatesTo);
   }
 
@@ -58,6 +58,10 @@ class DelegatingConfig implements Config {
 
   protected void setValueInternal(String path, ConfigValue newValue) {
     delegate.set(delegate().withValue(path, newValue));
+  }
+
+  protected void deleteValueInternal(String path) {
+    delegate.set(delegate().withoutPath(path));
   }
 
   @Deprecated

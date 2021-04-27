@@ -156,6 +156,7 @@ DEFINE_double(tablet_bloom_target_fp_rate, 0.01f,
               "required for bloom filters.");
 TAG_FLAG(tablet_bloom_target_fp_rate, advanced);
 
+METRIC_DEFINE_entity(table);
 METRIC_DEFINE_entity(tablet);
 
 // TODO: use a lower default for truncate / snapshot restore Raft operations. The one-minute timeout
@@ -188,7 +189,7 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(backfill_index_timeout_grace_margin_ms, 500,
+DEFINE_int32(backfill_index_timeout_grace_margin_ms, -1,
              "The time we give the backfill process to wrap up the current set "
              "of writes and return successfully the RPC with the information about "
              "how far we have processed the rows.");
@@ -285,115 +286,6 @@ using docdb::StorageDbType;
 
 namespace {
 
-void EmitRocksDbMetricsAsJson(
-    std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
-    std::shared_ptr<rocksdb::Statistics> intentsdb_statistics,
-    JsonWriter* writer,
-    const MetricJsonOptions& opts) {
-  // Make sure the class member 'regulardb_statistics_' exists, as this is the stats object
-  // maintained by RocksDB for this tablet.
-  if (regulardb_statistics == nullptr) {
-    return;
-  }
-  // Emit all the ticker (gauge) metrics.
-  const bool export_intentdb_metrics =
-      intentsdb_statistics && GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics);
-  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
-    // Start the metric object.
-    writer->StartObject();
-    // Write the name.
-    writer->String("name");
-    writer->String(entry.second);
-    // Write the value.
-    uint64_t value = regulardb_statistics->getTickerCount(entry.first);
-    writer->String("value");
-    writer->Uint64(value);
-    // Finish the metric object.
-    writer->EndObject();
-    if (export_intentdb_metrics) {
-      // Start the metric object.
-      writer->StartObject();
-      // Write the name.
-      writer->String("name");
-      writer->String(Format("intentsdb_$0", entry.second));
-      // Write the value.
-      uint64_t value = intentsdb_statistics->getTickerCount(entry.first);
-      writer->String("value");
-      writer->Uint64(value);
-      // Finish the metric object.
-      writer->EndObject();
-    }
-  }
-  // Emit all the histogram metrics.
-  rocksdb::HistogramData histogram_data;
-  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
-    // Start the metric object.
-    writer->StartObject();
-    // Write the name.
-    writer->String("name");
-    writer->String(entry.second);
-    // Write the value.
-    regulardb_statistics->histogramData(entry.first, &histogram_data);
-    writer->String("total_count");
-    writer->Double(histogram_data.count);
-    writer->String("min");
-    writer->Double(histogram_data.min);
-    writer->String("mean");
-    writer->Double(histogram_data.average);
-    writer->String("median");
-    writer->Double(histogram_data.median);
-    writer->String("std_dev");
-    writer->Double(histogram_data.standard_deviation);
-    writer->String("percentile_95");
-    writer->Double(histogram_data.percentile95);
-    writer->String("percentile_99");
-    writer->Double(histogram_data.percentile99);
-    writer->String("max");
-    writer->Double(histogram_data.max);
-    writer->String("total_sum");
-    writer->Double(histogram_data.sum);
-    // Finish the metric object.
-    writer->EndObject();
-  }
-}
-
-CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
-    std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
-    std::shared_ptr<rocksdb::Statistics> intentsdb_statistics,
-    PrometheusWriter* writer,
-    const MetricEntity::AttributeMap& attrs) {
-  // Make sure the class member 'regulardb_statistics_' exists, as this is the stats object
-  // maintained by RocksDB for this tablet.
-  if (regulardb_statistics == nullptr) {
-    return Status::OK();
-  }
-  const bool export_intentdb_metrics =
-      intentsdb_statistics && GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics);
-  // Emit all the ticker (gauge) metrics.
-  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        attrs, entry.second, regulardb_statistics->getTickerCount(entry.first)));
-    if (export_intentdb_metrics) {
-      RETURN_NOT_OK(writer->WriteSingleEntry(
-          attrs, Format("intentsdb_$0", entry.second),
-          intentsdb_statistics->getTickerCount(entry.first)));
-    }
-  }
-  // Emit all the histogram metrics.
-  rocksdb::HistogramData histogram_data;
-  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
-    regulardb_statistics->histogramData(entry.first, &histogram_data);
-
-    auto copy_of_attr = attrs;
-    const std::string hist_name = entry.second;
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_sum", histogram_data.sum));
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_count", histogram_data.count));
-  }
-  return Status::OK();
-}
-
 docdb::PartialRangeKeyIntents UsePartialRangeKeyIntents(const RaftGroupMetadata& metadata) {
   return docdb::PartialRangeKeyIntents(metadata.table_type() == TableType::PGSQL_TABLE_TYPE);
 }
@@ -446,7 +338,8 @@ Tablet::Tablet(const TabletInitData& data)
       log_prefix_suffix_(data.log_prefix_suffix),
       is_sys_catalog_(data.is_sys_catalog),
       txns_enabled_(data.txns_enabled),
-      retention_policy_(std::make_shared<TabletRetentionPolicy>(clock_, metadata_.get())) {
+      retention_policy_(std::make_shared<TabletRetentionPolicy>(
+          clock_, data.allowed_history_cutoff_provider, metadata_.get())) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->schema_version();
@@ -457,42 +350,21 @@ Tablet::Tablet(const TabletInitData& data)
     attrs["table_id"] = metadata_->table_id();
     attrs["table_name"] = metadata_->table_name();
     attrs["namespace_name"] = metadata_->namespace_name();
-    attrs["partition"] = metadata_->partition_schema()->PartitionDebugString(
-        *metadata_->partition(), *schema());
-    metric_entity_ = METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
+    table_metrics_entity_ =
+        METRIC_ENTITY_table.Instantiate(data.metric_registry, metadata_->table_id(), attrs);
+    tablet_metrics_entity_ =
+        METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
-    regulardb_statistics_ = rocksdb::CreateDBStatistics();
-    intentsdb_statistics_ = rocksdb::CreateDBStatistics();
-    auto regulardb_statistics = regulardb_statistics_;
-    auto intentsdb_statistics = intentsdb_statistics_;
-    metric_entity_->AddExternalJsonMetricsCb([regulardb_statistics, intentsdb_statistics](
-                                                 JsonWriter* jw, const MetricJsonOptions& opts) {
-      // Assume all rocksdb statistics are at "info" level.
-      if (MetricLevel::kInfo < opts.level) {
-        return;
-      }
+    regulardb_statistics_ =
+        rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
+    intentsdb_statistics_ =
+        (GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics)
+             ? rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_, true)
+             : rocksdb::CreateDBStatistics(table_metrics_entity_, nullptr, true));
 
-      EmitRocksDbMetricsAsJson(regulardb_statistics, intentsdb_statistics, jw, opts);
-    });
+    metrics_.reset(new TabletMetrics(table_metrics_entity_, tablet_metrics_entity_));
 
-    metric_entity_->AddExternalPrometheusMetricsCb(
-        [regulardb_statistics, intentsdb_statistics, attrs](
-            PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
-          // Assume all rocksdb statistics are at "info" level.
-          if (MetricLevel::kInfo < opts.level) {
-            return;
-          }
-
-          auto s =
-              EmitRocksDbMetricsAsPrometheus(regulardb_statistics, intentsdb_statistics, pw, attrs);
-          if (!s.ok()) {
-            YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();
-          }
-        });
-
-    metrics_.reset(new TabletMetrics(metric_entity_));
-
-    mem_tracker_->SetMetricEntity(metric_entity_);
+    mem_tracker_->SetMetricEntity(tablet_metrics_entity_);
   }
 
   auto table_info = metadata_->primary_table_info();
@@ -505,7 +377,7 @@ Tablet::Tablet(const TabletInitData& data)
       data.transaction_participant_context &&
       (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        data.transaction_participant_context, this, metric_entity_);
+        data.transaction_participant_context, this, tablet_metrics_entity_);
     // Create transaction manager for secondary index update.
     if (has_index) {
       transaction_manager_.emplace(client_future_.get(),
@@ -702,9 +574,9 @@ Status Tablet::OpenKeyValueTablet() {
           Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_,
           AddToParent::kTrue, CreateMetrics::kFalse);
   // We may not have a metrics_entity_ instantiated in tests.
-  if (metric_entity_) {
-    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
-        Format("$0_$1", "BlockBasedTable", kRegularDB));
+  if (tablet_metrics_entity_) {
+    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
+        tablet_metrics_entity_, Format("$0_$1", "BlockBasedTable", kRegularDB));
   }
 
   key_bounds_ = docdb::KeyBounds(metadata()->lower_bound_key(), metadata()->upper_bound_key());
@@ -765,9 +637,9 @@ Status Tablet::OpenKeyValueTablet() {
             Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_,
             AddToParent::kTrue, CreateMetrics::kFalse);
     // We may not have a metrics_entity_ instantiated in tests.
-    if (metric_entity_) {
-      intents_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
-        Format("$0_$1", "BlockBasedTable", kIntentsDB));
+    if (tablet_metrics_entity_) {
+      intents_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
+          tablet_metrics_entity_, Format("$0_$1", "BlockBasedTable", kIntentsDB));
     }
     intents_rocksdb_options.statistics = intentsdb_statistics_;
 
@@ -1544,6 +1416,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
     if (!client) {
       client = client_future_.get();
       session = std::make_shared<YBSession>(client);
+      session->SetDeadline(operation->deadline());
       if (write_op->request().has_child_transaction_data()) {
         child_transaction_data = &write_op->request().child_transaction_data();
         if (!transaction_manager_) {
@@ -2156,9 +2029,13 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
                        operation_state->schema_version(), current_table_info->table_id);
   if (operation_state->has_new_table_name()) {
     metadata_->SetTableName(current_table_info->namespace_name, operation_state->new_table_name());
-    if (metric_entity_) {
-      metric_entity_->SetAttribute("table_name", operation_state->new_table_name());
-      metric_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    if (table_metrics_entity_) {
+      table_metrics_entity_->SetAttribute("table_name", operation_state->new_table_name());
+      table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    }
+    if (tablet_metrics_entity_) {
+      tablet_metrics_entity_->SetAttribute("table_name", operation_state->new_table_name());
+      tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
   }
 
@@ -2250,11 +2127,24 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
       b2a_hex(partition_key));
   VLOG(1) << __func__ << ": libpq query string: " << query_str;
 
-  // Connect and execute.
+  // Connect.
   pgwrapper::PGConnPtr conn(PQconnectdb(conn_str.c_str()));
   if (!conn) {
     return STATUS(IllegalState, "backfill failed to connect to DB");
   }
+  if (PQstatus(conn.get()) == CONNECTION_BAD) {
+    std::string msg(PQerrorMessage(conn.get()));
+
+    // Avoid double newline (postgres adds a newline after the error message).
+    if (msg.back() == '\n') {
+      msg.resize(msg.size() - 1);
+    }
+    LOG(WARNING) << "libpq connection \"" << conn_str
+                 << "\" failed: " << msg;
+    return STATUS_FORMAT(IllegalState, "backfill connection to DB failed: $0", msg);
+  }
+
+  // Execute.
   pgwrapper::PGResultPtr res(PQexec(conn.get(), query_str.c_str()));
   if (!res) {
     std::string msg(PQerrorMessage(conn.get()));
@@ -2265,10 +2155,9 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
     }
     LOG(WARNING) << "libpq query \"" << query_str
                  << "\" was not sent: " << msg;
-    return STATUS(IllegalState, "backfill query couldn't be sent");
+    return STATUS_FORMAT(IllegalState, "backfill query couldn't be sent: $0", msg);
   }
   ExecStatusType status = PQresultStatus(res.get());
-
   // TODO(jason): more properly handle bad statuses
   // TODO(jason): change to PGRES_TUPLES_OK when this query starts returning data
   if (status != PGRES_COMMAND_OK) {
@@ -2283,6 +2172,7 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
                  << ": " << msg;
     return STATUS(IllegalState, msg);
   }
+
   // TODO(jason): handle partially finished backfills.  How am I going to get that info?  From
   // response message by libpq or manual DocDB inspection?
   return "";
@@ -2345,7 +2235,16 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
 
   QLTableRow row;
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
-  const yb::CoarseDuration kMargin = FLAGS_backfill_index_timeout_grace_margin_ms * 1ms;
+  auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
+  if (grace_margin_ms < 0) {
+    const auto rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
+    const auto batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
+    // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
+    // By default, we will set it to twice the minimum value + 1s.
+    grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
+    YB_LOG_EVERY_N(INFO, 100000) << "Using grace margin of " << grace_margin_ms << "ms";
+  }
+  const yb::CoarseDuration kMargin = grace_margin_ms * 1ms;
   constexpr auto kProgressInterval = 1000;
   int num_rows_processed = 0;
   string resume_from;
@@ -3046,14 +2945,22 @@ void Tablet::StartDocWriteOperation(
 }
 
 Result<HybridTime> Tablet::DoGetSafeTime(
-    tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
-  if (!require_lease) {
+    RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
+  if (require_lease == RequireLease::kFalse) {
     return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
-  if (require_lease && ht_lease_provider_) {
+  if (ht_lease_provider_) {
     // This will block until a leader lease reaches the given value or a timeout occurs.
-    ht_lease = VERIFY_RESULT(ht_lease_provider_(min_allowed, deadline));
+    auto ht_lease_result = ht_lease_provider_(min_allowed, deadline);
+    if (!ht_lease_result.ok()) {
+      if (require_lease == RequireLease::kFallbackToFollower &&
+          ht_lease_result.status().IsIllegalState()) {
+        return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+      }
+      return ht_lease_result.status();
+    }
+    ht_lease = *ht_lease_result;
     if (min_allowed > ht_lease.time) {
       return STATUS_FORMAT(
           InternalError, "Read request hybrid time after current time: $0, lease: $1",
@@ -3423,6 +3330,55 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
 void Tablet::TriggerPostSplitCompactionSync() {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
   WARN_NOT_OK(ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
+}
+
+Status Tablet::VerifyDataIntegrity() {
+  LOG_WITH_PREFIX(INFO) << "Beginning data integrity checks on this tablet";
+
+  // Verify regular db.
+  if (regular_db_) {
+    const auto& db_dir = metadata()->rocksdb_dir();
+    RETURN_NOT_OK(OpenDbAndCheckIntegrity(db_dir));
+  }
+
+  // Verify intents db.
+  if (intents_db_) {
+    const auto& db_dir = metadata()->intents_rocksdb_dir();
+    RETURN_NOT_OK(OpenDbAndCheckIntegrity(db_dir));
+  }
+
+  return Status::OK();
+}
+
+Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
+  // Similar to ldb's CheckConsistency, we open db as read-only with paranoid checks on.
+  // If any corruption is detected then the open will fail with a Corruption status.
+  rocksdb::Options db_opts;
+  InitRocksDBOptions(&db_opts, LogPrefix());
+  db_opts.paranoid_checks = true;
+
+  std::unique_ptr<rocksdb::DB> db;
+  rocksdb::DB* db_raw = nullptr;
+  rocksdb::Status st = rocksdb::DB::OpenForReadOnly(db_opts, db_dir, &db_raw);
+  if (db_raw != nullptr) {
+    db.reset(db_raw);
+  }
+  if (!st.ok()) {
+    if (st.IsCorruption()) {
+      LOG_WITH_PREFIX(WARNING) << "Detected rocksdb data corruption: " << st;
+      // TODO: should we bump metric here or in top-level validation or both?
+      metrics()->tablet_data_corruptions->Increment();
+      return st;
+    }
+
+    LOG_WITH_PREFIX(WARNING) << "Failed to open read-only RocksDB in directory " << db_dir
+                             << ": " << st;
+    return Status::OK();
+  }
+
+  // TODO: we can add more checks here to verify block contents/checksums
+
+  return Status::OK();
 }
 
 // ------------------------------------------------------------------------------------------------

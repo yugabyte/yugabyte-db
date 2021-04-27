@@ -14,30 +14,30 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-
 import org.apache.commons.io.input.ReversedLinesFileReader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
-import org.pac4j.play.java.Secure;
 import org.pac4j.play.PlayWebContext;
+import org.pac4j.play.java.Secure;
 import org.pac4j.play.store.PlaySessionStore;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.data.Form;
@@ -48,9 +48,10 @@ import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.mvc.*;
 
+import javax.persistence.PersistenceException;
 import java.io.File;
-import java.io.InputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -58,7 +59,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.persistence.PersistenceException;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.models.Users.Role;
@@ -89,6 +89,9 @@ public class SessionController extends Controller {
   @Inject
   ApiHelper apiHelper;
 
+  @Inject
+  PasswordPolicyService passwordPolicyService;
+
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
@@ -97,7 +100,7 @@ public class SessionController extends Controller {
 
   private CommonProfile getProfile() {
     final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
-    final ProfileManager<CommonProfile> profileManager = new ProfileManager(context);
+    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
     return profileManager.get(true).get();
   }
 
@@ -109,7 +112,7 @@ public class SessionController extends Controller {
       return badRequest(responseJson);
     }
     Form<CustomerLoginFormData> formData = formFactory.form(CustomerLoginFormData.class)
-                                                      .bindFromRequest();
+      .bindFromRequest();
 
     if (formData.hasErrors()) {
       responseJson.set("error", formData.errorsAsJson());
@@ -117,7 +120,7 @@ public class SessionController extends Controller {
     }
 
     CustomerLoginFormData data = formData.get();
-    Users user = Users.authWithPassword(data.email.toLowerCase(), data.password);
+    Users user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
 
     if (user == null) {
       responseJson.put("error", "Invalid User Credentials");
@@ -131,11 +134,11 @@ public class SessionController extends Controller {
     authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
     authTokenJson.put(USER_UUID, user.uuid.toString());
     response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken)
-                                    .withSecure(ctx().request().secure()).build());
+      .withSecure(ctx().request().secure()).build());
     response().setCookie(Http.Cookie.builder("customerId", cust.uuid.toString())
-                                    .withSecure(ctx().request().secure()).build());
+      .withSecure(ctx().request().secure()).build());
     response().setCookie(Http.Cookie.builder("userId", user.uuid.toString())
-                                    .withSecure(ctx().request().secure()).build());
+      .withSecure(ctx().request().secure()).build());
     return ok(authTokenJson);
   }
 
@@ -162,7 +165,7 @@ public class SessionController extends Controller {
     Users user = Users.getByEmail(email.toLowerCase());
     if (user == null) {
       final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
-      final ProfileManager<CommonProfile> profileManager = new ProfileManager(context);
+      final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
       profileManager.logout();
       playSessionStore.destroySession(context);
     } else {
@@ -170,9 +173,9 @@ public class SessionController extends Controller {
       ctx().args.put("customer", cust);
       ctx().args.put("user", user);
       response().setCookie(Http.Cookie.builder("customerId", cust.uuid.toString())
-                                      .withSecure(ctx().request().secure()).build());
+        .withSecure(ctx().request().secure()).build());
       response().setCookie(Http.Cookie.builder("userId", user.uuid.toString())
-                                      .withSecure(ctx().request().secure()).build());
+        .withSecure(ctx().request().secure()).build());
     }
     if (environment.isDev()) {
       return redirect("http://localhost:3000/");
@@ -189,7 +192,7 @@ public class SessionController extends Controller {
       return unauthorized(responseJson);
     }
     String securityLevel = (String) configHelper.getConfig(ConfigHelper.ConfigType.Security)
-                                                .get("level");
+      .get("level");
     if (securityLevel != null && securityLevel.equals("insecure")) {
       List<Users> users = Users.getAllReadOnly();
       if (users == null || users.isEmpty()) {
@@ -211,7 +214,7 @@ public class SessionController extends Controller {
       apiTokenJson.put(CUSTOMER_UUID, user.customerUUID.toString());
       apiTokenJson.put(USER_UUID, user.uuid.toString());
       response().setCookie(Http.Cookie.builder(API_TOKEN, apiToken)
-                                      .withSecure(ctx().request().secure()).build());
+        .withSecure(ctx().request().secure()).build());
       return ok(apiTokenJson);
     }
     responseJson.put("error", "Insecure login unavailable.");
@@ -222,7 +225,7 @@ public class SessionController extends Controller {
   @With(TokenAuthenticator.class)
   public Result set_security(UUID customerUUID) {
     Form<SetSecurityFormData> formData = formFactory.form(SetSecurityFormData.class)
-                                                    .bindFromRequest();
+      .bindFromRequest();
     ObjectNode responseJson = Json.newObject();
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
@@ -267,14 +270,14 @@ public class SessionController extends Controller {
     ObjectNode apiTokenJson = Json.newObject();
     apiTokenJson.put(API_TOKEN, apiToken);
     response().setCookie(Http.Cookie.builder(API_TOKEN, apiToken)
-              .withSecure(ctx().request().secure())
-              .withMaxAge(FOREVER).build());
+      .withSecure(ctx().request().secure())
+      .withMaxAge(FOREVER).build());
     return ok(apiTokenJson);
   }
 
   public Result register() {
     Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class)
-                                                         .bindFromRequest();
+      .bindFromRequest();
 
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
@@ -283,19 +286,18 @@ public class SessionController extends Controller {
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
     int customerCount = Customer.find.all().size();
     if (!multiTenant && customerCount >= 1) {
-      return ApiResponse.error(BAD_REQUEST, "Cannot register multiple "+
-                               "accounts in Single tenancy.");
+      return ApiResponse.error(BAD_REQUEST, "Cannot register multiple " +
+        "accounts in Single tenancy.");
     }
     if (useOAuth && customerCount >= 1) {
-      return ApiResponse.error(BAD_REQUEST, "Cannot register multiple "+
-                               "accounts with SSO enabled platform.");
+      return ApiResponse.error(BAD_REQUEST, "Cannot register multiple " +
+        "accounts with SSO enabled platform.");
     }
     CustomerRegisterFormData data = formData.get();
     if (customerCount == 0) {
       return registerCustomer(data, true);
     } else {
-      TokenAuthenticator tokenAuth = new TokenAuthenticator();
-      if (tokenAuth.superAdminAuthentication(ctx())) {
+      if (TokenAuthenticator.superAdminAuthentication(ctx())) {
         return registerCustomer(data, false);
       } else {
         return ApiResponse.error(BAD_REQUEST, "Only Super Admins can register tenant.");
@@ -305,7 +307,7 @@ public class SessionController extends Controller {
 
   private Result registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
     try {
-      Customer cust = Customer.create(data.code, data.name);
+      Customer cust = Customer.create(data.getCode(), data.getName());
       if (cust == null) {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to register the customer");
       }
@@ -313,15 +315,20 @@ public class SessionController extends Controller {
       if (isSuper) {
         role = Role.SuperAdmin;
       }
-      Users user = Users.create(data.email, data.password, role,
-          cust.uuid, /* Primary user*/ true);
+      Result passwordCheckResult = passwordPolicyService
+        .checkPasswordPolicy(cust.getUuid(), data.getPassword());
+      if (passwordCheckResult != null) {
+        return passwordCheckResult;
+      }
+      Users user = Users.create(data.getEmail(), data.getPassword(), role,
+        cust.uuid, /* Primary user*/ true);
       String authToken = user.createAuthToken();
       ObjectNode authTokenJson = Json.newObject();
       authTokenJson.put(AUTH_TOKEN, authToken);
       authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
       authTokenJson.put(USER_UUID, user.uuid.toString());
       response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken)
-                                      .withSecure(ctx().request().secure()).build());
+        .withSecure(ctx().request().secure()).build());
       return ok(authTokenJson);
     } catch (PersistenceException pe) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Customer already registered.");
@@ -384,12 +391,13 @@ public class SessionController extends Controller {
     } catch (IOException ex) {
       LOG.error("Log file open failed.", ex);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not open log file with error " +
-                               ex.getMessage());
+        ex.getMessage());
     }
   }
 
   @With(TokenAuthenticator.class)
   public Result proxyRequest(UUID universeUUID, String requestUrl) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     try {
       // Validate that the request is of <ip/hostname>:<port> format
       Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
@@ -404,7 +412,6 @@ public class SessionController extends Controller {
       String addr = String.format("%s:%s", host, port);
 
       // Validate that the proxy request is for a node from the specified universe
-      Universe universe = Universe.get(universeUUID);
       if (!universe.nodeExists(host, Integer.parseInt(port))) {
         LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
         return ApiResponse.error(BAD_REQUEST, "Invalid proxy request");

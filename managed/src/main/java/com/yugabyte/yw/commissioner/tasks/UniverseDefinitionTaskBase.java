@@ -694,15 +694,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.enableNodeToNodeClientVerification = userIntent.enableNodeToNodeClientVerification;
 
       params.allowInsecure = taskParams().allowInsecure;
+      params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
       params.rootCA = taskParams().rootCA;
       params.enableYEDIS = userIntent.enableYEDIS;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
 
-      UUID custUUID = Customer.get(Universe.get(taskParams().universeUUID).customerId).uuid;
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      UUID custUUID = Customer.get(universe.customerId).uuid;
 
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.
@@ -776,7 +779,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (Cluster cluster : taskParams().clusters) {
       if (opType == UniverseOpType.EDIT &&
           cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         Cluster univCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
         if (univCluster == null) {
           throw new IllegalStateException("No cluster " + cluster.uuid + " found in " +

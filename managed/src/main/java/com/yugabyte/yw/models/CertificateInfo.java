@@ -4,10 +4,13 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +25,12 @@ import javax.persistence.Id;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 public class CertificateInfo extends Model {
@@ -71,6 +77,21 @@ public class CertificateInfo extends Model {
   @Enumerated(EnumType.STRING)
   public CertificateInfo.Type certType;
 
+  // For mTLS, each certificate will also be requiring a corresponding certificate
+  // and key file for connections to the DB nodes.
+  @Column(nullable = true)
+  public String platformCert;
+  public void setPlatformCert(String certPath) {
+    this.platformCert = certPath;
+    this.save();
+  }
+  @Column(nullable = true)
+  public String platformKey;
+  public void setPlatformKey(String keyPath) {
+    this.platformKey = keyPath;
+    this.save();
+  }
+
   @Column(nullable = true)
   public String checksum;
   public void setChecksum() throws IOException, NoSuchAlgorithmException {
@@ -96,28 +117,38 @@ public class CertificateInfo extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
 
+  // Create function for self-signed certs.
   public static CertificateInfo create(
-    UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
-    String privateKey, String certificate, CertificateInfo.Type certType)
-    throws IOException, NoSuchAlgorithmException {
-    CertificateInfo cert = new CertificateInfo();
-    cert.uuid = uuid;
-    cert.customerUUID = customerUUID;
-    cert.label = label;
-    cert.startDate = startDate;
-    cert.expiryDate = expiryDate;
+      UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
+      String certificate, String privateKey, String platformCert, String platformKey)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo cert = create(uuid, customerUUID, label, startDate, expiryDate, certificate,
+        platformCert, platformKey);
+    cert.certType = CertificateInfo.Type.SelfSigned;
     cert.privateKey = privateKey;
-    cert.certificate = certificate;
-    cert.certType = certType;
-    cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
     return cert;
   }
 
+  // Create function for custom certs.
   public static CertificateInfo create(
-    UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
-    String certificate, CertificateParams.CustomCertInfo customCertInfo)
-    throws IOException, NoSuchAlgorithmException {
+      UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
+      String certificate, CertificateParams.CustomCertInfo customCertInfo,
+      String platformCert, String platformKey)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo cert = create(uuid, customerUUID, label, startDate, expiryDate, certificate,
+        platformCert, platformKey);
+    cert.certType = Type.CustomCertHostPath;
+    cert.customCertInfo = Json.toJson(customCertInfo);
+    cert.save();
+    return cert;
+  }
+
+  // Create function for setting the common values.
+  public static CertificateInfo create(
+      UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
+      String certificate, String platformCert, String platformKey)
+      throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
     cert.uuid = uuid;
     cert.customerUUID = customerUUID;
@@ -125,10 +156,9 @@ public class CertificateInfo extends Model {
     cert.startDate = startDate;
     cert.expiryDate = expiryDate;
     cert.certificate = certificate;
-    cert.certType = Type.CustomCertHostPath;
-    cert.customCertInfo = Json.toJson(customCertInfo);
+    cert.platformCert = platformCert;
+    cert.platformKey = platformKey;
     cert.checksum = Util.getFileChecksum(certificate);
-    cert.save();
     return cert;
   }
 
@@ -169,5 +199,10 @@ public class CertificateInfo extends Model {
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {
     return Universe.existsCertificate(this.uuid, this.customerUUID);
+  }
+
+  public ArrayNode getUniverseDetails() {
+    Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
+    return Util.getUniverseDetails(universes);
   }
 }

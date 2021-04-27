@@ -14,6 +14,7 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
 
 namespace yb {
