@@ -82,6 +82,10 @@ class ClusterLoadBalancer {
   // Executes one run of the load balancing algorithm. This currently does not persist any state,
   // so it needs to scan the in-memory tablet and TS data in the CatalogManager on every run and
   // create a new PerTableLoadState object.
+  void RunLoadBalancerWithOptions(Options* options);
+
+  // Runs the load balancer once for the live and all read only clusters, in order
+  // of the cluster config.
   virtual void RunLoadBalancer(Options* options = nullptr);
 
   // Sets whether to enable or disable the load balancer, on demand.
@@ -101,7 +105,7 @@ class ClusterLoadBalancer {
   // Indirection methods to CatalogManager that we override in the subclasses (or testing).
   //
 
-  virtual void InitializeTSDescriptors();
+  void InitializeTSDescriptors();
 
   // Get the list of all live TSDescriptors which reported their tablets.
   virtual void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const;
@@ -123,6 +127,8 @@ class ClusterLoadBalancer {
   virtual const ReplicationInfoPB& GetClusterReplicationInfo() const;
 
   // Get the placement information from the cluster configuration.
+  // Gets appropriate live or read only cluster placement,
+  // depending on placement_uuid_.
   virtual const PlacementInfoPB& GetClusterPlacementInfo() const;
 
   // Init tablespace information from catalog manager.
@@ -162,8 +168,8 @@ class ClusterLoadBalancer {
       scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
       const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid = "");
 
-  // Returns default member type for newly created replicas (PRE_VOTER).
-  virtual consensus::RaftPeerPB::MemberType GetDefaultMemberType();
+  // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
+  consensus::RaftPeerPB::MemberType GetDefaultMemberType();
 
   //
   // Higher level methods and members.
@@ -206,7 +212,7 @@ class ClusterLoadBalancer {
   // Method called when initially analyzing tablets, to build up load and usage information.
   // Returns an OK status if the method succeeded or an error if there are transient errors in
   // updating the internal state.
-  virtual CHECKED_STATUS UpdateTabletInfo(TabletInfo* tablet);
+  CHECKED_STATUS UpdateTabletInfo(TabletInfo* tablet);
 
   // If a tablet is under-replicated, or has certain placements that have less than the minimum
   // required number of replicas, we need to add extra tablets to its peer set.
@@ -233,12 +239,21 @@ class ClusterLoadBalancer {
   Result<bool> HandleRemoveIfWrongPlacement(TabletId* out_tablet_id, TabletServerId* out_from_ts)
       REQUIRES_SHARED(catalog_manager_->lock_);
 
+  // This function handles leader load from non-affinitized to affinitized nodes.
+  // If it can find a way to move leader load from a non-affinitized to affinitized node,
+  // returns true, if not returns false, if error is found, returns Status.
+  // This is called before normal leader load balancing.
+  Result<bool> HandleLeaderLoadIfNonAffinitized(
+      TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
+
   // Processes any tablet leaders that are on a highly loaded tablet server and need to be moved.
   //
   // Returns true if a move was actually made.
-  virtual Result<bool> HandleLeaderMoves(
+  Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
       REQUIRES_SHARED(catalog_manager_->lock_);
+
+  virtual void GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const;
 
   // Go through sorted_load_ and figure out which tablet to rebalance and from which TS that is
   // serving it to which other TS.
@@ -297,6 +312,15 @@ class ClusterLoadBalancer {
   // Currently skips leader for RF=1 case only.
   Result<bool> ShouldSkipLeaderAsVictim(const TabletId& tablet_id) const
       REQUIRES_SHARED(catalog_manager_->lock_);
+
+  // Populates pb with the placement info in tablet's config at cluster placement_uuid_.
+  Status PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb);
+
+  // Returns the read only placement info from placement_uuid_.
+  const PlacementInfoPB& GetReadOnlyPlacementFromUuid(
+      const ReplicationInfoPB& replication_info) const;
+
+  virtual const PlacementInfoPB& GetLiveClusterPlacementInfo() const;
 
   //
   // Generic load information methods.
