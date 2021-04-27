@@ -50,6 +50,7 @@
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/util/test_util.h"
 #include "yb/util/format.h"
 
@@ -289,7 +290,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     ASSERT_OK(mini_server_->Start());
     auto* tablet_manager = mini_server_->server()->tablet_manager();
     ASSERT_NE(nullptr, tablet_manager);
-    tablet_manager->MaybeFlushTablet();
+    tablet_manager->tablet_memory_manager()->FlushTabletIfLimitExceeded();
     ASSERT_OK(mini_server_->WaitStarted());
     for (auto& tablet_id : tablet_ids) {
       std::shared_ptr<TabletPeer> peer;
