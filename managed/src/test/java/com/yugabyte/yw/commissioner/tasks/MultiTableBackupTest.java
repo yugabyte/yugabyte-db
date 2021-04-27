@@ -154,7 +154,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   public void testMultiTableBackup() {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    defaultUniverse.setConfig(config);
+    defaultUniverse.updateConfig(config);
     ShellResponse shellResponse =  new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
@@ -170,7 +170,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   public void testMultiTableBackupKeyspace() {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    defaultUniverse.setConfig(config);
+    defaultUniverse.updateConfig(config);
     ShellResponse shellResponse =  new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
@@ -185,7 +185,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   public void testTransactionalUniverseBackup() {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    defaultUniverse.setConfig(config);
+    defaultUniverse.updateConfig(config);
     ShellResponse shellResponse =  new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
@@ -203,7 +203,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   public void testMultiTableBackupList() {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    defaultUniverse.setConfig(config);
+    defaultUniverse.updateConfig(config);
     ShellResponse shellResponse =  new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
@@ -221,7 +221,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   public void testTransactionalMultiTableBackupList() {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    defaultUniverse.setConfig(config);
+    defaultUniverse.updateConfig(config);
     ShellResponse shellResponse =  new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
@@ -247,7 +247,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   public void testYSQLBackupTables() {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    defaultUniverse.setConfig(config);
+    defaultUniverse.updateConfig(config);
     ShellResponse shellResponse =  new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
@@ -264,7 +264,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   public void testMultiTableBackupIgnore() {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "false");
-    defaultUniverse.setConfig(config);
+    defaultUniverse.updateConfig(config);
     TaskInfo taskInfo = submitTask(null, new ArrayList<>());
     verify(mockTableManager, times(0)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());

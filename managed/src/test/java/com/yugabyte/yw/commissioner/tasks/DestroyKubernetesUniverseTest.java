@@ -8,14 +8,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -30,21 +25,15 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_DELETE;
-import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.VOLUME_DELETE;
-import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.*;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
@@ -173,7 +162,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesUniverseSuccess() {
     setupUniverse(false);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
@@ -196,7 +185,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestoryKubernetesUniverseWithUpdateInProgress() {
     setupUniverse(true);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
@@ -209,7 +198,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testForceDestroyKubernetesUniverseWithUpdateInProgress() {
     setupUniverse(true);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = true;
@@ -230,7 +219,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesUniverseSuccessMultiAZ() {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ false);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
@@ -266,7 +255,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesUniverseSuccessMultiAZWithNamespace() {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ true);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
 
     String nodePrefix1 = String.format("%s-%s", nodePrefix, az1.code);
@@ -287,9 +276,9 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     config1.put("KUBENAMESPACE", ns1);
     config2.put("KUBENAMESPACE", ns2);
 
-    az1.setConfig(config1);
-    az2.setConfig(config2);
-    az3.setConfig(config3);
+    az1.updateConfig(config1);
+    az2.updateConfig(config2);
+    az3.updateConfig(config3);
 
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
@@ -322,7 +311,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesHelm2UniverseSuccess() {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ false);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V2TO3.toString()));
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
