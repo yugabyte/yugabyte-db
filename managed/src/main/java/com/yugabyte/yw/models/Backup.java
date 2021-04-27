@@ -12,7 +12,6 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -60,7 +59,7 @@ public class Backup extends Model {
 
   @Column(columnDefinition = "TEXT", nullable = false)
   @DbJson
-  public JsonNode backupInfo;
+  private BackupTableParams backupInfo;
 
   @Column(unique = true)
   public UUID taskUUID;
@@ -75,11 +74,11 @@ public class Backup extends Model {
   public Date getExpiry() { return expiry; }
 
   public void setBackupInfo(BackupTableParams params) {
-    this.backupInfo = Json.toJson(params);
+    this.backupInfo = params;
   }
 
   public BackupTableParams getBackupInfo() {
-    return Json.fromJson(this.backupInfo, BackupTableParams.class);
+    return this.backupInfo;
   }
 
   @CreatedTimestamp

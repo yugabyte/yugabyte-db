@@ -5,10 +5,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
@@ -91,27 +88,25 @@ public class Universe extends Model {
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public JsonNode config;
+  private Map<String, String> config;
 
   @JsonIgnore
-  public void setConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = this.getConfig();
-    String currConfigStr = Joiner.on(" ").withKeyValueSeparator("=").join(currConfig);
-    LOG.info("Setting config {} on universe {} [ {} ]", currConfigStr, name, universeUUID);
-    for (String key : configMap.keySet()) {
-      currConfig.put(key, configMap.get(key));
-    }
-    this.config = Json.toJson(currConfig);
+  public void setConfig(Map<String, String> newConfig) {
+    LOG.info("Setting config {} on universe {} [ {} ]",
+      Json.toJson(config), name, universeUUID);
+    this.config = newConfig;
     this.save();
+  }
+
+  public void updateConfig(Map<String, String> newConfig) {
+    Map<String, String> tmp = getConfig();
+    tmp.putAll(newConfig);
+    setConfig(tmp);
   }
 
   @JsonIgnore
   public Map<String, String> getConfig() {
-    if (this.config == null) {
-      return new HashMap<>();
-    } else {
-      return Json.fromJson(this.config, Map.class);
-    }
+    return config == null? new HashMap<>() : config;
   }
 
   // The Json serialized version of universeDetails. This is used only in read from and writing to
@@ -401,6 +396,7 @@ public class Universe extends Model {
     // First get the universe.
     Universe universe = Universe.getOrBadRequest(universeUUID);
     // Make sure this universe has been locked.
+    // TODO: fixme. Useless check. java asserts are turned off by default in production code!!!
     assert !universe.universeDetails.updateInProgress;
     // Delete the universe.
     LOG.info("Deleting universe " + universe.name + ":" + universeUUID);
