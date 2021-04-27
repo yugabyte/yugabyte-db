@@ -128,14 +128,13 @@ DEFINE_int32(compression_type, 2,
 namespace {
     static bool CompressionTypeValidator(const char* flagname, int value) {
         if (value > 1 or value < 0) {
-            LOG(INFO) << "Expect " << flagname << " only be 0,1";
+            LOG(INFO) << "Expect " << flagname << " only to be 0,1";
             return false;
         }
         return true;
     }
 }
 
-__attribute__((unused))
 DEFINE_validator(compression_type, &CompressionTypeValidator);
 namespace {
   constexpr int kDbCacheSizeUsePercentage = -1;
