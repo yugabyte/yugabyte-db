@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -88,7 +89,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         } catch (Exception e) {
             final String errMsg = "Error caught attempting to create KMS configuration";
             LOG.error(errMsg, e);
-            return ApiResponse.error(BAD_REQUEST, e.getMessage());
+          throw new YWServiceException(BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -101,7 +102,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         ObjectNode kmsConfig = keyManager.getServiceInstance(config.keyProvider.name())
           .getAuthConfig(configUUID);
         if (kmsConfig == null) {
-            return ApiResponse.error(BAD_REQUEST, String.format(
+          throw new YWServiceException(BAD_REQUEST, String.format(
                     "No KMS configuration found for config %s",
                     configUUID.toString()
             ));
@@ -179,7 +180,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         } catch (Exception e) {
             final String errMsg = "Error caught attempting to delete KMS configuration";
             LOG.error(errMsg, e);
-            return ApiResponse.error(BAD_REQUEST, e.getMessage());
+          throw new YWServiceException(BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -201,7 +202,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                         "No universe key found for universe %s",
                         universeUUID.toString()
                 );
-                throw new RuntimeException(errMsg);
+              throw new YWServiceException(INTERNAL_SERVER_ERROR, errMsg);
             }
             ObjectNode result = Json.newObject()
                     .put("reference", keyRef)
@@ -214,7 +215,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                     universeUUID.toString()
             );
             LOG.error(errMsg, e);
-            return ApiResponse.error(BAD_REQUEST, e.getMessage());
+          throw new YWServiceException(BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -238,7 +239,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                     })
                     .collect(Collectors.toList()));
         } catch (Exception e) {
-            return ApiResponse.error(BAD_REQUEST, e.getMessage());
+          throw new YWServiceException(BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -253,7 +254,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             Audit.createAuditEntry(ctx(), request());
             return ApiResponse.success("Key ref was successfully removed");
         } catch (Exception e) {
-            return ApiResponse.error(BAD_REQUEST, e.getMessage());
+          throw new YWServiceException(BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -267,7 +268,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universeUUID);
             String keyRef = activeKey.uuid.keyRef;
             if (keyRef == null || keyRef.length() == 0) {
-                return ApiResponse.error(BAD_REQUEST, String.format(
+                throw new YWServiceException(BAD_REQUEST, String.format(
                         "Could not retrieve key service for customer %s and universe %s",
                         customerUUID.toString(),
                         universeUUID.toString()
@@ -277,7 +278,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                     "reference", keyRef
             ));
         } catch (Exception e) {
-            return ApiResponse.error(BAD_REQUEST, e.getMessage());
+          throw new YWServiceException(BAD_REQUEST, e.getMessage());
         }
     }
 }
