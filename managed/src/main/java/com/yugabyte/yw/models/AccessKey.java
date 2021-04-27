@@ -2,12 +2,11 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.databind.JsonNode;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
 import play.data.validation.Constraints;
-import play.libs.Json;
 
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
@@ -45,10 +44,10 @@ public class AccessKey extends Model {
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
-  public JsonNode keyInfo;
+  private KeyInfo keyInfo;
 
-  public void setKeyInfo(KeyInfo info) { this.keyInfo = Json.toJson(info); }
-  public KeyInfo getKeyInfo() { return Json.fromJson(this.keyInfo, KeyInfo.class); }
+  public void setKeyInfo(KeyInfo info) { this.keyInfo = info; }
+  public KeyInfo getKeyInfo() { return this.keyInfo; }
 
   public static AccessKey create(UUID providerUUID, String keyCode, KeyInfo keyInfo) {
     AccessKey accessKey = new AccessKey();
