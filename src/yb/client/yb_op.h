@@ -145,6 +145,19 @@ class YBOperation {
   // Returns whether table partitions have been refreshed.
   Result<bool> MaybeRefreshTablePartitionList();
 
+  // If partition_list_version is set YBSession guarantees that this operation instance won't
+  // be applied to the tablet with a different table partition_list_version (meaning serving
+  // different range of partition keys). If versions do not match YBSession will report
+  // ClientError::kTablePartitionListVersionDoesNotMatch.
+  // If partition_list_version is not set - no such check will be performed.
+  void SetPartitionListVersion(PartitionListVersion partition_list_version) {
+    partition_list_version_ = partition_list_version;
+  }
+
+  boost::optional<PartitionListVersion> partition_list_version() const {
+    return partition_list_version_;
+  }
+
   int64_t GetQueryId() const {
     return reinterpret_cast<int64_t>(this);
   }
@@ -158,6 +171,8 @@ class YBOperation {
   friend class internal::AsyncRpc;
 
   scoped_refptr<internal::RemoteTablet> tablet_;
+
+  boost::optional<PartitionListVersion> partition_list_version_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
