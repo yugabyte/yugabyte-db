@@ -17,6 +17,7 @@
 
 #include "yb/client/table.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/integration-tests/backfill-test-util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/stol_utils.h"
@@ -35,6 +36,7 @@ constexpr auto kColoDbName = "colodb";
 constexpr auto kDatabaseName = "yugabyte";
 constexpr auto kIndexName = "iii";
 constexpr auto kTableName = "ttt";
+const client::YBTableName kYBTableName(YQLDatabase::YQL_DATABASE_PGSQL, kDatabaseName, kTableName);
 
 } // namespace
 
@@ -766,7 +768,8 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
     return true;
   }
 
-  CHECKED_STATUS WaitForBackfillSafeTime(const std::string& index_name) {
+  CHECKED_STATUS WaitForBackfillSafeTime(
+      const client::YBTableName& table_name, const std::string& index_name) {
     LOG(INFO) << "Waiting for pg_index indislive to be true";
     RETURN_NOT_OK(WaitFor(
         [this, &index_name] {
@@ -793,12 +796,11 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
     LOG(INFO) << "Waiting till (approx) the end of the delay after committing indisready true";
     SleepFor(kIndexStateFlagsUpdateDelay);
 
-    // Give the backfill stage enough time to get a read time.
-    // TODO(jason): come up with some way to wait until the read time is chosen rather than relying
-    // on a brittle sleep (issue #6844).
-    LOG(INFO) << "Waiting out half the delay of executing backfill so that we're hopefully after "
-              << "getting the safe read time and before executing backfill";
-    SleepFor(kBackfillDelay / 2);
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    const std::string table_id = VERIFY_RESULT(
+        GetTableIdByTableName(client.get(), table_name.namespace_name(), table_name.table_name()));
+    RETURN_NOT_OK(
+        WaitForBackfillSafeTimeOn(cluster_->GetLeaderMasterProxy(), table_name, table_id));
 
     return Status::OK();
   }
@@ -878,7 +880,7 @@ TEST_F_EX(PgIndexBackfillTest,
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin write thread";
-    ASSERT_OK(WaitForBackfillSafeTime(kIndexName));
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName, kIndexName));
 
     LOG(INFO) << "Updating row";
     ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = 3", kTableName));
@@ -1234,7 +1236,7 @@ TEST_F_EX(PgIndexBackfillTest,
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin write thread";
-    ASSERT_OK(WaitForBackfillSafeTime(kIndexName));
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName, kIndexName));
 
     LOG(INFO) << "Deleting row";
     ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE i = 1", kTableName));
@@ -1286,7 +1288,7 @@ TEST_F_EX(PgIndexBackfillTest,
 
   thread_holder_.AddThreadFunctor([this, &same_ts_conn, &diff_ts_conn] {
     LOG(INFO) << "Begin select thread";
-    ASSERT_OK(WaitForBackfillSafeTime(kIndexName));
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName, kIndexName));
 
     LOG(INFO) << "Load DocDB table/index schemas to pggate cache for the other connections";
     ASSERT_RESULT(same_ts_conn.FetchFormat("SELECT * FROM $0 WHERE i = 2", kTableName));
@@ -1440,7 +1442,7 @@ TEST_F_EX(PgIndexBackfillTest,
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin drop thread";
-    ASSERT_OK(WaitForBackfillSafeTime(kIndexName));
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName, kIndexName));
 
     LOG(INFO) << "Drop index";
     ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
@@ -1486,7 +1488,7 @@ TEST_F_EX(PgIndexBackfillTest,
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin master leader stepdown thread";
-    ASSERT_OK(WaitForBackfillSafeTime(kIndexName));
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName, kIndexName));
 
     LOG(INFO) << "Doing master leader stepdown";
     tserver::TabletServerErrorPB::Code error_code;

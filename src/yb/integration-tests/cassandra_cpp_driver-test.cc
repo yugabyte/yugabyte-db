@@ -36,6 +36,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/clock.h"
 
+#include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/cql_test_util.h"
 
@@ -1601,7 +1602,7 @@ TEST_F_EX(
   auto res = client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_DO_BACKFILL, 50ms /* max_wait */);
   // Allow backfill to get past GetSafeTime
-  SleepFor(MonoDelta::FromMilliseconds(50));
+  ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
 
   ASSERT_OK(session_.ExecuteQuery("drop index test_table_index_by_v"));
 

@@ -374,6 +374,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (IsTruncateTableDone)
     (BackfillIndex)
     (LaunchBackfillIndexForTable)
+    (GetBackfillJobs)
     (DeleteTable)
     (IsDeleteTableDone)
     (AlterTable)
