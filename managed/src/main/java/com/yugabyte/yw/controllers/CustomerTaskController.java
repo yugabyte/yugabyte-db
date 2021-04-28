@@ -68,17 +68,18 @@ public class CustomerTaskController extends AuthenticatedController {
     Query<CustomerTask> customerTaskQuery;
     Set<CustomerTask> pendingTasks;
     if (targetUUID != null) {
-      String selectQuery = "SELECT * FROM customer_task " +
-          "WHERE customer_uuid = " + "'" + customerUUID + "'" + " AND target_uuid = " + "'" +
-          targetUUID + "'" + "ORDER BY create_time DESC LIMIT 2000";
+      String selectQuery = String.format("SELECT * FROM customer_task " +
+          "WHERE customer_uuid = \'%s\' AND target_uuid = \'%s'" + 
+          " ORDER BY create_time DESC LIMIT 2000", customerUUID, targetUUID);
       RawSql rawSql = RawSqlBuilder.unparsed(selectQuery).columnMapping("task_uuid",  "id").create();
       customerTaskQuery = Ebean.find(CustomerTask.class);
       customerTaskQuery.setRawSql(rawSql);
       pendingTasks = customerTaskQuery.findSet();
     }
     else { 
-      String selectQuery = "SELECT * FROM customer_task " + "WHERE customer_uuid = " + "'" +
-          customerUUID + "'" + " ORDER BY create_time DESC LIMIT 2000";
+      String selectQuery = String.format("SELECT * FROM customer_task " +
+          "WHERE customer_uuid = \'%s\'" + 
+          " ORDER BY create_time DESC LIMIT 2000", customerUUID);
       RawSql rawSql = RawSqlBuilder.unparsed(selectQuery).columnMapping("task_uuid",  "id").create();
       customerTaskQuery = Ebean.find(CustomerTask.class);
       pendingTasks = customerTaskQuery.setRawSql(rawSql).findSet();
