@@ -896,4 +896,12 @@ public class Universe extends Model {
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
     return universeDetailsIfCertsExists(certUUID, customerUUID).size() != 0;
   }
+
+  static boolean isUniversePaused(UUID uuid) {
+    Universe universe = maybeGet(uuid).orElse(null);
+    if (universe == null) {
+      return false;
+    }
+    return universe.getUniverseDetails().universePaused;
+  }
 }
