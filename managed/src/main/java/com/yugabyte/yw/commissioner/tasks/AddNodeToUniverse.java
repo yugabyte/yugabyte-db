@@ -201,13 +201,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createSetNodeStateTask(currentNode, NodeState.Live)
             .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-        if (wasDecommissioned) {
-            // Update the DNS entry for this universe.
-            createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false,
-                                      userIntent.providerType, userIntent.provider,
-                                      userIntent.universeName)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        }
+        // Update the DNS entry for this universe.
+        createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
         // Mark universe task state to success.
         createMarkUniverseUpdateSuccessTasks()
