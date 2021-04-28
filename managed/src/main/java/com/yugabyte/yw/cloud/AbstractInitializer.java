@@ -13,10 +13,14 @@ package com.yugabyte.yw.cloud;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public abstract class AbstractInitializer {
@@ -29,4 +33,13 @@ public abstract class AbstractInitializer {
   CloudQueryHelper cloudQueryHelper;
 
   public abstract Result initialize(UUID customerUUID, UUID providerUUID);
+
+  protected static class InitializationContext {
+    final Provider provider;
+    final List<Map<String, String>> availableInstances = new ArrayList<>();
+
+    protected InitializationContext(Provider provider) {
+      this.provider = provider;
+    }
+  }
 }
