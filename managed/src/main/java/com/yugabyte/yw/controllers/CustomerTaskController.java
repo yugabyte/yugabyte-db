@@ -65,29 +65,25 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    Query<CustomerTask> customerTaskQuery;
-    Set<CustomerTask> pendingTasks;
+    List<CustomerTask> customerTaskList;
+
+    Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().where()
+      .eq("customer_uuid", customerUUID)
+      .eq("target_uuid", targetUUID)
+      .orderBy("create_time desc");
+
     if (targetUUID != null) {
-      String selectQuery = String.format("SELECT * FROM customer_task " +
-          "WHERE customer_uuid = \'%s\' AND target_uuid = \'%s'" + 
-          " ORDER BY create_time DESC LIMIT 2000", customerUUID, targetUUID);
-      RawSql rawSql = RawSqlBuilder.unparsed(selectQuery).columnMapping("task_uuid",  "id").create();
-      customerTaskQuery = Ebean.find(CustomerTask.class);
-      customerTaskQuery.setRawSql(rawSql);
-      pendingTasks = customerTaskQuery.findSet();
+      customerTaskQuery.where().eq("target_uuid", targetUUID); 
     }
-    else { 
-      String selectQuery = String.format("SELECT * FROM customer_task " +
-          "WHERE customer_uuid = \'%s\'" + 
-          " ORDER BY create_time DESC LIMIT 2000", customerUUID);
-      RawSql rawSql = RawSqlBuilder.unparsed(selectQuery).columnMapping("task_uuid",  "id").create();
-      customerTaskQuery = Ebean.find(CustomerTask.class);
-      pendingTasks = customerTaskQuery.setRawSql(rawSql).findSet();
-    }
+    customerTaskList = customerTaskQuery.setFirstRow(0)
+      .setMaxRows(2000)
+      .orderBy("create_time desc")
+      .findPagedList()
+      .getList();
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
-    for (CustomerTask task : pendingTasks) {
+    for (CustomerTask task : customerTaskList) {
       try {
         CustomerTaskFormData taskData = new CustomerTaskFormData();
 
