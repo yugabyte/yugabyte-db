@@ -1004,12 +1004,9 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   }
 }
 
-static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
-  CHECK_EQ(1, session->CountPendingErrors());
-  CollectedErrors errors = session->GetAndClearPendingErrors();
-  CHECK_EQ(1, errors.size());
-  std::unique_ptr<YBError> result = std::move(errors.front());
-  return result;
+static YBError* GetSingleErrorFromFlushStatus(const FlushStatus& flush_status) {
+  CHECK_EQ(1, flush_status.errors.size());
+  return flush_status.errors.front().get();
 }
 
 // Simplest case of inserting through the client API: a single row
@@ -1017,7 +1014,7 @@ static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
 // TODO Actually we need to check that hash columns present during insert. But it is not done yet.
 TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   auto session = CreateSession();
-  ASSERT_FALSE(session->HasPendingOperations());
+  ASSERT_FALSE(session->TEST_HasPendingOperations());
 
   auto insert = client_table_.NewInsertOp();
   // Try inserting without specifying a key: should fail.
@@ -1029,7 +1026,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   // Retry
   QLAddInt32HashValue(insert->mutable_request(), 12345);
   ASSERT_OK(session->Apply(insert));
-  ASSERT_TRUE(session->HasPendingOperations()) << "Should be pending until we Flush";
+  ASSERT_TRUE(session->TEST_HasPendingOperations()) << "Should be pending until we Flush";
 
   FlushSessionOrDie(session, { insert });
 }
@@ -1081,9 +1078,10 @@ TEST_F(ClientTest, TestWriteTimeout) {
     FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
     session->SetTimeout(100ms);
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-    Status s = session->Flush();
-    ASSERT_TRUE(s.IsIOError()) << "unexpected status: " << s.ToString();
-    auto error = GetSingleErrorFromSession(session.get());
+    const auto flush_status = session->FlushAndGetOpsErrors();
+    ASSERT_TRUE(flush_status.status.IsIOError())
+        << "unexpected status: " << flush_status.status.ToString();
+    auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(),
         strings::Substitute("GetTableLocations($0, hash_code: NaN, 0, 1) failed: "
@@ -1098,9 +1096,9 @@ TEST_F(ClientTest, TestWriteTimeout) {
     SetAtomicFlag(0, &FLAGS_log_inject_latency_ms_stddev);
 
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-    Status s = session->Flush();
-    ASSERT_TRUE(s.IsIOError()) << s;
-    auto error = GetSingleErrorFromSession(session.get());
+    const auto flush_status = session->FlushAndGetOpsErrors();
+    ASSERT_TRUE(flush_status.status.IsIOError()) << AsString(flush_status.status.ToString());
+    auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
   }
 }
@@ -1110,20 +1108,18 @@ TEST_F(ClientTest, TestWriteTimeout) {
 TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-  Synchronizer s;
-  session->FlushAsync(s.AsStatusFunctor());
+  auto flush_future = session->FlushFuture();
   session.reset();
-  ASSERT_OK(s.Wait());
+  ASSERT_OK(flush_future.get().status);
 
   // Try again, this time should not have an error response (to re-insert the same row).
-  s.Reset();
   session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   ASSERT_EQ(1, session->CountBufferedOperations());
-  session->FlushAsync(s.AsStatusFunctor());
+  flush_future = session->FlushFuture();
   ASSERT_EQ(0, session->CountBufferedOperations());
   session.reset();
-  ASSERT_OK(s.Wait());
+  ASSERT_OK(flush_future.get().status);
 }
 
 TEST_F(ClientTest, TestSessionClose) {
@@ -1156,9 +1152,10 @@ TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
                          row_key, row_key * 10, "hello world"));
       row_key++;
     }
-    ASSERT_TRUE(session->HasPendingOperations()) << "Should be pending until we Flush";
+    ASSERT_TRUE(session->TEST_HasPendingOperations()) << "Should be pending until we Flush";
     FlushSessionOrDie(session);
-    ASSERT_FALSE(session->HasPendingOperations()) << "Should have no more pending ops after flush";
+    ASSERT_FALSE(session->TEST_HasPendingOperations())
+        << "Should have no more pending ops after flush";
   }
 
   const int kNumRowsPerTablet = kNumBatches * kRowsPerBatch / 2;
@@ -1220,10 +1217,10 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
 
   // Try a write.
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "x"));
-  Status s = session->Flush();
-  ASSERT_TRUE(s.IsIOError()) << s.ToString();
+  const auto flush_status = session->FlushAndGetOpsErrors();
+  ASSERT_TRUE(flush_status.status.IsIOError()) << flush_status.status.ToString();
 
-  auto error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromFlushStatus(flush_status);
   switch (which) {
     case DEAD_MASTER:
       // Only one master, so no retry for finding the new leader master.
@@ -1926,8 +1923,8 @@ class DeadlockSimulationCallback {
  public:
   explicit DeadlockSimulationCallback(Atomic32* i) : i_(i) {}
 
-  void operator()(const Status& s) const {
-    CHECK_OK(s);
+  void operator()(FlushStatus* flush_status) const {
+    CHECK_OK(flush_status->status);
     NoBarrier_AtomicIncrement(i_, 1);
   }
  private:

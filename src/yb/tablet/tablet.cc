@@ -1488,14 +1488,15 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
 
 void Tablet::UpdateQLIndexesFlushed(
     WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
-    const IndexOps& index_ops, const Status& status) {
+    const IndexOps& index_ops, client::FlushStatus* flush_status) {
   std::unique_ptr<WriteOperation> operation(op);
 
+  const auto& status = flush_status->status;
   if (PREDICT_FALSE(!status.ok())) {
     // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
     // returns IOError. When it happens, retrieves the errors and discard the IOError.
     if (status.IsIOError()) {
-      for (const auto& error : session->GetAndClearPendingErrors()) {
+      for (const auto& error : flush_status->errors) {
         // return just the first error seen.
         operation->state()->CompleteWithStatus(error->status());
         return;
