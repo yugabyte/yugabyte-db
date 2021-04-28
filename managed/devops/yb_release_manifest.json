@@ -27,7 +27,9 @@
     "bin/yb_backup.py",
     "bin/yb_platform_backup.sh",
     "bin/ybcloud.sh",
-    "bin/edit_universe_details.py"
+    "bin/edit_universe_details.py",
+    "bin/support_package.py",
+    "bin/support_package_utils.py"
   ],
   "filter_plugins": [
     "filter_plugins/*"
