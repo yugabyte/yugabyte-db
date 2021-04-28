@@ -343,6 +343,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Get the master leader consensus proxy.
   std::shared_ptr<consensus::ConsensusServiceProxy> GetLeaderConsensusProxy();
 
+  // Get the master leader master service proxy.
+  std::shared_ptr<master::MasterServiceProxy> GetLeaderMasterProxy();
+
   // Get the given master's consensus proxy.
   std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(
       scoped_refptr<ExternalMaster> master);

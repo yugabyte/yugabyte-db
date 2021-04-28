@@ -1075,6 +1075,17 @@ message LaunchBackfillIndexForTableResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message GetBackfillJobsRequestPB {
+  // The indexed table identifier. Used for YCQL tables from yb-admin.
+  optional TableIdentifierPB table_identifier = 1;
+}
+
+message GetBackfillJobsResponsePB {
+  repeated BackfillJobPB backfill_jobs = 1;
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 2;
+}
+
 // Delete table request (including index table).
 message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
@@ -2052,6 +2063,7 @@ service MasterService {
   rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
   rpc LaunchBackfillIndexForTable(LaunchBackfillIndexForTableRequestPB)
           returns (LaunchBackfillIndexForTableResponsePB);
+  rpc GetBackfillJobs(GetBackfillJobsRequestPB) returns (GetBackfillJobsResponsePB);
 
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);
