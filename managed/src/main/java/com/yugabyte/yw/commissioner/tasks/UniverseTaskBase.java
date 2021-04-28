@@ -774,7 +774,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param node the node to add/remove master process on
    * @param isAdd whether Master is being added or removed.
    * @param subTask subtask type
-   * @param useHostPort indicate to server to use host/port instead of uuid.
    */
   public void createChangeConfigTask(NodeDetails node,
                                      boolean isAdd,
@@ -1022,23 +1021,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+
   /**
    * Creates a task list to manipulate the DNS record available for this universe.
    * @param eventType   the type of manipulation to do on the DNS records.
    * @param isForceDelete if this is a delete operation, set this to true to ignore errors
-   * @param providerType provider type, to check that we allow only on AWS.
-   * @param provider the provider uuid (stored as a string).
-   * @param universeName the universe name used for domain info.
+   * @param intent universe information.
    * @return subtask group
    */
-  public SubTaskGroup createDnsManipulationTask(
-      DnsManager.DnsCommandType eventType, boolean isForceDelete, CloudType providerType,
-      String provider, String universeName) {
+  public SubTaskGroup createDnsManipulationTask(DnsManager.DnsCommandType eventType,
+                                                boolean isForceDelete,
+                                                UniverseDefinitionTaskParams.UserIntent intent) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateDnsEntry", executor);
-    if (!Provider.HostedZoneEnabledProviders.contains(providerType.toString())) {
+    if (!Provider.HostedZoneEnabledProviders.contains(intent.providerType.toString())) {
       return subTaskGroup;
     }
-    Provider p = Provider.get(UUID.fromString(provider));
+    Provider p = Provider.get(UUID.fromString(intent.provider));
     // TODO: shared constant with javascript land?
     String hostedZoneId = p.getHostedZoneId();
     if (hostedZoneId == null || hostedZoneId.isEmpty()) {
@@ -1047,10 +1045,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
     params.universeUUID = taskParams().universeUUID;
     params.type = eventType;
-    params.providerUUID = UUID.fromString(provider);
+    params.providerUUID = UUID.fromString(intent.provider);
     params.hostedZoneId = hostedZoneId;
     params.domainNamePrefix =
-        String.format("%s.%s", universeName, Customer.get(p.customerUUID).code);
+        String.format("%s.%s", intent.universeName, Customer.get(p.customerUUID).code);
     params.isForceDelete = isForceDelete;
     // Create the task to update DNS entries.
     ManipulateDnsRecordTask task = new ManipulateDnsRecordTask();

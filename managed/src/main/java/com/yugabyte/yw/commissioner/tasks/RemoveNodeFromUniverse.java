@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -83,7 +84,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
       // Update Node State to being removed.
       createSetNodeStateTask(currentNode, NodeState.Removing)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
+        .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       boolean instanceAlive = false;
       try {
@@ -170,6 +171,10 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
       // Update Node State to Removed
       createSetNodeStateTask(currentNode, NodeState.Removed)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
+
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Mark universe task state to success

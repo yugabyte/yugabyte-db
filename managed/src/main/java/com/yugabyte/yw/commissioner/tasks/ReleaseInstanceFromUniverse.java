@@ -112,8 +112,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent.providerType,
-                                userIntent.provider, userIntent.universeName)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update the swamper target file.

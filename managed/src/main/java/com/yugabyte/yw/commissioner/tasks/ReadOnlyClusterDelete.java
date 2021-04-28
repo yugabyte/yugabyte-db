@@ -71,8 +71,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
 
       // Remove the DNS entry for this cluster.
       createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                cluster.userIntent.providerType, cluster.userIntent.provider,
-                                cluster.userIntent.universeName)
+                                cluster.userIntent)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.
@@ -113,6 +112,6 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
     // Add it to the task list.
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);    
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }

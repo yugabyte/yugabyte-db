@@ -63,8 +63,7 @@ public class DestroyUniverse extends UniverseTaskBase {
         // Update the DNS entry for primary cluster to mirror creation.
         Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
         createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                  primaryCluster.userIntent.providerType, primaryCluster.userIntent.provider,
-                                  primaryCluster.userIntent.universeName)
+                                  primaryCluster.userIntent)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.onprem)) {
