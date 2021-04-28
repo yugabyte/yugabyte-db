@@ -20,6 +20,8 @@
 #include <memory>
 #include <vector>
 
+#include <boost/function.hpp>
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/util/result.h"
@@ -59,6 +61,8 @@ class YBRedisWriteOp;
 
 class YBSession;
 typedef std::shared_ptr<YBSession> YBSessionPtr;
+struct FlushStatus;
+using FlushCallback = boost::function<void(FlushStatus*)>;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
