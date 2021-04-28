@@ -376,7 +376,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteProviderWithAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
-    Region r = Region.create(p, "region-1", "region 1", "yb image");
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
     assertOk(result);
@@ -385,14 +384,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       equalTo("Deleted provider: " + p.uuid)));
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
-    verify(mockAccessManager, times(1)).deleteKey(r.uuid, ak.getKeyCode());
+    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak.getKeyCode());
     assertAuditEntry(1, customer.uuid);
   }
 
   @Test
   public void testDeleteProviderWithInstanceType() {
     Provider p = ModelFactory.onpremProvider(customer);
-    Region r = Region.create(p, "region-1", "region 1", "yb image");
 
     ObjectNode metaData = Json.newObject();
     metaData.put("numCores", 4);
@@ -421,8 +419,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteProviderWithMultiRegionAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
-    Region r = Region.create(p, "region-1", "region 1", "yb image");
-    Region r1 = Region.create(p, "region-2", "region 2", "yb image");
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
     assertOk(result);
@@ -430,8 +426,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertThat(json.asText(), allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
-    verify(mockAccessManager, times(1)).deleteKey(r.uuid, ak.getKeyCode());
-    verify(mockAccessManager, times(1)).deleteKey(r1.uuid, ak.getKeyCode());
+    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak.getKeyCode());
     assertAuditEntry(1, customer.uuid);
   }
 
