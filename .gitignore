@@ -97,3 +97,9 @@ test_failures.json
 rrdiagram*.jar*
 
 .clangd
+
+.cache
+
+target/
+
+thirdparty/
