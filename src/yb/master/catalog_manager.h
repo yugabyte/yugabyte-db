@@ -241,17 +241,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
   // master automatically runs backfill according to the DocDB permissions.
-  CHECKED_STATUS BackfillIndex(
-      const BackfillIndexRequestPB* req,
-      BackfillIndexResponsePB* resp,
-      rpc::RpcContext* rpc);
+  CHECKED_STATUS BackfillIndex(const BackfillIndexRequestPB* req,
+                               BackfillIndexResponsePB* resp,
+                               rpc::RpcContext* rpc);
+
+  // Gets the backfill jobs state associated with the requested table.
+  CHECKED_STATUS GetBackfillJobs(const GetBackfillJobsRequestPB* req,
+                                      GetBackfillJobsResponsePB* resp,
+                                      rpc::RpcContext* rpc);
 
   // Backfill the indexes for the specified table.
   // Used for backfilling YCQL defered indexes when triggered from yb-admin.
-  CHECKED_STATUS LaunchBackfillIndexForTable(
-      const LaunchBackfillIndexForTableRequestPB* req,
-      LaunchBackfillIndexForTableResponsePB* resp,
-      rpc::RpcContext* rpc);
+  CHECKED_STATUS LaunchBackfillIndexForTable(const LaunchBackfillIndexForTableRequestPB* req,
+                                             LaunchBackfillIndexForTableResponsePB* resp,
+                                             rpc::RpcContext* rpc);
 
   // Delete the specified table.
   //
