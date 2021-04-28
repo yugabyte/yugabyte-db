@@ -40,7 +40,7 @@ import {
 } from '../../../utils/UniverseUtils';
 import pluralize from 'pluralize';
 import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
-import { INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY } from '../UniverseDetail/UniverseDetail';
+import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -642,14 +642,17 @@ export default class ClusterFields extends Component {
         .join(',');
     }
     if (volumeDetail) {
+      let storageType = DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
+      if (instanceTypeSelectedData.providerCode === 'aws' &&
+        isEphemeralAwsStorageInstance(instanceTypeCode)) {
+        storageType = null;
+      }
+
       const deviceInfo = {
         volumeSize: volumeDetail.volumeSizeGB,
         numVolumes: volumesList.length,
         mountPoints: mountPoints,
-        storageType:
-          volumeDetail.volumeType === 'EBS'
-            ? DEFAULT_STORAGE_TYPES['AWS']
-            : DEFAULT_STORAGE_TYPES['GCP'],
+        storageType: storageType,
         storageClass: 'standard',
         diskIops: null,
         throughput: null
@@ -1099,9 +1102,8 @@ export default class ClusterFields extends Component {
   instanceTypeChanged(value) {
     const { updateFormField, clusterType } = this.props;
     const instanceTypeValue = value;
-    const instancePrefix = value.split('.')[0];
     this.setState({
-      awsInstanceWithEphemeralStorage: INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instancePrefix)
+      awsInstanceWithEphemeralStorage: isEphemeralAwsStorageInstance(instanceTypeValue)
     });
     updateFormField(`${clusterType}.instanceType`, instanceTypeValue);
     this.setState({ instanceTypeSelected: instanceTypeValue, nodeSetViaAZList: false });
@@ -1302,7 +1304,7 @@ export default class ClusterFields extends Component {
         const fixedVolumeInfo =
           (self.state.volumeType === 'SSD' || self.state.volumeType === 'NVME') &&
           currentProvider.code !== 'kubernetes' &&
-          deviceInfo.storageType === 'Scratch' &&
+          (!deviceInfo.storageType || deviceInfo.storageType === 'Scratch') &&
           currentProvider.code !== 'azu';
         const fixedNumVolumes =
           (self.state.volumeType === 'SSD' || self.state.volumeType === 'NVME') &&
