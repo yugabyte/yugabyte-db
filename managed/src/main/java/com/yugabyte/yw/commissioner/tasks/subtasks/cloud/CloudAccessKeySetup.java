@@ -18,12 +18,9 @@ import com.yugabyte.yw.models.Region;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.google.common.base.Strings;
 
 import play.api.Play;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 public class CloudAccessKeySetup extends CloudTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudAccessKeySetup.class);
@@ -45,32 +42,25 @@ public class CloudAccessKeySetup extends CloudTaskBase {
       throw new RuntimeException("Region " +  regionCode + " not setup.");
     }
     AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);
-    boolean airGapInstall = taskParams().airGapInstall;
-    Integer sshPort = taskParams().sshPort;
+
     // TODO(bogdan): validation at higher level?
-    // If no custom keypair / ssh data specified, then create new.
-    if (taskParams().keyPairName == null || taskParams().keyPairName.isEmpty() ||
-        taskParams().sshPrivateKeyContent == null || taskParams().sshPrivateKeyContent.isEmpty() ||
-        taskParams().sshUser == null || taskParams().sshUser.isEmpty()) {
+    String accessKeyCode = taskParams().keyPairName;
+    if (Strings.isNullOrEmpty(accessKeyCode)) {
       String sanitizedProviderName = getProvider().name.replaceAll("\\s+", "-").toLowerCase();
-      String accessKeyCode = String.format(
-          "yb-%s-%s_%s-key", Customer.get(getProvider().customerUUID).code, sanitizedProviderName,
-          taskParams().providerUUID);
-      accessManager.addKey(
-          region.uuid, accessKeyCode, null, taskParams().sshUser, sshPort, airGapInstall, false);
-    } else {
-      // Create temp file and fill with content.
-      AccessManager.KeyType keyType = AccessManager.KeyType.PRIVATE;
-      try {
-        Path tempFile = Files.createTempFile(taskParams().keyPairName, keyType.getExtension());
-        Files.write(tempFile, taskParams().sshPrivateKeyContent.getBytes());
-        accessManager.addKey(
-            region.uuid, taskParams().keyPairName, tempFile.toFile(), taskParams().sshUser,
-            taskParams().sshPort, airGapInstall, false);
-      } catch (IOException ioe) {
-        ioe.printStackTrace();
-        throw new RuntimeException("Could not create AccessKey", ioe);
-      }
+      accessKeyCode = String.format(
+        "yb-%s-%s_%s-key", Customer.get(getProvider().customerUUID).code, sanitizedProviderName,
+        taskParams().providerUUID);
     }
+
+    if (!Strings.isNullOrEmpty(taskParams().sshPrivateKeyContent)) {
+      accessManager.saveAndAddKey(
+        region.uuid, taskParams().sshPrivateKeyContent, accessKeyCode,
+        AccessManager.KeyType.PRIVATE, taskParams().sshUser, taskParams().sshPort,
+        taskParams().airGapInstall, false);
+    } else {
+      accessManager.addKey(
+        region.uuid, accessKeyCode, null, taskParams().sshUser,
+        taskParams().sshPort, taskParams().airGapInstall, false);
+      }
   }
 }

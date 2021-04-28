@@ -76,6 +76,11 @@ class AbstractMethod(object):
         self.preprocess_args(args)
         self.callback(args)
 
+    def _cleanup_dir(self, path):
+        for file in glob.glob("{}/*.*".format(path)):
+            os.remove(file)
+        os.rmdir(path)
+
 
 class AbstractInstancesMethod(AbstractMethod):
     """Superclass for instance-specific method preparation, such as the Ansible extra_vars and the
@@ -753,24 +758,30 @@ class AccessCreateVaultMethod(AbstractVaultMethod):
 
     def callback(self, args):
         file_prefix = os.path.splitext(args.private_key_file)[0]
-        if args.vault_password_file is None:
-            vault_password = generate_random_password()
-            args.vault_password_file = "{}.vault_password".format(file_prefix)
-            with open(args.vault_password_file, "w") as f:
-                f.write(vault_password)
-        elif os.path.exists(args.vault_password_file):
-            with open(args.vault_password_file, "r") as f:
-                vault_password = f.read().strip()
 
-            if vault_password is None:
-                raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password_file))
-        else:
-            raise YBOpsRuntimeError("Vault password file doesn't exists.")
+        try:
+            if args.vault_password_file is None:
+                vault_password = generate_random_password()
+                args.vault_password_file = "{}.vault_password".format(file_prefix)
+                with open(args.vault_password_file, "w") as f:
+                    f.write(vault_password)
+            elif os.path.exists(args.vault_password_file):
+                with open(args.vault_password_file, "r") as f:
+                    vault_password = f.read().strip()
 
-        if args.vault_file is None:
-            args.vault_file = "{}.vault".format(file_prefix)
+                if vault_password is None:
+                    raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password_file))
+            else:
+                raise YBOpsRuntimeError("Vault password file doesn't exist.")
 
-        rsa_key = validated_key_file(args.private_key_file)
+            if args.vault_file is None:
+                args.vault_file = "{}.vault".format(file_prefix)
+
+            rsa_key = validated_key_file(args.private_key_file)
+        except Exception:
+            self._cleanup_dir(os.path.dirname(args.private_key_file))
+            raise
+
         # TODO: validate if the file provided is actually a private key file or not.
         public_key = format_rsa_key(rsa_key, public_key=True)
         private_key = format_rsa_key(rsa_key, public_key=False)
@@ -881,3 +892,20 @@ class AbstractNetworkMethod(AbstractMethod):
         super(AbstractNetworkMethod, self).preprocess_args(args)
         if args.metadata_override:
             self.cloud.update_metadata(args.metadata_override)
+
+
+class AccessDeleteKeyMethod(AbstractAccessMethod):
+    def __init__(self, base_command):
+        super(AccessDeleteKeyMethod, self).__init__(base_command, "delete-key")
+
+    def _delete_key_pair(self, args):
+        pass
+
+    def callback(self, args):
+        try:
+            self._delete_key_pair(args)
+            self._cleanup_dir(args.key_file_path)
+            print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
+        except Exception as e:
+            logging.error(e)
+            print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))

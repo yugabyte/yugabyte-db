@@ -13,7 +13,7 @@ from ybops.cloud.common.base import AbstractPerCloudCommand
 from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesMethod, \
     DestroyInstancesMethod, ListInstancesMethod, ConfigureInstancesMethod, \
     ControlInstanceMethod, AbstractMethod, AccessCreateVaultMethod, InitYSQLMethod, \
-    UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod
+    UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -85,6 +85,7 @@ class AccessCommand(AbstractPerCloudCommand):
     def add_methods(self):
         self.add_method(AccessCreateVaultMethod(self))
         self.add_method(AccessEditVaultMethod(self))
+        self.add_method(AccessDeleteKeyMethod(self))
 
 
 class QueryCommand(AbstractPerCloudCommand):

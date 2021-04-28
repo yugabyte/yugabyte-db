@@ -101,20 +101,6 @@ class AzureAccessAddKeyMethod(AbstractAccessMethod):
         print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
 
 
-class AzureAccessDeleteKeyMethod(AbstractAccessMethod):
-    def __init__(self, base_command):
-        super(AzureAccessDeleteKeyMethod, self).__init__(base_command, "delete-key")
-
-    def callback(self, args):
-        try:
-            for key_file in glob.glob("{}/{}.*".format(args.key_file_path, args.key_pair_name)):
-                os.remove(key_file)
-            print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
-        except Exception as e:
-            logging.error(e)
-            print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))
-
-
 class AzureQueryVPCMethod(AbstractMethod):
     def __init__(self, base_command):
         super(AzureQueryVPCMethod, self).__init__(base_command, "vpc")
