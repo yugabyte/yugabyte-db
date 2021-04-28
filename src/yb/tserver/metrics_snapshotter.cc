@@ -142,7 +142,7 @@ class MetricsSnapshotter::Thread {
 
   void FlushSession(const std::shared_ptr<YBSession>& session,
       const std::vector<std::shared_ptr<YBqlOp>>& ops = {});
-  void LogSessionErrors(const std::shared_ptr<YBSession>& session, const Status& s);
+  void LogSessionErrors(const client::FlushStatus& flush_status);
   bool IsCurrentThread() const;
 
   const std::string& LogPrefix() const {
@@ -243,9 +243,8 @@ int MetricsSnapshotter::Thread::GetMillisUntilNextMetricsSnapshot() const {
   return FLAGS_metrics_snapshotter_interval_ms;
 }
 
-void MetricsSnapshotter::Thread::LogSessionErrors(const std::shared_ptr<YBSession>& session,
-                            const Status& s) {
-  auto errors = session->GetAndClearPendingErrors();
+void MetricsSnapshotter::Thread::LogSessionErrors(const client::FlushStatus& flush_status) {
+  const auto& errors = flush_status.errors;
 
   int num_errors_to_log = 10;
 
@@ -268,9 +267,9 @@ void MetricsSnapshotter::Thread::LogSessionErrors(const std::shared_ptr<YBSessio
 
 void MetricsSnapshotter::Thread::FlushSession(const std::shared_ptr<YBSession>& session,
                        const std::vector<std::shared_ptr<YBqlOp>>& ops) {
-  Status s = session->Flush();
-  if (PREDICT_FALSE(!s.ok())) {
-    LogSessionErrors(session, s);
+  auto flush_status = session->FlushAndGetOpsErrors();
+  if (PREDICT_FALSE(!flush_status.status.ok())) {
+    LogSessionErrors(flush_status);
     return;
   }
 

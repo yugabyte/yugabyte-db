@@ -98,7 +98,8 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     string op_str = Format("$0: $1", key, value);
     LOG(INFO) << "Sending write: " << op_str;
     ASSERT_OK(session->Apply(insert));
-    session->FlushAsync([insert, op_str](const Status& s){
+    session->FlushAsync([insert, op_str](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       ASSERT_TRUE(s.ok() || s.IsAlreadyPresent())
           << "Failed to flush write " << op_str << ". Error: " << s;
       if (s.ok()) {
@@ -335,7 +336,9 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
   LOG(INFO) << "Sending CAS " << op_str;
   auto session = NewSession();
   session->SetTimeout(15s);
-  StatusFunctor callback = [&session, &op, &op_str, &cas_completed, &callback](const Status& s) {
+  client::FlushCallback callback = [&session, &op, &op_str, &cas_completed,
+                                    &callback](client::FlushStatus* flush_status) {
+    const auto& s = flush_status->status;
     if (s.ok()) {
       LOG(INFO) << "CAS operation completed: " << op_str;
       cas_completed.store(true);

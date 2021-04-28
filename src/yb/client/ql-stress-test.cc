@@ -356,8 +356,9 @@ void QLStressTest::TestRetryWrites(bool restarts) {
         }
 
         auto op = InsertRow(session, key, Format("value_$0", key));
-        auto flush_status = session->Flush();
-        if (flush_status.ok()) {
+        auto flush_status = session->FlushAndGetOpsErrors();
+        const auto& status = flush_status.status;
+        if (status.ok()) {
           ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
 
           if (txn) {
@@ -370,7 +371,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
           }
           continue;
         }
-        ASSERT_TRUE(flush_status.IsIOError()) << "Status: " << flush_status;
+        ASSERT_TRUE(status.IsIOError()) << "Status: " << AsString(status);
         ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
         ASSERT_EQ(op->response().error_message(), "Duplicate request");
       }
@@ -481,7 +482,7 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
   }
 
   std::vector<YBqlWriteOpPtr> write_ops;
-  std::vector<std::shared_future<Status>> futures;
+  std::vector<std::shared_future<FlushStatus>> futures;
 
   auto value_column_id = table_.ColumnId(kValueColumn);
   for (int i = 0; i != kIncrements; ++i) {
@@ -504,7 +505,7 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
   }
 
   for (size_t i = 0; i != write_ops.size(); ++i) {
-    ASSERT_OK(futures[i].get());
+    ASSERT_OK(futures[i].get().status);
     ASSERT_EQ(write_ops[i]->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
 
@@ -593,8 +594,8 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
 
   ASSERT_OK(WriteRow(session, 3, "value3"));
 
-  ASSERT_OK(flush_future.get());
-  ASSERT_OK(flush_future2.get());
+  ASSERT_OK(flush_future.get().status);
+  ASSERT_OK(flush_future2.get().status);
 }
 
 namespace {

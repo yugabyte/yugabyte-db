@@ -517,7 +517,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
       write_ops[i].push_back(ASSERT_RESULT(WriteRow(
           sessions.back(), r, i, WriteOpType::INSERT, Flush::kFalse)));
     }
-    session->FlushAsync([&latch](const Status& status) { latch.CountDown(); });
+    session->FlushAsync([&latch](FlushStatus* flush_status) { latch.CountDown(); });
   }
   latch.Wait();
 
@@ -627,7 +627,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
   struct ActiveTransaction {
     YBTransactionPtr transaction;
     YBSessionPtr session;
-    std::future<Status> flush_future;
+    std::future<FlushStatus> flush_future;
     std::future<Status> commit_future;
 
     std::string ToString() const {
@@ -693,7 +693,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
     for (auto i = active_transactions.begin(); i != active_transactions.end(); ++i) {
       if (!i->commit_future.valid()) {
         if (IsReady(i->flush_future)) {
-          auto flush_status = i->flush_future.get();
+          auto flush_status = i->flush_future.get().status;
           if (!flush_status.ok()) {
             LOG(INFO) << "TXN: " << i->ToString() << ", flush failed: " << flush_status;
             continue;
@@ -1311,8 +1311,8 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
       for (size_t key = 0; key != kWriteThreads; ++key) {
         reads[j].push_back(ReadRow(session, key));
       }
-      session->FlushAsync([&latch](const Status& status) {
-        ASSERT_OK(status);
+      session->FlushAsync([&latch](FlushStatus* flush_status) {
+        ASSERT_OK(flush_status->status);
         latch.CountDown();
       });
     }

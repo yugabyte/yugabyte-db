@@ -603,7 +603,7 @@ TEST_F(SnapshotTxnTest, HotRow) {
     session->SetTransaction(txn);
 
     ASSERT_OK(kv_table_test::Increment(&table_, session, kKey));
-    ASSERT_OK(session->FlushFuture().get());
+    ASSERT_OK(session->Flush());
     ASSERT_OK(txn->CommitFuture().get());
     if (i % kBlockSize == 0) {
       auto now = MonoTime::Now();

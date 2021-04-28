@@ -410,10 +410,10 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   int64_t end = start + kNumInsertsPerClient;
   // Printed id value is in the range 1..kNumInsertClients inclusive
   ++id;
-  // Use synchronizer to keep 1 asynchronous batch flush maximum
-  Synchronizer sync;
-  // Prime the synchronizer as if it was running a batch (for for-loop code)
-  sync.StatusCB(Status::OK());
+  // Prime the future as if it was running a batch (for for-loop code)
+  std::promise<client::FlushStatus> promise;
+  auto flush_status_future = promise.get_future();
+  promise.set_value(client::FlushStatus());
   // Maintain buffer for random string generation
   char randstr[kRandomStrMaxLength + 1];
   // Insert in the id's key range
@@ -424,21 +424,20 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
 
     // Report updates or flush every so often, using the synchronizer to always
     // start filling up the next batch while previous one is sent out.
-    if (key % kFlushEveryN == 0) {
-      Status s = sync.Wait();
-      if (!s.ok()) {
-        LogSessionErrorsAndDie(session, s);
+    if (key % kFlushEveryN == 0 || key == end - 1) {
+      auto flush_status = flush_status_future.get();
+      if (!flush_status.status.ok()) {
+        LogSessionErrorsAndDie(flush_status);
       }
-      sync.Reset();
-      session->FlushAsync(sync.AsStatusFunctor());
+      flush_status_future = session->FlushFuture();
     }
     ReportTenthDone(key, start, end, id, kNumInsertClients);
   }
-  ReportAllDone(id, kNumInsertClients);
-  Status s = sync.Wait();
-  if (!s.ok()) {
-    LogSessionErrorsAndDie(session, s);
+  auto flush_status = flush_status_future.get();
+  if (!flush_status.status.ok()) {
+    LogSessionErrorsAndDie(flush_status);
   }
+  ReportAllDone(id, kNumInsertClients);
   FlushSessionOrDie(session);
 }
 

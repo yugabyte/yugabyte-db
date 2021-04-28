@@ -317,13 +317,13 @@ Result<int32_t> SelectRow(
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   table->AddColumns({column}, req);
-  auto status = session->ApplyAndFlush(op);
-  if (status.IsIOError()) {
-    for (const auto& error : session->GetAndClearPendingErrors()) {
+  RETURN_NOT_OK(session->Apply(op));
+  auto flush_status = session->FlushAndGetOpsErrors();
+  if (flush_status.status.IsIOError()) {
+    for (const auto& error : flush_status.errors) {
       LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();
     }
   }
-  RETURN_NOT_OK(status);
   RETURN_NOT_OK(CheckOp(op.get()));
   auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
   if (rowblock->row_count() == 0) {

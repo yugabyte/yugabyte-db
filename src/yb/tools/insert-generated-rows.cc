@@ -118,9 +118,10 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
     LOG(INFO) << "Inserting record: " << req->ShortDebugString();
     CHECK_OK(session->Apply(insert));
-    Status s = session->Flush();
+    auto flush_status = session->FlushAndGetOpsErrors();
+    const auto& s = flush_status.status;
     if (PREDICT_FALSE(!s.ok())) {
-      for (const auto& e : session->GetAndClearPendingErrors()) {
+      for (const auto& e : flush_status.errors) {
         if (e->status().IsAlreadyPresent()) {
           LOG(WARNING) << "Ignoring insert error: " << e->status().ToString();
         } else {

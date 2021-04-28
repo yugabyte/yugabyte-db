@@ -50,7 +50,7 @@ TEST_F(SerializableTxnTest, NonConflictingWrites) {
   struct Entry {
     YBTransactionPtr txn;
     YBqlWriteOpPtr op;
-    std::future<Status> flush_future;
+    std::future<FlushStatus> flush_future;
     std::future<Status> commit_future;
     bool done = false;
   };
@@ -69,7 +69,7 @@ TEST_F(SerializableTxnTest, NonConflictingWrites) {
     for (auto& entry : entries) {
       if (entry.flush_future.valid() && IsReady(entry.flush_future)) {
         LOG(INFO) << "Flush done";
-        RETURN_NOT_OK(entry.flush_future.get());
+        RETURN_NOT_OK(entry.flush_future.get().status);
         entry.commit_future = entry.txn->CommitFuture();
       }
     }
@@ -149,7 +149,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
     YBqlWriteOpPtr op;
     YBTransactionPtr txn;
     YBSessionPtr session;
-    std::shared_future<Status> write_future;
+    std::shared_future<FlushStatus> write_future;
     std::shared_future<Status> commit_future;
   };
 
@@ -181,8 +181,8 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
         entry.write_future = entry.session->FlushFuture();
       } else if (entry.write_future.valid()) {
         if (IsReady(entry.write_future)) {
-          auto write_status = entry.write_future.get();
-          entry.write_future = std::shared_future<Status>();
+          auto write_status = entry.write_future.get().status;
+          entry.write_future = std::shared_future<FlushStatus>();
           if (!write_status.ok()) {
             ASSERT_TRUE(write_status.IsTryAgain() ||
                         ((write_status.IsTimedOut() || write_status.IsServiceUnavailable())
@@ -286,10 +286,10 @@ void SerializableTxnTest::TestColoring() {
 
     {
       std::vector<YBqlWriteOpPtr> ops;
-      for (int i = 0; i != kKeys; ++i) {
+      for (int j = 0; j != kKeys; ++j) {
         auto color = RandomUniformInt(0, kColors - 1);
         ops.push_back(ASSERT_RESULT(WriteRow(session,
-            i,
+            j,
             color,
             WriteOpType::INSERT,
             Flush::kFalse)));
