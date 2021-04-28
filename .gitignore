@@ -101,3 +101,5 @@ rrdiagram*.jar*
 .cache
 
 target/
+
+thirdparty/

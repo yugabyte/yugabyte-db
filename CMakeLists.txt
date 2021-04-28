@@ -242,7 +242,7 @@ if (REBUILD_THIRDPARTY)
   set(BUILD_THIRDPARTY_ARGS --build-type ${THIRDPARTY_INSTRUMENTATION_TYPE})
   message("Invoking build_thirdparty.sh with these arguments: ${BUILD_THIRDPARTY_ARGS}")
   execute_process(
-    COMMAND ${YB_THIRDPARTY_DIR}/build_thirdparty.sh ${BUILD_THIRDPARTY_ARGS}
+    COMMAND ${YB_SRC_ROOT}/build-support/invoke_thirdparty_build.sh ${BUILD_THIRDPARTY_ARGS}
     RESULT_VARIABLE THIRDPARTY_SCRIPT_RESULT)
   if (NOT (${THIRDPARTY_SCRIPT_RESULT} EQUAL 0))
     message(FATAL_ERROR "Thirdparty was built unsuccessfully, terminating.")
