@@ -10,7 +10,7 @@
 
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
-    AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod
+    AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set
@@ -233,19 +233,12 @@ class AwsAccessAddKeyMethod(AbstractAccessMethod):
         print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
 
 
-class AwsAccessDeleteKeyMethod(AbstractAccessMethod):
+class AwsAccessDeleteKeyMethod(AccessDeleteKeyMethod):
     def __init__(self, base_command):
-        super(AwsAccessDeleteKeyMethod, self).__init__(base_command, "delete-key")
+        super(AwsAccessDeleteKeyMethod, self).__init__(base_command)
 
-    def callback(self, args):
-        try:
-            self.cloud.delete_key_pair(args)
-            for key_file in glob.glob("{}/{}.*".format(args.key_file_path, args.key_pair_name)):
-                os.remove(key_file)
-            print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
-        except Exception as e:
-            logging.error(e)
-            print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))
+    def _delete_key_pair(self, args):
+        self.cloud.delete_key_pair(args)
 
 
 class AwsAccessListKeysMethod(AbstractMethod):

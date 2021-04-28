@@ -120,9 +120,7 @@ public class CloudProviderController extends AuthenticatedController {
         if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
           new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
         }
-        for (Region region : Region.getByProvider(providerUUID)) {
-          accessManager.deleteKey(region.uuid, accessKey.getKeyCode());
-        }
+        accessManager.deleteKeyByProvider(provider, accessKey.getKeyCode());
         accessKey.delete();
       }
       NodeInstance.deleteByProvider(providerUUID);
