@@ -33,7 +33,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
         <div class="articles">1 article</div>
-        <div class="title">Use a pg_hint_plan</div>
+        <div class="title">Using pg_hint_plan</div>
       </div>
       <div class="body">
         Control query execution plans with hinting phrases.
