@@ -58,7 +58,7 @@ function TaskStatus {
             exit
         fi
 
-        if [[ ! -z "$percentage" ]] && [[ $percentage =~ ^[0-9]+$ ]] && [[ "$percentage" -ge 0 ]] \
+        if [[ -n "$percentage" ]] && [[ $percentage =~ ^[0-9]+$ ]] && [[ "$percentage" -ge 0 ]] \
           && [[ "$percentage" -le 100 ]]
         then
             ProgressBar ${percentage} ${_end}
@@ -75,70 +75,117 @@ function TaskStatus {
     done
 }
 function HelpMessage {
-    printf "\n${bold}Script to perform universe actions.$normal\n"
-    printf "\t1. Get existing universe list. \n"
-    printf "\t2. Get existing universe details by universe name in json format.\n"
-    printf "\t3. Get existing universe details by universe UUID in json format.\n"
-    printf "\t4. Delete existing universe by universe name.\n"
-    printf "\t5. Delete existing universe by universe UUID.\n"
-    printf "\t6. Create a new universe from a json config file.\n"
-    printf "\t7. Get task progress. \n"
-    printf "\t8. Get list of available regions with availability zones. \n"
-    printf "\t9. Get list of available providers. \n"
-    printf "\n${bold}Required to export variable:$normal\n"
-    printf "YB_PLATFORM_URL \n\t API URL for yugabyte\n"
-    printf "\t Example: \n\t\t export YB_PLATFORM_URL=http://localhost:9000\n"
-    printf "YB_PLATFORM_API_TOKEN \n\t API token for Yugabyte API\n"
-    printf "\t Example: \n\t\t export YB_PLATFORM_API_TOKEN=e16d75cf-79af-4c57-8659-2f8c34223551\n"
-    printf "\n${bold}Syntax:$normal \n\t bash yb_platform_util.sh <action> [params]\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh get_universe -n test-universe\n"
-    printf "\n${bold}Actions:$normal\n"
-    printf "get_universe \n\t Get the details of an existing universe as a json file\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh get_universe\n\n"
-    printf "\t Universe json with universe name: \n\t\tbash yb_platform_util.sh get_universe -n test-universe\n\n"
-    printf "add_universe |  create_universe\n\t Create universe from json file\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh create_universe -f test-universe.json"
-    printf " -n test-universe-by-name"
-    printf "\n\ndel_universe |  delete_universe\n\t Delete an existing universe\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh delete_universe -n test-universe\n\n"
-    printf "task_status \n\t To get task status\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh task_status"
-    printf " -t f33e3c9b-75ab-4c30-80ad-cba85646ea39"
-    printf "\n\nget_provider \n\t To get list of available providers\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh get_provider"
-    printf "\n\nget_region | get_az \n\t List of available region with availability zones\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh get_region"
-    printf "\n\n${bold}Params:$normal\n"
-    printf "\n-c | --customer_uuid \n\t Customer UUID;"
-    printf " mandatory if multiple customer uuids present\n"
-    printf "\t Example:\n\t\tbash yb_platform_util.sh get_universe"
-    printf " -c f8d2490a-f07c-4a40-a523-767f4f3b12da"
-    printf "\n\n-u | --universe_uuid \n\t Universe UUID\n"
-    printf "\t Example:\n\t\tbash yb_platform_util.sh get_universe"
-    printf " -u f8d2490a-f07c-4a40-a523-767f4f3b12da"
-    printf "\n\n-n | --universe_name \n\t Universe name\n"
-    printf "\t Example:\n\t\tbash yb_platform_util.sh get_universe -n test-universe\n"
-    printf "\n-f | --file \n\t Json input/output file for creating universe\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh create_universe"
-    printf " -f test-universe.json -n test-universe-by-name"
-    printf "\n\n-y | --yes \n\t Input yes for all confirmation prompts\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh delete_universe"
-    printf " -n test-universe-by-name -y"
-    printf "\n\n--no-wait \n\t To run command in background and do not wait for task completion task\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh create_universe"
-    printf " -f test-universe.json --no-wait"
-    printf "\n\n-t | --task \n\t Task UUID to get task status\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh task_status"
-    printf " -t f33e3c9b-75ab-4c30-80ad-cba85646ea39"
-    printf "\n\n-h | --help \n\t Print help message\n\t Example: "
-    printf "\n\t\t bash yb_platform_util.sh -h\n\n"
+
+cat << EOF
+Script to perform universe actions.
+        1. Get existing universe list. 
+        2. Get existing universe details by universe name in json format.
+        3. Get existing universe details by universe UUID in json format.
+        4. Delete existing universe by universe name.
+        5. Delete existing universe by universe UUID.
+        6. Create a new universe from a json config file.
+        7. Get task progress. 
+        8. Get list of available regions with availability zones. 
+        9. Get list of available providers. 
+
+Required to export variable:
+YB_PLATFORM_URL 
+         API URL for yugabyte
+         Example: 
+                 export YB_PLATFORM_URL=http://localhost:9000
+YB_PLATFORM_API_TOKEN 
+         API token for Yugabyte API
+         Example: 
+                 export YB_PLATFORM_API_TOKEN=e16d75cf-79af-4c57-8659-2f8c34223551
+
+Syntax: 
+         bash yb_platform_util.sh <action> [params]
+         Example: 
+                bash yb_platform_util.sh get_universe -n test-universe
+
+Actions:
+get_universe 
+         Get the details of an existing universe as a json file
+         Example: 
+                bash yb_platform_util.sh get_universe
+
+         Universe json with universe name: 
+                bash yb_platform_util.sh get_universe -n test-universe
+
+add_universe |  create_universe
+         Create universe from json file
+         Example: 
+                bash yb_platform_util.sh create_universe -f test-universe.json -n test-universe-by-name
+
+del_universe |  delete_universe
+         Delete an existing universe
+         Example: 
+                bash yb_platform_util.sh delete_universe -n test-universe
+
+task_status 
+         To get task status
+         Example: 
+                bash yb_platform_util.sh task_status -t f33e3c9b-75ab-4c30-80ad-cba85646ea39
+
+get_provider 
+         To get list of available providers
+         Example: 
+                bash yb_platform_util.sh get_provider
+
+get_region | get_az 
+         List of available region with availability zones
+         Example: 
+                bash yb_platform_util.sh get_region
+
+Params:
+
+-c | --customer_uuid 
+         Customer UUID; mandatory if multiple customer uuids present
+         Example:
+                bash yb_platform_util.sh get_universe -c f8d2490a-f07c-4a40-a523-767f4f3b12da
+
+-u | --universe_uuid 
+         Universe UUID
+         Example:
+                bash yb_platform_util.sh get_universe -u f8d2490a-f07c-4a40-a523-767f4f3b12da
+
+-n | --universe_name 
+         Universe name
+         Example:
+                bash yb_platform_util.sh get_universe -n test-universe
+
+-f | --file 
+         Json input/output file for creating universe
+         Example: 
+                bash yb_platform_util.sh create_universe -f test-universe.json -n test-universe-by-name
+
+-y | --yes 
+         Input yes for all confirmation prompts
+         Example: 
+                bash yb_platform_util.sh delete_universe -n test-universe-by-name -y
+
+--no-wait 
+         To run command in background and do not wait for task completion task
+         Example: 
+                bash yb_platform_util.sh create_universe -f test-universe.json --no-wait
+
+-t | --task 
+         Task UUID to get task status
+         Example: 
+                bash yb_platform_util.sh task_status -t f33e3c9b-75ab-4c30-80ad-cba85646ea39
+
+-h | --help 
+         Print help message
+         Example: 
+                 bash yb_platform_util.sh -h
+EOF
 }
 
 USER_DIR=$(pwd)
 BASEDIR=$(dirname "$0")
 cd "$BASEDIR"
 
-if [[ ! -z "$1" ]]
+if [[ -n "$1" ]]
 then
     case $1 in
         -h|--help)
@@ -155,14 +202,6 @@ else
     HelpMessage
     exit
 fi
-# unset customer_uuid
-# unset universe_uuid
-# unset universe_name
-# unset input_file
-# unset help
-# unset confirmation
-# unset skip_wait
-# unset task_id
 
 # Loop to fetch all the values for the user
 # Example, sh yb_platform_util.sh -c f33e3c9b-75ab-4c30-80ad-cba85646ea39 -n jd-script-8-2-21 -o GET
@@ -220,7 +259,7 @@ then
 fi
 
 # Help message for the users.
-if [[ ! -z "$help" ]] && [[ $help == "True" ]]
+if [[ -n "$help" ]] && [[ $help == "True" ]]
 then
     HelpMessage
     exit 255
@@ -292,7 +331,7 @@ case $operation in
             echo $task_id
             exit
         fi
-        if [[ ! -z "$skip_wait" ]]
+        if [[ -n "$skip_wait" ]]
         then
             echo "Universe create requested successfully. "
             echo "Use $task_id as task id to get status of universe."
@@ -303,16 +342,16 @@ case $operation in
         fi
         ;;
     GET_UNIVERSE)
-        if [[ ! -z "$universe_uuid" ]]
+        if [[ -n "$universe_uuid" ]]
         then
             result=$($python_command -c "import yb_platform_util; \
-              yb_platform_util.get_universe_details_by_uuid('$base_url', \
+              yb_platform_util.save_universe_details_to_file_by_uuid('$base_url', \
               '$customer_uuid', '$auth_uuid', '$universe_uuid', '$USER_DIR')")
             echo $result
-        elif [[ ! -z "$universe_name" ]]
+        elif [[ -n "$universe_name" ]]
         then
             result=$($python_command -c "import yb_platform_util; \
-              yb_platform_util.get_universe_details('$base_url', '$customer_uuid', \
+              yb_platform_util.save_universe_details_to_file('$base_url', '$customer_uuid', \
               '$auth_uuid', '$universe_name', '$USER_DIR')")
             echo $result
         else
@@ -336,12 +375,13 @@ case $operation in
             read -p "Continue with deleting universe(y/n)? :" confirmation
             echo
         fi
+
         if [[ $confirmation =~ ^[yY] ]]; 
         then
-            if [[ -z "$universe_uuid" ]] && [[ ! -z "$universe_name" ]]
+            if [[ -z "$universe_uuid" ]] && [[ -n "$universe_name" ]]
             then
                 result=$($python_command -c "import yb_platform_util; \
-                  yb_platform_util.get_universe_uuid('$base_url', '$customer_uuid', \
+                  yb_platform_util.get_universe_uuid_by_name('$base_url', '$customer_uuid', \
                   '$auth_uuid', '$universe_name')")
                 new_result=$(echo $result | sed "s/'/\"/g")
                 res=$($python_command -c "import yb_platform_util; \
@@ -369,7 +409,7 @@ case $operation in
                 exit
             fi
 
-            if [[ ! -z "$skip_wait" ]]
+            if [[ -n "$skip_wait" ]]
             then
                 echo "Universe delete requested successfully."
                 echo "Use $task_id as task id to get status of universe."

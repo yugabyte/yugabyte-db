@@ -10,14 +10,25 @@
 
 
 import json
+import copy
 import collections
 import sys
+
 python_version = sys.version_info[0]
 if python_version == 2:
     from urllib2 import HTTPError
 else:
     from urllib.error import HTTPError
 
+SUCCESS = "success"
+FAIL = "failed"
+
+def __generate_script_reponse(message, is_success=True, error_message=False):
+    return {
+        'data': message, 
+        'status': SUCCESS if bool(is_success) else FAIL, 
+        'error': error_message if error_message else message
+        }
 
 def exception_handling(func):
     def inner_function(*args, **kwargs):
@@ -28,18 +39,15 @@ def exception_handling(func):
             content = e.read().decode('utf-8')
             if 'html>' in content:
                 message = 'Invalid YB_PLATFORM_URL URL or params, Getting html page in response'
-                response = {'data': message, 'status': 'failed', 'error': message}
-                print(response)
+                print(__generate_script_reponse(message, False))
             else:
-                response = {'data': content, 'status': 'failed', 'error': content}
-                print(response)
+                print(__generate_script_reponse(content, False))
         except Exception as e:
-            response = {'data': str(e), 'status': 'failed', 'error': str(e)}
-            print(response)
+            print(__generate_script_reponse(str(e), False))
     return inner_function
 
 
-def convert_unicode_json(data):
+def __convert_unicode_json(data):
     """
     Function to convert unicode json to dictionary
     {u"name": u"universe"} => {"name": "universe"}
@@ -51,16 +59,16 @@ def convert_unicode_json(data):
         if isinstance(data, basestring):
             return str(data)
         elif isinstance(data, collections.Mapping):
-            return dict(map(convert_unicode_json, data.iteritems()))
+            return dict(map(__convert_unicode_json, data.iteritems()))
         elif isinstance(data, collections.Iterable):
-            return type(data)(map(convert_unicode_json, data))
+            return type(data)(map(__convert_unicode_json, data))
         else:
             return data
     else:
         return data
 
 
-def call_api(url, auth_uuid, data=None, is_delete=False):
+def __call_api(url, auth_uuid, data=None, is_delete=False):
     """
     Call the corresponding url with auth token, headers and returns the response.
 
@@ -99,7 +107,7 @@ def call_api(url, auth_uuid, data=None, is_delete=False):
         return response
 
 
-def get_universe_details(base_url, customer_uuid, auth_uuid, universe_name, base_dir):
+def save_universe_details_to_file(base_url, customer_uuid, auth_uuid, universe_name, base_dir):
     """
     Get the universe details and store it in a json file after formatting the json.
 
@@ -110,28 +118,22 @@ def get_universe_details(base_url, customer_uuid, auth_uuid, universe_name, base
     :param base_dir: Base directory in which the json file should be stored.
     :return: None
     """
-    universe = get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name)
+    universe = __get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name)
     if universe:
-        configure_json = create_universe_config(universe, universe.get('name'))
+        configure_json = __create_universe_config(universe)
         file = f'{base_dir}/{universe.get("name")}.json'
         with open(file, 'w') as file_obj:
             json.dump(configure_json, file_obj)
-        response = {
-            'data': f'Detail of universe have been saved to {str(file)}',
-            'status': 'success',
-            'error': ''
-        }
-        handle_response(response)
+        
+        response = __generate_script_reponse(f'Detail of universe have been saved to {str(file)}')
+        __handle_response(response)
     else:
-        response = {
-            'data': 'Universe details not found',
-            'status': 'failed',
-            'error': f'Universe with {universe_name} is not found.'
-        }
-        handle_response(response)
+
+        response = __generate_script_reponse(f'Universe with {universe_name} is not found.', False)
+        __handle_response(response)
 
 
-def get_universe_details_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid, base_dir):
+def save_universe_details_to_file_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid, base_dir):
     """
     Get universe details from UUID and store it in json after formatting it.
 
@@ -142,28 +144,20 @@ def get_universe_details_by_uuid(base_url, customer_uuid, auth_uuid, universe_uu
     :param base_dir: Base directory in which the json file should be stored.
     :return: None
     """
-    universe = get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid)
+    universe = __get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid)
     if universe:
-        configure_json = create_universe_config(universe, universe.get('name'))
+        configure_json = __create_universe_config(universe)
         file = f'{base_dir}/{universe.get("name")}.json'
         with open(file, 'w') as file_obj:
             json.dump(configure_json, file_obj)
-        response = {
-            'data': f'Detail of universe have been saved to {str(file)}',
-            'status': 'success',
-            'error': ''
-        }
-        handle_response(response)
+        response = __generate_script_reponse(f'Detail of universe have been saved to {str(file)}')
+        __handle_response(response)
     else:
-        response = {
-            'data': 'Universe details not found',
-            'status': 'failed',
-            'error': 'Universe details not found'
-        }
-        handle_response(response)
+        response = __generate_script_reponse('Universe details not found', False)
+        __handle_response(response)
 
 @exception_handling
-def create_universe_from_config(universe_config, base_url, customer_uuid, auth_uuid):
+def __create_universe_from_config(universe_config, base_url, customer_uuid, auth_uuid):
     """
     Create the universe from universe config data by calling universe POST API.
 
@@ -174,11 +168,10 @@ def create_universe_from_config(universe_config, base_url, customer_uuid, auth_u
     :return: None
     """
     universe_create_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes'
-    response = call_api(universe_create_url, auth_uuid, universe_config)
-    universe_json = convert_unicode_json(json.loads(response.read()))
+    response = __call_api(universe_create_url, auth_uuid, universe_config)
+    universe_json = __convert_unicode_json(json.loads(response.read()))
     task_id = universe_json['taskUUID']
-    response = {'data': task_id, 'status': 'success', 'error': ''}
-    print(response)
+    print(__generate_script_reponse(task_id))
 
 
 def create_universe(base_url, customer_uuid, auth_uuid, input_file, universe_name=''):
@@ -192,27 +185,23 @@ def create_universe(base_url, customer_uuid, auth_uuid, input_file, universe_nam
     :param universe_name: Name of the new universe to be created.
     :return: None
     """
-    configure_json = modify_universe_config(input_file, universe_name)
-    universe_config_json = post_universe_config(configure_json, base_url, customer_uuid, auth_uuid)
+    configure_json = __modify_universe_config(input_file, universe_name)
+    universe_config_json = __post_universe_config(configure_json, base_url, customer_uuid, auth_uuid)
     # add the missing fields in the config json.
     universe_config_json['clusterOperation'] = 'CREATE'
     universe_config_json['currentClusterType'] = 'PRIMARY'
     # Call universe config api to get the update config data.
-    universe_config_json = post_universe_config(
+    universe_config_json = __post_universe_config(
         universe_config_json,
         base_url,
         customer_uuid,
         auth_uuid
     )
     if universe_config_json:
-        create_universe_from_config(universe_config_json, base_url, customer_uuid, auth_uuid)
+        __create_universe_from_config(universe_config_json, base_url, customer_uuid, auth_uuid)
     else:
-        data = {
-            'data': f'Unable to Create Universe for Customer {customer_uuid}',
-            'status': 'failed',
-            'error': f'Unable to Create Universe for Customer {customer_uuid}'
-        }
-        handle_response(data)
+        data = __generate_script_reponse(f'Unable to Create Universe for Customer {customer_uuid}', False)
+        __handle_response(data)
 
 @exception_handling
 def get_task_details(task_id, base_url, customer_uuid, auth_uuid):
@@ -226,25 +215,21 @@ def get_task_details(task_id, base_url, customer_uuid, auth_uuid):
     :return: None
     """
     task_url = f'{base_url}/api/v1/customers/{customer_uuid}/tasks/{task_id}'
-    response = call_api(task_url, auth_uuid)
-    task_json = convert_unicode_json(json.loads(response.read()))
+    response = __call_api(task_url, auth_uuid)
+    task_json = __convert_unicode_json(json.loads(response.read()))
     if task_json.get('status') == 'Running':
-        response = {'data': int(task_json.get('percent')), 'status': 'success', 'error': ''}
-        print(response)
+        print(__generate_script_reponse(int(task_json.get('percent'))))
     elif task_json.get('status') == 'Success':
-        response = {'data': 100, 'status': 'success', 'error': ''}
-        print(response)
+        print(__generate_script_reponse(100))
     elif task_json.get('status') == 'Failure':
         content = {
             'message': f'{task_json.get("title")} failed',
             'details': task_json.get('details')
         }
-        response = {'data': content, 'status': 'success',
-                    'error': content}
-        print(response)
+        print(__generate_script_reponse(content))
 
 
-def create_universe_config(universe_data, universe_name):
+def __create_universe_config(universe_data):
     """
     Create the universe config data from the json file.
 
@@ -267,18 +252,18 @@ def create_universe_config(universe_data, universe_name):
         'placementInfo'
     ]
 
-    clusters_list = get_cluster_list(clusters, excluded_keys, universe_name)
-    configure_json['clusters'] = clusters_list
+    clusters_list = __get_cluster_list(clusters, excluded_keys)
+    configure_json['clusters'] = copy.deepcopy(clusters_list)
     configure_json['clusterOperation'] = 'CREATE'
-    configure_json['userAZSelected'] = user_az_selected
+    configure_json['userAZSelected'] = copy.deepcopy(user_az_selected)
     configure_json['currentClusterType'] = 'PRIMARY'
 
     return configure_json
 
 
-def get_cluster_list(clusters, excluded_keys, universe_name):
+def __get_cluster_list(clusters, excluded_keys):
     """
-    Helper method for creating universe config which returns modified cluster list.
+    Method to modify payload for create API. Modify user Intent inside cluster list.
 
     :param clusters: List of clusters.
     :param excluded_keys: Keys to be excluded
@@ -292,10 +277,9 @@ def get_cluster_list(clusters, excluded_keys, universe_name):
             if key not in excluded_keys:
                 user_intent = {}
                 if key == 'userIntent':
-                    if universe_name:
-                        val['universeName'] = universe_name
                     for key1, val1 in val.items():
                         if key1 not in excluded_keys:
+                            # Remove unnecessary deviceinfo from create API payload.
                             if key1 == 'deviceInfo':
                                 val1.pop('diskIops')
                                 val1.pop('storageType')
@@ -307,7 +291,7 @@ def get_cluster_list(clusters, excluded_keys, universe_name):
     return clusters_list
 
 
-def modify_universe_config(file_name, universe_name=''):
+def __modify_universe_config(file_name, universe_name=''):
     """
     Modify the universe json with new name.
 
@@ -317,7 +301,7 @@ def modify_universe_config(file_name, universe_name=''):
     """
     data = {}
     with open(file_name) as f:
-        data = convert_unicode_json(json.loads(f.read()))
+        data = __convert_unicode_json(json.loads(f.read()))
 
     clusters = data.get('clusters')
     if universe_name:
@@ -329,7 +313,7 @@ def modify_universe_config(file_name, universe_name=''):
 
 
 @exception_handling
-def post_universe_config(configure_json, base_url, customer_uuid, auth_uuid):
+def __post_universe_config(configure_json, base_url, customer_uuid, auth_uuid):
     """
     Call the universe config URL with the updated data.
 
@@ -340,13 +324,13 @@ def post_universe_config(configure_json, base_url, customer_uuid, auth_uuid):
     :return: None
     """
     universe_config_url = f'{base_url}/api/v1/customers/{customer_uuid}/universe_configure'
-    response = call_api(universe_config_url, auth_uuid, configure_json)
-    universe_config_json = convert_unicode_json(json.loads(response.read()))
+    response = __call_api(universe_config_url, auth_uuid, configure_json)
+    universe_config_json = __convert_unicode_json(json.loads(response.read()))
     return universe_config_json
 
 
 @exception_handling
-def get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
+def __get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     """
     Get universe data by name of the universe.
 
@@ -357,8 +341,8 @@ def get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     :return: None
     """
     universe_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes'
-    response = call_api(universe_url, auth_uuid)
-    data = convert_unicode_json(json.load(response))
+    response = __call_api(universe_url, auth_uuid)
+    data = __convert_unicode_json(json.load(response))
     for universe in data:
         if universe.get('name') == universe_name:
             del universe['pricePerHour']
@@ -366,7 +350,7 @@ def get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     return None
 
 @exception_handling
-def get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid):
+def __get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid):
     """
     Get universe details by UUID of the universe.
 
@@ -377,11 +361,11 @@ def get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid):
     :return: None
     """
     universe_config_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes/{universe_uuid}'
-    response = call_api(universe_config_url, auth_uuid)
-    return convert_unicode_json(json.load(response))
+    response = __call_api(universe_config_url, auth_uuid)
+    return __convert_unicode_json(json.load(response))
 
 
-def get_universe_uuid(base_url, customer_uuid, auth_uuid, universe_name):
+def get_universe_uuid_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     """
     Get the UUID of the universe.
 
@@ -391,33 +375,30 @@ def get_universe_uuid(base_url, customer_uuid, auth_uuid, universe_name):
     :param universe_name: Name of the universe.
     :return: None.
     """
-    universe = get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name)
+    universe = __get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name)
     if universe and 'universeUUID' in universe:
-        response = {'data': universe.get('universeUUID'), 'status': 'success', 'error': ''}
-        print(response)
+        print(__generate_script_reponse(universe.get('universeUUID')))
     else:
         message = f'Universe with {universe_name} not found'
-        response = {'data': message, 'status': 'failed', 'error': message}
-        print(response)
+        print(__generate_script_reponse(message, False))
 
 
 @exception_handling
 def get_customer_uuid(base_url, auth_uuid):
     """
-    Get customer UUID.
+    Get customer UUID. Raise error in case multiple customer is present. 
 
     :param base_url: Base url of the platform back end.
     :param auth_uuid: Authentication token for the customer.
     :return: None
     """
     customer_url = f'{base_url}/api/v1/customers'
-    response = call_api(customer_url, auth_uuid)
-    data = convert_unicode_json(json.load(response))
+    response = __call_api(customer_url, auth_uuid)
+    data = __convert_unicode_json(json.load(response))
     if (len(data) == 1):
-        response = {'data': str(data[0]), 'status': 'success', 'error': ''}
-        print(response)
+        print(__generate_script_reponse(str(data[0])))
     else:
-        response = {'data': data, 'status': 'failed', 'error': 'Please provide customer UUID'}
+        response = __generate_script_reponse(data, False, 'Please provide customer UUID')
         print(response)
 
 
@@ -434,11 +415,10 @@ def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid):
     """
     universe_delete_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes/{universe_uuid}?isForceDelete=true'
 
-    response = call_api(universe_delete_url, auth_uuid, is_delete=True)
-    universe_json = convert_unicode_json(json.loads(response.read()))
+    response = __call_api(universe_delete_url, auth_uuid, is_delete=True)
+    universe_json = __convert_unicode_json(json.loads(response.read()))
     task_id = universe_json['taskUUID']
-    response = {'data': task_id, 'status': 'success', 'error': ''}
-    print(response)
+    print(__generate_script_reponse(task_id))
 
 
 @exception_handling
@@ -452,8 +432,8 @@ def get_provider_data(base_url, customer_uuid, auth_uuid):
     :return: All available providers
     """
     provider_url = f'{base_url}/api/v1/customers/{customer_uuid}/providers'
-    response = call_api(provider_url, auth_uuid)
-    provider_data = convert_unicode_json(json.loads(response.read()))
+    response = __call_api(provider_url, auth_uuid)
+    provider_data = __convert_unicode_json(json.loads(response.read()))
     providers = []
     for each in provider_data:
         provider = {}
@@ -474,8 +454,8 @@ def get_regions_data(base_url, customer_uuid, auth_uuid):
     :return: All available regions
     """
     provider_url = f'{base_url}/api/v1/customers/{customer_uuid}/regions'
-    response = call_api(provider_url, auth_uuid)
-    region_data = convert_unicode_json(json.loads(response.read()))
+    response = __call_api(provider_url, auth_uuid)
+    region_data = __convert_unicode_json(json.loads(response.read()))
     regions = []
     for each in region_data:
         zones = []
@@ -504,8 +484,8 @@ def get_universe_list(base_url, customer_uuid, auth_uuid):
     :return: List of universe name and UUID
     """
     universe_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes'
-    response = call_api(universe_url, auth_uuid)
-    universe_data = convert_unicode_json(json.loads(response.read()))
+    response = __call_api(universe_url, auth_uuid)
+    universe_data = __convert_unicode_json(json.loads(response.read()))
     universes = []
     for each in universe_data:
         universe = {}
@@ -525,7 +505,7 @@ def get_key_value(data, key):
     """
     try:
         if data and data != '':
-            json_data = convert_unicode_json(json.loads(str(data)))
+            json_data = __convert_unicode_json(json.loads(str(data)))
             print(json_data.get(key))
         else:
             print('Action Failed')
@@ -533,7 +513,7 @@ def get_key_value(data, key):
         print(data)
 
 
-def handle_response(response_json):
+def __handle_response(response_json):
     """
     Handle the response to bash according to the operations performed in the functions.
 
