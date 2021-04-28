@@ -211,11 +211,10 @@ public class Backup extends Model {
     Map<Customer, List<Backup>> ret = new HashMap<>();
     expiredBackupsByCustomerUUID.forEach((customerUUID, backups) -> {
       Customer customer = Customer.get(customerUUID);
-      Set<UUID> allUniverseUUIDs = Universe.getAllUUIDs(customer);
-      List<Backup> backupsWithValidUniv = backups.stream()
-        .filter(backup -> allUniverseUUIDs.contains(backup.getBackupInfo().universeUUID))
+      List<Backup> backupList = backups.stream()
+        .filter(backup -> !Universe.isUniversePaused(backup.getBackupInfo().universeUUID))
         .collect(Collectors.toList());
-      ret.put(customer, backupsWithValidUniv);
+      ret.put(customer, backupList);
     });
     return ret;
   }

@@ -261,7 +261,7 @@ public class BackupTest extends FakeDBApplication {
     backup3.transitionState(Backup.BackupState.Completed);
 
     Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
-    // assert to 2 as backup3's universe is not found.
-    assertEquals(String.valueOf(expiredBackups), 2, expiredBackups.get(defaultCustomer).size());
+    // assert to 3 as we are deleting backups even if the universe does not exist.
+    assertEquals(String.valueOf(expiredBackups), 3, expiredBackups.get(defaultCustomer).size());
   }
 }
