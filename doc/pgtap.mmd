@@ -122,9 +122,8 @@ schema, use the `SCHEMA` clause to specify the schema, like so:
 Testing pgTAP with pgTAP
 ------------------------
 
-In addition to the PostgreSQL-standard `installcheck` target, the `test`
-target uses the `pg_prove` Perl program to do its testing, which will be
-installed with the
+`test` target uses the `pg_prove` Perl program to do its testing, which needs
+to be installed separately from
 [TAP::Parser::SourceHandler::pgTAP](https://metacpan.org/module/TAP::Parser::SourceHandler::pgTAP)
 CPAN distribution. You'll need to make sure that you use a database with
 PL/pgSQL loaded, or else the tests won't work. `pg_prove` supports a number of
