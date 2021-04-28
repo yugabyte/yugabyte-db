@@ -425,7 +425,7 @@ TEST_F(BackupTxnTest, Consistency) {
         for (int j = 0; j != kKeys; ++j) {
           ASSERT_OK(WriteRow(session, j, v, WriteOpType::INSERT, Flush::kFalse));
         }
-        auto status = session->FlushFuture().get();
+        auto status = session->Flush();
         if (status.ok()) {
           status = txn->CommitFuture().get();
         }

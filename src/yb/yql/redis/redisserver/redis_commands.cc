@@ -709,7 +709,8 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       RespondWithError("Could not apply read_src_op_.");
       return;
     }
-    session_->FlushAsync([retained_self = shared_from_this()](const Status& s) {
+    session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       if (!s.ok()) {
         LOG(ERROR) << "Reading from src during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
@@ -819,7 +820,8 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       RespondWithError("Could not apply deleteOps/write_dest_op_.");
       return;
     }
-    session_->FlushAsync([retained_self = shared_from_this()](const Status& s) {
+    session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       if (!s.ok()) {
         LOG(ERROR) << "Writing to dest during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
@@ -842,7 +844,8 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       return;
     }
 
-    session_->FlushAsync([retained_self = shared_from_this()](const Status& s) {
+    session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       if (!s.ok()) {
         LOG(ERROR) << "Updating ttl for dest during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
@@ -859,7 +862,8 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       RespondWithError("Could not apply delete_src_op_.");
       return;
     }
-    session_->FlushAsync([retained_self = shared_from_this()](const Status& s) {
+    session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       if (!s.ok()) {
         LOG(ERROR) << "Deleting src during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
@@ -925,7 +929,9 @@ class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
   }
 
   void ProcessedOne(
-      size_t idx, const std::shared_ptr<client::YBRedisReadOp>& operation, const Status& status) {
+      size_t idx, const std::shared_ptr<client::YBRedisReadOp>& operation,
+      client::FlushStatus* flush_status) {
+    const auto& status = flush_status->status;
     if (!status.ok()) {
       ProcessedAll(status);
       return;
