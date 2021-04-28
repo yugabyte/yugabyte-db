@@ -32,6 +32,8 @@
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_options.h"
@@ -49,28 +51,30 @@
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
-DECLARE_double(TEST_respond_write_failed_probability);
+DECLARE_bool(TEST_combine_batcher_errors);
 DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_bool(enable_ondisk_compression);
-DECLARE_bool(TEST_combine_batcher_errors);
-DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
+DECLARE_int32(TEST_max_write_waiters);
+DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(log_cache_size_limit_mb);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(retryable_request_range_time_limit_secs);
-DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
-DECLARE_int32(TEST_max_write_waiters);
-DECLARE_uint64(log_segment_size_bytes);
-DECLARE_uint64(sst_files_soft_limit);
-DECLARE_uint64(sst_files_hard_limit);
-DECLARE_int32(log_min_seconds_to_retain);
-DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 DECLARE_int64(db_write_buffer_size);
-DECLARE_int32(log_cache_size_limit_mb);
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(sst_files_hard_limit);
+DECLARE_uint64(sst_files_soft_limit);
 
 METRIC_DECLARE_counter(majority_sst_files_rejections);
 
@@ -1092,6 +1096,78 @@ TEST_F_EX(QLStressTest, RemoveIntentsDuringWrite, QLStressTestTransactionalSingl
   }
 
   thread_holder.WaitAndStop(3s);
+}
+
+TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
+  FLAGS_raft_heartbeat_interval_ms = 100 * kTimeMultiplier;
+  constexpr int kOldLeaderWriteKeys = 100;
+  // Should be less than amount of pending operations at the old leader.
+  // So it is much smaller than keys written to the old leader.
+  constexpr int kNewLeaderWriteKeys = 10;
+
+  TestThreadHolder thread_holder;
+
+  client_->messenger()->TEST_SetOutboundIpBase(ASSERT_RESULT(HostToAddress("127.0.0.1")));
+
+  auto session = NewSession();
+  // Perform write to make sure we have a leader.
+  ASSERT_OK(WriteRow(session, 0, "value"));
+
+  session->SetTimeout(10s);
+  std::vector<std::future<Status>> futures;
+  int key;
+  for (key = 1; key <= kOldLeaderWriteKeys; ++key) {
+    InsertRow(session, key, std::to_string(key));
+    futures.push_back(session->FlushFuture());
+  }
+
+  auto old_leader = ASSERT_RESULT(ServerWithLeaders(cluster_.get()));
+  LOG(INFO) << "Isolate old leader: "
+            << cluster_->mini_tablet_server(old_leader)->server()->permanent_uuid();
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    if (i != old_leader) {
+      ASSERT_OK(SetupConnectivity(cluster_.get(), i, old_leader, Connectivity::kOff));
+    }
+  }
+
+  int written_to_new_leader = 0;
+  while (written_to_new_leader < kNewLeaderWriteKeys) {
+    ++key;
+    auto write_status = WriteRow(session, key, std::to_string(key));
+    if (write_status.ok()) {
+      ++written_to_new_leader;
+    } else {
+      // Some writes could fail, while operations are being send to the old leader.
+      LOG(INFO) << "Write " << key << " failed: " << write_status;
+    }
+  }
+
+  auto peers = cluster_->GetTabletPeers(old_leader);
+  // Reject all non empty update consensuses, to activate consensus exponential backoff,
+  // and get into situation where leader sends empty request.
+  for (const auto& peer : peers) {
+    peer->raft_consensus()->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+  }
+
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    if (i != old_leader) {
+      ASSERT_OK(SetupConnectivity(cluster_.get(), i, old_leader, Connectivity::kOn));
+    }
+  }
+
+  // Wait until old leader receive update consensus with empty ops.
+  std::this_thread::sleep_for(5s * kTimeMultiplier);
+
+  for (const auto& peer : peers) {
+    peer->raft_consensus()->TEST_RejectMode(consensus::RejectMode::kNone);
+  }
+
+  // Wait all writes to complete.
+  for (auto& future : futures) {
+    WARN_NOT_OK(future.get(), "Write failed");
+  }
+
+  thread_holder.Stop();
 }
 
 } // namespace client
