@@ -24,11 +24,9 @@ import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.PriceComponent.PriceDetails;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
-import com.yugabyte.yw.models.InstanceType.VolumeType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 
@@ -40,8 +38,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class AZUInitializer extends AbstractInitializer {
-
-  private Provider provider;
 
    /**
    * Entry point to initialize AZU. This will create the various InstanceTypes and their
@@ -59,7 +55,7 @@ public class AZUInitializer extends AbstractInitializer {
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
-      provider = Provider.get(customerUUID, providerUUID);
+      Provider provider = Provider.get(customerUUID, providerUUID);
       if (provider == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
       }
