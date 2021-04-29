@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import io.ebean.Ebean;
 import io.ebean.Finder;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class InstanceType extends Model {
@@ -132,6 +134,14 @@ public class InstanceType extends Model {
     } else {
       instanceType.instanceTypeDetails =
         Json.fromJson(Json.parse(instanceType.instanceTypeDetailsJson), InstanceTypeDetails.class);
+    }
+    return instanceType;
+  }
+
+  public static InstanceType getOrBadRequest(UUID providerUuid, String instanceTypeCode) {
+    InstanceType instanceType = InstanceType.get(providerUuid, instanceTypeCode);
+    if (instanceType == null) {
+      throw new YWServiceException(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
     }
     return instanceType;
   }
