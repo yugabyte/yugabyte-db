@@ -97,6 +97,11 @@ class ClusterLoadBalancer {
 
   CHECKED_STATUS IsIdle() const;
 
+  // Returns the TableInfo of all the tables for whom load balancing is being skipped.
+  // As of today, this constitutes all the system tables, colocated user tables
+  // and tables which have been marked as DELETING OR DELETED.
+  vector<scoped_refptr<TableInfo>> GetAllTablesLoadBalancerSkipped();
+
   //
   // Catalog manager indirection methods.
   //
@@ -404,6 +409,21 @@ class ClusterLoadBalancer {
 
   // Record load balancer activity for tables and tservers.
   void RecordActivity(uint32_t master_errors) REQUIRES_SHARED(catalog_manager_->lock_);
+
+  typedef rw_spinlock LockType;
+  mutable LockType mutex_;
+
+  // Maintains a list of all tables for whom LB has been skipped.
+  // Currently for consumption by components outside the LB.
+  // Protected by a readers-writers lock. Only the LB writes to it.
+  // Other components such as test, admin UI, etc. should
+  // ideally read from it using a shared_lock<>.
+  vector<scoped_refptr<TableInfo>> skipped_tables_ GUARDED_BY(mutex_);
+  // Internal to LB structure to keep track of skipped tables.
+  // skipped_tables_ is set at the end of each LB run using
+  // skipped_tables_per_run_.
+  vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
+
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

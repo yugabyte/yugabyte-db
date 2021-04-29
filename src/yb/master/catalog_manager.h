@@ -450,6 +450,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 
+  ClusterLoadBalancer* load_balancer() { return load_balance_policy_.get(); }
+
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const;
@@ -1263,10 +1265,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   virtual Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
     return SnapshotSchedulesToTabletsMap();
   }
-
-  // ----------------------------------------------------------------------------------------------
-  // Private member fields
-  // ----------------------------------------------------------------------------------------------
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
