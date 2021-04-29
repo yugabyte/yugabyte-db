@@ -360,11 +360,6 @@ DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "from pg catalog tables. A value of -1 disables the refresh task.");
 TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
 
-DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
-                 "When set, placement of the tablets of a newly created table will not honor "
-                 "its tablespace placement policy until the loadbalancer runs.");
-TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
-
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
                  "move.");
@@ -572,8 +567,6 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
 
 constexpr auto kDefaultYQLPartitionsRefreshBgTaskSleep = 10s;
 
-constexpr auto kDefaultYSQLTablespaceRefreshBgTaskSleepSecs = 10s;
-
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -611,7 +604,7 @@ CatalogManager::CatalogManager(Master* master)
       ysql_transaction_(this, master_),
       tablespace_placement_map_(std::make_shared<TablespaceIdToReplicationInfoMap>()),
       table_to_tablespace_map_(std::make_shared<TableToTablespaceIdMap>()),
-      tablespace_info_task_running_(false) {
+      tablespace_bg_task_running_(false) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -1784,47 +1777,75 @@ CatalogManager::GetAndUpdateYsqlTablespaceInfo() {
   return tablespace_map;
 }
 
-void CatalogManager::StartRefreshYSQLTablePlacementInfo() {
-  bool is_task_running = tablespace_info_task_running_.exchange(true);
-  if (!is_task_running) {
-    // The task is not already running. Start it.
-    RefreshYSQLTablePlacementInfo();
-  }
-}
-
-void CatalogManager::RefreshYSQLTablePlacementInfo() {
-  auto wait_time = GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs) * 1s;
-  // If FLAGS_enable_ysql_tablespaces_for_placement is not set, refresh is disabled.
-  if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) && wait_time > 0s) {
-    DoRefreshYSQLTablePlacementInfo();
-  }
-
-  if (wait_time <= 0s) {
-    wait_time = kDefaultYSQLTablespaceRefreshBgTaskSleepSecs;
-  }
-  refresh_ysql_tablespace_info_task_.Schedule([this](const Status& status) {
-    Status s = background_tasks_thread_pool_->SubmitFunc(
-      std::bind(&CatalogManager::RefreshYSQLTablePlacementInfo, this));
-    if (!s.IsOk()) {
-      LOG(WARNING) << "Failed to schedule: RefreshYSQLTablePlacementInfo";
-      tablespace_info_task_running_ = false;
-    }
-  }, wait_time);
-}
-
-void CatalogManager::DoRefreshYSQLTablePlacementInfo() {
-  // First refresh the tablespace info in memory.
-  auto table_info = GetTableInfo(kPgTablespaceTableId);
-  if (table_info == nullptr) {
-    LOG(WARNING) << "Table info not found for pg_tablespace catalog table";
+void CatalogManager::StartTablespaceBgTaskIfStopped() {
+  if (GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs) <= 0 ||
+      !GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+    // The tablespace bg task is disabled. Nothing to do.
     return;
   }
 
-  // Update tablespace_placement_map_.
-  auto&& s = GetAndUpdateYsqlTablespaceInfo();
+  const bool is_task_running = tablespace_bg_task_running_.exchange(true);
+  if (is_task_running) {
+    // Task already running, nothing to do.
+    return;
+  }
+
+  ScheduleRefreshTablespaceInfoTask(true /* schedule_now */);
+}
+
+void CatalogManager::ScheduleRefreshTablespaceInfoTask(const bool schedule_now) {
+  int wait_time = 0;
+
+  if (!schedule_now) {
+    wait_time = GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs);
+    if (wait_time <= 0) {
+      // The tablespace refresh task has been disabled.
+      tablespace_bg_task_running_ = false;
+      return;
+    }
+  }
+
+  refresh_ysql_tablespace_info_task_.Schedule([this](const Status& status) {
+    Status s = background_tasks_thread_pool_->SubmitFunc(
+      std::bind(&CatalogManager::RefreshTablespaceInfoPeriodically, this));
+    if (!s.IsOk()) {
+      // Failed to submit task to the thread pool. Mark that the task is now
+      // no longer running.
+      LOG(WARNING) << "Failed to schedule: RefreshTablespaceInfoPeriodically";
+      tablespace_bg_task_running_ = false;
+    }
+  }, wait_time * 1s);
+}
+
+void CatalogManager::RefreshTablespaceInfoPeriodically() {
+  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+    tablespace_bg_task_running_ = false;
+    return;
+  }
+
+  if (!CheckIsLeaderAndReady().IsOk()) {
+    LOG(INFO) << "No longer the leader, so cancelling tablespace info task";
+    tablespace_bg_task_running_ = false;
+    return;
+  }
+
+  // Refresh the tablespace info in memory.
+  DoRefreshTablespaceInfo();
+
+  // Schedule the next iteration of the task.
+  ScheduleRefreshTablespaceInfoTask();
+}
+
+void CatalogManager::DoRefreshTablespaceInfo() {
+  VLOG(2) << "Running RefreshTablespaceInfoPeriodically task";
+
+  // First refresh the tablespace info in memory.
+  auto s = GetAndUpdateYsqlTablespaceInfo();
   if (!s.ok()) {
+    // Refresh of tablespaces failed.
     LOG(WARNING) << "Updating tablespace information failed with error "
                  << StatusToString(s);
+    return;
   }
 
   // Now the table->tablespace information has to be updated in memory. To do this, first,
@@ -1839,6 +1860,12 @@ void CatalogManager::DoRefreshYSQLTablePlacementInfo() {
       if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
+
+      if (ns.second->colocated()) {
+        // Skip processing tables in colocated databases.
+        continue;
+      }
+
       // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
       namespace_id_vec.emplace_back(ns.first);
     }
@@ -1858,11 +1885,14 @@ void CatalogManager::DoRefreshYSQLTablePlacementInfo() {
     VLOG(5) << "Successfully refreshed placement information for namespace "
             << nsid;
   }
-  // Update table_to_tablespace_map_ and update the last refreshed time.
+  // Update table_to_tablespace_map_.
   {
     std::lock_guard<LockType> l(tablespace_lock_);
     table_to_tablespace_map_ = table_to_tablespace_map;
   }
+
+  VLOG(3) << "Refreshed tablespace information in memory";
+  return;
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
@@ -7133,6 +7163,11 @@ Status CatalogManager::UpdateMastersListInMemoryAndDisk() {
 
 Status CatalogManager::EnableBgTasks() {
   std::lock_guard<LockType> l(lock_);
+  // Initialize refresh_ysql_tablespace_info_task_. This will be used to
+  // manage the background task that refreshes tablespace info. This task
+  // will be started by the CatalogManagerBgTasks below.
+  refresh_ysql_tablespace_info_task_.Bind(&master_->messenger()->scheduler());
+
   background_tasks_.reset(new CatalogManagerBgTasks(this));
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
@@ -7143,10 +7178,6 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
-  // Add bg thread to refresh tablespace information for ysql tables.
-  refresh_ysql_tablespace_info_task_.Bind(&master_->messenger()->scheduler());
-  RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-      [this]() { StartRefreshYSQLTablePlacementInfo(); }));
   return Status::OK();
 }
 

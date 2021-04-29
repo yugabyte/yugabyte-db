@@ -1393,9 +1393,6 @@ const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
 }
 
 void ClusterLoadBalancer::InitTablespaceInfo() {
-  // Start the tablespace refresh task if its not running.
-  catalog_manager_->StartRefreshYSQLTablePlacementInfo();
-
   // Get the tablespace information.
   catalog_manager_->GetTablespaceInfo(&tablespace_placement_map_,
                                       &table_to_tablespace_map_);
