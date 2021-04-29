@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import io.ebean.Finder;
@@ -22,6 +23,7 @@ import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class Provider extends Model {
@@ -153,6 +155,14 @@ public class Provider extends Model {
    */
   public static Provider get(UUID customerUUID, UUID providerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).idEq(providerUUID).findOne();
+  }
+
+  public static Provider getOrBadRequest(UUID customerUUID, UUID providerUUID) {
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    if (provider == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+    return provider;
   }
 
   /**
