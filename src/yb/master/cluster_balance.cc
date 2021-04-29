@@ -299,6 +299,9 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
 
   for (const auto& table : GetTableMap()) {
     if (SkipLoadBalancing(*table.second)) {
+      // Populate the list of tables for which LB has been skipped
+      // in LB's internal vector.
+      skipped_tables_per_run_.push_back(table.second);
       continue;
     }
     const TableId& table_id = table.first;
@@ -504,6 +507,13 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 }
 
 void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
+  // Update the list of tables for whom load-balancing has been
+  // skipped in this run.
+  {
+    std::lock_guard<decltype(mutex_)> l(mutex_);
+    skipped_tables_ = skipped_tables_per_run_;
+  }
+
   uint32_t table_tasks = 0;
   for (const auto& table : GetTableMap()) {
     table_tasks += table.second->NumLBTasks();
@@ -574,6 +584,7 @@ void ClusterLoadBalancer::ResetGlobalState(bool initialize_ts_descs) {
     // Only call GetAllDescriptors once for a LB run, and then cache it in global_state_.
     GetAllDescriptors(&global_state_->ts_descs_);
   }
+  skipped_tables_per_run_.clear();
 }
 
 void ClusterLoadBalancer::ResetTableStatePtr(const TableId& table_id, Options* options) {
@@ -1405,8 +1416,12 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   // * system tables: they are virtual tables not hosted by tservers.
   // * colocated user tables: they occupy the same tablet as their colocated parent table, so load
   //   balancing just the colocated parent table is sufficient.
+  // * deleted/deleting tables: as they are no longer in effect. For tables that are being deleted
+  // currently as well, load distribution wouldn't matter as eventually they would get deleted.
+  auto l = table.LockForRead();
   return (catalog_manager_->IsSystemTable(table) ||
-          catalog_manager_->IsColocatedUserTable(table));
+          catalog_manager_->IsColocatedUserTable(table) ||
+          l->data().started_deleting());
 }
 
 Status ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
@@ -1558,6 +1573,11 @@ const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const 
   auto l = down_cast<enterprise::CatalogManager*>
                     (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
   return l->data().pb.replication_info().live_replicas();
+}
+
+vector<scoped_refptr<TableInfo>> ClusterLoadBalancer::GetAllTablesLoadBalancerSkipped() {
+  SharedLock<decltype(mutex_)> l(mutex_);
+  return skipped_tables_;
 }
 
 }  // namespace master

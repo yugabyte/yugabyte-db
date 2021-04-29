@@ -50,6 +50,7 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master_fwd.h"
@@ -1845,6 +1846,34 @@ void MasterPathHandlers::HandleVersionInfoDump(
   jw.Protobuf(version_info);
 }
 
+void MasterPathHandlers::HandleLBStatistics(
+  const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+
+  // Displays a table of all tables for which load balancing has been skipped.
+  std::stringstream *output = &resp->output;
+  const auto tables = master_->catalog_manager()
+                              ->load_balancer()->GetAllTablesLoadBalancerSkipped();
+
+  *output << "<h3>Load balance skipped Tables</h3>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Table Type</th></tr>\n";
+
+  for (const auto& table : tables) {
+    if (table->is_system()) {
+      continue;
+    }
+    *output << Substitute(
+        "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><td>$3</td></tr>\n",
+        EscapeForHtmlToString(table->id()),
+        EscapeForHtmlToString(table->name()),
+        EscapeForHtmlToString(table->id()),
+        EscapeForHtmlToString(TableType_Name(table->GetTableType())));
+  }
+
+  *output << "</table>\n";
+
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -1899,6 +1928,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleTabletReplicasPage, this, _1, _2);
   server->RegisterPathHandler(
       "/tablet-replication", "Tablet Replication Health",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
+  cb = std::bind(&MasterPathHandlers::HandleLBStatistics, this, _1, _2);
+  server->RegisterPathHandler(
+      "/lb-statistics", "Load balancer Statistics",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
 

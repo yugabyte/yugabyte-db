@@ -22,6 +22,7 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master_fwd.h"
@@ -163,6 +164,52 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalancerIdle();
   },  kDefaultTimeout * 2, "IsLoadBalancerIdle"));
+}
+
+// Tests that load balancer shouldn't run for deleted/deleting tables.
+TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
+  // Delete the table.
+  DeleteTable();
+
+  LOG(INFO) << "Successfully sent Delete RPC.";
+  // Wait for the table to be removed.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    // 1) Should not list it in ListTables.
+    const auto tables = VERIFY_RESULT(client_->ListTables(/* filter */ "",
+                                                /* exclude_ysql */ true));
+    if (master::kNumSystemTables != tables.size()) {
+      return false;
+    }
+
+    // 2) Should respond to GetTableSchema with a NotFound error.
+    client::YBSchema schema;
+    PartitionSchema partition_schema;
+    Status s = client_->GetTableSchema(
+        client::YBTableName(YQL_DATABASE_CQL,
+                            table_name().namespace_name(),
+                            table_name().table_name()),
+        &schema, &partition_schema);
+    if (!s.IsNotFound()) {
+      return false;
+    }
+
+    return true;
+  }, kDefaultTimeout, "HasTableBeenDeleted"));
+
+  LOG(INFO) << "Table deleted successfully.";
+
+  // We should be able to find the deleted table in the list of skipped tables now.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto tables = mini_cluster_->leader_mini_master()->master()->catalog_manager()
+                                      ->load_balancer()->GetAllTablesLoadBalancerSkipped();
+    for (const auto& table : tables) {
+      if (table->name() == table_name().table_name() &&
+          table->namespace_name() == table_name().namespace_name()) {
+        return true;
+      }
+    }
+    return false;
+  }, kDefaultTimeout, "IsLBSkippingDeletedTables"));
 }
 
 } // namespace integration_tests
