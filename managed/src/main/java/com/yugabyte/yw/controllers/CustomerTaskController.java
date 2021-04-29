@@ -29,6 +29,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -40,6 +41,11 @@ public class CustomerTaskController extends AuthenticatedController {
 
   @Inject
   Commissioner commissioner;
+
+  @Inject
+  private RuntimeConfigFactory runtimeConfigFactory;
+
+  static final String MAX_TASKS = "yb.max_tasks";
 
   protected static final int TASK_HISTORY_LIMIT = 6;
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
@@ -69,14 +75,14 @@ public class CustomerTaskController extends AuthenticatedController {
 
     Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().where()
       .eq("customer_uuid", customerUUID)
-      .eq("target_uuid", targetUUID)
       .orderBy("create_time desc");
 
     if (targetUUID != null) {
       customerTaskQuery.where().eq("target_uuid", targetUUID); 
     }
-    customerTaskList = customerTaskQuery.setFirstRow(0)
-      .setMaxRows(2000)
+    
+    customerTaskList = customerTaskQuery.setMaxRows(
+          runtimeConfigFactory.globalRuntimeConf().getInt(MAX_TASKS))
       .orderBy("create_time desc")
       .findPagedList()
       .getList();

@@ -5,11 +5,14 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 
@@ -19,6 +22,9 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+
+import io.ebean.Model;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -57,11 +63,21 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   private Users user;
   private Universe universe;
 
+  @Mock
+  Config mockConfig;
+
+  @Mock
+  SettableRuntimeConfigFactory mockRuntimeConfigFactory;
+
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     universe = createUniverse(customer.getCustomerId());
+    RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+    when(config.getInt("yb.max_tasks"))
+      .thenReturn(2000);
   }
 
   @Test
