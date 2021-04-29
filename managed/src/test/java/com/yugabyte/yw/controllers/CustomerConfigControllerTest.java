@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -128,12 +129,16 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteValidCustomerConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    Alert.create(defaultCustomer.uuid, configUUID, Alert.TargetType.CustomerConfigType,
+        "Error code", "", "");
+
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
-    JsonNode node = Json.parse(contentAsString(result));
     assertOk(result);
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertEquals(0,
+        Alert.getActiveCustomerAlertsByTargetUuid(defaultCustomer.uuid, configUUID).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 

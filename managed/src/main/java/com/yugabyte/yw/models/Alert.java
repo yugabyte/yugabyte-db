@@ -48,7 +48,10 @@ public class Alert extends Model {
     TableType,
 
     @EnumValue("TaskType")
-    TaskType;
+    TaskType,
+
+    @EnumValue("CustomerConfigType")
+    CustomerConfigType;
   }
 
   public enum State {
@@ -176,6 +179,15 @@ public class Alert extends Model {
         .eq("customer_uuid", customerUUID)
         .in("state", State.CREATED, State.ACTIVE)
         .eq("definition_uuid", definitionUUID)
+        .findList();
+  }
+
+  public static List<Alert> getActiveCustomerAlertsByTargetUuid(UUID customerUUID,
+      UUID targetUUID) {
+    return find.query().where()
+        .eq("customer_uuid", customerUUID)
+        .in("state", State.CREATED, State.ACTIVE)
+        .eq("target_uuid", targetUUID)
         .findList();
   }
 

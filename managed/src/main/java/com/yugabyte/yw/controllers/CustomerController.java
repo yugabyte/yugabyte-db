@@ -44,11 +44,17 @@ public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
 
-  @Inject ValidatingFormFactory formFactory;
+  @Inject
+  private ValidatingFormFactory formFactory;
 
-  @Inject MetricQueryHelper metricQueryHelper;
+  @Inject
+  private MetricQueryHelper metricQueryHelper;
 
-  @Inject CloudQueryHelper cloudQueryHelper;
+  @Inject
+  private CloudQueryHelper cloudQueryHelper;
+
+  @Inject
+  private AlertManager alertManager;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
@@ -124,6 +130,7 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
       if (smtpConfig == null && formData.get().smtpData != null) {
+        alertManager.resolveAlerts(customer.uuid, EmailHelper.DEFAULT_CONFIG_UUID, "%");
         CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(formData.get().smtpData));
       } else if (smtpConfig != null && formData.get().smtpData != null) {
         smtpConfig.setData(Json.toJson(formData.get().smtpData));
@@ -131,6 +138,7 @@ public class CustomerController extends AuthenticatedController {
       } // In case we want to reset the smtpData and use the default mailing server.
       else if (request.has("smtpData") && formData.get().smtpData == null) {
         if (smtpConfig != null) {
+          alertManager.resolveAlerts(customer.uuid, smtpConfig.configUUID, "%");
           smtpConfig.delete();
         }
       }
