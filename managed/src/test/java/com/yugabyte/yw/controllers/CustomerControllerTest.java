@@ -31,6 +31,7 @@ import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
@@ -427,8 +428,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
     verify(mockMetricQueryHelper)
       .query(
-        (List<String>) metricKeys.capture(),
-        (Map<String, String>) queryParams.capture(),
+        metricKeys.capture(),
+        queryParams.capture(),
         anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
@@ -462,8 +463,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
     verify(mockMetricQueryHelper)
       .query(
-        (List<String>) metricKeys.capture(),
-        (Map<String, String>) queryParams.capture(),
+        metricKeys.capture(),
+        queryParams.capture(),
         anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
@@ -498,8 +499,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
     verify(mockMetricQueryHelper)
       .query(
-        (List<String>) metricKeys.capture(),
-        (Map<String, String>) queryParams.capture(),
+        metricKeys.capture(),
+        queryParams.capture(),
         anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
@@ -563,8 +564,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         .bodyJson(params));
     verify(mockMetricQueryHelper)
       .query(
-        (List<String>) metricKeys.capture(),
-        (Map<String, String>) queryParams.capture(),
+        metricKeys.capture(),
+        queryParams.capture(),
         anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
@@ -602,8 +603,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         .bodyJson(params));
     verify(mockMetricQueryHelper)
       .query(
-        (List<String>) metricKeys.capture(),
-        (Map<String, String>) queryParams.capture(),
+        metricKeys.capture(),
+        queryParams.capture(),
         anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
@@ -666,8 +667,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         .bodyJson(params));
     verify(mockMetricQueryHelper)
       .query(
-        (List<String>) metricKeys.capture(),
-        (Map<String, String>) queryParams.capture(),
+        metricKeys.capture(),
+        queryParams.capture(),
         anyMap());
 
     assertThat(metricKeys.getValue(), is(notNullValue()));
@@ -710,8 +711,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         .bodyJson(params));
     verify(mockMetricQueryHelper)
       .query(
-        (List<String>) metricKeys.capture(),
-        (Map<String, String>) queryParams.capture(),
+        metricKeys.capture(),
+        queryParams.capture(),
         anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
@@ -744,8 +745,8 @@ public class CustomerControllerTest extends FakeDBApplication {
       "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
     verify(mockMetricQueryHelper)
       .query(
-        (List<String>) metricKeys.capture(),
-        (Map<String, String>) queryParams.capture(),
+        metricKeys.capture(),
+        queryParams.capture(),
         any());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
@@ -784,6 +785,35 @@ public class CustomerControllerTest extends FakeDBApplication {
     responseNode.put("aws", response);
     responseNode.put("gcp", response);
     assertEquals(json, responseNode);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerPUTWithoutSmtpDataResolvesAlerts() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "admin");
+    params.put("name", "Test Customer");
+    params.put("callhomeLevel", "MEDIUM");
+    params.put("smtpData", (String) null);
+
+    CustomerConfig smtpConfig = CustomerConfig.createSmtpConfig(customer.uuid, Json.newObject());
+    Alert.create(customer.uuid, smtpConfig.configUUID, Alert.TargetType.CustomerConfigType,
+        "Error code", "", "");
+
+    Result result = route(
+        fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+
+    assertNull(CustomerConfig.getSmtpConfig(customer.uuid));
+    List<Alert> alerts = Alert.list(customer.uuid, "%", smtpConfig.configUUID);
+    assertEquals(1, alerts.size());
+    assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
     assertAuditEntry(0, customer.uuid);
   }
 }

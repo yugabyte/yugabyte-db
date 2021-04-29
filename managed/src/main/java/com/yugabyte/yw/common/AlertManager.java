@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Alert.State;
@@ -27,6 +28,9 @@ import java.util.stream.Collectors;
 
 @Singleton
 public class AlertManager {
+
+  @VisibleForTesting
+  static final String ALERT_MANAGER_ERROR_CODE = "ALERT_MANAGER_FAILURE";
 
   @Inject
   private EmailHelper emailHelper;
@@ -94,8 +98,12 @@ public class AlertManager {
     try {
       emailHelper.sendEmail(customer, subject, String.join(",", destinations), smtpData,
           Collections.singletonMap("text/plain; charset=\"us-ascii\"", content));
+      resolveAlerts(customer.uuid, smtpData.configUUID, ALERT_MANAGER_ERROR_CODE);
     } catch (MessagingException e) {
-      LOG.error("Error sending email for alert {} in state '{}'", alert.uuid, state, e);
+      String error = String.format("Error sending email for alert %s in state '%s': %s", alert.uuid,
+          state, e.getMessage());
+      LOG.error(error);
+      createAlert(customer, smtpData.configUUID, error);
     }
   }
 
@@ -136,17 +144,24 @@ public class AlertManager {
    * Updates states of all active alerts (according to criteria) to RESOLVED.
    *
    * @param customerUUID
-   * @param universeUUID
+   * @param targetUUID
    * @param errorCode    Error code string (LIKE wildcards allowed)
    */
-  public void resolveAlerts(UUID customerUUID, UUID universeUUID, String errorCode) {
-    List<Alert> activeAlerts = Alert.list(customerUUID, errorCode, universeUUID)
+  public void resolveAlerts(UUID customerUUID, UUID targetUUID, String errorCode) {
+    List<Alert> activeAlerts = Alert.list(customerUUID, errorCode, targetUUID)
         .stream().filter(alert -> alert.state == State.ACTIVE || alert.state == State.CREATED)
         .collect(Collectors.toList());
     LOG.debug("Resetting alerts for '{}', count {}", errorCode, activeAlerts.size());
     for (Alert alert : activeAlerts) {
       alert.setState(State.RESOLVED);
       alert.save();
+    }
+  }
+
+  private void createAlert(Customer c, UUID configUUID, String details) {
+    if (Alert.getActiveCustomerAlertsByTargetUuid(c.uuid, configUUID).size() == 0) {
+      Alert.create(c.uuid, configUUID, Alert.TargetType.CustomerConfigType,
+          ALERT_MANAGER_ERROR_CODE, "Error", details, false, null);
     }
   }
 }

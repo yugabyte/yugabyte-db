@@ -3,11 +3,13 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 import java.util.Collections;
 import java.util.List;
@@ -68,15 +70,10 @@ public class AlertManagerTest extends FakeDBApplication {
         "errorCode", "Warning", ALERT_TEST_MESSAGE);
     alert.sendEmail = true;
 
-    String destination = "to@to.com";
-    SmtpData smtpData = new SmtpData();
-    when(emailHelper.getDestinations(defaultCustomer.uuid))
-        .thenReturn(Collections.singletonList(destination));
-    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(smtpData);
-
+    SmtpData smtpData = configureSmtp();
     am.sendEmail(alert, TEST_STATE);
 
-    verify(emailHelper, times(1)).sendEmail(eq(defaultCustomer), anyString(), eq(destination),
+    verify(emailHelper, times(1)).sendEmail(eq(defaultCustomer), anyString(), anyString(),
         eq(smtpData),
         eq(Collections.singletonMap("text/plain; charset=\"us-ascii\"", expectedContent)));
   }
@@ -116,5 +113,56 @@ public class AlertManagerTest extends FakeDBApplication {
     alerts = Alert.list(defaultCustomer.uuid);
     assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
     assertEquals(Alert.State.RESOLVED, alerts.get(1).state);
+  }
+
+  @Test
+  public void testSendEmail_OwnAlertsReseted() {
+    SmtpData smtpData = configureSmtp();
+    Alert.create(defaultCustomer.uuid, smtpData.configUUID, Alert.TargetType.CustomerConfigType,
+        AlertManager.ALERT_MANAGER_ERROR_CODE, "Warning", ALERT_TEST_MESSAGE);
+
+    Alert alert = Alert.create(defaultCustomer.uuid, UUID.randomUUID(),
+        Alert.TargetType.UniverseType, "errorCode", "Warning", ALERT_TEST_MESSAGE);
+    alert.sendEmail = true;
+
+    List<Alert> alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
+    assertEquals(1, alerts.size());
+    assertEquals(Alert.State.CREATED, alerts.get(0).state);
+
+    am.sendEmail(alert, TEST_STATE);
+
+    alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
+    assertEquals(1, alerts.size());
+    assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
+  }
+
+  @Test
+  public void testSendEmail_OwnAlertGenerated() throws MessagingException {
+    SmtpData smtpData = configureSmtp();
+    Alert alert = Alert.create(defaultCustomer.uuid, UUID.randomUUID(),
+        Alert.TargetType.UniverseType, "errorCode", "Warning", ALERT_TEST_MESSAGE);
+    alert.sendEmail = true;
+
+    List<Alert> alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
+    assertEquals(0, alerts.size());
+
+    // EmailHelper.sendEmail should fail.
+    doThrow(new MessagingException("test")).when(emailHelper).sendEmail(eq(defaultCustomer),
+        anyString(), anyString(), eq(smtpData), any());
+
+    am.sendEmail(alert, TEST_STATE);
+
+    alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
+    assertEquals(1, alerts.size());
+    assertEquals(Alert.State.CREATED, alerts.get(0).state);
+  }
+
+  private SmtpData configureSmtp() {
+    SmtpData smtpData = new SmtpData();
+    smtpData.configUUID = UUID.randomUUID();
+    when(emailHelper.getDestinations(defaultCustomer.uuid))
+        .thenReturn(Collections.singletonList("to@to.com"));
+    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(smtpData);
+    return smtpData;
   }
 }

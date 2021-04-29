@@ -14,10 +14,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import java.util.*;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.when;
+
+import java.util.List;
+import java.util.UUID;
 
 @RunWith(JUnitParamsRunner.class)
 public class AlertTest extends FakeDBApplication {
@@ -75,7 +76,7 @@ public class AlertTest extends FakeDBApplication {
 
   @Test
   @Parameters(method = "parametersToTestAlertsTypes")
-  public void testAlertsTypes(Alert.TargetType alertType, UUID uuid, Class claz) {
+  public void testAlertsTypes(Alert.TargetType alertType, UUID uuid, Class<?> claz) {
     Alert alert = Alert.create(cust1.uuid, uuid, alertType,
         TEST_ALERT_CODE, "Warning", "Testing alert.");
     assertNotNull(alert.uuid);
@@ -85,6 +86,7 @@ public class AlertTest extends FakeDBApplication {
     assertEquals("Testing alert.", alert.message);
   }
 
+  @SuppressWarnings("unused")
   private Object[] parametersToTestAlertsTypes() {
     // @formatter:off
     return new Object[] {
@@ -157,5 +159,27 @@ public class AlertTest extends FakeDBApplication {
     alert2.save();
 
     assertEquals(2, Alert.getActiveCustomerAlerts(cust1.uuid, definition.uuid).size());
+  }
+
+  @Test
+  public void testGetActiveCustomerAlertsByTargetUuid() {
+    UUID targetUUID = UUID.randomUUID();
+    Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
+        "Warning", "Testing alert 1.");
+
+    Alert alert2 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
+        "Warning", "Testing alert 2.");
+    alert2.state = State.ACTIVE;
+    alert2.save();
+
+    Alert alert3 = Alert.create(cust1.uuid, UUID.randomUUID(), TargetType.UniverseType,
+        TEST_ALERT_CODE, "Warning", "Testing alert 3.");
+    alert3.state = State.ACTIVE;
+    alert3.save();
+
+    List<Alert> result = Alert.getActiveCustomerAlertsByTargetUuid(cust1.uuid, targetUUID);
+
+    assertEquals(2, result.size());
+    assertFalse(result.contains(alert3));
   }
 }
