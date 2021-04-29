@@ -1115,7 +1115,7 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
   ASSERT_OK(WriteRow(session, 0, "value"));
 
   session->SetTimeout(10s);
-  std::vector<std::future<Status>> futures;
+  std::vector<std::future<FlushStatus>> futures;
   int key;
   for (key = 1; key <= kOldLeaderWriteKeys; ++key) {
     InsertRow(session, key, std::to_string(key));
@@ -1165,7 +1165,7 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
 
   // Wait all writes to complete.
   for (auto& future : futures) {
-    WARN_NOT_OK(future.get(), "Write failed");
+    WARN_NOT_OK(future.get().status, "Write failed");
   }
 
   thread_holder.Stop();
