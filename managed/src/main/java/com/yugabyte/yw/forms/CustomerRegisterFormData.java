@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 
 import play.data.validation.Constraints;
 import java.util.Map;
+import java.util.UUID;
 
 
 /**
@@ -118,6 +119,8 @@ public class CustomerRegisterFormData {
   }
 
   static public class SmtpData {
+    public UUID configUUID = null;
+
     public String smtpServer = null;
 
     public int smtpPort = -1;
@@ -136,6 +139,7 @@ public class CustomerRegisterFormData {
     public int hashCode() {
       final int prime = 31;
       int result = 1;
+      result = prime * result + ((configUUID == null) ? 0 : configUUID.hashCode());
       result = prime * result + ((emailFrom == null) ? 0 : emailFrom.hashCode());
       result = prime * result + ((smtpPassword == null) ? 0 : smtpPassword.hashCode());
       result = prime * result + smtpPort;
@@ -155,6 +159,13 @@ public class CustomerRegisterFormData {
         return false;
       }
       SmtpData other = (SmtpData) obj;
+      if (configUUID == null) {
+        if (other.configUUID != null) {
+          return false;
+        }
+      } else if (!configUUID.equals(other.configUUID)) {
+        return false;
+      }
       if (emailFrom == null) {
         if (other.emailFrom != null) {
           return false;

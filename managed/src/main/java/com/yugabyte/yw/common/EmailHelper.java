@@ -42,6 +42,8 @@ public class EmailHelper {
 
   public static final Logger LOG = LoggerFactory.getLogger(EmailHelper.class);
 
+  public static final UUID DEFAULT_CONFIG_UUID = new UUID(0, 0);
+
   @Inject
   private RuntimeConfigFactory configFactory;
 
@@ -134,9 +136,26 @@ public class EmailHelper {
       if (smtpData.useSSL) {
         props.put("mail.smtp.ssl.trust", smtpServer);
       }
-      if (runtimeConfig.getBoolean("yb.health.debug_email")) {
+
+      boolean isDebugMode = runtimeConfig.getBoolean("yb.health.debug_email");
+      if (isDebugMode) {
         props.put("mail.debug", "true");
       }
+
+      // Adding timeout settings.
+      String connectionTimeout = String
+          .valueOf(runtimeConfig.getInt("yb.health.smtp_connection_timeout_ms"));
+      props.put(smtpData.useSSL ? "mail.smtps.connectiontimeout" : "mail.smtp.connectiontimeout",
+          connectionTimeout);
+
+      String timeout = String.valueOf(runtimeConfig.getInt("yb.health.smtp_timeout_ms"));
+      props.put(smtpData.useSSL ? "mail.smtps.timeout" : "mail.smtp.timeout", timeout);
+
+      if (isDebugMode) {
+        LOG.info("SMTP connection timeout: " + connectionTimeout);
+        LOG.info("SMTP timeout: " + timeout);
+      }
+
     } catch (Exception e) {
       LOG.error("Error while converting smtpData to Properties", e);
       throw new IllegalArgumentException("SmtpData is not correctly filled.", e);
@@ -215,9 +234,11 @@ public class EmailHelper {
     SmtpData smtpData;
     if (smtpConfig != null) {
       smtpData = Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
+      smtpData.configUUID = smtpConfig.configUUID;
     } else {
       Config runtimeConfig = configFactory.forCustomer(customer);
       smtpData = new SmtpData();
+      smtpData.configUUID = DEFAULT_CONFIG_UUID;
       smtpData.smtpUsername = runtimeConfig.getString("yb.health.ses_email_username");
       smtpData.smtpPassword = runtimeConfig.getString("yb.health.ses_email_password");
       smtpData.useSSL = runtimeConfig.getBoolean("yb.health.default_ssl");

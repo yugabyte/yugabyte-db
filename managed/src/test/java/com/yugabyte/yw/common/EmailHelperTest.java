@@ -63,6 +63,10 @@ public class EmailHelperTest extends FakeDBApplication {
 
   private static final int EMAIL_SMTP_PORT_SSL = 465;
 
+  private static final int DEFAULT_SMTP_CONNECTION_TIMEOUT = 1000;
+
+  private static final int DEFAULT_SMTP_TIMEOUT = 2000;
+
   @Rule
   public MockitoRule rule = MockitoJUnit.rule();
 
@@ -266,5 +270,39 @@ public class EmailHelperTest extends FakeDBApplication {
     Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
     assertFalse(props.contains("mail.smtp.user"));
     assertFalse(props.contains("mail.smtp.auth"));
+  }
+
+  @Test
+  public void testDefaultTimeoutsNotSSL() {
+    when(mockCustomerConfig.getInt("yb.health.smtp_connection_timeout_ms"))
+        .thenReturn(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1);
+    when(mockCustomerConfig.getInt("yb.health.smtp_timeout_ms"))
+        .thenReturn(DEFAULT_SMTP_TIMEOUT + 1);
+
+    SmtpData smtpData = EmailFixtures.createSmtpData();
+    smtpData.useSSL = false;
+    smtpData.smtpUsername = null;
+    Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+
+    assertEquals(String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
+        props.get("mail.smtp.connectiontimeout"));
+    assertEquals(String.valueOf(DEFAULT_SMTP_TIMEOUT + 1), props.get("mail.smtp.timeout"));
+  }
+
+  @Test
+  public void testDefaultTimeoutsWithSSL() {
+    when(mockCustomerConfig.getInt("yb.health.smtp_connection_timeout_ms"))
+        .thenReturn(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1);
+    when(mockCustomerConfig.getInt("yb.health.smtp_timeout_ms"))
+        .thenReturn(DEFAULT_SMTP_TIMEOUT + 1);
+
+    SmtpData smtpData = EmailFixtures.createSmtpData();
+    smtpData.useSSL = true;
+    smtpData.smtpUsername = null;
+    Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+
+    assertEquals(String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
+        props.get("mail.smtps.connectiontimeout"));
+    assertEquals(String.valueOf(DEFAULT_SMTP_TIMEOUT + 1), props.get("mail.smtps.timeout"));
   }
 }
