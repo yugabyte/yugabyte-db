@@ -3710,8 +3710,11 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
 
   // Lookup the truncated table.
   TRACE("Looking up table $0", req->table_id());
-  std::lock_guard<LockType> l_map(lock_);
-  scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, req->table_id());
+  scoped_refptr<TableInfo> table;
+  {
+    std::lock_guard<LockType> l_map(lock_);
+    table = FindPtrOrNull(*table_ids_map_, req->table_id());
+  }
 
   if (table == nullptr) {
     Status s = STATUS(NotFound, "The object does not exist: table with id", req->table_id());
@@ -4148,8 +4151,11 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 
   // Lookup the deleted table.
   TRACE("Looking up table $0", req->table_id());
-  std::lock_guard<LockType> l_map(lock_);
-  scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, req->table_id());
+  scoped_refptr<TableInfo> table;
+  {
+    std::lock_guard<LockType> l_map(lock_);
+    table = FindPtrOrNull(*table_ids_map_, req->table_id());
+  }
 
   if (table == nullptr) {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
@@ -7792,10 +7798,12 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
         if (!lock) {
           lock = tablet->table()->LockForWrite(); // table.lock
         }
-        if (tablet->table()->RemoveTablet(
-          tablet->metadata().dirty().pb.partition().partition_key_start())) {
-          VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
-            "table " << lock->data().name();
+        if (tablet->metadata().is_dirty()) {
+          if (tablet->table()->RemoveTablet(
+            tablet->metadata().dirty().pb.partition().partition_key_start())) {
+            VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
+              "table " << lock->data().name();
+          }
         }
       }
     }
