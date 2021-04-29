@@ -1160,14 +1160,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetAndUpdateYsqlTablespaceInfo();
 
   // Starts the periodic job to update tablespace info if it is not running.
-  void StartRefreshYSQLTablePlacementInfo();
+  void StartTablespaceBgTaskIfStopped();
 
   // Background task that refreshes the in-memory state for YSQL tables with their associated
   // tablespace info.
-  void RefreshYSQLTablePlacementInfo();
+  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped()
+  // above.
+  void RefreshTablespaceInfoPeriodically();
 
-  // Helper function to refresh tablespace_placement_map_ and table_to_tablespace_map_.
-  void DoRefreshYSQLTablePlacementInfo();
+  // Helper function to schedule the next iteration of the tablespace info task.
+  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
+
+  // Helper function to refresh the tablespace info.
+  void DoRefreshTablespaceInfo();
 
   // Report metrics.
   void ReportMetrics();
@@ -1428,7 +1433,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map_ GUARDED_BY(tablespace_lock_);
 
   // Whether the periodic job to update tablespace info is running.
-  std::atomic<bool> tablespace_info_task_running_;
+  std::atomic<bool> tablespace_bg_task_running_;
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);
