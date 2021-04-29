@@ -57,27 +57,31 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.InjectMocks;
 
+@RunWith(MockitoJUnitRunner.class)
 public class CustomerTaskControllerTest extends FakeDBApplication {
   private Customer customer;
   private Users user;
   private Universe universe;
 
   @Mock
-  Config mockConfig;
+  private RuntimeConfig<Model> config;
 
   @Mock
   SettableRuntimeConfigFactory mockRuntimeConfigFactory;
+
+  @InjectMocks
+  private CustomerTaskController controller;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     universe = createUniverse(customer.getCustomerId());
-    RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
-    when(config.getInt("yb.max_tasks"))
-      .thenReturn(2000);
   }
 
   @Test
@@ -286,16 +290,17 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskHistoryLimit2000() {
     String authToken = user.createAuthToken();
     Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
+    when(config.getInt(CustomerTaskController.MAX_TASKS))
+      .thenReturn(2004);
     IntStream.range(0, 3000).forEach(i -> createTaskWithStatus(
         universe.universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0));
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
-        customer.uuid +  "/universes/" + universe.universeUUID + "/tasks", authToken);
+    Result result = controller.list(customer.uuid);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isObject());
     JsonNode universeTasks = json.get(universe.universeUUID.toString());
     assertTrue(universeTasks.isArray());
-    assertEquals(2000, universeTasks.size());
+    assertEquals(2004, universeTasks.size());
     assertAuditEntry(0, customer.uuid);
   }
 
