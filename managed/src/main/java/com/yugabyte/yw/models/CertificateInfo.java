@@ -33,7 +33,7 @@ import java.util.UUID;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.*;
 @Entity
 public class CertificateInfo extends Model {
 
@@ -97,7 +97,9 @@ public class CertificateInfo extends Model {
     }
     return null;
   }
-  public void setCustomCertInfo(CertificateParams.CustomCertInfo certInfo) {
+  public void setCustomCertInfo(CertificateParams.CustomCertInfo certInfo,
+      UUID certUUID, UUID cudtomerUUID) {
+    this.checkEditable(certUUID, customerUUID);
     this.customCertInfo = Json.toJson(certInfo);
     this.save();
   }
@@ -145,6 +147,17 @@ public class CertificateInfo extends Model {
 
   public static CertificateInfo get(UUID certUUID) {
     return find.byId(certUUID);
+  }
+
+  public static CertificateInfo getOrBadRequest(UUID certUUID, UUID customerUUID) {
+    CertificateInfo certificateInfo = get(certUUID);
+    if (certificateInfo == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Cert ID: " + certUUID);
+    }
+    if (!certificateInfo.customerUUID.equals(customerUUID)) {
+      throw new YWServiceException(BAD_REQUEST, "Certificate doesn't belong to customer");
+    }
+    return certificateInfo;
   }
 
   public static CertificateInfo getOrBadRequest(UUID certUUID) {
@@ -198,5 +211,30 @@ public class CertificateInfo extends Model {
   public ArrayNode getUniverseDetails() {
     Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
     return Util.getUniverseDetails(universes);
+  }
+
+  public static void delete(UUID certUUID, UUID customerUUID) {
+    CertificateInfo certificate = CertificateInfo.getOrBadRequest(certUUID, customerUUID);
+    if (!certificate.getInUse()) {
+      if (certificate.delete()) {
+        LOG.info("Successfully deleted the certificate:" + certUUID);
+      }
+      else {
+        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
+      }
+    }
+    else {
+      throw new YWServiceException(BAD_REQUEST, "The certificate is in use.");
+    }
+  }
+
+  private void checkEditable(UUID certUUID, UUID customerUUID) {
+    CertificateInfo certInfo = getOrBadRequest(certUUID, customerUUID);
+    if (certInfo.certType == CertificateInfo.Type.SelfSigned) {
+      throw new YWServiceException(BAD_REQUEST, "Cannot edit self-signed cert.");
+    }
+    if (certInfo.customCertInfo != null) {
+      throw new YWServiceException(BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
+    }
   }
 }
