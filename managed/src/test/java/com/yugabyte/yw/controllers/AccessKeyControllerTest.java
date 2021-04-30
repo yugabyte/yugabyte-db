@@ -282,7 +282,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateAccessKeyWithKeyFile() {
+  public void testCreateAccessKeyWithKeyFile() throws IOException {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
@@ -309,7 +309,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateAccessKeyWithKeyString() {
+  public void testCreateAccessKeyWithKeyString() throws IOException {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
@@ -338,10 +338,10 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAccessKeyWithException() {
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1", SSH_PORT, true, false))
-        .thenThrow(new RuntimeException("Something went wrong!!"));
+        .thenThrow(new YWServiceException(INTERNAL_SERVER_ERROR, "Something went wrong!!"));
     Result result = assertThrows(YWServiceException.class,
         () -> createAccessKey(defaultProvider.uuid, "key-code-1", false, false)).getResult();
-    assertErrorResponse(result, "Unable to create access key: key-code-1");
+    assertErrorResponse(result, "Something went wrong!!");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -367,7 +367,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     AccessKey accessKey = AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
     when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1", SSH_PORT, false, false))
         .thenReturn(accessKey);
-    doThrow(new RuntimeException("foobar")).when(mockTemplateManager)
+    doThrow(new YWServiceException(INTERNAL_SERVER_ERROR,
+        "Unable to create access key: key-code-1")).when(mockTemplateManager)
       .createProvisionTemplate(accessKey, false, false, true, 9300, "prometheus");
     Result result = assertThrows(YWServiceException.class,
         () -> createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion,

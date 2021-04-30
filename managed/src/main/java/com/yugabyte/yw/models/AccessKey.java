@@ -19,7 +19,7 @@ import javax.persistence.Entity;
 import java.util.List;
 import java.util.UUID;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.*;
 
 @Entity
 public class AccessKey extends Model {

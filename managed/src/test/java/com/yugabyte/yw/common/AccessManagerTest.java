@@ -87,7 +87,8 @@ import static org.mockito.Mockito.when;
     FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
   }
 
-  private JsonNode uploadKeyCommand(UUID regionUUID, String keyCode, boolean mimicError) {
+  private JsonNode uploadKeyCommand(UUID regionUUID, String keyCode, boolean mimicError) 
+      throws IOException {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
       response.message = "{\"error\": \"Unknown Error\"}";
@@ -305,7 +306,7 @@ import static org.mockito.Mockito.when;
   }
 
   @Test
-  public void testManageUploadKeyFileError() {
+  public void testManageUploadKeyFileError() throws IOException {
     try {
       uploadKeyCommand(defaultRegion.uuid, TEST_KEY_CODE, true);
     } catch (RuntimeException re) {
@@ -315,16 +316,16 @@ import static org.mockito.Mockito.when;
   }
 
   @Test
-  public void testManageUploadKeyDuplicateKeyCode_PureKeyCode() {
+  public void testManageUploadKeyDuplicateKeyCode_PureKeyCode() throws IOException {
     doTestManageUploadKeyDuplicateKeyCode(TEST_KEY_CODE);
   }
 
   @Test
-  public void testManageUploadKeyDuplicateKeyCode_KeyCodeWithPath() {
+  public void testManageUploadKeyDuplicateKeyCode_KeyCodeWithPath() throws IOException {
     doTestManageUploadKeyDuplicateKeyCode(TEST_KEY_CODE_WITH_PATH);
   }
 
-  private void doTestManageUploadKeyDuplicateKeyCode(String keyCode) {
+  private void doTestManageUploadKeyDuplicateKeyCode(String keyCode) throws IOException {
     AccessKey.KeyInfo keyInfo =  new AccessKey.KeyInfo();
     keyInfo.privateKey = TMP_KEYS_PATH + "/private.key";
     AccessKey.create(defaultProvider.uuid, TEST_KEY_CODE, keyInfo);

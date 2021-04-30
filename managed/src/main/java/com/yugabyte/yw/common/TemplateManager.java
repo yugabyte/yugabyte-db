@@ -32,13 +32,15 @@ public class TemplateManager extends DevopsBase {
   private String getOrCreateProvisionFilePath(UUID providerUUID) {
     File provisionBasePathName = new File(appConfig.getString("yb.storage.path"), "/provision");
     if (!provisionBasePathName.exists() && !provisionBasePathName.mkdirs()) {
-      throw new RuntimeException("Provision path " + provisionBasePathName.getAbsolutePath() + " doesn't exists.");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Provision path " + 
+          provisionBasePathName.getAbsolutePath() + " doesn't exists.");
     }
     File provisionFilePath = new File(provisionBasePathName.getAbsoluteFile(), providerUUID.toString());
     if (provisionFilePath.isDirectory() || provisionFilePath.mkdirs()) {
       return provisionFilePath.getAbsolutePath();
     }
-    throw new RuntimeException("Unable to create provision file path " + provisionFilePath.getAbsolutePath());
+    throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to create provision file path " +
+        provisionFilePath.getAbsolutePath());
   }
 
   public void createProvisionTemplate(
