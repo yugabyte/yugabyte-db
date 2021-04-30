@@ -88,14 +88,26 @@ export default class CreateBackup extends Component {
       } else if (this.state.backupType === 'yedis') {
         backupType = YEDIS_TABLE_TYPE;
       }
+
+      let frequency = null;
+      if(!isEmptyString(values.schedulingFrequency)) {
+        if(values?.schedulingFrequencyUnit?.value === 'Hours') {
+          frequency =
+            values?.schedulingFrequency % 1
+              ? (values?.schedulingFrequency % 1) * 3600 * 1000 +
+                Math.floor(values?.schedulingFrequency) * 3600 * 1000
+              : values?.schedulingFrequency * 3600 * 1000;
+        } else if ( values?.schedulingFrequencyUnit?.value === 'Minutes') {
+          frequency = values?.schedulingFrequency * 60 * 1000
+        }
+        frequency = Math.round(frequency)
+      }
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
         sse: values.enableSSE,
         backupType: backupType,
         transactionalBackup: values.transactionalBackup,
-        schedulingFrequency: isEmptyString(values.schedulingFrequency)
-          ? null
-          : values.schedulingFrequency,
+        schedulingFrequency: frequency,
         cronExpression: isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
         parallelism: values.parallelism,
         timeBeforeDelete: values.timeBeforeDelete * 24 * 60 * 60 * 1000,
@@ -148,6 +160,9 @@ export default class CreateBackup extends Component {
 
     if (values.schedulingFrequency && !_.isNumber(values.schedulingFrequency)) {
       errors.schedulingFrequency = 'Frequency must be a number';
+    }
+    if (!values.schedulingFrequencyUnit) {
+      errors.schedulingFrequencyUnit = 'Please select a valid frequency unit'
     }
     if (values.cronExpression && !cron.isValidCron(values.cronExpression)) {
       errors.cronExpression = 'Does not looks like a valid cron expression';
@@ -282,7 +297,10 @@ export default class CreateBackup extends Component {
         <span>{props.data.label}</span>
       </components.SingleValue>
     );
-
+    const schedulingFrequencyUnitOptions = [
+      { value: 'Hours', label: 'Hours' },
+      { value: 'Minutes', label: 'Minutes' }
+    ];
     return (
       <div className="universe-apps-modal">
         <YBModalForm
@@ -418,7 +436,15 @@ export default class CreateBackup extends Component {
                           readOnly={isSchedulingFrequencyReadOnly}
                           type={'number'}
                           label={'Backup frequency'}
-                          placeholder={'Interval in ms'}
+                          placeholder={'Interval'}
+                        />
+                      </Col>
+                      <Col xs={6}>
+                        <Field
+                          name="schedulingFrequencyUnit"
+                          component={YBFormSelect}
+                          label={'Frequency Unit'}
+                          options={schedulingFrequencyUnitOptions}
                         />
                       </Col>
                     </Row>
