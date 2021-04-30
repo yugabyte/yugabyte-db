@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 @Singleton
 public class TemplateManager extends DevopsBase {
   private static final String COMMAND_TYPE = "instance";
@@ -97,7 +99,7 @@ public class TemplateManager extends DevopsBase {
       accessKey.setKeyInfo(keyInfo);
       accessKey.save();
     } else {
-      throw new RuntimeException(Json.stringify(result));
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.stringify(result));
     }
   }
 

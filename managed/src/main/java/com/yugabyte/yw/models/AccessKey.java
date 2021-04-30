@@ -19,7 +19,7 @@ import javax.persistence.Entity;
 import java.util.List;
 import java.util.UUID;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 @Entity
 public class AccessKey extends Model {
@@ -62,6 +62,14 @@ public class AccessKey extends Model {
     accessKey.setKeyInfo(keyInfo);
     accessKey.save();
     return accessKey;
+  }
+
+  public boolean delete() {
+    if(!super.delete()) {
+      throw new YWServiceException(INTERNAL_SERVER_ERROR,
+          "Delete unsuccessfull for : " + this.idKey);
+    }
+    return true;
   }
 
   private static final Finder<AccessKeyId, AccessKey> find =
