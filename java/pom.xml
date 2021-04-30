@@ -136,6 +136,7 @@
     <module>yb-jedis-tests</module>
     <module>yb-cdc</module>
     <module>yb-multiapi</module>
+    <module>yb-sample</module>
   </modules>
 
   <build>
@@ -359,6 +360,11 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-pgsql</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-sample</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
