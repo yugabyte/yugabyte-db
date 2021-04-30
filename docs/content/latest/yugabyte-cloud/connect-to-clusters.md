@@ -147,7 +147,7 @@ To see the host, port, username, and password required to connect:
 For detailed steps for configuring popular third party tools, see [Third party tools](../../tools/). In that section, configuration steps
 are included for the following tools:
 
-- [DBeaver](../../tools/dbeaver)
+- [DBeaver](../../tools/dbeaver-ysql)
 - [DbSchema](../../tools/dbschema)
 - [pgAdmin](../../tools/pgadmin)
 - [SQL Workbench/J](../../tools/sql-workbench)

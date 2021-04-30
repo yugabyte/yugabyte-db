@@ -3,6 +3,8 @@ title: Using DBeaver with YugabyteDB YSQL
 headerTitle: Using DBeaver with YSQL
 linkTitle: DBeaver
 description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
+aliases:
+- /latest/tools/dbeaver
 menu:
   latest:
     identifier: dbeaver-ysql
