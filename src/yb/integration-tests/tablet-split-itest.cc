@@ -97,20 +97,7 @@ Result<size_t> SelectRowsCount(
       session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
       *req->mutable_paging_state() = std::move(paging_state);
     }
-    Status s;
-    RETURN_NOT_OK(WaitFor([&] {
-      s = session->ApplyAndFlush(op);
-      if (s.ok()) {
-        return true;
-      }
-      for (auto& error : session->GetAndClearPendingErrors()) {
-        if (error->status().IsTryAgain()) {
-          return false;
-        }
-      }
-      return true;
-    }, 15s * kTimeMultiplier, "Waiting for session flush"));
-    RETURN_NOT_OK(s);
+    RETURN_NOT_OK(session->ApplyAndFlush(op));
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     row_count += rowblock->row_count();
     if (!op->response().has_paging_state()) {
@@ -1183,8 +1170,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
       const auto tablet = peer->shared_tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
       tablet->ForceRocksDBCompactInTest();
-      scoped_refptr<master::TableInfo> table_info;
-      ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
+      auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
 
       expect_split = table_info->NumTablets() < FLAGS_tablet_split_limit_per_table;
 
@@ -1211,8 +1197,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
     return !s.IsTryAgain();
   }, 60s * kTimeMultiplier, "Waiting for successful write"));
 
-  scoped_refptr<master::TableInfo> table_info;
-  ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
+  auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
   ASSERT_EQ(table_info->NumTablets(), FLAGS_tablet_split_limit_per_table);
 }
 
@@ -1328,6 +1313,13 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
     return tablet_ids;
   }
 
+  CHECKED_STATUS WaitForTablets(int num_tablets, int tserver_idx) {
+    return WaitFor([&]() -> Result<bool> {
+      auto res = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
+      return res.size() == num_tablets;
+    }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets));
+  }
+
   CHECKED_STATUS WaitForTablets(int num_tablets) {
     return WaitFor([&]() -> Result<bool> {
       auto res = VERIFY_RESULT(GetTestTableTabletIds());
@@ -1358,6 +1350,109 @@ TEST_F(TabletSplitExternalMiniClusterITest, Simple) {
   auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
   CHECK_OK(SplitTablet(tablet_id));
   ASSERT_OK(WaitForTablets(3));
+}
+
+TEST_F(TabletSplitExternalMiniClusterITest, CrashesAfterChildLogCopy) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("unresponsive_ts_rpc_retry_limit", "0"));
+
+  CreateSingleTablet();
+  CHECK_OK(WriteRows());
+  const auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
+
+  // We will fault one of the non-leader servers after it performs a WAL Log copy from parent to
+  // the first child, but before it can mark the child as TABLET_DATA_READY.
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  const auto faulted_follower_idx = (leader_idx + 2) % 3;
+  const auto non_faulted_follower_idx = (leader_idx + 1) % 3;
+
+  auto faulted_follower = cluster_->tablet_server(faulted_follower_idx);
+  CHECK_OK(cluster_->SetFlag(
+      faulted_follower, "TEST_fault_crash_in_split_after_log_copied", "1.0"));
+
+  CHECK_OK(SplitTablet(tablet_id));
+  CHECK_OK(cluster_->WaitForTSToCrash(faulted_follower));
+
+  CHECK_OK(faulted_follower->Restart());
+
+  ASSERT_OK(cluster_->WaitForTabletsRunning(faulted_follower, 20s * kTimeMultiplier));
+  ASSERT_OK(WaitForTablets(3));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows().ok();
+  }, 20s * kTimeMultiplier, "Write rows after faulted follower resurrection."));
+
+  auto non_faulted_follower = cluster_->tablet_server(non_faulted_follower_idx);
+  non_faulted_follower->Shutdown();
+  CHECK_OK(cluster_->WaitForTSToCrash(non_faulted_follower));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows().ok();
+  }, 20s * kTimeMultiplier, "Write rows after requiring bootstraped node consensus."));
+
+  CHECK_OK(non_faulted_follower->Restart());
+}
+
+TEST_F(TabletSplitExternalMiniClusterITest, RemoteBootstrapsFromNodeWithUncommittedSplitOp) {
+  // If a new tablet is created and split with one node completely uninvolved, then when that node
+  // rejoins it will have to do a remote bootstrap.
+
+  const auto server_to_bootstrap_idx = 0;
+  std::vector<int> other_servers;
+  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (i != server_to_bootstrap_idx) {
+      other_servers.push_back(i);
+    }
+  }
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("unresponsive_ts_rpc_retry_limit", "0"));
+
+  auto server_to_bootstrap = cluster_->tablet_server(server_to_bootstrap_idx);
+  server_to_bootstrap->Shutdown();
+  CHECK_OK(cluster_->WaitForTSToCrash(server_to_bootstrap));
+
+  CreateSingleTablet();
+  CHECK_OK(WriteRows());
+
+  const auto other_server_idx = *other_servers.begin();
+  const auto tablet_id = CHECK_RESULT(GetOnlyTabletId(other_server_idx));
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  const auto server_to_kill_idx = 3 - leader_idx - server_to_bootstrap_idx;
+  auto server_to_kill = cluster_->tablet_server(server_to_kill_idx);
+
+  auto leader = cluster_->tablet_server(leader_idx);
+  CHECK_OK(cluster_->SetFlag(
+      server_to_kill, "TEST_fault_crash_in_split_before_log_flushed", "1.0"));
+  CHECK_OK(cluster_->SetFlag(leader, "TEST_fault_crash_in_split_before_log_flushed", "1.0"));
+  CHECK_OK(SplitTablet(tablet_id));
+
+  // The leader is guaranteed to attempt to apply the split operation and crash.
+  CHECK_OK(cluster_->WaitForTSToCrash(leader));
+  // The other follower may or may not attempt to apply the split operation. We shut it down here so
+  // that it cannot be used for remote bootstrap.
+  server_to_kill->Shutdown();
+
+  CHECK_OK(leader->Restart());
+  CHECK_OK(server_to_bootstrap->Restart());
+
+  ASSERT_OK(cluster_->WaitForTabletsRunning(leader, 20s * kTimeMultiplier));
+  ASSERT_OK(cluster_->WaitForTabletsRunning(server_to_bootstrap, 20s * kTimeMultiplier));
+  CHECK_OK(server_to_kill->Restart());
+  ASSERT_OK(WaitForTablets(3, server_to_bootstrap_idx));
+  ASSERT_OK(WaitForTablets(3, leader_idx));
+  ASSERT_OK(WaitForTablets(3, server_to_kill_idx));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows().ok();
+  }, 20s * kTimeMultiplier, "Write rows after split."));
+
+  server_to_kill->Shutdown();
+  CHECK_OK(cluster_->WaitForTSToCrash(server_to_kill));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows().ok();
+  }, 20s * kTimeMultiplier, "Write rows after requiring bootstraped node consensus."));
+
+  CHECK_OK(server_to_kill->Restart());
 }
 
 namespace {

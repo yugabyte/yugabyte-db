@@ -759,12 +759,12 @@ class YBBackup:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + metadata[0] + '\n' +
                                      'secret_key = ' + metadata[1] + '\n' +
-                                     'security_token = ' + metadata[2] + '\n')
+                                     'access_token = ' + metadata[2] + '\n')
                     else:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + '\n' +
                                      'secret_key = ' + '\n' +
-                                     'security_token = ' + '\n')
+                                     'access_token = ' + '\n')
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 host_base = os.getenv('AWS_HOST_BASE')
                 if host_base:
@@ -1029,18 +1029,16 @@ class YBBackup:
                             if not update_table_list:
                                 break
                 elif update_table_list:
-                    if line[0] == ' ':
-                        loaded_json = json.loads(line)
-                        object_type = loaded_json['type']
-                        if object_type == 'NAMESPACE':
-                            if loaded_json['data']['database_type'] == 'YQL_DATABASE_PGSQL':
-                                snapshot_keyspaces.append('ysql.' + loaded_json['data']['name'])
-                            else:
-                                snapshot_keyspaces.append(loaded_json['data']['name'])
-                        elif object_type == 'TABLE':
-                            snapshot_tables.append(loaded_json['data']['name'])
-                    else:
-                        break  # Break search on the next snapshot id/state line.
+                    if line[0] != ' ':
+                        break
+                    loaded_json = json.loads(line)
+                    object_type = loaded_json['type']
+                    data = loaded_json['data']
+                    if object_type == 'TABLE':
+                        keyspace_prefix = 'ysql.' if data['table_type'] == 'PGSQL_TABLE_TYPE' \
+                                              else ''
+                        snapshot_keyspaces.append(keyspace_prefix + data['namespace_name'])
+                        snapshot_tables.append(data['name'])
 
             if not snapshot_done:
                 logging.info('Waiting for snapshot %s to complete...' % (op))

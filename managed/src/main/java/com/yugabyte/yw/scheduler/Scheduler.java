@@ -11,6 +11,8 @@
 
 package com.yugabyte.yw.scheduler;
 
+import com.google.common.annotations.VisibleForTesting;
+
 import akka.actor.ActorSystem;
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
@@ -80,7 +82,8 @@ public class Scheduler {
   /**
    * Iterates through all the schedule entries and runs the tasks that are due to be scheduled.
    */
-  private void scheduleRunner() {
+  @VisibleForTesting
+  void scheduleRunner() {
     if (HighAvailabilityConfig.isFollower()) {
       LOG.debug("Skipping scheduler for follower platform");
       return;
@@ -156,7 +159,6 @@ public class Scheduler {
             }
           }
         }
-
         if (runTask) {
           if (taskType == TaskType.BackupUniverse) {
             this.runBackupTask(schedule);
@@ -182,10 +184,8 @@ public class Scheduler {
     JsonNode params = schedule.getTaskParams();
     BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
     taskParams.scheduleUUID = schedule.scheduleUUID;
-    Universe universe;
-    try {
-      universe = Universe.get(taskParams.universeUUID);
-    } catch (Exception e) {
+    Universe universe = Universe.maybeGet(taskParams.universeUUID).orElse(null);
+    if (universe == null) {
       schedule.stopSchedule();
       return;
     }
@@ -200,16 +200,16 @@ public class Scheduler {
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
-      taskParams.tableUUID, taskParams.tableName, taskUUID);
+      taskParams.tableUUID, taskParams.getTableName(), taskUUID);
     backup.setTaskUUID(taskUUID);
     CustomerTask.create(customer,
       taskParams.universeUUID,
       taskUUID,
       CustomerTask.TargetType.Backup,
       CustomerTask.TaskType.Create,
-      taskParams.tableName);
+      taskParams.getTableName());
     LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-      taskParams.tableUUID, taskParams.keyspace, taskParams.tableName);
+      taskParams.tableUUID, taskParams.getKeyspace(), taskParams.getTableName());
   }
 
   private void runMultiTableBackupsTask(Schedule schedule) {
@@ -221,7 +221,7 @@ public class Scheduler {
     taskParams.scheduleUUID = schedule.scheduleUUID;
     Universe universe;
     try {
-      universe = Universe.get(taskParams.universeUUID);
+      universe = Universe.getOrBadRequest(taskParams.universeUUID);
     } catch (Exception e) {
       schedule.stopSchedule();
       return;
@@ -251,7 +251,6 @@ public class Scheduler {
   }
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {
-
     if (backup.state != Backup.BackupState.Completed) {
       LOG.warn("Cannot delete backup {} since it is not in completed state.",
         backup.backupUUID);

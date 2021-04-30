@@ -106,10 +106,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
     }
 
     // Get namespace for table.
-    NamespaceIdentifierPB namespace_id;
-    namespace_id.set_id(table->namespace_id());
-    scoped_refptr<NamespaceInfo> namespace_info;
-    RETURN_NOT_OK(catalog_manager->FindNamespace(namespace_id, &namespace_info));
+    auto namespace_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Get tablets for table.
     std::vector<scoped_refptr<TabletInfo>> tablet_infos;

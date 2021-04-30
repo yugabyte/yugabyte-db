@@ -51,7 +51,7 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
   private void prepareTest(Statement statement) throws Exception {
     statement.execute(String.format(
         "CREATE TABLE %s(pk int, col2 int, col3 int, col4 int, col5 int, col6 int, col7 int, "+
-        "col8 int, col9 int, PRIMARY KEY (pk ASC))", TABLE_NAME));
+        "col8 int, col9 int, PRIMARY KEY (pk ASC), CHECK (col4 != 0))", TABLE_NAME));
     statement.execute(String.format(
         "CREATE INDEX %s on %s(col3 ASC) INCLUDE (col4,col5,col6)", index_list[0], TABLE_NAME));
     statement.execute(String.format(

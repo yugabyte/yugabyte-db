@@ -354,7 +354,7 @@ public class TestYbBackup extends BasePgSQLTest {
     }
 
     // Add a new node.
-    miniCluster.startTServer(this.tserverArgs);
+    miniCluster.startTServer(getTServerFlags());
     // Wait for node list refresh.
     Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
 
@@ -421,6 +421,52 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2=22");
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE c3=23");
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4=24");
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+
+  private void verifyPartialIndexData(Statement stmt) throws Exception {
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 11, 22));
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c1=11", new Row(1, 11, 22));
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2=22", new Row(1, 11, 22));
+
+    assertQuery(stmt, "SELECT * FROM \"WHERE_tbl\" WHERE h=1", new Row(1, 11, 22));
+    assertQuery(stmt, "SELECT * FROM \"WHERE_tbl\" WHERE \"WHERE_c1\"=11", new Row(1, 11, 22));
+    assertQuery(stmt, "SELECT * FROM \"WHERE_tbl\" WHERE \" WHERE c2\"=22", new Row(1, 11, 22));
+  }
+
+  @Test
+  public void testPartialIndexes() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, c1 INT, c2 INT)");
+      stmt.execute("CREATE INDEX test_idx1 ON test_tbl (c1) WHERE (c1 IS NOT NULL)");
+      stmt.execute("CREATE INDEX test_idx2 ON test_tbl (c2 ASC) WHERE (c2 IS NOT NULL)");
+
+      stmt.execute("INSERT INTO test_tbl (h, c1, c2) VALUES (1, 11, 22)");
+
+      stmt.execute("CREATE TABLE \"WHERE_tbl\" " +
+                     "(h INT PRIMARY KEY, \"WHERE_c1\" INT, \" WHERE c2\" INT)");
+      stmt.execute("CREATE INDEX ON \"WHERE_tbl\" " +
+                     "(\"WHERE_c1\") WHERE (\"WHERE_c1\" IS NOT NULL)");
+      stmt.execute("CREATE INDEX ON \"WHERE_tbl\" " +
+                     "(\" WHERE c2\") WHERE (\" WHERE c2\" IS NOT NULL)");
+
+      stmt.execute("INSERT INTO \"WHERE_tbl\" (h, \"WHERE_c1\", \" WHERE c2\") VALUES (1, 11, 22)");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      verifyPartialIndexData(stmt);
+    }
+
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      verifyPartialIndexData(stmt);
     }
 
     // Cleanup.

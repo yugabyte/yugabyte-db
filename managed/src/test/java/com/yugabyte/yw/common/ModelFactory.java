@@ -168,8 +168,8 @@ public class ModelFactory {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.universeUUID = universeUUID;
-    params.keyspace = "foo";
-    params.tableName = "bar";
+    params.setKeyspace("foo");
+    params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
     return Backup.create(customerUUID, params);
   }
@@ -179,8 +179,8 @@ public class ModelFactory {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.universeUUID = universeUUID;
-    params.keyspace = "foo";
-    params.tableName = "bar";
+    params.setKeyspace("foo");
+    params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
     params.timeBeforeDelete = -100L;
     return Backup.create(customerUUID, params);
@@ -191,8 +191,8 @@ public class ModelFactory {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.universeUUID = universeUUID;
-    params.keyspace = "foo";
-    params.tableName = "bar";
+    params.setKeyspace("foo");
+    params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
     return Schedule.create(customerUUID, params, TaskType.BackupUniverse, 1000);
   }

@@ -13,50 +13,68 @@
 
 package org.yb.pgsql;
 
-import org.yb.minicluster.MiniYBDaemon;
+import static org.yb.AssertionWrappers.*;
 
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.yb.client.LeaderStepDownResponse;
-import org.yb.client.LocatedTablet.Replica;
 import org.yb.client.LocatedTablet;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.Master;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.util.*;
-import java.sql.Statement;
-
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertGreaterThanOrEqualTo;
-import static org.yb.AssertionWrappers.assertTrue;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestTablespaceProperties extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestTablespaceProperties.class);
 
   ArrayList<String> tablesWithDefaultPlacement = new ArrayList<String>();
   ArrayList<String> tablesWithCustomPlacement = new ArrayList<String>();
 
   private static final int MASTER_REFRESH_TABLESPACE_INFO_SECS = 2;
 
+  private List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
+      ImmutableMap.of(
+          "placement_cloud", "cloud1",
+          "placement_region", "region1",
+          "placement_zone", "zone1"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud2",
+          "placement_region", "region2",
+          "placement_zone", "zone2"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud3",
+          "placement_region", "region3",
+          "placement_zone", "zone3"));
   @Override
   public int getTestMethodTimeoutSec() {
     return getPerfMaxRuntime(800, 1000, 1500, 1500, 1500);
   }
 
-  void setupCluster() throws Exception {
-    destroyMiniCluster();
-    createMiniCluster(3, masterArgs, getTserverArgs(), true /* enable_pg_transactions */);
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.enablePgTransactions(true);
+    builder.perTServerFlags(perTserverZonePlacementFlags);
+  }
 
-    pgInitialized = false;
-    initPostgresBefore();
+  @Before
+  public void setupTablespaces() throws Exception {
     try (Statement setupStatement = connection.createStatement()) {
       setupStatement.execute(
           " CREATE TABLESPACE testTablespace " +
@@ -67,26 +85,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
           "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
           "\"min_num_replicas\":1}]}')");
     }
-  }
-
-  private List<List<String>> getTserverArgs() {
-    List<String> zone1Placement = Arrays.asList(
-            "--placement_cloud=cloud1", "--placement_region=region1",
-            "--placement_zone=zone1");
-
-    List<String> zone2Placement = Arrays.asList(
-            "--placement_cloud=cloud2", "--placement_region=region2",
-            "--placement_zone=zone2");
-
-    List<String> zone3Placement = Arrays.asList(
-            "--placement_cloud=cloud3", "--placement_region=region3",
-            "--placement_zone=zone3");
-
-    List<List<String>> tserverArgs = new ArrayList<List<String>>();
-    tserverArgs.add(zone1Placement);
-    tserverArgs.add(zone2Placement);
-    tserverArgs.add(zone3Placement);
-    return tserverArgs;
   }
 
   private void createTestData (String prefixName) throws Exception {
@@ -125,9 +123,8 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
   private void addTserversAndWaitForLB() throws Exception {
     int expectedTServers = miniCluster.getTabletServers().size() + 2;
-    List<List<String>> tserverArgs = getTserverArgs();
-    miniCluster.startTServer(tserverArgs.get(1));
-    miniCluster.startTServer(tserverArgs.get(2));
+    miniCluster.startTServer(perTserverZonePlacementFlags.get(1));
+    miniCluster.startTServer(perTserverZonePlacementFlags.get(2));
     miniCluster.waitForTabletServers(expectedTServers);
 
     // Wait for loadbalancer to run.
@@ -139,9 +136,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
   @Test
   public void testTablespaces() throws Exception {
-    // First setup tablespaces.
-    setupCluster();
-
     // Run sanity tests for tablespaces.
     sanityTest();
 

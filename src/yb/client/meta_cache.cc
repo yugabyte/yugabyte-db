@@ -557,7 +557,7 @@ std::string RemoteTablet::ReplicasAsStringUnlocked() const {
 }
 
 std::string RemoteTablet::ToString() const {
-  return YB_CLASS_TO_STRING(tablet_id, partition, split_depth);
+  return YB_CLASS_TO_STRING(tablet_id, partition, partition_list_version, split_depth);
 }
 
 PartitionListVersion RemoteTablet::GetLastKnownPartitionListVersion() const {
@@ -570,6 +570,32 @@ void RemoteTablet::MakeLastKnownPartitionListVersionAtLeast(
   std::lock_guard<rw_spinlock> lock(mutex_);
   last_known_partition_list_version_ =
       std::max(last_known_partition_list_version_, partition_list_version);
+}
+
+void LookupCallbackVisitor::operator()(const LookupTabletCallback& tablet_callback) const {
+  if (error_status_) {
+    tablet_callback(*error_status_);
+    return;
+  }
+  auto remote_tablet = boost::get<RemoteTabletPtr>(param_);
+  if (remote_tablet == nullptr) {
+    static const Status error_status = STATUS(
+        TryAgain, "Tablet for requested partition is not yet running",
+        ClientError(ClientErrorCode::kTabletNotYetRunning));
+    tablet_callback(error_status);
+    return;
+  }
+  tablet_callback(remote_tablet);
+}
+
+void LookupCallbackVisitor::operator()(
+    const LookupTabletRangeCallback& tablet_range_callback) const {
+  if (error_status_) {
+    tablet_range_callback(*error_status_);
+    return;
+  }
+  auto result = boost::get<std::vector<RemoteTabletPtr>>(param_);
+  tablet_range_callback(result);
 }
 
 ////////////////////////////////////////////////////////////
@@ -1023,7 +1049,8 @@ Status MetaCache::ProcessTabletLocations(
           Partition partition;
           Partition::FromPB(loc.partition(), &partition);
           remote = new RemoteTablet(
-              tablet_id, partition, loc.split_depth(), loc.split_parent_tablet_id());
+              tablet_id, partition, table_partition_list_version, loc.split_depth(),
+              loc.split_parent_tablet_id());
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
           if (tablets_by_key) {

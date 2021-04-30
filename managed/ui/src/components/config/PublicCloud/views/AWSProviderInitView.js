@@ -533,26 +533,18 @@ class AWSProviderInitView extends Component {
         );
     }
 
+    regionFormVals['perRegionMetadata'] = perRegionMetadata;
+    regionFormVals['sshUser'] = formValues.sshUser;
+
     if (this.state.keypairsInputType === 'custom_keypairs') {
       regionFormVals['keyPairName'] = formValues.keyPairName;
-      regionFormVals['sshUser'] = formValues.sshUser;
-    }
-    regionFormVals['perRegionMetadata'] = perRegionMetadata;
 
-    const sshPrivateKeyText = formValues.sshPrivateKeyContent;
-
-    if (this.state.keypairsInputType === 'custom_keypairs') {
-      if (isNonEmptyObject(sshPrivateKeyText)) {
+      if (isNonEmptyObject(formValues.sshPrivateKeyContent)) {
         const reader = new FileReader();
-        reader.readAsText(sshPrivateKeyText);
-        // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
-        reader.onloadend = () => {
-          try {
-            regionFormVals['sshPrivateKeyContent'] = JSON.parse(reader.result);
-          } catch (e) {
-            this.setState({ error: 'Invalid PEM Config file' });
-          }
-        };
+        reader.readAsText(formValues.sshPrivateKeyContent);
+        reader.onload = () => {
+          regionFormVals['sshPrivateKeyContent'] = reader.result;
+        };    
       }
       return this.props.createAWSProvider(
         formValues.accountName,
@@ -729,6 +721,22 @@ class AWSProviderInitView extends Component {
     );
   }
 
+  rowSshUser() {
+    const userLabel = 'SSH User';
+    const userTooltipContent = 'Custom SSH user associated with this key.';
+    return this.generateRow(
+      userLabel,
+      <Field
+        name="sshUser"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={userLabel}
+        infoContent={userTooltipContent}
+      />
+    );
+  }
+
   rowCustomKeypair() {
     const nameLabel = 'Keypair Name';
     const nameTooltipContent =
@@ -758,24 +766,10 @@ class AWSProviderInitView extends Component {
         infoContent={pemTooltipContent}
       />
     );
-    const userLabel = 'SSH User';
-    const userTooltipContent = 'Custom SSH user associated with this key.';
-    const sshUserRow = this.generateRow(
-      userLabel,
-      <Field
-        name="sshUser"
-        type="text"
-        component={YBTextInputWithLabel}
-        normalize={trimString}
-        infoTitle={userLabel}
-        infoContent={userTooltipContent}
-      />
-    );
     return (
       <Fragment>
         {nameRow}
         {pemContentRow}
-        {sshUserRow}
       </Fragment>
     );
   }
@@ -898,6 +892,7 @@ class AWSProviderInitView extends Component {
                 {divider}
                 {this.rowKeypairInput(keypair_input_options)}
                 {this.rowSshPort()}
+                {this.rowSshUser()}
                 {customKeypairRows}
                 {divider}
                 {this.rowHostedZoneToggle()}
@@ -948,6 +943,14 @@ function validate(values) {
     if (!isNonEmptyString(values.destVpcRegion)) {
       errors.destVpcRegion = 'VPC region is required';
     }
+  }
+
+  if (isNonEmptyObject(values.sshPrivateKeyContent)) {
+    if (values.sshPrivateKeyContent.size > 256 * 1024) {
+      errors.sshPrivateKeyContent = 'PEM file size exceeds 256Kb';
+    }
+  } else if (values.keypairs_input === 'custom_keypairs') {
+    errors.sshPrivateKeyContent = 'Please choose a private key file';
   }
 
   if (values.setupHostedZone && !isNonEmptyString(values.hostedZoneId)) {

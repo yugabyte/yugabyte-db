@@ -113,7 +113,6 @@ class YBTransaction::Impl final {
         transaction_(transaction),
         read_point_(manager->clock()),
         child_(Child::kFalse) {
-    metadata_.transaction_id = TransactionId::GenerateRandom();
     metadata_.priority = RandomUniformInt<uint64_t>();
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
@@ -307,7 +306,7 @@ class YBTransaction::Impl final {
 
   void Flushed(
       const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
-      const Status& status) EXCLUDES(mutex_) {
+            const Status& status) EXCLUDES(mutex_) {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
     VLOG_WITH_PREFIX(5)
         << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
@@ -709,7 +708,9 @@ class YBTransaction::Impl final {
             status_tablet_.get(),
             manager_->client(),
             &req,
-            std::bind(&Impl::CommitDone, this, _1, _2, transaction)),
+            [this, transaction](const auto& status, const auto& req, const auto& resp) {
+              this->CommitDone(status, resp, transaction);
+            }),
         &commit_handle_);
   }
 
@@ -928,7 +929,7 @@ class YBTransaction::Impl final {
     MonoDelta timeout;
     if (status != TransactionStatus::CREATED) {
       if (GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
-        HeartbeatDone(Status::OK(), tserver::UpdateTransactionResponsePB(), status, transaction);
+        HeartbeatDone(Status::OK(), /* request= */ {}, /* response= */ {}, status, transaction);
         return;
       }
       timeout = std::chrono::microseconds(FLAGS_transaction_heartbeat_usec);
@@ -955,7 +956,7 @@ class YBTransaction::Impl final {
             status_tablet.get(),
             manager_->client(),
             &req,
-            std::bind(&Impl::HeartbeatDone, this, _1, _2, status, transaction)),
+            std::bind(&Impl::HeartbeatDone, this, _1, _2, _3, status, transaction)),
         &heartbeat_handle_);
   }
 
@@ -973,12 +974,28 @@ class YBTransaction::Impl final {
     FATAL_INVALID_ENUM_VALUE(TransactionState, current_state);
   }
 
-  void HeartbeatDone(const Status& status,
+  void HeartbeatDone(Status status,
+                     const tserver::UpdateTransactionRequestPB& request,
                      const tserver::UpdateTransactionResponsePB& response,
                      TransactionStatus transaction_status,
                      const YBTransactionPtr& transaction) {
     UpdateClock(response, manager_);
     manager_->rpcs().Unregister(&heartbeat_handle_);
+
+    if (status.ok() && transaction_status == TransactionStatus::CREATED) {
+      auto decode_result = FullyDecodeTransactionId(request.state().transaction_id());
+      if (decode_result.ok()) {
+        metadata_.transaction_id = *decode_result;
+        auto id_str = AsString(metadata_.transaction_id);
+        // It is not fully thread safe, since we don't use mutex to access log_prefix_.
+        // But here we just replace characters inplace.
+        // It would not crash anyway, and could produce wrong id in the logs.
+        // It is ok, since one moment before we would output nil id.
+        log_prefix_.replace(0, id_str.length(), id_str);
+      } else {
+        status = decode_result.status();
+      }
+    }
 
     VLOG_WITH_PREFIX(4) << __func__ << "(" << status << ", "
                         << TransactionStatus_Name(transaction_status) << ")";
@@ -1123,8 +1140,17 @@ class YBTransaction::Impl final {
   std::vector<Waiter> waiters_;
   std::promise<Result<TransactionMetadata>> metadata_promise_;
   std::shared_future<Result<TransactionMetadata>> metadata_future_ GUARDED_BY(mutex_);
+  // As of 2021-04-05 running_requests_ reflects number of ops in progress within this transaction
+  // only if no in-transaction operations have failed.
+  // If in-transaction operation has failed during tablet lookup or it has failed and will be
+  // retried by YBSession inside the same transaction - Transaction::Flushed is not getting called
+  // and running_requests_ is not updated.
+  // For YBSession-level retries Transaction::Flushed will be called when operation is finally
+  // successfully flushed, if operation fails after retry - Transaction::Flushed is not getting
+  // called.
+  // We might need to fix this before turning on transactions sealing.
+  // https://github.com/yugabyte/yugabyte-db/issues/7984.
   size_t running_requests_ GUARDED_BY(mutex_) = 0;
-
   // Set to true after commit record is replicated. Used only during transaction sealing.
   bool commit_replicated_ = false;
 };

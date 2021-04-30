@@ -305,14 +305,14 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
         assertOneRow(stmt, String.format(countPgIndexByOidFmt, newrelid), 0);
 
         try {
-          stmt.execute(String.format(updatePgIndexOidFmt, newrelid, indexrelid));
+          runSystemTableQuery(stmt, String.format(updatePgIndexOidFmt, newrelid, indexrelid));
 
           assertOneRow(stmt, String.format(countPgIndexByOidFmt, indexrelid), 0);
           assertOneRow(stmt, String.format(countPgIndexByOidFmt, newrelid), 1);
         } finally {
           // Restore indexrelid, otherwise our cleanup code will explode
           try {
-            stmt.execute(String.format(updatePgIndexOidFmt, indexrelid, newrelid));
+            runSystemTableQuery(stmt, String.format(updatePgIndexOidFmt, indexrelid, newrelid));
           } catch (Exception ex) {
             LOG.error("Could not restore indexrelid!", ex);
           }

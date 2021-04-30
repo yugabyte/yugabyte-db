@@ -81,7 +81,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
                     customerUUID);
 
-            ObjectNode resultNode = (ObjectNode) Json.newObject();
+            ObjectNode resultNode = Json.newObject();
             resultNode.put("taskUUID", taskUUID.toString());
             Audit.createAuditEntry(ctx(), request(), formData);
             return Results.status(OK, resultNode);
@@ -142,7 +142,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
-        
+
         return ApiResponse.success(kmsConfigs);
     }
 
@@ -172,7 +172,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
                     customerUUID);
 
-            ObjectNode resultNode = (ObjectNode) Json.newObject();
+            ObjectNode resultNode = Json.newObject();
             resultNode.put("taskUUID", taskUUID.toString());
             Audit.createAuditEntry(ctx(), request());
             return Results.status(OK, resultNode);

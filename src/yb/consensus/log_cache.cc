@@ -414,10 +414,6 @@ Status LogCache::FlushIndex() {
   return log_->FlushIndex();
 }
 
-CHECKED_STATUS LogCache::CopyLogTo(const std::string& dest_dir) {
-  return log_->CopyTo(dest_dir);
-}
-
 void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {
   if (entry.tracked) {
     tracker_->Release(entry.mem_usage);

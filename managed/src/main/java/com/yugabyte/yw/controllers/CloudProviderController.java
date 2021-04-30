@@ -2,7 +2,10 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
@@ -10,18 +13,9 @@ import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.commissioner.tasks.CloudCleanup;
-import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
-import com.yugabyte.yw.commissioner.tasks.params.KubernetesClusterInitParams;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.CloudProviderFormData;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
+import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData.ZoneData;
@@ -29,32 +23,18 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import com.google.inject.Inject;
-
 import play.api.Play;
 import play.data.Form;
 import play.data.FormFactory;
-import play.Environment;
 import play.libs.Json;
 import play.mvc.Result;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import javax.persistence.PersistenceException;
+import java.util.*;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
-import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 
 public class CloudProviderController extends AuthenticatedController {
   private final Config config;
@@ -67,11 +47,11 @@ public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
 
 
-  private static JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE = Json.parse(
+  private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE = Json.parse(
       "{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
-  private static JsonNode KUBERNETES_DEV_INSTANCE_TYPE = Json.parse(
+  private static final JsonNode KUBERNETES_DEV_INSTANCE_TYPE = Json.parse(
       "{\"instanceTypeCode\": \"dev\", \"numCores\": 0.5, \"memSizeGB\": 0.5}");
-  private static JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +
+  private static final JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +
       "{\"instanceTypeCode\": \"xsmall\", \"numCores\": 2, \"memSizeGB\": 4}," +
       "{\"instanceTypeCode\": \"small\", \"numCores\": 4, \"memSizeGB\": 7.5}," +
       "{\"instanceTypeCode\": \"medium\", \"numCores\": 8, \"memSizeGB\": 15}," +
@@ -140,9 +120,7 @@ public class CloudProviderController extends AuthenticatedController {
         if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
           new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
         }
-        for (Region region : Region.getByProvider(providerUUID)) {
-          accessManager.deleteKey(region.uuid, accessKey.getKeyCode());
-        }
+        accessManager.deleteKeyByProvider(provider, accessKey.getKeyCode());
         accessKey.delete();
       }
       NodeInstance.deleteByProvider(providerUUID);
@@ -372,7 +350,7 @@ public class CloudProviderController extends AuthenticatedController {
     } else if (zone == null) {
       region.setConfig(config);
     } else {
-      zone.setConfig(config);
+      zone.updateConfig(config);
     }
     return hasKubeConfig;
   }

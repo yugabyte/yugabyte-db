@@ -886,12 +886,11 @@ TEST_P(AlterTableTest, TestInsertAfterAlterTable) {
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
   ASSERT_OK(session->Apply(insert));
-  Status s = session->Flush();
+  auto flush_status = session->FlushAndGetOpsErrors();
+  const auto& s = flush_status.status;
   if (!s.ok()) {
-    ASSERT_EQ(1, session->CountPendingErrors());
-    client::CollectedErrors errors = session->GetAndClearPendingErrors();
-    ASSERT_EQ(1, errors.size());
-    ASSERT_OK(errors[0]->status()); // will fail
+    ASSERT_EQ(1, flush_status.errors.size());
+    ASSERT_OK(flush_status.errors[0]->status()); // will fail
   }
 }
 

@@ -6,11 +6,11 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.store.PlaySessionStore;
-import play.Configuration;
 import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -35,7 +35,7 @@ public class TokenAuthenticator extends Action.Simple {
   ConfigHelper configHelper;
 
   @Inject
-  Configuration appConfig;
+  RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject
   private PlaySessionStore playSessionStore;
@@ -43,14 +43,15 @@ public class TokenAuthenticator extends Action.Simple {
   private Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
     Users user = null;
-    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     Http.Cookie cookieValue = ctx.request().cookie(COOKIE_PLAY_SESSION);
 
     if (useOAuth) {
       final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
       final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
       if (profileManager.isAuthenticated()) {
-        String emailAttr = appConfig.getString("yb.security.oidcEmailAttribute", "");
+        String emailAttr = runtimeConfigFactory.globalRuntimeConf().
+          getString("yb.security.oidcEmailAttribute");
         String email = "";
         if (emailAttr.equals("")) {
           email = profileManager.get(true).get().getEmail();
@@ -80,6 +81,18 @@ public class TokenAuthenticator extends Action.Simple {
     Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
     Matcher matcher = pattern.matcher(path);
     UUID custUUID = null;
+    String patternForUUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" +
+              "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+    String patternForHost = ".+:[0-9]{4,5}";
+
+    // Allow for disabling authentication on proxy endpoint so that
+    // Prometheus can scrape database nodes.
+    if (Pattern.matches(String.format("^.*/universes/%s/proxy/%s/(metrics|prometheus-metrics)$",
+          patternForUUID, patternForHost), path) &&
+      !runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.metrics_auth_proxy")) {
+      return delegate.call(ctx);
+    }
+
     if (matcher.find()) {
       custUUID = UUID.fromString(matcher.group(1));
       endPoint = ((endPoint = matcher.group(2)) != null) ? endPoint : "";

@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Collection;
-import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -67,9 +66,10 @@ public class ModifyBlackList extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     YBClient client = null;
     try {
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
@@ -83,7 +83,7 @@ public class ModifyBlackList extends UniverseTaskBase {
         HostPortPB.Builder hpb =  HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         modifyHosts.add(hpb.build());
       }
-      client = ybService.getClient(masterHostPorts, certificate);
+      client = ybService.getClient(masterHostPorts, certificate, rpcClientCertFiles);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
         new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
       modifyBlackList.doCall();
