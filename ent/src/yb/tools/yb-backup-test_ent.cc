@@ -378,7 +378,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreBackupT
   ASSERT_NO_FATALS(RunPsqlCommand(
       "EXPLAIN (COSTS OFF) SELECT v_name FROM vendors WHERE v_name = 'foo'",
       R"#(
-                                               QUERY PLAN
+                               QUERY PLAN
         -----------------------------------------------------
          Index Only Scan using vendors_v_name_idx on vendors
            Index Cond: (v_name = 'foo'::text)
@@ -395,11 +395,11 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreBackupT
       )#"
   ));
   ASSERT_NO_FATALS(RunPsqlCommand(
-      "EXPLAIN SELECT * FROM vendors WHERE v_name = 'foo'",
+      "EXPLAIN (COSTS OFF) SELECT * FROM vendors WHERE v_name = 'foo'",
       R"#(
-                                            QUERY PLAN
-        -----------------------------------------------------------------------------------
-         Index Scan using vendors_v_name_idx on vendors  (cost=0.00..4.12 rows=1 width=36)
+                          QUERY PLAN
+        ------------------------------------------------
+         Index Scan using vendors_v_name_idx on vendors
            Index Cond: (v_name = 'foo'::text)
         (2 rows)
       )#"
