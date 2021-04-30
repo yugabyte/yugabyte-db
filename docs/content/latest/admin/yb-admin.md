@@ -107,7 +107,7 @@ yb-admin -master_addresses <master-addresses> change_master_config [ ADD_SERVER|
 
 * master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master server.
-  * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (http://node-ip:7000) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
+  * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
 * *ip_addr*: The IP address of the server node.
 * *port*: The port of the server node.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
@@ -146,7 +146,7 @@ yb-admin -master_addresses <master-addresses> list_tablets <keyspace> <table_nam
 $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_tablets ydb test_tb 0
 ```
 
-```
+```output
 Tablet UUID                       Range                                                     Leader
 cea3aaac2f10460a880b0b4a2a4b652a  partition_key_start: "" partition_key_end: "\177\377"     127.0.0.1:9100
 e509cf8eedba410ba3b60c7e9138d479  partition_key_start: "\177\377" partition_key_end: ""
@@ -158,7 +158,7 @@ Lists all tablet servers.
 
 **Syntax**
 
-```
+```output
 yb-admin -master_addresses <master-addresses> list_all_tablet_servers
 ```
 
@@ -182,7 +182,7 @@ yb-admin -master_addresses <master-addresses> list_all_masters
 $ ./bin/yb-admin -master_addresses node7:7100,node8:7100,node9:7100 list_all_masters
 ```
 
-```
+```output
 Master UUID         RPC Host/Port          State      Role
 ...                   node8:7100           ALIVE     FOLLOWER
 ...                   node9:7100           ALIVE     FOLLOWER
@@ -303,7 +303,7 @@ yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> ysql_catalog_version
 
 The version output displays:
 
-```
+```output
 Version:1
 ```
 
@@ -332,7 +332,7 @@ yb-admin -master_addresses <master-addresses> list_tables
 
 Returns tables in the following format, depending on the flags used:
 
-```
+```output
 <db_type>.<namespace>.<table_name> table_id table_type
 ```
 
@@ -353,7 +353,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_tables
 ```
 
-```
+```output
 ...
 yugabyte.pg_range
 template1.pg_attrdef
@@ -524,8 +524,8 @@ $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots sho
 
 Because `show_details` was included, `list_snapshots` prints the details in JSON format, like this:
 
-```json
-f566b03b-b85e-41a0-b903-875cd305c1c5 	COMPLETE
+```output
+f566b03b-b85e-41a0-b903-875cd305c1c5  COMPLETE
 {"type":"NAMESPACE","id":"8053dd55d478437cba57d9f67caac154","data":{"name":"yugabyte","database_type":"YQL_DATABASE_CQL","colocated":false,"state":"RUNNING"}}
 {"type":"TABLE","id":"a7e940e724ef497ebe94bf69bfe507d9","data":{"name":"tracking1","version":1,"state":"RUNNING","state_msg":"Current schema version=1","next_column_id":13,"table_type":"YQL_TABLE_TYPE","namespace_id":"8053dd55d478437cba57d9f67caac154"}}
 {"type":"NAMESPACE","id":"8053dd55d478437cba57d9f67caac154","data":{"name":"yugabyte","database_type":"YQL_DATABASE_CQL","colocated":false,"state":"RUNNING"}}
@@ -865,8 +865,7 @@ yb-admin -master_addresses <master-addresses> set_preferred_zones <cloud.region.
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
 
-Suppose you have a deployment with regions: `gcp.us-east4.us-east4-b`, `gcp.asia-northeast1.asia-northeast1-c`,
- `gcp.us-west1.us-west1-c`. Looking at the cluster config:
+Suppose you have a deployment in the following regions: `gcp.us-east4.us-east4-b`, `gcp.asia-northeast1.asia-northeast1-c`, and `gcp.us-west1.us-west1-c`. Looking at the cluster config:
 
 ```sh
 $ curl -s http://<any-master-ip>:7000/cluster-config
@@ -874,7 +873,7 @@ $ curl -s http://<any-master-ip>:7000/cluster-config
 
 Here is a sample configuration:
 
-```
+```output
 replication_info {
   live_replicas {
     num_replicas: 3
@@ -923,7 +922,7 @@ $ curl -s http://<any-master-ip>:7000/cluster-config
 
 Looking again at the cluster config you should see `affinitized_leaders` added:
 
-```
+```output
 replication_info {
   live_replicas {
     num_replicas: 3
@@ -1154,7 +1153,7 @@ yb-admin -master_addresses <master-addresses> is_encryption_enabled
 
 Returns message:
 
-```
+```output
 Encryption status: ENABLED with key id <key_id_2>
 ```
 
@@ -1166,7 +1165,7 @@ The new key ID (`<key_id_2>`) should be different from the previous one (`<key_i
 $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 is_encryption_enabled
 ```
 
-```
+```output
 Encryption status: ENABLED with key id <key_id_2>
 ```
 
@@ -1350,7 +1349,7 @@ $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_load_move_comp
 
 Returns the following percentage:
 
-```
+```output
 66.6
 ```
 
