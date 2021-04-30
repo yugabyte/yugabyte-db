@@ -936,8 +936,19 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testUniverseDestroyValidUUIDIsForceDeleteAndDeleteBackup() {
+  // @formatter:off
+  @Parameters({
+    "true, true",
+    "false, true",
+    "true, false",
+    "false, false",   
+    "null, true",
+    })
+  // @formatter:on
+  public void testUniverseDestroyValidUUIDIsForceDeleteAndDeleteBackup(Boolean isDeleteBackups,
+      Boolean isForceDelete) {
     UUID fakeTaskUUID = UUID.randomUUID();
+    String url;
     when(mockCommissioner.submit(any(), any()))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getCustomerId());
@@ -959,9 +970,14 @@ public class UniverseControllerTest extends WithApplication {
     Backup b = ModelFactory.createBackup(customer.uuid,
         u.universeUUID, s3StorageConfig.configUUID);
     b.transitionState(Backup.BackupState.Completed);
-
-    String url = "/api/customers/" + customer.uuid + "/universes/"
-        + u.universeUUID + "?isForceDelete=true&isDeleteBackups=true";
+    if (isDeleteBackups == null) {
+      url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+        "?isForceDelete=" + isForceDelete;
+    }
+    else {
+      url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+          "?isForceDelete=" + isForceDelete + "&isDeleteBackups=" + isDeleteBackups;
+    }
     Result result = doRequestWithAuthToken("DELETE", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));

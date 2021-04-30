@@ -11,8 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,14 +22,11 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Backup;
 
 import play.api.Play;
-import play.libs.Json;
 
 import java.util.List;
 import java.util.UUID;
@@ -54,7 +49,6 @@ public class DestroyUniverse extends UniverseTaskBase {
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-      TableManager tableManager = Play.current().injector().instanceOf(TableManager.class);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
