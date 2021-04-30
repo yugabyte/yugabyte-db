@@ -218,7 +218,7 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   CLIArguments command_args(args.begin() + 2, args.end());
   s = commands_[cmd->second].action_(command_args);
   if (!s.ok()) {
-    cerr << "Error: " << s.ToString() << endl;
+    cerr << "Error running " << cmd->first << ": " << s << endl;
     return STATUS(RuntimeError, "Error running command");
   }
   return Status::OK();
@@ -804,10 +804,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 }
 
-Result<std::vector<client::YBTableName>> ResolveTableNames(ClusterAdminClientClass* client,
-                                                           CLIArgumentsIterator i,
-                                                           const CLIArgumentsIterator& end,
-                                                           TailArgumentsProcessor tail_processor) {
+Result<std::vector<client::YBTableName>> ResolveTableNames(
+    ClusterAdminClientClass* client,
+    CLIArgumentsIterator i,
+    const CLIArgumentsIterator& end,
+    const TailArgumentsProcessor& tail_processor,
+    bool allow_namespace_only) {
   auto resolver = VERIFY_RESULT(client->BuildTableNameResolver());
   auto tail = i;
   // Greedy algorithm of taking as much tables as possible.
@@ -825,19 +827,28 @@ Result<std::vector<client::YBTableName>> ResolveTableNames(ClusterAdminClientCla
       tail = std::next(i);
     }
   }
+
+  auto& tables = resolver.values();
   // Handle case when no table name is followed keyspace.
   if (tail != end) {
     if (tail_processor) {
       RETURN_NOT_OK(tail_processor(tail, end));
     } else {
+      if (allow_namespace_only && tables.empty()) {
+        auto last_namespace = resolver.last_namespace();
+        if (!last_namespace.name().empty()) {
+          client::YBTableName table_name;
+          table_name.GetFromNamespaceIdentifierPB(last_namespace);
+          return std::vector<client::YBTableName>{table_name};
+        }
+      }
       return STATUS(InvalidArgument, "Table name is missed");
     }
   }
-  auto tables = std::move(resolver.values());
   if (tables.empty()) {
     return STATUS(InvalidArgument, "Empty list of tables");
   }
-  return tables;
+  return std::move(tables);
 }
 
 Result<client::YBTableName> ResolveSingleTableName(ClusterAdminClientClass* client,

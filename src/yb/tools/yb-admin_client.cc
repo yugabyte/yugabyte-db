@@ -309,6 +309,13 @@ class TableNameResolver::Impl {
     return values_;
   }
 
+  master::NamespaceIdentifierPB last_namespace() {
+    if (!current_namespace_) {
+      return master::NamespaceIdentifierPB();
+    }
+    return *current_namespace_;
+  }
+
  private:
   Result<bool> FeedImpl(const std::string& str) {
     auto parts = SplitByDot(str);
@@ -427,6 +434,10 @@ Result<bool> TableNameResolver::Feed(const std::string& value) {
 
 std::vector<client::YBTableName>& TableNameResolver::values() {
   return impl_->values();
+}
+
+master::NamespaceIdentifierPB TableNameResolver::last_namespace() {
+  return impl_->last_namespace();
 }
 
 ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout)

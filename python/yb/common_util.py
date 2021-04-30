@@ -13,6 +13,8 @@ import json
 import subprocess
 import shlex
 
+from typing import Any
+
 
 MODULE_DIR = os.path.dirname(os.path.realpath(__file__))
 YB_SRC_ROOT = os.path.realpath(os.path.join(MODULE_DIR, '..', '..'))
@@ -23,6 +25,9 @@ JSON_INDENTATION = 2
 # and setter below that should be imported and used to access this global.
 _YB_THIRDPARTY_DIR = os.path.realpath(
         os.environ.get("YB_THIRDPARTY_DIR", os.path.join(YB_SRC_ROOT, 'thirdparty')))
+
+GLOBAL_DOWNLOAD_CACHE_DIR = '/opt/yb-build/download_cache'
+attempted_to_create_download_cache_dir = False
 
 
 def get_thirdparty_dir():
@@ -284,3 +289,27 @@ class EnvVarContext:
     def __exit__(self, exc_type, exc_val, exc_tb):
         for env_var_name, saved_value in self.saved_env_vars.items():
             dict_set_or_del(os.environ, env_var_name, saved_value)
+
+
+def get_download_cache_dir():
+    global attempted_to_create_download_cache_dir
+    if not os.path.exists(GLOBAL_DOWNLOAD_CACHE_DIR) and not attempted_to_create_download_cache_dir:
+        attempted_to_create_download_cache_dir = True
+        try:
+            original_umask = os.umask(0)
+            os.makedirs(GLOBAL_DOWNLOAD_CACHE_DIR, 0o777)
+        except Exception as ex:
+            logging.exception(f"Could not create directory {GLOBAL_DOWNLOAD_CACHE_DIR}")
+        finally:
+            os.umask(original_umask)
+    if os.path.isdir(GLOBAL_DOWNLOAD_CACHE_DIR) and os.access(GLOBAL_DOWNLOAD_CACHE_DIR, os.W_OK):
+        return GLOBAL_DOWNLOAD_CACHE_DIR
+    return os.path.expanduser('~/.cache/downloads')
+
+
+def load_yaml_file(yaml_path: str) -> Any:
+    # Import the yaml module locally so that the common_util module is still usable outside of any
+    # virtualenv where yaml is preinstalled.
+    import yaml
+    with open(yaml_path) as yaml_file:
+        return yaml.safe_load(yaml_file)

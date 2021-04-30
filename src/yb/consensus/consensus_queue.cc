@@ -488,19 +488,29 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       peer->leader_lease_expiration.last_sent =
           CoarseMonoClock::Now() + leader_lease_duration_ms * 1ms - kCoarseClockPrecision * 2;
       peer->leader_ht_lease_expiration.last_sent = ht_lease_expiration_micros;
-      preceding_id = peer->last_received;
     } else {
       now_ht = clock_->Now();
       request->clear_leader_lease_duration_ms();
       request->clear_ht_lease_expiration();
       peer->leader_lease_expiration.Reset();
       peer->leader_ht_lease_expiration.Reset();
-
-      // This is initialized to the queue's last appended op but gets set to the id of the
-      // log entry preceding the first one in 'messages' if messages are found for the peer.
-      // Just because we don't know actual state of a new peer.
-      preceding_id = queue_state_.last_appended;
     }
+    // This is initialized to the queue's last appended op but gets set to the id of the
+    // log entry preceding the first one in 'messages' if messages are found for the peer.
+    //
+    // The leader does not know the actual state of a peer but it should always send a value of
+    // preceding_id that is present in the leader's own log, so the follower can verify the log
+    // matching property.
+    //
+    // In case we decide not to send any messages to the follower this time due to exponential
+    // backoff to an unresponsive follower, we will keep preceding_id equal to last_appended.
+    // This is safe because unless the follower already has that operation, it will fail to find
+    // it in its pending operations in EnforceLogMatchingPropertyMatchesUnlocked and will return
+    // a log matching property violation error without applying any incorrect messages from its log.
+    //
+    // See this scenario for more context on the issue we are trying to avoid:
+    // https://github.com/yugabyte/yugabyte-db/issues/8150#issuecomment-827821784
+    preceding_id = queue_state_.last_appended;
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
 

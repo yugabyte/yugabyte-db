@@ -74,6 +74,20 @@ Result<T> GetOptionalArg(const Args& args, size_t idx) {
   return VERIFY_RESULT(T::FromString(args[idx]));
 }
 
+CHECKED_STATUS CheckArgumentsCount(int count, int min, int max) {
+  if (count < min) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Too few arguments $0, should be in range [$1, $2]", count, min, max);
+  }
+
+  if (count > max) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Too many arguments $0, should be in range [$1, $2]", count, min, max);
+  }
+
+  return Status::OK();
+}
+
 } // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
@@ -149,10 +163,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         auto interval = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[0])));
         auto retention = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[1])));
         const auto tables = VERIFY_RESULT(ResolveTableNames(
-            client, args.begin() + 2, args.end(),
-            [](auto i, const auto& end) -> Status {
-              return ClusterAdminCli::kInvalidArguments;
-            }));
+            client, args.begin() + 2, args.end(), TailArgumentsProcessor(), true));
         return client->CreateSnapshotSchedule(tables, interval, retention);
       });
 
@@ -160,6 +171,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "list_snapshot_schedules",
       " [<schedule_id>]",
       [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 1));
         auto schedule_id = VERIFY_RESULT(GetOptionalArg<SnapshotScheduleId>(args, 0));
         return client->ListSnapshotSchedules(schedule_id);
       });
@@ -168,9 +180,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "restore_snapshot_schedule",
       Format(" <schedule_id> (<timestamp> | $0 <interval>)", kMinus),
       [client](const CLIArguments& args) -> Result<rapidjson::Document> {
-        if (args.size() < 2 || args.size() > 3) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 3));
         auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
         HybridTime restore_at;
         if (args.size() == 2) {

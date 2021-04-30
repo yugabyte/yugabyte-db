@@ -545,14 +545,12 @@ export default class CreateBackup extends Component {
                       type="number"
                       label={'Parallel Threads'}
                     />
-                    {isScheduled && (
-                      <Field
-                        name="timeBeforeDelete"
-                        type={'number'}
-                        component={YBFormInput}
-                        label={'Number of Days to Retain Backup'}
-                      />
-                    )}
+                    <Field
+                      name="timeBeforeDelete"
+                      type={'number'}
+                      component={YBFormInput}
+                      label={'Number of Days to Retain Backup'}
+                    />
                   </Tab>
                   <Tab
                     eventKey={'ycql'}
@@ -612,14 +610,12 @@ export default class CreateBackup extends Component {
                       type="number"
                       label={'Parallel Threads'}
                     />
-                    {isScheduled && (
-                      <Field
-                        name="timeBeforeDelete"
-                        type={'number'}
-                        component={YBFormInput}
-                        label={'Number of Days to Retain Backup'}
-                      />
-                    )}
+                    <Field
+                      name="timeBeforeDelete"
+                      type={'number'}
+                      component={YBFormInput}
+                      label={'Number of Days to Retain Backup'}
+                    />
                   </Tab>
                   <Tab
                     eventKey={'yedis'}
@@ -679,14 +675,12 @@ export default class CreateBackup extends Component {
                       type="number"
                       label={'Parallel Threads'}
                     />
-                    {isScheduled && (
-                      <Field
+                    <Field
                         name="timeBeforeDelete"
                         type="number"
                         component={YBFormInput}
                         label={'Number of Days to Retain Backup'}
-                      />
-                    )}
+                    />
                   </Tab>
                 </Tabs>
               </Fragment>

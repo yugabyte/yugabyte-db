@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
@@ -10,6 +11,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Query;
@@ -205,9 +207,7 @@ public class CustomerTaskController extends AuthenticatedController {
     LOG.info("Saved task uuid " + newTaskUUID + " in customer tasks table for universe " +
       universe.universeUUID + ":" + universe.name);
 
-    ObjectNode resultNode = (ObjectNode) universe.toJson();
-    resultNode.put("taskUUID", newTaskUUID.toString());
     Audit.createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
-    return ok(resultNode);
+    return ApiResponse.success(new UniverseResp(universe, newTaskUUID));
   }
 }

@@ -82,7 +82,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
     ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";

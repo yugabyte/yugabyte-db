@@ -14,6 +14,8 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -111,6 +113,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // Update node state to running
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+
+      // Update the DNS entry for this universe.
+      UniverseDefinitionTaskParams.UserIntent userIntent = universe.getUniverseDetails()
+        .getClusterByUuid(currentNode.placementUuid)
+        .userIntent;
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+        .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       // Update the swamper target file.
       // It is required because the node could be removed from the swamper file

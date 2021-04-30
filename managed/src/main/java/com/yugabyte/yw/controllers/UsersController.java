@@ -2,34 +2,29 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.io.InputStream;
-import java.io.IOException;
-
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import com.yugabyte.yw.common.ApiResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.forms.UserRegisterFormData;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.Environment;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import play.Environment;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+import java.util.UUID;
 
 import static com.yugabyte.yw.models.Users.Role;
 
@@ -38,10 +33,13 @@ public class UsersController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
 
   @Inject
-  FormFactory formFactory;
+  ValidatingFormFactory formFactory;
 
   @Inject
   Environment environment;
+
+  @Inject
+  PasswordPolicyService passwordPolicyService;
 
   /**
    * GET endpoint for listing the provider User.
@@ -82,29 +80,31 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response of newly created user.
    */
   public Result create(UUID customerUUID) {
-    ObjectNode responseJson = Json.newObject();
-    ObjectNode errorJson = Json.newObject();
 
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    Form<UserRegisterFormData> formData = formFactory.form(UserRegisterFormData.class)
-        .bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    Form<UserRegisterFormData> form = formFactory
+      .getFormDataOrBadRequest(UserRegisterFormData.class);
+
+    UserRegisterFormData formData = form.get();
+    Result passwordCheckResult = passwordPolicyService
+      .checkPasswordPolicy(customerUUID, formData.getPassword());
+    if (passwordCheckResult != null) {
+      return passwordCheckResult;
     }
     Users user;
     try {
-      user = Users.create(formData.get().email, formData.get().password,
-                          formData.get().role, customerUUID);
+      user = Users.create(formData.getEmail(), formData.getPassword(),
+        formData.getRole(), customerUUID);
       updateFeatures(user);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not create user");
     }
     ObjectNode userInfo = Json.newObject()
-            .put("email", formData.get().email)
-            .put("role", formData.get().role.name())
+            .put("email", formData.getEmail())
+            .put("role", formData.getRole().name())
             .put("customerUUID", customerUUID.toString());
     Audit.createAuditEntry(ctx(), request(), userInfo);
     return ApiResponse.success(user);
@@ -199,14 +199,19 @@ public class UsersController extends AuthenticatedController {
           String.format("User UUID %s does not belong to customer %s",
                         userUUID.toString(), customerUUID.toString()));
     }
-    Form<UserRegisterFormData> formData = formFactory.form(UserRegisterFormData.class)
-        .bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+
+    Form<UserRegisterFormData> form = formFactory
+      .getFormDataOrBadRequest(UserRegisterFormData.class);
+
+    UserRegisterFormData formData = form.get();
+    Result passwordCheckResult = passwordPolicyService
+      .checkPasswordPolicy(customerUUID, formData.getPassword());
+    if (passwordCheckResult != null) {
+      return passwordCheckResult;
     }
-    if (formData.get().email.equals(user.email)) {
-      if (formData.get().password.equals(formData.get().confirmPassword)) {
-        user.setPassword(formData.get().password);
+    if (formData.getEmail().equals(user.email)) {
+      if (formData.getPassword().equals(formData.getConfirmPassword())) {
+        user.setPassword(formData.getPassword());
         user.save();
         return ApiResponse.success();
       }
