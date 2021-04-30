@@ -64,8 +64,8 @@ public class CommonUtils {
   }
 
   private static String getMaskedValue(String key, String value) {
-    return isStrictlySensitiveField(key) || (value == null) ? MASKED_FIELD_VALUE
-        : value.replaceAll(maskRegex, "*");
+    return isStrictlySensitiveField(key) || value.length() < 5
+        || (value == null) ? MASKED_FIELD_VALUE : value.replaceAll(maskRegex, "*");
   }
 
   /**

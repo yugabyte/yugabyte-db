@@ -22,8 +22,6 @@ import play.mvc.Result;
 import java.util.UUID;
 
 
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
-
 public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
 
