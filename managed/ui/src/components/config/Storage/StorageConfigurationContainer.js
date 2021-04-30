@@ -16,7 +16,7 @@ import {
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 
-const mapStateToProps = (state) => {  
+const mapStateToProps = (state) => {
   return {
     addConfig: state.customer.addConfig,
     updateConfig: state.customer.updateConfig,
