@@ -110,3 +110,15 @@ DEFINE_int32(ysql_max_write_restart_attempts, 20,
 
 DEFINE_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
+
+// Flag for disabling runContext to Postgres's portal. Currently, each portal has two contexts.
+// - PortalContext whose lifetime lasts for as long as the Portal object.
+// - TmpContext whose lifetime lasts until one associated row of SELECT result set is sent out.
+//
+// We add one more context "ybRunContext".
+// - Its lifetime will begin when PortalRun() is called to process a user statement request until
+//   the end of the PortalRun() process.
+// - A SELECT might be queried in small batches, and each batch is processed by one call to
+//   PortalRun(). The "ybRunContext" is used for values that are private to one batch.
+// - Use boolean experimental flag just in case introducing "ybRunContext" is a wrong idea.
+DEFINE_bool(ysql_disable_portal_run_context, false, "Whether to use portal ybRunContext.");
