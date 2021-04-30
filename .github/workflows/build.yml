@@ -71,11 +71,6 @@ jobs:
                   ./yb_build.sh release --download-thirdparty --ninja
                   echo ::endgroup::
                   df -H /
-                  echo ::group::Running tests
-                  export YB_SKIP_BUILD=1
-                  export BUILD_TYPE=release
-                  build-support/jenkins/build-and-test.sh
-                  echo ::endgroup::
                 "
               '
           elif [[ $OSTYPE == darwin* ]]; then
