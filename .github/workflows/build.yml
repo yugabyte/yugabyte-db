@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Build code without tests
+      - name: Build YugabyteDB
         run: |
           echo "OSTYPE (outside Docker): $OSTYPE"
           echo "Build name: ${{ matrix.name }}"
@@ -60,15 +60,15 @@ jobs:
                 ( set -x; ls -l /usr/local/bin )
                 set +e
                 ( set -x; which ninja )
-                ( set -x; which cmake ) 
+                ( set -x; which cmake )
                 set -e
                 chown -R yugabyteci .
                 sudo -u yugabyteci bash -c "
                   set -euo pipefail
                   export PATH=/usr/local/bin:\$PATH
                   df -H /
-                  echo ::group::Building the code without tests
-                  ./yb_build.sh release packaged --download-thirdparty --ninja
+                  echo ::group::Building YugabyteDB
+                  ./yb_build.sh release --download-thirdparty --ninja
                   echo ::endgroup::
                   df -H /
                 "
