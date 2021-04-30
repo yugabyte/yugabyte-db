@@ -2,27 +2,29 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 
 import javax.inject.Singleton;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static play.libs.Json.*;
+import static play.libs.Json.newObject;
+import static play.libs.Json.toJson;
 
 @Singleton
 public class YsqlQueryExecutor {
-  private final String DEFAULT_DB_USER = "yugabyte";
-  private final String DEFAULT_DB_PASSWORD = "yugabyte";
+  private static final Logger LOG = LoggerFactory.getLogger(YsqlQueryExecutor.class);
+  private final static String DEFAULT_DB_USER = "yugabyte";
+  private final static String DEFAULT_DB_PASSWORD = "yugabyte";
 
   private String getQueryType(String queryString) {
     String[] queryParts = queryString.split(" ");
@@ -86,4 +88,35 @@ public class YsqlQueryExecutor {
     }
     return response;
   }
+
+  public void createUser(Universe universe, DatabaseUserFormData data) {
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    // Create user for customer YSQL.
+    ysqlQuery.query = String.format("CREATE USER \"%s\" SUPERUSER INHERIT CREATEROLE " +
+        "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD '%s'",
+      data.username, Util.escapeSingleQuotesOnly(data.password));
+    ysqlQuery.db_name = data.dbName;
+    JsonNode ysqlResponse = executeQuery(universe, ysqlQuery,
+      data.ysqlAdminUsername,
+      data.ysqlAdminPassword);
+    LOG.info("Creating YSQL user, result: " + ysqlResponse.toString());
+    if (ysqlResponse.has("error")) {
+      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+    }
+  }
+
+  public void updateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
+    // Update admin user password YSQL.
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.query = String.format("ALTER USER \"%s\" WITH PASSWORD '%s'",
+      data.ysqlAdminUsername, Util.escapeSingleQuotesOnly(data.ysqlAdminPassword));
+    ysqlQuery.db_name = data.dbName;
+    JsonNode ysqlResponse = executeQuery(universe, ysqlQuery,
+      data.ysqlAdminUsername, data.ysqlCurrAdminPassword);
+    LOG.info("Updating YSQL user, result: " + ysqlResponse.toString());
+    if (ysqlResponse.has("error")) {
+      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+    }
+  }
+
 }

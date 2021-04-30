@@ -519,8 +519,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("metric1")));
     params.put("start", "1479281737");
 
-    ObjectNode response = Json.newObject();
-    response.put("error", "something went wrong");
+    ObjectNode response = Json.newObject()
+      .put("success", false)
+      .put("error", "something went wrong");
 
     when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap())).thenReturn(response);
     Result result =
@@ -530,8 +531,8 @@ public class CustomerControllerTest extends FakeDBApplication {
           .bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
-      contentAsString(result),
-      allOf(notNullValue(), containsString("{\"error\":\"something went wrong\"}")));
+      Json.parse(contentAsString(result)),
+      allOf(notNullValue(), is(response)));
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -619,8 +620,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
     params.put("start", "1479281737");
 
-    ObjectNode response = Json.newObject();
-    response.put("error", "something went wrong");
+    ObjectNode expectedResponse = Json.newObject();
+    expectedResponse.put("success", false);
+    expectedResponse.put("error", "Weird Data provided");
 
     when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap()))
       .thenThrow(new YWServiceException(BAD_REQUEST, "Weird Data provided"));
@@ -631,8 +633,8 @@ public class CustomerControllerTest extends FakeDBApplication {
           .bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
-      contentAsString(result),
-      allOf(notNullValue(), containsString("{\"error\":\"Weird Data provided\"}")));
+      Json.parse(contentAsString(result)),
+      allOf(notNullValue(), is(expectedResponse)));
     assertAuditEntry(0, customer.uuid);
   }
 

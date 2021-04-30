@@ -11,6 +11,8 @@
 package com.yugabyte.yw.forms;
 
 public class YWError {
+  public final boolean success = false;
+
   public final Object error;
 
   public YWError(Object error) {
