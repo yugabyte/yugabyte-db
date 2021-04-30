@@ -557,6 +557,23 @@ MemoryContextStatsDetail(MemoryContext context, int max_children)
 }
 
 /*
+ * MemoryContextStatsUsage
+ *
+ * Entry point for use if you want to find total usage without looking into details.
+ */
+int64
+MemoryContextStatsUsage(MemoryContext context, int max_children)
+{
+	MemoryContextCounters grand_totals;
+
+	memset(&grand_totals, 0, sizeof(grand_totals));
+
+	MemoryContextStatsInternal(context, 0, false, max_children, &grand_totals);
+
+	return (grand_totals.totalspace - grand_totals.freespace);
+}
+
+/*
  * MemoryContextStatsInternal
  *		One recursion level for MemoryContextStats
  *

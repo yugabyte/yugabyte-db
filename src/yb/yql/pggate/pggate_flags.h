@@ -43,5 +43,6 @@ DECLARE_bool(ysql_beta_feature_tablegroup);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
+DECLARE_bool(ysql_disable_portal_run_context);
 
 #endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H
