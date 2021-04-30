@@ -106,7 +106,7 @@ public class Universe extends Model {
 
   @JsonIgnore
   public Map<String, String> getConfig() {
-    return config == null? new HashMap<>() : config;
+    return config == null ? new HashMap<>() : config;
   }
 
   // The Json serialized version of universeDetails. This is used only in read from and writing to
@@ -244,6 +244,7 @@ public class Universe extends Model {
    * @param universeName String which contains the name which is to be checked
    * @return true if universe already exists, false otherwise
    */
+  @Deprecated
   public static boolean checkIfUniverseExists(String universeName) {
     return find.query().select("universeUUID").where().eq("name", universeName).findCount() > 0;
   }
@@ -306,10 +307,7 @@ public class Universe extends Model {
   }
 
   public static Universe getUniverseByName(String universeName) {
-    if (checkIfUniverseExists(universeName)) {
-      return find.query().where().eq("name", universeName).findOne();
-    }
-    return null;
+    return find.query().where().eq("name", universeName).findOne();
   }
 
   public static Optional<Universe> maybeGetUniverseByName(String universeName) {
@@ -596,6 +594,7 @@ public class Universe extends Model {
 
   /**
    * Returns the certificate in case node to node TLS is enabled.
+   *
    * @return certificate file if node to node TLS is enabled, null otherwise.
    */
   public String getCertificateNodeToNode() {
@@ -610,20 +609,22 @@ public class Universe extends Model {
 
   /**
    * Returns the certificate and key in case client verification is enabled during TLS.
+   *
    * @return String[] {client cert, client key} if mutual TLS is enabled.
    */
   public String[] getFilesForMutualTLS() {
     UniverseDefinitionTaskParams details = this.getUniverseDetails();
     if (details.getPrimaryCluster().userIntent.enableNodeToNodeClientVerification) {
       // This means there must be a root CA associated with it.
-      return new String[] {CertificateInfo.get(details.rootCA).platformCert,
-                           CertificateInfo.get(details.rootCA).platformKey};
+      return new String[]{CertificateInfo.get(details.rootCA).platformCert,
+        CertificateInfo.get(details.rootCA).platformKey};
     }
-    return new String[] {null, null};
+    return new String[]{null, null};
   }
 
   /**
    * Returns the certificate in case client to node TLS is enabled.
+   *
    * @return certificate file if client to node TLS is enabled, null otherwise.
    */
   public String getCertificateClientToNode() {
