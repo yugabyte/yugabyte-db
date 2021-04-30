@@ -3,13 +3,13 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -92,7 +92,7 @@ public class Provider extends Model {
   @JsonIgnore
   public Map<String, String> getConfig() {
     if (this.config == null) {
-      return new HashMap();
+      return new HashMap<>();
     } else {
       return Json.fromJson(this.config, Map.class);
     }
@@ -120,7 +120,7 @@ public class Provider extends Model {
    * @return instance of cloud provider
    */
   public static Provider create(UUID customerUUID, Common.CloudType code, String name) {
-    return create(customerUUID, code, name, new HashMap<String, String>());
+    return create(customerUUID, code, name, new HashMap<>());
   }
 
   /**
@@ -186,8 +186,17 @@ public class Provider extends Model {
             .eq("code", code.toString()).findList();
   }
 
+  // Use get Or bad request
+  @Deprecated
   public static Provider get(UUID providerUuid) {
     return find.byId(providerUuid);
+  }
+
+  public static Provider getOrBadRequest(UUID providerUuid) {
+    Provider provider = find.byId(providerUuid);
+    if (provider == null)
+      throw new YWServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
+    return provider;
   }
 
   public String getHostedZoneId() {
@@ -221,7 +230,7 @@ public class Provider extends Model {
   // not be included for GCP because they're generated from devops).
   public CloudBootstrap.Params getCloudParams() {
     CloudBootstrap.Params newParams = new CloudBootstrap.Params();
-    newParams.perRegionMetadata = new HashMap();
+    newParams.perRegionMetadata = new HashMap<>();
     if (!this.code.equals(Common.CloudType.gcp.toString())) {
       return newParams;
     }
