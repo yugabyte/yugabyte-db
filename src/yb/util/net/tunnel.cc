@@ -45,8 +45,9 @@ class TunnelConnection : public std::enable_shared_from_this<TunnelConnection> {
 
   void Start(const Endpoint& dest) {
     boost::system::error_code ec;
+    auto remote = inbound_socket_.remote_endpoint(ec);
     auto inbound = inbound_socket_.local_endpoint(ec);
-    log_prefix_ = Format("$0 => $1: ", inbound, dest);
+    log_prefix_ = Format("$0 => $1 => $2: ", remote, inbound, dest);
     outbound_socket_.async_connect(
         dest,
         strand_.wrap(std::bind(&TunnelConnection::HandleConnect, this, _1, shared_from_this())));
@@ -67,6 +68,11 @@ class TunnelConnection : public std::enable_shared_from_this<TunnelConnection> {
     if (ec) {
       LOG_WITH_PREFIX(WARNING) << "Connect failed: " << ec.message();
       return;
+    }
+
+    if (VLOG_IS_ON(2)) {
+      boost::system::error_code endpoint_ec;
+      VLOG_WITH_PREFIX(2) << "Connected: " << outbound_socket_.local_endpoint(endpoint_ec);
     }
 
     in2out_buffer_.resize(4_KB);

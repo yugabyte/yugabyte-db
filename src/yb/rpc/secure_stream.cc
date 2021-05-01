@@ -43,6 +43,12 @@ DEFINE_string(ssl_protocols, "",
               "List of allowed SSL protocols (ssl2, ssl3, tls10, tls11, tls12). "
                   "Empty to allow TLS only.");
 
+DEFINE_string(cipher_list, "",
+              "Define the list of available ciphers (TLSv1.2 and below).");
+
+DEFINE_string(ciphersuites, "",
+              "Define the available TLSv1.3 ciphersuites.");
+
 namespace yb {
 namespace rpc {
 
@@ -136,6 +142,32 @@ Result<detail::EVP_PKEYPtr> GeneratePrivateKey(int bits) {
   return std::move(pkey);
 }
 
+class ExtensionConfigurator {
+ public:
+  explicit ExtensionConfigurator(X509 *cert) : cert_(cert) {
+    // No configuration database
+    X509V3_set_ctx_nodb(&ctx_);
+    // Both issuer and subject certs
+    X509V3_set_ctx(&ctx_, cert, cert, nullptr, nullptr, 0);
+  }
+
+  CHECKED_STATUS Add(int nid, const char* value) {
+    X509_EXTENSION *ex = X509V3_EXT_conf_nid(nullptr, &ctx_, nid, value);
+    if (!ex) {
+      return SSL_STATUS(InvalidArgument, "Failed to create extension: $0");
+    }
+
+    X509_add_ext(cert_, ex, -1);
+    X509_EXTENSION_free(ex);
+
+    return Status::OK();
+  }
+
+ private:
+  X509V3_CTX ctx_;
+  X509* cert_;
+};
+
 Result<detail::X509Ptr> CreateCertificate(
     EVP_PKEY* key, const std::string& common_name, EVP_PKEY* ca_pkey, X509* ca_cert) {
   detail::X509Ptr cert(X509_new());
@@ -170,6 +202,9 @@ Result<detail::X509Ptr> CreateCertificate(
     if (!issuer) {
       return SSL_STATUS(IOError, "Failed to get CA subject name: $0");
     }
+  } else {
+    ExtensionConfigurator configurator(cert.get());
+    RETURN_NOT_OK(configurator.Add(NID_basic_constraints, "critical,CA:TRUE"));
   }
 
   if (X509_set_issuer_name(cert.get(), issuer) != 1) {
@@ -209,6 +244,7 @@ const std::unordered_map<std::string, int64_t>& SSLProtocolMap() {
       {"tls10", SSL_OP_NO_TLSv1},
       {"tls11", SSL_OP_NO_TLSv1_1},
       {"tls12", SSL_OP_NO_TLSv1_2},
+      {"tls13", SSL_OP_NO_TLSv1_3},
   };
   return result;
 }
@@ -257,6 +293,23 @@ SecureContext::SecureContext() {
   int64_t protocols = ProtocolsOption();
   VLOG(1) << "Protocols option: " << protocols;
   SSL_CTX_set_options(context_.get(), protocols | SSL_OP_NO_COMPRESSION);
+
+  auto cipher_list = FLAGS_cipher_list;
+  if (!cipher_list.empty()) {
+    LOG(INFO) << "Use cipher list: " << cipher_list;
+    auto res = SSL_CTX_set_cipher_list(context_.get(), cipher_list.c_str());
+    LOG_IF(DFATAL, res != 1) << "Failed to set cipher list: "
+                             << SSLErrorMessage(ERR_get_error());
+  }
+
+  auto ciphersuites = FLAGS_ciphersuites;
+  if (!ciphersuites.empty()) {
+    LOG(INFO) << "Use cipher suites: " << ciphersuites;
+    auto res = SSL_CTX_set_ciphersuites(context_.get(), ciphersuites.c_str());
+    LOG_IF(DFATAL, res != 1) << "Failed to set ciphersuites: "
+                           << SSLErrorMessage(ERR_get_error());
+  }
+
   auto res = SSL_CTX_set_session_id_context(context_.get(), kContextId, sizeof(kContextId));
   LOG_IF(DFATAL, res != 1) << "Failed to set session id for SSL context: "
                            << SSLErrorMessage(ERR_get_error());
@@ -397,13 +450,14 @@ class SecureStream : public Stream, public StreamContext {
   CHECKED_STATUS Init();
   CHECKED_STATUS Established(SecureState state);
   static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
-  bool Verify(bool preverified, X509_STORE_CTX* store_context);
+  CHECKED_STATUS Verify(bool preverified, X509_STORE_CTX* store_context);
   bool MatchEndpoint(X509* cert, GENERAL_NAMES* gens);
   bool MatchUid(X509* cert, GENERAL_NAMES* gens);
   bool MatchUidEntry(const Slice& value, const char* name);
   CHECKED_STATUS SendEncrypted(OutboundDataPtr data);
   Result<bool> WriteEncrypted(OutboundDataPtr data);
   CHECKED_STATUS ReadDecrypted();
+  CHECKED_STATUS HandshakeOrRead();
   Result<size_t> SslRead(void* buf, int num);
 
   std::string ToString() override;
@@ -423,6 +477,7 @@ class SecureStream : public Stream, public StreamContext {
 
   detail::BIOPtr bio_;
   detail::SSLPtr ssl_;
+  Status verification_status_;
 };
 
 Status SecureStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context) {
@@ -584,19 +639,7 @@ Result<ProcessDataResult> SecureStream::ProcessReceived(
     case SecureState::kDisabled:
       return context_->ProcessReceived(data, read_buffer_full);
 
-    case SecureState::kHandshake: {
-      size_t result = 0;
-      for (const auto& iov : data) {
-        auto written = BIO_write(bio_.get(), iov.iov_base, iov.iov_len);
-        result += written;
-        DCHECK_EQ(written, iov.iov_len);
-      }
-      auto handshake_status = Handshake();
-      LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
-      RETURN_NOT_OK(handshake_status);
-      return ProcessDataResult{ result, Slice() };
-    }
-
+    case SecureState::kHandshake: FALLTHROUGH_INTENDED;
     case SecureState::kEnabled: {
       size_t result = 0;
       for (const auto& iov : data) {
@@ -608,15 +651,29 @@ Result<ProcessDataResult> SecureStream::ProcessReceived(
             break;
           }
           slice.remove_prefix(len);
-          RETURN_NOT_OK(ReadDecrypted());
+          RETURN_NOT_OK(HandshakeOrRead());
         }
       }
-      RETURN_NOT_OK(ReadDecrypted());
+      RETURN_NOT_OK(HandshakeOrRead());
       return ProcessDataResult{ result, Slice() };
     }
   }
 
   return STATUS_FORMAT(IllegalState, "Unexpected state: $0", to_underlying(state_));
+}
+
+Status SecureStream::HandshakeOrRead() {
+  if (state_ == SecureState::kEnabled) {
+    return ReadDecrypted();
+  } else {
+    auto handshake_status = Handshake();
+    LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
+    RETURN_NOT_OK(handshake_status);
+  }
+  if (state_ == SecureState::kEnabled) {
+    return ReadDecrypted();
+  }
+  return Status::OK();
 }
 
 // Tries to do SSL_read up to num bytes from buf. Possible results:
@@ -714,8 +771,9 @@ Status SecureStream::Handshake() {
     auto pending_after = BIO_ctrl_pending(bio_.get());
 
     if (ssl_error == SSL_ERROR_SSL || ssl_error == SSL_ERROR_SYSCALL) {
-      std::string message =
-          ssl_error == SSL_ERROR_SSL ? SSLErrorMessage(sys_error) : ErrnoToString(sys_error);
+      std::string message = verification_status_.ok()
+          ? (ssl_error == SSL_ERROR_SSL ? SSLErrorMessage(sys_error) : ErrnoToString(sys_error))
+          : verification_status_.ToString();
       std::string message_suffix;
       if (FLAGS_dump_certificate_entries) {
         message_suffix = Format(", certificate entries: $0", certificate_entries_);
@@ -783,7 +841,8 @@ Status SecureStream::Init() {
 }
 
 Status SecureStream::Established(SecureState state) {
-  VLOG_WITH_PREFIX(4) << "Established with state: " << state;
+  VLOG_WITH_PREFIX(4) << "Established with state: " << state << ", used cipher: "
+                      << SSL_get_cipher_name(ssl_.get());
 
   state_ = state;
   ResetLogPrefix();
@@ -803,7 +862,13 @@ int SecureStream::VerifyCallback(int preverified, X509_STORE_CTX* store_context)
     if (ssl) {
       auto stream = static_cast<SecureStream*>(SSL_get_app_data(ssl));
       if (stream) {
-        return stream->Verify(preverified != 0, store_context) ? 1 : 0;
+        auto status = stream->Verify(preverified != 0, store_context);
+        if (!status.ok()) {
+          VLOG(4) << stream->LogPrefix() << status;
+          stream->verification_status_ = status;
+          return 0;
+        }
+        return 1;
       }
     }
   }
@@ -1001,18 +1066,19 @@ bool SecureStream::MatchUid(X509* cert, GENERAL_NAMES* gens) {
 }
 
 // Verify according to RFC 2818.
-bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
+Status SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   // Don't bother looking at certificates that have failed pre-verification.
   if (!preverified) {
-    VLOG_WITH_PREFIX(4) << "Unverified certificate";
-    return false;
+    auto err = X509_STORE_CTX_get_error(store_context);
+    return STATUS_FORMAT(
+        NetworkError, "Unverified certificate: $0", X509_verify_cert_error_string(err));
   }
 
   // We're only interested in checking the certificate at the end of the chain.
   int depth = X509_STORE_CTX_get_error_depth(store_context);
   if (depth > 0) {
     VLOG_WITH_PREFIX(4) << "Intermediate certificate";
-    return true;
+    return Status::OK();
   }
 
   X509* cert = X509_STORE_CTX_get_current_cert(store_context);
@@ -1028,7 +1094,8 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
 
   if (!secure_context_.required_uid().empty()) {
     if (!MatchUid(cert, gens)) {
-      return false;
+      return STATUS_FORMAT(
+          NetworkError, "Uid does not match: $0", secure_context_.required_uid());
     }
   } else {
     VLOG_WITH_PREFIX(4) << "Skip UID verification";
@@ -1038,13 +1105,13 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
                                                            : FLAGS_verify_client_endpoint;
   if (verify_endpoint) {
     if (!MatchEndpoint(cert, gens)) {
-      return false;
+      return STATUS(NetworkError, "Endpoint does not match");
     }
   } else {
     VLOG_WITH_PREFIX(4) << "Skip endpoint verification";
   }
 
-  return true;
+  return Status::OK();
 }
 
 } // namespace

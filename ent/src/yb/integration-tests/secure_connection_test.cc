@@ -28,21 +28,23 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+DECLARE_bool(TEST_private_broadcast_address);
 DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
-DECLARE_bool(TEST_private_broadcast_address);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(verify_client_endpoint);
 DECLARE_bool(verify_server_endpoint);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
-DECLARE_string(certs_dir);
+DECLARE_string(TEST_public_hostname_suffix);
 DECLARE_string(cert_file_pattern);
+DECLARE_string(certs_dir);
+DECLARE_string(cipher_list);
+DECLARE_string(ciphersuites);
 DECLARE_string(key_file_pattern);
 DECLARE_string(node_to_node_encryption_required_uid);
 DECLARE_string(ssl_protocols);
-DECLARE_string(TEST_public_hostname_suffix);
 
 using namespace std::literals;
 
@@ -203,6 +205,30 @@ class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {
 };
 
 TEST_F_EX(SecureConnectionTest, VerifyNameOnly, SecureConnectionVerifyNameOnlyTest) {
+  TestSimpleOps();
+}
+
+class SecureConnectionCipherList : public SecureConnectionTest {
+  void SetUp() override {
+    FLAGS_cipher_list = "HIGH";
+    FLAGS_ssl_protocols = "tls12";
+    SecureConnectionTest::SetUp();
+  }
+};
+
+TEST_F_EX(SecureConnectionTest, CipherList, SecureConnectionCipherList) {
+  TestSimpleOps();
+}
+
+class SecureConnectionCipherSuites : public SecureConnectionTest {
+  void SetUp() override {
+    FLAGS_ciphersuites = "TLS_AES_128_CCM_8_SHA256";
+    FLAGS_ssl_protocols = "tls13";
+    SecureConnectionTest::SetUp();
+  }
+};
+
+TEST_F_EX(SecureConnectionTest, CipherSuites, SecureConnectionCipherSuites) {
   TestSimpleOps();
 }
 
