@@ -40,7 +40,7 @@ Included here are the release notes for all releases in the v2.4 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.4.2.0-b42
+docker pull yugabytedb/yugabyte:2.4.2.0-b45
 ```
 
 ### Improvements
@@ -94,6 +94,7 @@ docker pull yugabytedb/yugabyte:2.4.2.0-b42
 * [[7769](https://github.com/yugabyte/yugabyte-db/issues/7769)] Prevent adding on-prem node instance with duplicate IP
 * [[7771](https://github.com/yugabyte/yugabyte-db/issues/7771)] [Platform] A lot of exceptions in logs "Error querying for alerts..."
 * [[7780](https://github.com/yugabyte/yugabyte-db/issues/7780)] [Platform] Make backup deletion independent of schedule
+* [[7810](https://github.com/yugabyte/yugabyte-db/issues/7810)] [Platform] Update SMTP configuration for health check emails
 * [[7909](https://github.com/yugabyte/yugabyte-db/issues/7909)] [Platform] Fix issue with signature could not be verified for google-cloud-sdk for GCP VMs
 * [[7918](https://github.com/yugabyte/yugabyte-db/issues/7918)] [Platform] Add US-West2 GCP metadata to Platform
 * [[7988](https://github.com/yugabyte/yugabyte-db/issues/7988)] [Platform] Backup deletion script shouldn't cause retries
