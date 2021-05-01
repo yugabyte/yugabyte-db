@@ -408,7 +408,7 @@ Compaction complete: SUCCESS
 The following backup and snapshot commands are available:
 
 * [**create_database_snapshot**](#create-database-snapshot) creates a snapshot of the specified YSQL database
-* [**create-keyspace_snapshot**](#create-keyspace-snapshot) creates a snapshot of the specified YCQL database
+* [**create_keyspace_snapshot**](#create-keyspace-snapshot) creates a snapshot of the specified YCQL database
 * [**list_snapshots**](#list-snapshots) returns a list of all snapshots, restores, and their states
 * [**create_snapshot**](#create-snapshot) creates a snapshot of one or more YCQL tables and indexes
 * [**restore_snapshot**](#restore-snapshot) restores a snapshot
@@ -541,6 +541,14 @@ f566b03b-b85e-41a0-b903-875cd305c1c5  COMPLETE
 #### create_snapshot
 
 Creates a snapshot of the specified YCQL tables and their indexes. Prior to v.2.1.8, indexes were not automatically included. You can specify multiple tables, even from different keyspaces.
+
+{{< note title="Snapshots don't auto-expire" >}}
+
+Snapshots you create via `create_snapshot` persist on disk until you remove them using the [`delete_snapshot`](#delete-snapshot) command.
+
+Use the [`create_snapshot_schedule`](#create-snapshot-schedule) command to create snapshots that expire after a specified time interval.
+
+{{</ note >}}
 
 **Syntax**
 
@@ -680,7 +688,7 @@ Snapshot          4963ed18fc1e4f1ba38c8fcf4058b295  4963ed18fc1e4f1ba38c8fcf4058
 
 #### delete_snapshot
 
-Deletes the snapshot information, usually cleaned up at the end, since this is supposed to be a transient state.
+Deletes the specified snapshot.
 
 **Syntax**
 
