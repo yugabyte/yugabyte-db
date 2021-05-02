@@ -18,9 +18,11 @@
 #include <vector>
 
 #include "yb/common/common.pb.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
 DECLARE_bool(transaction_tables_use_preferred_zones);

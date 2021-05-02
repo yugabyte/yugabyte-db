@@ -373,20 +373,6 @@ Status ClusterConfigLoader::Visit(
   auto l = config->LockForWrite();
   l->mutable_data()->pb.CopyFrom(metadata);
 
-  {
-    std::lock_guard <CatalogManager::LockType> blacklist_lock(catalog_manager_->blacklist_lock_);
-
-    if (metadata.has_server_blacklist()) {
-      // Rebuild the blacklist state for load movement completion tracking.
-      RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist()));
-    }
-
-    if (metadata.has_leader_blacklist()) {
-      // Rebuild the blacklist state for load movement completion tracking.
-      RETURN_NOT_OK(catalog_manager_->SetLeaderBlacklist(metadata.leader_blacklist()));
-    }
-  }
-
   // Update in memory state.
   catalog_manager_->cluster_config_ = config;
   l->Commit();

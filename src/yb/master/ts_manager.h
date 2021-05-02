@@ -50,6 +50,7 @@
 #include "yb/util/status.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/master/master.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -113,13 +114,13 @@ class TSManager {
   // heartbeat recently, indicating that they're alive and well.
   // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
   void GetAllLiveDescriptors(TSDescriptorVector* descs,
-                             const BlacklistSet blacklist = BlacklistSet()) const;
+                             const boost::optional<BlacklistSet>& blacklist = boost::none) const;
 
   // Return all of the currently registered TS descriptors that have sent a heartbeat
   // recently and are in the same 'cluster' with given placement uuid.
   // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
   void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, string placement_uuid,
-                                      const BlacklistSet blacklist = BlacklistSet(),
+                                      const boost::optional<BlacklistSet>& blacklist = boost::none,
                                       bool primary_cluster = true) const;
 
   // Return all of the currently registered TS descriptors that have sent a
@@ -134,7 +135,7 @@ class TSManager {
   static bool IsTsInCluster(const TSDescriptorPtr& ts, string cluster_uuid);
 
   static bool IsTsBlacklisted(const TSDescriptorPtr& ts,
-                              const BlacklistSet blacklist);
+                              const boost::optional<BlacklistSet>& blacklist = boost::none);
 
   // Register a callback to be called when the number of tablet servers reaches a certain number.
   // The callback is removed after it is called once.
