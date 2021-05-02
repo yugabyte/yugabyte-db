@@ -203,7 +203,7 @@ void TSManager::GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const {
 }
 
 void TSManager::GetAllLiveDescriptors(TSDescriptorVector* descs,
-    const BlacklistSet blacklist) const {
+                                      const boost::optional<BlacklistSet>& blacklist) const {
   GetDescriptors([blacklist](const TSDescriptorPtr& ts) -> bool {
     return ts->IsLive() && !IsTsBlacklisted(ts, blacklist); }, descs);
 }
@@ -218,19 +218,16 @@ bool TSManager::IsTsInCluster(const TSDescriptorPtr& ts, string cluster_uuid) {
 }
 
 bool TSManager::IsTsBlacklisted(const TSDescriptorPtr& ts,
-    const BlacklistSet blacklist) {
-  if (blacklist.empty()) {
+                                const boost::optional<BlacklistSet>& blacklist) {
+  if (!blacklist.is_initialized()) {
     return false;
   }
-  if (ts->IsBlacklisted(blacklist)) {
-    return true;
-  }
-  return false;
+  return ts->IsBlacklisted(*blacklist);
 }
 
 void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
     string placement_uuid,
-    const BlacklistSet blacklist,
+    const boost::optional<BlacklistSet>& blacklist,
     bool primary_cluster) const {
   descs->clear();
   SharedLock<decltype(lock_)> l(lock_);
