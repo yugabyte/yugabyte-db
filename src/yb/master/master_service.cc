@@ -307,7 +307,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     const auto table_info = server_->catalog_manager()->GetTableInfo(req->table_id());
     if (table_info) {
       const auto table_lock = table_info->LockForRead();
-      resp->set_partition_list_version(table_lock->data().pb.partition_list_version());
+      resp->set_partition_list_version(table_lock->pb.partition_list_version());
     }
   }
 

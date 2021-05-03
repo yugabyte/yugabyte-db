@@ -66,11 +66,8 @@ TEST(TableInfoTest, TestAssignmentRanges) {
 
   CreateTable(split_keys, kNumReplicas, true, table.get(), &tablets);
 
-  {
-    auto l = table->LockForRead();
-    ASSERT_EQ(l->data().pb.replication_info().live_replicas().num_replicas(), kNumReplicas)
-                  << "Invalid replicas for created table.";
-  }
+  ASSERT_EQ(table->LockForRead()->pb.replication_info().live_replicas().num_replicas(),
+            kNumReplicas) << "Invalid replicas for created table.";
 
   // Ensure they give us what we are expecting.
   for (int i = 0; i <= kNumSplits; i++) {
@@ -301,8 +298,8 @@ namespace {
 
 void SetTabletState(TabletInfo* tablet, const SysTabletsEntryPB::State& state) {
   auto lock = tablet->LockForWrite();
-  lock->mutable_data()->pb.set_state(state);
-  lock->Commit();
+  lock.mutable_data()->pb.set_state(state);
+  lock.Commit();
 }
 
 const std::string GetSplitKey(const std::string& start_key, const std::string& end_key) {
@@ -320,7 +317,7 @@ const std::string GetSplitKey(const std::string& start_key, const std::string& e
 
 std::array<scoped_refptr<TabletInfo>, kNumSplitParts> SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet) {
-  const auto partition = source_tablet->LockForRead()->data().pb.partition();
+  const auto partition = source_tablet->LockForRead()->pb.partition();
 
   const auto split_key =
       GetSplitKey(partition.partition_key_start(), partition.partition_key_end());
@@ -340,9 +337,9 @@ void SplitAndDeleteTablets(const TabletInfos& tablets_to_split, TabletInfos* pos
     auto child_tablets = SplitTablet(source_tablet);
     for (const auto& child : child_tablets) {
       LOG(INFO) << "Child tablet " << child->tablet_id()
-                << " partition: " << AsString(child->LockForRead()->data().pb.partition())
+                << " partition: " << AsString(child->LockForRead()->pb.partition())
                 << " state: "
-                << SysTabletsEntryPB_State_Name(child->LockForRead()->data().pb.state());
+                << SysTabletsEntryPB_State_Name(child->LockForRead()->pb.state());
       post_split_tablets->push_back(child);
     }
     SetTabletState(child_tablets[1].get(), SysTabletsEntryPB::CREATING);

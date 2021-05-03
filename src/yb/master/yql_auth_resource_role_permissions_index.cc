@@ -30,7 +30,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLAuthResourceRolePermissionsIndexVTable::R
   master_->catalog_manager()->permissions_manager()->GetAllRoles(&roles);
   for (const auto& rp : roles) {
     auto l = rp->LockForRead();
-    const auto& pb = l->data().pb;
+    const auto& pb = l->pb;
     for (int i = 0; i <  pb.resources_size(); i++) {
       const auto& rp = pb.resources(i);
       QLRow& row = vtable->Extend();

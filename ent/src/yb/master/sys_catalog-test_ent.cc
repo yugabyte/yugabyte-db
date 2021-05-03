@@ -32,8 +32,8 @@ class TestCDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     // Setup the CDC stream info.
     CDCStreamInfo* const stream = new CDCStreamInfo(stream_id);
     auto l = stream->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     stream->AddRef();
     streams.push_back(stream);
     return Status::OK();
@@ -59,8 +59,8 @@ class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicati
     // Setup the universe replication info.
     UniverseReplicationInfo* const universe = new UniverseReplicationInfo(producer_id);
     auto l = universe->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     universe->AddRef();
     universes.push_back(universe);
     return Status::OK();
@@ -80,10 +80,10 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   auto stream = make_scoped_refptr<CDCStreamInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
   {
     auto l = stream->LockForWrite();
-    l->mutable_data()->pb.set_table_id("test_table");
+    l.mutable_data()->pb.set_table_id("test_table");
     // Add the CDC stream.
     ASSERT_OK(sys_catalog->AddItem(stream.get(), kLeaderTerm));
-    l->Commit();
+    l.Commit();
   }
 
   // Verify it showed up.
@@ -112,10 +112,10 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
   auto universe = make_scoped_refptr<UniverseReplicationInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
   {
     auto l = universe->LockForWrite();
-    l->mutable_data()->pb.add_tables("producer_table_id");
+    l.mutable_data()->pb.add_tables("producer_table_id");
     // Add the universe replication info.
     ASSERT_OK(sys_catalog->AddItem(universe.get(), kLeaderTerm));
-    l->Commit();
+    l.Commit();
   }
 
   // Verify it showed up.

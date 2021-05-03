@@ -208,8 +208,7 @@ uint32_t TabletInfo::reported_schema_version(const TableId& table_id) {
 }
 
 bool TabletInfo::colocated() const {
-  auto l = LockForRead();
-  return l->data().pb.colocated();
+  return LockForRead()->pb.colocated();
 }
 
 string TabletInfo::ToString() const {
@@ -255,73 +254,65 @@ TableInfo::~TableInfo() {
 }
 
 const TableName TableInfo::name() const {
-  auto l = LockForRead();
-  return l->data().pb.name();
+  return LockForRead()->pb.name();
 }
 
 bool TableInfo::is_running() const {
-  auto l = LockForRead();
-  return l->data().is_running();
+  return LockForRead()->is_running();
 }
 
 string TableInfo::ToString() const {
-  auto l = LockForRead();
-  return Substitute("$0 [id=$1]", l->data().pb.name(), table_id_);
+  return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
 
 string TableInfo::ToStringWithState() const {
   auto l = LockForRead();
   return Substitute("$0 [id=$1, state=$2]",
-      l->data().pb.name(), table_id_, SysTablesEntryPB::State_Name(l->data().pb.state()));
+      l->pb.name(), table_id_, SysTablesEntryPB::State_Name(l->pb.state()));
 }
 
 const NamespaceId TableInfo::namespace_id() const {
-  auto l = LockForRead();
-  return l->data().namespace_id();
+  return LockForRead()->namespace_id();
 }
 
 const NamespaceName TableInfo::namespace_name() const {
-  auto l = LockForRead();
-  return l->data().namespace_name();
+  return LockForRead()->namespace_name();
 }
 
 const Status TableInfo::GetSchema(Schema* schema) const {
-  auto l = LockForRead();
-  return SchemaFromPB(l->data().schema(), schema);
+  return SchemaFromPB(LockForRead()->schema(), schema);
 }
 
 bool TableInfo::colocated() const {
-  auto l = LockForRead();
-  return l->data().pb.colocated();
+  return LockForRead()->pb.colocated();
 }
 
 const string TableInfo::indexed_table_id() const {
   auto l = LockForRead();
-  return l->data().pb.has_index_info()
-             ? l->data().pb.index_info().indexed_table_id()
-             : l->data().pb.has_indexed_table_id() ? l->data().pb.indexed_table_id() : "";
+  return l->pb.has_index_info()
+             ? l->pb.index_info().indexed_table_id()
+             : l->pb.has_indexed_table_id() ? l->pb.indexed_table_id() : "";
 }
 
 bool TableInfo::is_local_index() const {
   auto l = LockForRead();
-  return l->data().pb.has_index_info() ? l->data().pb.index_info().is_local()
-                                       : l->data().pb.is_local_index();
+  return l->pb.has_index_info() ? l->pb.index_info().is_local()
+                                : l->pb.is_local_index();
 }
 
 bool TableInfo::is_unique_index() const {
   auto l = LockForRead();
-  return l->data().pb.has_index_info() ? l->data().pb.index_info().is_unique()
-                                       : l->data().pb.is_unique_index();
+  return l->pb.has_index_info() ? l->pb.index_info().is_unique()
+                                : l->pb.is_unique_index();
 }
 
 TableType TableInfo::GetTableType() const {
-  auto l = LockForRead();
-  return l->data().pb.table_type();
+  return LockForRead()->pb.table_type();
 }
 
 bool TableInfo::RemoveTablet(const string& partition_key_start) {
   std::lock_guard<decltype(lock_)> l(lock_);
-  return EraseKeyReturnValuePtr(&tablet_map_, partition_key_start) != NULL;
+  return EraseKeyReturnValuePtr(&tablet_map_, partition_key_start) != nullptr;
 }
 
 void TableInfo::AddTablet(TabletInfo *tablet) {
@@ -343,7 +334,7 @@ void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
   if (it == tablet_map_.end()) {
     tablet_map_.emplace(partition_key_start, tablet);
   } else {
-    const auto old_split_depth = it->second->LockForRead()->data().pb.split_depth();
+    const auto old_split_depth = it->second->LockForRead()->pb.split_depth();
     if (tablet_meta.split_depth() < old_split_depth) {
       return;
     }
@@ -405,8 +396,7 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
 bool TableInfo::AreAllTabletsDeleted() const {
   shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
-    auto tablet_lock = e.second->LockForRead();
-    if (!tablet_lock->data().is_deleted()) {
+    if (!e.second->LockForRead()->is_deleted()) {
       return false;
     }
   }
@@ -416,8 +406,7 @@ bool TableInfo::AreAllTabletsDeleted() const {
 bool TableInfo::IsCreateInProgress() const {
   shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
-    auto tablet_lock = e.second->LockForRead();
-    if (!tablet_lock->data().is_running()) {
+    if (!e.second->LockForRead()->is_running()) {
       return true;
     }
   }
@@ -432,9 +421,9 @@ Status TableInfo::SetIsBackfilling() {
   }
 
   const auto table_lock = LockForRead();
-  for (const auto& tabletIt : tablet_map_) {
-    const auto& tablet = tabletIt.second;
-    if (tablet->LockForRead()->data().pb.state() != SysTabletsEntryPB::RUNNING) {
+  for (const auto& tablet_it : tablet_map_) {
+    const auto& tablet = tablet_it.second;
+    if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
       return STATUS_EC_FORMAT(IllegalState,
                               MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
                               "Some tablets are not running, table_id: $0 tablet_id: $1",
@@ -589,7 +578,7 @@ TabletInfoPtr TableInfo::GetColocatedTablet() const {
 
 IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
-  for (const auto& index_info_pb : l->data().pb.indexes()) {
+  for (const auto& index_info_pb : l->pb.indexes()) {
     if (index_info_pb.table_id() == index_id) {
       return IndexInfo(index_info_pb);
     }
@@ -599,7 +588,7 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->data().pb.table_type() == PGSQL_TABLE_TYPE && !l->data().pb.colocated();
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
@@ -667,23 +656,19 @@ void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
 NamespaceInfo::NamespaceInfo(NamespaceId ns_id) : namespace_id_(std::move(ns_id)) {}
 
 const NamespaceName& NamespaceInfo::name() const {
-  auto l = LockForRead();
-  return l->data().pb.name();
+  return LockForRead()->pb.name();
 }
 
 YQLDatabase NamespaceInfo::database_type() const {
-  auto l = LockForRead();
-  return l->data().pb.database_type();
+  return LockForRead()->pb.database_type();
 }
 
 bool NamespaceInfo::colocated() const {
-  auto l = LockForRead();
-  return l->data().pb.colocated();
+  return LockForRead()->pb.colocated();
 }
 
 ::yb::master::SysNamespaceEntryPB_State NamespaceInfo::state() const {
-  auto l = LockForRead();
-  return l->data().pb.state();
+  return LockForRead()->pb.state();
 }
 
 string NamespaceInfo::ToString() const {
@@ -733,38 +718,32 @@ std::size_t TablegroupInfo::NumChildTables() const {
 UDTypeInfo::UDTypeInfo(UDTypeId udtype_id) : udtype_id_(std::move(udtype_id)) { }
 
 const UDTypeName& UDTypeInfo::name() const {
-  auto l = LockForRead();
-  return l->data().pb.name();
+  return LockForRead()->pb.name();
 }
 
 const NamespaceName& UDTypeInfo::namespace_id() const {
-  auto l = LockForRead();
-  return l->data().pb.namespace_id();
+  return LockForRead()->pb.namespace_id();
 }
 
 int UDTypeInfo::field_names_size() const {
-  auto l = LockForRead();
-  return l->data().pb.field_names_size();
+  return LockForRead()->pb.field_names_size();
 }
 
 const string& UDTypeInfo::field_names(int index) const {
-  auto l = LockForRead();
-  return l->data().pb.field_names(index);
+  return LockForRead()->pb.field_names(index);
 }
 
 int UDTypeInfo::field_types_size() const {
-  auto l = LockForRead();
-  return l->data().pb.field_types_size();
+  return LockForRead()->pb.field_types_size();
 }
 
 const QLTypePB& UDTypeInfo::field_types(int index) const {
-  auto l = LockForRead();
-  return l->data().pb.field_types(index);
+  return LockForRead()->pb.field_types(index);
 }
 
 string UDTypeInfo::ToString() const {
   auto l = LockForRead();
-  return Substitute("$0 [id=$1] {metadata=$2} ", name(), udtype_id_, l->data().pb.DebugString());
+  return Format("$0 [id=$1] {metadata=$2} ", name(), udtype_id_, l->pb);
 }
 
 }  // namespace master

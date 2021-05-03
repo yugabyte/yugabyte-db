@@ -227,7 +227,7 @@ bool ShouldAutoRunInitDb(SysConfigInfo* ysql_catalog_config, bool pg_proc_exists
 
   {
     auto l = ysql_catalog_config->LockForRead();
-    if (l->data().pb.ysql_catalog_config().initdb_done()) {
+    if (l->pb.ysql_catalog_config().initdb_done()) {
       LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
       return false;
     }
@@ -244,7 +244,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     int64_t term) {
   {
     auto ysql_catalog_config_lock = ysql_catalog_config->LockForRead();
-    const auto& ysql_catalog_config_pb = ysql_catalog_config_lock->data().pb.ysql_catalog_config();
+    const auto& ysql_catalog_config_pb = ysql_catalog_config_lock->pb.ysql_catalog_config();
     if (ysql_catalog_config_pb.transactional_sys_catalog_enabled()) {
       LOG(INFO) << "YSQL catalog tables are already transactional";
       return Status::OK();
@@ -269,7 +269,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
      }
 
     auto table_lock = table_info.LockForWrite();
-    auto& schema = *table_lock->mutable_data()->mutable_schema();
+    auto& schema = *table_lock.mutable_data()->mutable_schema();
     auto& table_properties = *schema.mutable_table_properties();
 
     bool should_modify = false;
@@ -304,7 +304,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     // Change table properties in the sys catalog. We do this after updating tablet metadata, so
     // that if a restart happens before this step succeeds, we'll retry updating both next time.
     RETURN_NOT_OK(sys_catalog->UpdateItem(&table_info, term));
-    table_lock->Commit();
+    table_lock.Commit();
   }
 
   if (num_updated_tables > 0) {
@@ -315,10 +315,10 @@ Status MakeYsqlSysCatalogTablesTransactional(
   {
     auto ysql_catalog_lock = ysql_catalog_config->LockForWrite();
     auto* ysql_catalog_config_pb =
-        ysql_catalog_lock->mutable_data()->pb.mutable_ysql_catalog_config();
+        ysql_catalog_lock.mutable_data()->pb.mutable_ysql_catalog_config();
     ysql_catalog_config_pb->set_transactional_sys_catalog_enabled(true);
     RETURN_NOT_OK(sys_catalog->UpdateItem(ysql_catalog_config, term));
-    ysql_catalog_lock->Commit();
+    ysql_catalog_lock.Commit();
   }
 
   return Status::OK();

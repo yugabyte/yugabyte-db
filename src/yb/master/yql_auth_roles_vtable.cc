@@ -31,7 +31,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLAuthRolesVTable::RetrieveData(
   master_->catalog_manager()->permissions_manager()->GetAllRoles(&roles);
   for (const auto& role : roles) {
     auto l = role->LockForRead();
-    const auto& pb = l->data().pb;
+    const auto& pb = l->pb;
     QLRow& row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kRole, pb.role(), &row));
     RETURN_NOT_OK(SetColumnValue(kCanLogin, pb.can_login(), &row));

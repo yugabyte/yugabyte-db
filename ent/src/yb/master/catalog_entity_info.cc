@@ -24,14 +24,12 @@ namespace master {
 // ================================================================================================
 
 const TableId& CDCStreamInfo::table_id() const {
-  auto l = LockForRead();
-  return l->data().pb.table_id();
+  return LockForRead()->pb.table_id();
 }
 
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [table=$1] {metadata=$2} ", id(), l->data().pb.table_id(),
-                             l->data().pb.DebugString());
+  return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(), l->pb.ShortDebugString());
 }
 
 // ================================================================================================
@@ -65,8 +63,7 @@ Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcT
 
 std::string UniverseReplicationInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(),
-                             l->data().pb.DebugString());
+  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 ////////////////////////////////////////////////////////////
@@ -76,13 +73,11 @@ std::string UniverseReplicationInfo::ToString() const {
 SnapshotInfo::SnapshotInfo(SnapshotId id) : snapshot_id_(std::move(id)) {}
 
 SysSnapshotEntryPB::State SnapshotInfo::state() const {
-  auto l = LockForRead();
-  return l->data().state();
+  return LockForRead()->state();
 }
 
 const std::string& SnapshotInfo::state_name() const {
-  auto l = LockForRead();
-  return l->data().state_name();
+  return LockForRead()->state_name();
 }
 
 std::string SnapshotInfo::ToString() const {
@@ -90,18 +85,15 @@ std::string SnapshotInfo::ToString() const {
 }
 
 bool SnapshotInfo::IsCreateInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_creating();
+  return LockForRead()->is_creating();
 }
 
 bool SnapshotInfo::IsRestoreInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_restoring();
+  return LockForRead()->is_restoring();
 }
 
 bool SnapshotInfo::IsDeleteInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_deleting();
+  return LockForRead()->is_deleting();
 }
 
 void SnapshotInfo::AddEntries(
