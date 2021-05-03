@@ -415,7 +415,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Region r1 = Region.create(provider, "region-2", "PlacementRegion-2", "default-image");
     AvailabilityZone.create(r1, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r1, "az-3", "PlacementAZ-3", "subnet-3");
-    az3.setConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
+    az3.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");

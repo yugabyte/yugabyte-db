@@ -181,7 +181,8 @@ TEST_F(PlacementInfoTest, TestSelectTServer) {
   Partition partition;
   Partition::FromPB(tablet_locations.partition(), &partition);
   internal::RemoteTabletPtr remote_tablet = new internal::RemoteTablet(
-      tablet_locations.tablet_id(), partition, 0 /* split_depth */, "" /* split_parent_id */);
+      tablet_locations.tablet_id(), partition, /* partition_list_version = */ 0,
+      /* split_depth = */ 0, /* split_parent_id = */ "");
 
   // Build remote tserver map.
   internal::TabletServerMap tserver_map;

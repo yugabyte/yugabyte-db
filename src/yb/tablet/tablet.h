@@ -858,7 +858,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UpdateQLIndexes(std::unique_ptr<WriteOperation> operation);
   void UpdateQLIndexesFlushed(
       WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
-      const IndexOps& index_ops, const Status& status);
+      const IndexOps& index_ops, client::FlushStatus* flush_status);
 
   void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);
 
