@@ -494,15 +494,15 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_table_type(tablet->table()->metadata().state().pb.table_type());
   req_.mutable_partition()->CopyFrom(tablet_pb.partition());
-  req_.set_namespace_id(table_lock->data().pb.namespace_id());
-  req_.set_namespace_name(table_lock->data().pb.namespace_name());
-  req_.set_table_name(table_lock->data().pb.name());
-  req_.mutable_schema()->CopyFrom(table_lock->data().pb.schema());
-  req_.mutable_partition_schema()->CopyFrom(table_lock->data().pb.partition_schema());
+  req_.set_namespace_id(table_lock->pb.namespace_id());
+  req_.set_namespace_name(table_lock->pb.namespace_name());
+  req_.set_table_name(table_lock->pb.name());
+  req_.mutable_schema()->CopyFrom(table_lock->pb.schema());
+  req_.mutable_partition_schema()->CopyFrom(table_lock->pb.partition_schema());
   req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
   req_.set_colocated(tablet_pb.colocated());
-  if (table_lock->data().pb.has_index_info()) {
-    req_.mutable_index_info()->CopyFrom(table_lock->data().pb.index_info());
+  if (table_lock->pb.has_index_info()) {
+    req_.mutable_index_info()->CopyFrom(table_lock->pb.index_info());
   }
   auto& req_schedules = *req_.mutable_snapshot_schedules();
   req_schedules.Reserve(snapshot_schedules.size());
@@ -697,28 +697,29 @@ void AsyncAlterTable::HandleResponse(int attempt) {
 bool AsyncAlterTable::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
                       << tablet_->tablet_id() << " waiting for a read lock.";
-  auto l = table_->LockForRead();
-  VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
-                      << tablet_->tablet_id() << " obtained the read lock.";
 
   tserver::ChangeMetadataRequestPB req;
-  req.set_schema_version(l->data().pb.version());
-  req.set_dest_uuid(permanent_uuid());
-  req.set_tablet_id(tablet_->tablet_id());
-  req.set_alter_table_id(table_->id());
+  {
+    auto l = table_->LockForRead();
+    VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
+                        << tablet_->tablet_id() << " obtained the read lock.";
 
-  if (l->data().pb.has_wal_retention_secs()) {
-    req.set_wal_retention_secs(l->data().pb.wal_retention_secs());
+    req.set_schema_version(l->pb.version());
+    req.set_dest_uuid(permanent_uuid());
+    req.set_tablet_id(tablet_->tablet_id());
+    req.set_alter_table_id(table_->id());
+
+    if (l->pb.has_wal_retention_secs()) {
+      req.set_wal_retention_secs(l->pb.wal_retention_secs());
+    }
+
+    req.mutable_schema()->CopyFrom(l->pb.schema());
+    req.set_new_table_name(l->pb.name());
+    req.mutable_indexes()->CopyFrom(l->pb.indexes());
+    req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+
+    schema_version_ = l->pb.version();
   }
-
-  req.mutable_schema()->CopyFrom(l->data().pb.schema());
-  req.set_new_table_name(l->data().pb.name());
-  req.mutable_indexes()->CopyFrom(l->data().pb.indexes());
-  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
-
-  schema_version_ = l->data().pb.version();
-
-  l->Unlock();
 
   ts_admin_proxy_->AlterSchemaAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1)
@@ -731,19 +732,21 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1)
       << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
       << " version " << schema_version_ << " waiting for a read lock.";
-  auto l = table_->LockForRead();
-  VLOG_WITH_PREFIX(1)
-      << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
-      << " version " << schema_version_ << " obtained the read lock.";
 
   tserver::ChangeMetadataRequestPB req;
-  req.set_backfill_done_table_id(table_id_);
-  req.set_dest_uuid(permanent_uuid());
-  req.set_tablet_id(tablet_->tablet_id());
-  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
-  req.set_mark_backfill_done(true);
-  schema_version_ = l->data().pb.version();
-  l->Unlock();
+  {
+    auto l = table_->LockForRead();
+    VLOG_WITH_PREFIX(1)
+        << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
+        << " version " << schema_version_ << " obtained the read lock.";
+
+    req.set_backfill_done_table_id(table_id_);
+    req.set_dest_uuid(permanent_uuid());
+    req.set_tablet_id(tablet_->tablet_id());
+    req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+    req.set_mark_backfill_done(true);
+    schema_version_ = l->pb.version();
+  }
 
   ts_admin_proxy_->BackfillDoneAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1)
@@ -865,7 +868,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
   int64_t latest_index;
   {
     auto tablet_lock = tablet_->LockForRead();
-    latest_index = tablet_lock->data().pb.committed_consensus_state().config().opid_index();
+    latest_index = tablet_lock->pb.committed_consensus_state().config().opid_index();
     // Adding this logic for a race condition that occurs in this scenario:
     // 1. CatalogManager receives a DeleteTable request and sends DeleteTablet requests to the
     // tservers, but doesn't yet update the tablet in memory state to not running.
@@ -875,7 +878,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
     // 3. That tserver processes the DeleteTablet request.
     // 4. The ChangeConfig RPC now returns tablet not found,
     // which prompts an infinite retry of the RPC.
-    bool tablet_running = tablet_lock->data().is_running();
+    bool tablet_running = tablet_lock->is_running();
     if (!tablet_running) {
       AbortTask(STATUS(Aborted, "Tablet is not running"));
       return false;
@@ -1109,9 +1112,9 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
   add_table.set_table_type(table_->GetTableType());
   {
     auto l = table->LockForRead();
-    add_table.set_schema_version(l->data().pb.version());
-    *add_table.mutable_schema() = l->data().pb.schema();
-    *add_table.mutable_partition_schema() = l->data().pb.partition_schema();
+    add_table.set_schema_version(l->pb.version());
+    *add_table.mutable_schema() = l->pb.schema();
+    *add_table.mutable_partition_schema() = l->pb.partition_schema();
   }
 }
 

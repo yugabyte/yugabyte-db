@@ -229,7 +229,7 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
   const auto& tablet_id = tablet->tablet_id();
 
   const auto tablet_lock = tablet->LockForRead();
-  const auto tablet_pb = tablet_lock->data().pb;
+  const auto tablet_pb = tablet_lock.data().pb;
   if (tablet_pb.state() == SysTabletsEntryPB::DELETED) {
     return STATUS_FORMAT(NotFound, "Tablet $0 has been already deleted", tablet_id);
   }
@@ -249,7 +249,7 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     SysTabletsEntryPB::State inner_tablet_state;
     {
       const auto inner_tablet_lock = inner_tablet->LockForRead();
-      const auto& pb = inner_tablet_lock->data().pb;
+      const auto& pb = inner_tablet_lock.data().pb;
       inner_partition = pb.partition();
       inner_tablet_state = pb.state();
     }

@@ -793,17 +793,17 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[0] = tablet_lock->data().pb.table_ids_size();
+    num_tables[0] = tablet_lock->pb.table_ids_size();
   }
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[1] = tablet_lock->data().pb.table_ids_size();
+    num_tables[1] = tablet_lock->pb.table_ids_size();
   }
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[2] = tablet_lock->data().pb.table_ids_size();
+    num_tables[2] = tablet_lock->pb.table_ids_size();
   }
   // Make sure that the system catalog tablet table_ids is persisted.
   ASSERT_OK(cluster_->RestartSync());
@@ -815,7 +815,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[3] = tablet_lock->data().pb.table_ids_size();
+    num_tables[3] = tablet_lock->pb.table_ids_size();
   }
   ASSERT_LT(num_tables[0], num_tables[1]);
   ASSERT_EQ(num_tables[0], num_tables[2]);
@@ -864,7 +864,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables_before = tablet_lock->data().pb.table_ids_size();
+    num_tables_before = tablet_lock->pb.table_ids_size();
   }
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   {
@@ -893,7 +893,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables_after = tablet_lock->data().pb.table_ids_size();
+    num_tables_after = tablet_lock->pb.table_ids_size();
   }
   ASSERT_EQ(num_tables_before, num_tables_after);
 }
