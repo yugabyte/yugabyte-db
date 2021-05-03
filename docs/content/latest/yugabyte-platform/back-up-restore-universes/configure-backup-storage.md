@@ -15,24 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Depending on your cloud or on-premises environment, you can save your YugabyteDB universe data to a variety of storage solutions.
-
-## Local Storage
-
-You can create a local directory on a T-Server that you want to use for a backup as follows:
-
-1. Select **Connect** in the **Nodes** tab of the universe, and then select the server from **Admin Host**.<br><br>
-
-    ![Connect Modal](/images/yp/br-connect-modal.png)
-
-2. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
-
-    ```sh
-    $ sudo mkdir /backup; sudo chown yugabyte /backup
-    ```
-
-Note that when there is more than one node, an `nfs` mounted on each server is recommended, and
-creating a local backup folder on each server does not work.
+Depending on your environment, you can save your YugabyteDB universe data to a variety of storage solutions.
 
 ## Amazon S3
 
