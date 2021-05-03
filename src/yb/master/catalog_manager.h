@@ -523,9 +523,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // outstanding tasks are complete and the TS side tablets are deleted.
   // For system tables or colocated tables, we just need outstanding tasks to be done.
   //
-  // If all conditions are met, returns a lock in WRITE mode on this table, else nullptr.
-  std::unique_ptr<TableInfo::lock_type> MaybeTransitionTableToDeleted(
-      scoped_refptr<TableInfo> table);
+  // If all conditions are met, returns a locked write lock on this table.
+  // Otherwise lock is default constructed, i.e. not locked.
+  TableInfo::WriteLock MaybeTransitionTableToDeleted(TableInfoPtr table);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.
@@ -1073,7 +1073,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      bool is_index_table,
                                      bool update_indexed_table,
                                      std::vector<scoped_refptr<TableInfo>>* tables,
-                                     std::vector<std::unique_ptr<TableInfo::lock_type>>* table_lcks,
+                                     std::vector<TableInfo::WriteLock>* table_lcks,
                                      DeleteTableResponsePB* resp,
                                      rpc::RpcContext* rpc);
 
@@ -1198,7 +1198,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns TabletInfo for registered tablet.
   Result<TabletInfo*> RegisterNewTabletForSplit(
       TabletInfo* source_tablet_info, const PartitionPB& partition,
-      TableInfo::lock_type* table_write_lock);
+      TableInfo::WriteLock* table_write_lock);
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
 
