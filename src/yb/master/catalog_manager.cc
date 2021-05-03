@@ -629,8 +629,7 @@ CatalogManager::CatalogManager(Master* master)
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
       ysql_transaction_(this, master_),
-      tablespace_placement_map_(std::make_shared<TablespaceIdToReplicationInfoMap>()),
-      table_to_tablespace_map_(std::make_shared<TableToTablespaceIdMap>()),
+      tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this) {
   yb::InitCommonFlags();
@@ -1637,7 +1636,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   // replication info.
   if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
     boost::optional<ReplicationInfoPB> tablespace_pb =
-      VERIFY_RESULT(GetTablespaceReplicationInfo(tablespace_id));
+      VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
     if (tablespace_pb) {
       // Return the tablespace placement.
       return tablespace_pb.value();
@@ -1649,55 +1648,34 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   return l->pb.replication_info();
 }
 
-void CatalogManager::GetTablespaceInfo(
-  shared_ptr<TablespaceIdToReplicationInfoMap> *const out_tablespace_placement_map,
-  shared_ptr<TableToTablespaceIdMap> *const out_table_to_tablespace_map) {
-
+std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() {
   SharedLock lock(tablespace_mutex_);
-  if (out_tablespace_placement_map) {
-    *out_tablespace_placement_map = tablespace_placement_map_;
-  }
-  if (out_table_to_tablespace_map) {
-    *out_table_to_tablespace_map = table_to_tablespace_map_;
-  }
+  return tablespace_manager_;
 }
 
-Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfo(
+Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
   const TablespaceId& tablespace_id) {
 
-  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
-    // Tablespaces feature has been disabled.
-    return boost::none;
+  auto tablespace_manager = GetTablespaceManager();
+  auto replication_info_result = tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
+
+  if (replication_info_result) {
+    return replication_info_result;
   }
 
-  if (tablespace_id.empty()) {
-    // No tablespace id passed in. Return.
-    return boost::none;
-  }
+  // We failed to find the tablespace placement policy. Refresh the tablespace info and try again.
+  auto tablespace_map = VERIFY_RESULT(GetYsqlTablespaceInfo());
 
-  // Lookup tablespace placement info in tablespace_placement_map_.
-  shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_placement_map;
+  // We clone the tablespace_manager and update the clone with the new tablespace_map that we
+  // fetched above. We do this instead of updating the tablespace_manager object in-place because
+  // other clients may have a shared_ptr to it through 'GetTablespaceManager()'.
+  tablespace_manager = tablespace_manager->CreateCloneWithTablespaceMap(tablespace_map);
   {
-    SharedLock lock(tablespace_mutex_);
-    tablespace_placement_map = tablespace_placement_map_;
+    LockGuard lock(tablespace_mutex_);
+    tablespace_manager_ = tablespace_manager;
   }
 
-  auto iter = tablespace_placement_map->find(tablespace_id);
-  if (iter != tablespace_placement_map->end()) {
-    return iter->second;
-  }
-
-  // Given tablespace id was not found in the map.
-  // Read pg_tablespace table to see if this is a new tablespace.
-  auto tablespace_map = VERIFY_RESULT(GetAndUpdateYsqlTablespaceInfo());
-
-  // Now find the placement info from the updated map.
-  iter = tablespace_map->find(tablespace_id);
-  if (iter != tablespace_placement_map->end()) {
-    return iter->second;
-  }
-  return STATUS(InternalError, "pg_tablespace info for tablespace " +
-    tablespace_id + " not found");
+  return tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
 }
 
 bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
@@ -1749,9 +1727,7 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   return Status::OK();
 }
 
-Result<shared_ptr<TablespaceIdToReplicationInfoMap>>
-CatalogManager::GetAndUpdateYsqlTablespaceInfo() {
-
+Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTablespaceInfo() {
   auto table_info = GetTableInfo(kPgTablespaceTableId);
   if (table_info == nullptr) {
     return STATUS(InternalError, "pg_tablespace table info not found");
@@ -1784,13 +1760,49 @@ CatalogManager::GetAndUpdateYsqlTablespaceInfo() {
       RETURN_NOT_OK(ValidateTableReplicationInfo(iter.second.value()));
     }
   }
-  // Update tablespace_placement_map_.
-  {
-    LockGuard lock(tablespace_mutex_);
-    tablespace_placement_map_ = tablespace_map;
-  }
 
   return tablespace_map;
+}
+
+Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablespaceMap() {
+  // First fetch all namespaces. This is because the table_to_tablespace information is only
+  // found in the pg_class catalog table. There exists a separate pg_class table in each
+  // namespace. To build in-memory state for all tables, process pg_class table for each
+  // namespace.
+  vector<NamespaceId> namespace_id_vec;
+  {
+    LockGuard lock(mutex_);
+    for (const auto& ns : namespace_ids_map_) {
+      if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
+        continue;
+      }
+
+      if (ns.second->colocated()) {
+        // Skip processing tables in colocated databases.
+        continue;
+      }
+
+      // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
+      namespace_id_vec.emplace_back(ns.first);
+    }
+  }
+  // For each namespace, fetch the table->tablespace information by reading pg_class
+  // table for each namespace.
+  auto table_to_tablespace_map = std::make_shared<TableToTablespaceIdMap>();
+  for (const NamespaceId& nsid : namespace_id_vec) {
+    VLOG(5) << "Refreshing placement information for namespace " << nsid;
+    const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(nsid));
+    Status s = sys_catalog_->ReadPgClassInfo(database_oid,
+                                             table_to_tablespace_map.get());
+    if (!s.ok()) {
+      LOG(WARNING) << "Refreshing table->tablespace info failed for namespace "
+                   << nsid << " with error: " << s.ToString();
+      continue;
+    }
+    VLOG(5) << "Successfully refreshed placement information for namespace " << nsid;
+  }
+
+  return table_to_tablespace_map;
 }
 
 void CatalogManager::StartTablespaceBgTaskIfStopped() {
@@ -1846,69 +1858,38 @@ void CatalogManager::RefreshTablespaceInfoPeriodically() {
   }
 
   // Refresh the tablespace info in memory.
-  DoRefreshTablespaceInfo();
+  Status s = DoRefreshTablespaceInfo();
+  if (!s.IsOk()) {
+    LOG(WARNING) << "Tablespace refresh task failed with error " << s.ToString();
+  }
 
   // Schedule the next iteration of the task.
   ScheduleRefreshTablespaceInfoTask();
 }
 
-void CatalogManager::DoRefreshTablespaceInfo() {
+Status CatalogManager::DoRefreshTablespaceInfo() {
   VLOG(2) << "Running RefreshTablespaceInfoPeriodically task";
 
   // First refresh the tablespace info in memory.
-  auto s = GetAndUpdateYsqlTablespaceInfo();
-  if (!s.ok()) {
-    // Refresh of tablespaces failed.
-    LOG(WARNING) << "Updating tablespace information failed with error "
-                 << StatusToString(s);
-    return;
+  auto tablespace_info = VERIFY_RESULT(GetYsqlTablespaceInfo());
+
+  shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map = nullptr;
+
+  if (tablespace_info->size() > kYsqlNumDefaultTablespaces) {
+    // There exist custom tablespaces in the system. Fetch the table->tablespace
+    // map from PG catalog tables.
+    table_to_tablespace_map = VERIFY_RESULT(GetYsqlTableToTablespaceMap());
   }
 
-  // Now the table->tablespace information has to be updated in memory. To do this, first,
-  // fetch all namespaces. This is because the table_to_tablespace information is only
-  // found in the pg_class catalog table. There exists a separate pg_class table in each
-  // namespace. To build in-memory state for all tables, process pg_class table for each
-  // namespace.
-  vector<NamespaceId> namespace_id_vec;
-  {
-    LockGuard lock(mutex_);
-    for (const auto& ns : namespace_ids_map_) {
-      if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
-        continue;
-      }
-
-      if (ns.second->colocated()) {
-        // Skip processing tables in colocated databases.
-        continue;
-      }
-
-      // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
-      namespace_id_vec.emplace_back(ns.first);
-    }
-  }
-  // For each namespace, fetch the table->tablespace information by reading pg_class
-  // table for each namespace.
-  auto table_to_tablespace_map = std::make_shared<TableToTablespaceIdMap>();
-  for (const NamespaceId& nsid : namespace_id_vec) {
-    const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(nsid));
-    Status s = sys_catalog_->ReadPgClassInfo(database_oid,
-                                             table_to_tablespace_map.get());
-    if (!s.ok()) {
-      LOG(WARNING) << "Refreshing table->tablespace info failed for namespace "
-                   << nsid << " with error: " << s.ToString();
-      continue;
-    }
-    VLOG(5) << "Successfully refreshed placement information for namespace "
-            << nsid;
-  }
-  // Update table_to_tablespace_map_.
+  // Update tablespace_manager_.
   {
     LockGuard lock(tablespace_mutex_);
-    table_to_tablespace_map_ = table_to_tablespace_map;
+    tablespace_manager_ = std::make_shared<YsqlTablespaceManager>(tablespace_info,
+                                                                  table_to_tablespace_map);
   }
 
   VLOG(3) << "Refreshed tablespace information in memory";
-  return;
+  return Status::OK();
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,

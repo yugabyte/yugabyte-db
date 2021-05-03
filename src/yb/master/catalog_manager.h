@@ -67,6 +67,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
+#include "yb/master/ysql_tablespace_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 #include "yb/rpc/rpc.h"
 #include "yb/server/monitored_task.h"
@@ -1191,39 +1192,12 @@ class CatalogManager :
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
-  // Return the tablespace information to caller.
-  void GetTablespaceInfo(
-      std::shared_ptr<TablespaceIdToReplicationInfoMap>* out_tablespace_placement_map,
-      std::shared_ptr<TableToTablespaceIdMap>* out_table_to_tablespace_map);
-
-  // Given 'tablespace_id' return the replication info associated with it.
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
-      const TablespaceId& tablespace_id);
-
-  // Returns whether 'replication_info' has any relevant fields set.
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
-
-  // Validates that 'replication_info' for a table has supported fields set.
-  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
-
-  // Return the tablespaces in the system and their associated replication info from
-  // pg catalog tables.
-  Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetAndUpdateYsqlTablespaceInfo();
-
-  // Starts the periodic job to update tablespace info if it is not running.
   void StartTablespaceBgTaskIfStopped();
 
-  // Background task that refreshes the in-memory state for YSQL tables with their associated
-  // tablespace info.
-  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped()
-  // above.
-  void RefreshTablespaceInfoPeriodically();
+  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager();
 
-  // Helper function to schedule the next iteration of the tablespace info task.
-  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
-
-  // Helper function to refresh the tablespace info.
-  void DoRefreshTablespaceInfo();
+  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
+      const TablespaceId& tablespace_id);
 
   // Report metrics.
   void ReportMetrics();
@@ -1475,24 +1449,6 @@ class CatalogManager :
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
-  mutable MutexType tablespace_mutex_;
-
-  // The following shared_ptrs are periodically updated by a background task that
-  // reads tablespace information from the PG catalog tables. The task creates a new map,
-  // populates it with the information read from the catalog tables and updates these
-  // shared_ptrs. The maps themselves are thus never updated (no inserts/deletes/updates)
-  // once populated and are garbage collected once all references to them go out of scope.
-  // No clients are expected to update these maps, they take a lock merely to copy the
-  // shared_ptr and read from it.
-  std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_placement_map_
-    GUARDED_BY(tablespace_mutex_);
-
-  // Map to provide the tablespace associated with a given table.
-  std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map_ GUARDED_BY(tablespace_mutex_);
-
-  // Whether the periodic job to update tablespace info is running.
-  std::atomic<bool> tablespace_bg_task_running_;
-
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(mutex_);
 
@@ -1522,10 +1478,46 @@ class CatalogManager :
       const PlacementBlockPB& placement_block,
       const TSDescriptorVector& ts_descs);
 
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
+  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+
+  // Return the tablespaces in the system and their associated replication info from
+  // pg catalog tables.
+  Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetYsqlTablespaceInfo();
+
+  // Return the table->tablespace mapping by reading the pg catalog tables.
+  Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap();
+
+  // Background task that refreshes the in-memory state for YSQL tables with their associated
+  // tablespace info.
+  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped().
+  void RefreshTablespaceInfoPeriodically();
+
+  // Helper function to schedule the next iteration of the tablespace info task.
+  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
+
+  // Helper function to refresh the tablespace info.
+  CHECKED_STATUS DoRefreshTablespaceInfo();
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
+
+  mutable MutexType tablespace_mutex_;
+
+  // The tablespace_manager_ encapsulates two maps that are periodically updated by a background
+  // task that reads tablespace information from the PG catalog tables. The task creates a new
+  // manager instance, populates it with the information read from the catalog tables and updates
+  // this shared_ptr. The maps themselves are thus never updated (no inserts/deletes/updates)
+  // once populated and are garbage collected once all references to them go out of scope.
+  // No clients are expected to update the managaer, they take a lock merely to copy the
+  // shared_ptr and read from it.
+  std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_mutex_);
+
+  // Whether the periodic job to update tablespace info is running.
+  std::atomic<bool> tablespace_bg_task_running_;
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
