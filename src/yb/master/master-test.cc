@@ -709,7 +709,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
       auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
       ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
       auto l = iter->second->LockForRead();
-      ASSERT_EQ(l->data().pb.state(), SysTabletsEntryPB::DELETED);
+      ASSERT_EQ(l->pb.state(), SysTabletsEntryPB::DELETED);
     }
   }
 }

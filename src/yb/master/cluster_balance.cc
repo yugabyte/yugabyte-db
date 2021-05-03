@@ -140,8 +140,8 @@ Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
   // Return custom placement policy if it exists.
   {
     auto l = table->LockForRead();
-    if (l->data().pb.has_replication_info()) {
-      return l->data().pb.replication_info();
+    if (l->pb.has_replication_info()) {
+      return l->pb.replication_info();
     }
   }
 
@@ -180,9 +180,9 @@ Status ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementI
   }
   auto l = tablet->table()->LockForRead();
   if (state_->options_->type == READ_ONLY &&
-      l->data().pb.has_replication_info() &&
-      !l->data().pb.replication_info().read_replicas().empty()) {
-    pb->CopyFrom(GetReadOnlyPlacementFromUuid(l->data().pb.replication_info()));
+      l->pb.has_replication_info() &&
+      !l->pb.replication_info().read_replicas().empty()) {
+    pb->CopyFrom(GetReadOnlyPlacementFromUuid(l->pb.replication_info()));
   } else {
     pb->CopyFrom(GetClusterPlacementInfo());
   }
@@ -611,7 +611,7 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
         // Tablet is orphaned or in preparing state, continue.
         continue;
       }
-      tablet_running = tablet_lock->data().is_running();
+      tablet_running = tablet_lock->is_running();
     }
 
     // This is from the perspective of the CatalogManager and the on-disk, persisted
@@ -1378,17 +1378,16 @@ const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
 }
 
 const ReplicationInfoPB& ClusterLoadBalancer::GetClusterReplicationInfo() const {
-  auto l = catalog_manager_->cluster_config_->LockForRead();
-  return l->data().pb.replication_info();
+  return catalog_manager_->cluster_config_->LockForRead()->pb.replication_info();
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
   auto l = down_cast<enterprise::CatalogManager*>
                       (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
   if (state_->options_->type == LIVE) {
-    return l->data().pb.replication_info().live_replicas();
+    return l->pb.replication_info().live_replicas();
   } else {
-    return GetReadOnlyPlacementFromUuid(l->data().pb.replication_info());
+    return GetReadOnlyPlacementFromUuid(l->pb.replication_info());
   }
 }
 
@@ -1399,13 +1398,11 @@ void ClusterLoadBalancer::InitTablespaceInfo() {
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
-  auto l = catalog_manager_->cluster_config_->LockForRead();
-  return l->data().pb.server_blacklist();
+  return catalog_manager_->cluster_config_->LockForRead()->pb.server_blacklist();
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetLeaderBlacklist() const {
-  auto l = catalog_manager_->cluster_config_->LockForRead();
-  return l->data().pb.leader_blacklist();
+  return catalog_manager_->cluster_config_->LockForRead()->pb.leader_blacklist();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
@@ -1418,7 +1415,7 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   auto l = table.LockForRead();
   return (catalog_manager_->IsSystemTable(table) ||
           catalog_manager_->IsColocatedUserTable(table) ||
-          l->data().started_deleting());
+          l->started_deleting());
 }
 
 Status ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
@@ -1460,8 +1457,8 @@ Status ClusterLoadBalancer::SendReplicaChanges(
              0,
              IllegalState,
              "Sending duplicate add replica task.");
-    catalog_manager_->SendAddServerRequest(tablet, GetDefaultMemberType(),
-        l->data().pb.committed_consensus_state(), ts_uuid);
+    catalog_manager_->SendAddServerRequest(
+        tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid);
   } else {
     // If the replica is also the leader, first step it down and then remove.
     if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
@@ -1470,11 +1467,9 @@ Status ClusterLoadBalancer::SendReplicaChanges(
           0,
           IllegalState,
           "Sending duplicate leader stepdown task.");
-      catalog_manager_->SendLeaderStepDownRequest(tablet,
-                                                  l->data().pb.committed_consensus_state(),
-                                                  ts_uuid,
-                                                  should_remove_leader,
-                                                  new_leader_ts_uuid);
+      catalog_manager_->SendLeaderStepDownRequest(
+          tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader,
+          new_leader_ts_uuid);
     } else {
       SCHECK_EQ(
           state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
@@ -1482,7 +1477,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
           IllegalState,
           "Sending duplicate remove replica task.");
       catalog_manager_->SendRemoveServerRequest(
-          tablet, l->data().pb.committed_consensus_state(), ts_uuid);
+          tablet, l->pb.committed_consensus_state(), ts_uuid);
     }
   }
   return Status::OK();
@@ -1499,7 +1494,7 @@ consensus::RaftPeerPB::MemberType ClusterLoadBalancer::GetDefaultMemberType() {
 Result<bool> ClusterLoadBalancer::IsConfigMemberInTransitionMode(const TabletId &tablet_id) const {
   auto tablet = GetTabletMap().at(tablet_id);
   auto l = tablet->LockForRead();
-  auto config = l->data().pb.committed_consensus_state().config();
+  auto config = l->pb.committed_consensus_state().config();
   return CountVotersInTransition(config) != 0;
 }
 
@@ -1569,7 +1564,7 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
 const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const {
   auto l = down_cast<enterprise::CatalogManager*>
                     (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
-  return l->data().pb.replication_info().live_replicas();
+  return l->pb.replication_info().live_replicas();
 }
 
 vector<scoped_refptr<TableInfo>> ClusterLoadBalancer::GetAllTablesLoadBalancerSkipped() {

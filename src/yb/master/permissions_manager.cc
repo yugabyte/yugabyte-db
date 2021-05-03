@@ -186,13 +186,13 @@ Status PermissionsManager::IncrementRolesVersionUnlocked() {
 
   // Prepare write.
   auto l = CHECK_NOTNULL(security_config_.get())->LockForWrite();
-  const uint64_t roles_version = l->mutable_data()->pb.security_config().roles_version();
+  const uint64_t roles_version = l.mutable_data()->pb.security_config().roles_version();
   if (roles_version == std::numeric_limits<uint64_t>::max()) {
     DFATAL_OR_RETURN_NOT_OK(
         STATUS_SUBSTITUTE(IllegalState,
                           "Roles version reached max allowable integer: $0", roles_version));
   }
-  l->mutable_data()->pb.mutable_security_config()->set_roles_version(roles_version + 1);
+  l.mutable_data()->pb.mutable_security_config()->set_roles_version(roles_version + 1);
 
   TRACE("Set CatalogManager's roles version");
 
@@ -200,7 +200,7 @@ Status PermissionsManager::IncrementRolesVersionUnlocked() {
   RETURN_NOT_OK(catalog_manager_->sys_catalog_->UpdateItem(
       security_config_.get(), catalog_manager_->leader_ready_term()));
 
-  l->Commit();
+  l.Commit();
   return Status::OK();
 }
 
@@ -287,16 +287,18 @@ Status PermissionsManager::CreateRoleUnlocked(
   scoped_refptr<RoleInfo> role = new RoleInfo(role_name);
 
   // Prepare write.
-  auto l = role->LockForWrite();
-  l->mutable_data()->pb = std::move(role_entry);
+  {
+    auto l = role->LockForWrite();
+    l.mutable_data()->pb = std::move(role_entry);
 
-  roles_map_[role_name] = role;
-  TRACE("Inserted new role info into CatalogManager maps");
+    roles_map_[role_name] = role;
+    TRACE("Inserted new role info into CatalogManager maps");
 
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(catalog_manager_->sys_catalog_->AddItem(role.get(), term));
+    // Write to sys_catalog and in memory.
+    RETURN_NOT_OK(catalog_manager_->sys_catalog_->AddItem(role.get(), term));
 
-  l->Commit();
+    l.Commit();
+  }
   BuildRecursiveRolesUnlocked();
   return Status::OK();
 }
@@ -323,7 +325,7 @@ Status PermissionsManager::CreateRole(
       }
 
       auto clr = creator_role->LockForRead();
-      if (!clr->data().pb.is_superuser()) {
+      if (!clr->pb.is_superuser()) {
         s = STATUS(NotAuthorized, "Only superusers can create a role with superuser status");
         return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
       }
@@ -374,55 +376,56 @@ Status PermissionsManager::AlterRole(
   RETURN_NOT_OK(IncrementRolesVersionUnlocked());
 
   // Modify the role.
-  auto l = role->LockForWrite();
+  {
+    auto l = role->LockForWrite();
 
-  // If the role we are trying to alter is a SUPERUSER, and the request is trying to alter the
-  // SUPERUSER field for that role, the role requesting the alter operation must be a SUPERUSER
-  // too.
-  if (req->has_superuser()) {
-    auto current_role = FindPtrOrNull(roles_map_, req->current_role());
-    if (current_role == nullptr) {
-      s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
-                            req->current_role());
-      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    // If the role we are trying to alter is a SUPERUSER, and the request is trying to alter the
+    // SUPERUSER field for that role, the role requesting the alter operation must be a SUPERUSER
+    // too.
+    if (req->has_superuser()) {
+      auto current_role = FindPtrOrNull(roles_map_, req->current_role());
+      if (current_role == nullptr) {
+        s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
+                              req->current_role());
+        return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+      }
+
+      // Fix for https://github.com/yugabyte/yugabyte-db/issues/2505.
+      // A role cannot modify its own superuser status, nor the superuser status of any role granted
+      // to it directly or through inheritance. This check should happen before the next check that
+      // verifies that the role requesting the modification is a superuser.
+      if (l->pb.role() == req->current_role() || IsMemberOf(l->pb.role(), req->current_role())) {
+        s = STATUS(NotAuthorized, "You aren't allowed to alter your own superuser status or that "
+                                  "of a role granted to you");
+        return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+      }
+
+      // Don't allow a non-superuser role to modify the superuser status of another role.
+      auto clr = current_role->LockForRead();
+      if (!clr->pb.is_superuser()) {
+        s = STATUS(NotAuthorized, "Only superusers are allowed to alter superuser status");
+        return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+      }
     }
 
-    // Fix for https://github.com/yugabyte/yugabyte-db/issues/2505.
-    // A role cannot modify its own superuser status, nor the superuser status of any role granted
-    // to it directly or through inheritance. This check should happen before the next check that
-    // verifies that the role requesting the modification is a superuser.
-    if (l->data().pb.role() == req->current_role() ||
-        IsMemberOf(l->data().pb.role(), req->current_role())) {
-      s = STATUS(NotAuthorized,
-          "You aren't allowed to alter your own superuser status or that of a role granted to you");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    if (req->has_login()) {
+      l.mutable_data()->pb.set_can_login(req->login());
+    }
+    if (req->has_superuser()) {
+      l.mutable_data()->pb.set_is_superuser(req->superuser());
+    }
+    if (req->has_salted_hash()) {
+      l.mutable_data()->pb.set_salted_hash(req->salted_hash());
     }
 
-    // Don't allow a non-superuser role to modify the superuser status of another role.
-    auto clr = current_role->LockForRead();
-    if (!clr->data().pb.is_superuser()) {
-      s = STATUS(NotAuthorized, "Only superusers are allowed to alter superuser status");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    s = catalog_manager_->sys_catalog_->UpdateItem(role.get(),
+                                                   catalog_manager_->leader_ready_term());
+    if (!s.ok()) {
+      LOG(ERROR) << "Unable to alter role " << req->name() << ": " << s;
+      return s;
     }
+    l.Commit();
   }
-
-  if (req->has_login()) {
-    l->mutable_data()->pb.set_can_login(req->login());
-  }
-  if (req->has_superuser()) {
-    l->mutable_data()->pb.set_is_superuser(req->superuser());
-  }
-  if (req->has_salted_hash()) {
-    l->mutable_data()->pb.set_salted_hash(req->salted_hash());
-  }
-
-  s = catalog_manager_->sys_catalog_->UpdateItem(role.get(),
-                                                 catalog_manager_->leader_ready_term());
-  if (!s.ok()) {
-    LOG(ERROR) << "Unable to alter role " << req->name() << ": " << s;
-    return s;
-  }
-  l->Commit();
   VLOG(1) << "Altered role with request: " << req->ShortDebugString();
 
   BuildResourcePermissionsUnlocked();
@@ -494,36 +497,38 @@ Status PermissionsManager::DeleteRole(
     }
   }
 
-  auto l = role->LockForWrite();
+  {
+    auto l = role->LockForWrite();
 
-  if (l->mutable_data()->pb.is_superuser()) {
-    // If the role we are trying to remove is a SUPERUSER, the role trying to remove it has to be
-    // a SUPERUSER too.
-    auto current_role = FindPtrOrNull(roles_map_, req->current_role());
-    if (current_role == nullptr) {
-      s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
-                            req->current_role());
-      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    if (l.mutable_data()->pb.is_superuser()) {
+      // If the role we are trying to remove is a SUPERUSER, the role trying to remove it has to be
+      // a SUPERUSER too.
+      auto current_role = FindPtrOrNull(roles_map_, req->current_role());
+      if (current_role == nullptr) {
+        s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
+                              req->current_role());
+        return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+      }
+
+      auto clr = current_role->LockForRead();
+      if (!clr->pb.is_superuser()) {
+        s = STATUS(NotAuthorized, "Only superusers can drop a role with superuser status");
+        return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+      }
     }
 
-    auto clr = current_role->LockForRead();
-    if (!clr->data().pb.is_superuser()) {
-      s = STATUS(NotAuthorized, "Only superusers can drop a role with superuser status");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    // Write to sys_catalog and in memory.
+    RETURN_NOT_OK(catalog_manager_->sys_catalog_->DeleteItem(role.get(),
+        catalog_manager_->leader_ready_term()));
+    // Remove it from the maps.
+    if (roles_map_.erase(role->id()) < 1) {
+      PANIC_RPC(rpc, "Could not remove role from map, role name=" + role->id());
     }
-  }
 
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(catalog_manager_->sys_catalog_->DeleteItem(role.get(),
-      catalog_manager_->leader_ready_term()));
-  // Remove it from the maps.
-  if (roles_map_.erase(role->id()) < 1) {
-    PANIC_RPC(rpc, "Could not remove role from map, role name=" + role->id());
+    // Update the in-memory state.
+    TRACE("Committing in-memory state");
+    l.Commit();
   }
-
-  // Update the in-memory state.
-  TRACE("Committing in-memory state");
-  l->Commit();
   BuildRecursiveRolesUnlocked();
 
   // Remove all the permissions granted on the deleted role to any role. See DeleteTable() comment
@@ -679,8 +684,8 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
     const auto& rinfo = roles_map_[role_name];
     {
       auto l = rinfo->LockForRead();
-      role_permissions->set_salted_hash(l->data().pb.salted_hash());
-      role_permissions->set_can_login(l->data().pb.can_login());
+      role_permissions->set_salted_hash(l->pb.salted_hash());
+      role_permissions->set_can_login(l->pb.can_login());
     }
 
     // No permissions on ALL ROLES and ALL KEYSPACES by default.
@@ -690,7 +695,7 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
     for (const auto& granted_role : granted_roles) {
       const auto& role_info = roles_map_[granted_role];
       auto l = role_info->LockForRead();
-      const auto& pb = l->data().pb;
+      const auto& pb = l->pb;
 
       Permissions all_roles_permissions_bitset(role_permissions->all_roles_permissions());
       Permissions all_keyspaces_permissions_bitset(role_permissions->all_keyspaces_permissions());
@@ -745,7 +750,7 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
   }
 
   auto config = CHECK_NOTNULL(security_config_.get())->LockForRead();
-  response->set_version(config->data().pb.security_config().roles_version());
+  response->set_version(config->pb.security_config().roles_version());
   permissions_cache_ = std::move(response);
 }
 
@@ -976,7 +981,7 @@ vector<string> PermissionsManager::DirectMemberOf(const RoleName& role) {
   vector<string> roles;
   for (const auto& e : roles_map_) {
     auto l = e.second->LockForRead();
-    const auto& pb = l->data().pb;
+    const auto& pb = l->pb;
     for (const auto& member_of : pb.member_of()) {
       if (member_of == role) {
         roles.push_back(pb.role());
@@ -1009,7 +1014,7 @@ void PermissionsManager::TraverseRole(
 
   const auto& role_info = roles_map_[role_name];
   auto l = role_info->LockForRead();
-  const auto& pb = l->data().pb;
+  const auto& pb = l->pb;
   if (pb.member_of().size() == 0) {
     recursive_granted_roles_.insert({role_name, {}});
   } else {
@@ -1049,11 +1054,11 @@ Status PermissionsManager::PrepareDefaultSecurityConfigUnlocked(int64_t term) {
 
     // Prepare write.
     auto l = security_config_->LockForWrite();
-    *l->mutable_data()->pb.mutable_security_config() = std::move(security_config);
+    *l.mutable_data()->pb.mutable_security_config() = std::move(security_config);
 
     // Write to sys_catalog and in memory.
     RETURN_NOT_OK(catalog_manager_->sys_catalog_->AddItem(security_config_.get(), term));
-    l->Commit();
+    l.Commit();
   }
   return Status::OK();
 }
