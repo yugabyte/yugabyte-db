@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
@@ -31,11 +30,7 @@ public class ScheduleController extends AuthenticatedController {
 
     Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
 
-    try {
-      schedule.stopSchedule();
-    } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to delete Schedule UUID: " + scheduleUUID);
-    }
+    schedule.stopSchedule();
 
     ObjectNode responseJson = Json.newObject();
     responseJson.put("success", true);
