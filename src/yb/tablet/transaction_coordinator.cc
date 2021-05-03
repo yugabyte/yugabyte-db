@@ -221,7 +221,7 @@ class TransactionState {
     if (replicating_ != nullptr) {
       auto replicating_op_id = replicating_->consensus_round()->id();
       if (replicating_op_id.IsInitialized()) {
-        if (!consensus::OpIdEquals(replicating_->consensus_round()->id(), data.op_id)) {
+        if (OpId::FromPB(replicating_op_id) != data.op_id) {
           LOG_WITH_PREFIX(DFATAL)
               << "Replicated unexpected operation, replicating: " << AsString(replicating_)
               << ", replicated: " << AsString(data);
@@ -270,8 +270,12 @@ class TransactionState {
   void ProcessAborted(const TransactionCoordinator::AbortedData& data) {
     VLOG_WITH_PREFIX(4) << Format("ProcessAborted: $0, replicating: $1", data.state, replicating_);
 
-    DCHECK(replicating_ == nullptr || !replicating_->op_id().IsInitialized() ||
-           consensus::OpIdEquals(replicating_->op_id(), data.op_id));
+    LOG_IF(DFATAL,
+           replicating_ != nullptr && !replicating_->op_id().empty() &&
+           replicating_->op_id() != data.op_id)
+        << "Aborted wrong operation, expected " << AsString(replicating_) << ", but "
+        << AsString(data) << " aborted";
+
     replicating_ = nullptr;
 
     // We are not leader, so could abort all queued requests.
@@ -637,7 +641,7 @@ class TransactionState {
     }
 
     status_ = TransactionStatus::ABORTED;
-    first_entry_raft_index_ = data.op_id.index();
+    first_entry_raft_index_ = data.op_id.index;
     NotifyAbortWaiters(TransactionStatusResult::Aborted());
     return Status::OK();
   }
@@ -674,7 +678,7 @@ class TransactionState {
       involved_tablets_.emplace(data.state.tablets(idx), state);
     }
 
-    first_entry_raft_index_ = data.op_id.index();
+    first_entry_raft_index_ = data.op_id.index;
     return Status::OK();
   }
 
@@ -690,7 +694,7 @@ class TransactionState {
 
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
-    first_entry_raft_index_ = data.op_id.index();
+    first_entry_raft_index_ = data.op_id.index;
     involved_tablets_.reserve(data.state.tablets().size());
     for (const auto& tablet : data.state.tablets()) {
       InvolvedTabletState state = {
@@ -737,7 +741,7 @@ class TransactionState {
       return Status::OK();
     }
     last_touch_ = data.hybrid_time;
-    first_entry_raft_index_ = data.op_id.index();
+    first_entry_raft_index_ = data.op_id.index;
     return Status::OK();
   }
 
@@ -858,6 +862,10 @@ struct PostponedLeaderActions {
 };
 
 } // namespace
+
+std::string TransactionCoordinator::AbortedData::ToString() const {
+  return YB_STRUCT_TO_STRING(state, op_id);
+}
 
 // Real implementation of transaction coordinator, as in PImpl idiom.
 class TransactionCoordinator::Impl : public TransactionStateContext {

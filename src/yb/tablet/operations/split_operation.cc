@@ -60,11 +60,6 @@ Status SplitOperation::Prepare() {
   return Status::OK();
 }
 
-void SplitOperation::DoStart() {
-  VLOG_WITH_PREFIX(2) << "DoStart";
-  state()->TrySetHybridTimeFromClock();
-}
-
 Status SplitOperation::DoAborted(const Status& status) {
   VLOG_WITH_PREFIX(2) << "DoAborted";
   return status;
