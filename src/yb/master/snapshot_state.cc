@@ -180,7 +180,7 @@ Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
   return tablet::CreateSnapshotData {
     .snapshot_hybrid_time = snapshot_hybrid_time_,
     .hybrid_time = state.hybrid_time(),
-    .op_id = OpId::FromPB(state.op_id()),
+    .op_id = state.op_id(),
     .snapshot_dir = VERIFY_RESULT(state.GetSnapshotDir()),
     .schedule_id = schedule_id_,
   };
