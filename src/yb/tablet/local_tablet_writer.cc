@@ -63,16 +63,17 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
 
 void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   auto state = down_cast<WriteOperationState*>(operation->state());
-  tablet_->StartOperation(state);
+  OpId op_id(term, Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
+
+  auto hybrid_time = tablet_->mvcc_manager()->AddLeaderPending(op_id);
+  state->set_hybrid_time(hybrid_time);
 
   // Create a "fake" OpId and set it in the OperationState for anchoring.
-  state->mutable_op_id()->set_term(term);
-  state->mutable_op_id()->set_index(Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
+  state->set_op_id(op_id);
 
   CHECK_OK(tablet_->ApplyRowOperations(state));
 
-  state->Commit();
-  state->ReleaseDocDbLocks();
+  tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
 
   // Return the status of first failed op.
   int op_idx = 0;

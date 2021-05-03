@@ -98,14 +98,9 @@ Status WriteOperation::Prepare() {
   return Status::OK();
 }
 
-void WriteOperation::DoStart() {
-  TRACE("Start()");
-  state()->tablet()->StartOperation(state());
-}
-
 Status WriteOperation::DoAborted(const Status& status) {
   TRACE("FINISH: aborting operation");
-  state()->Abort();
+  state()->Release();
   return status;
 }
 
@@ -132,7 +127,6 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("FINISH: making edits visible");
-  state()->Commit();
 
   TabletMetrics* metrics = tablet()->metrics();
   if (metrics && state()->has_completion_callback()) {
@@ -194,29 +188,16 @@ WriteOperationState::WriteOperationState(Tablet* tablet,
       kind_(kind) {
 }
 
-void WriteOperationState::Abort() {
-  if (hybrid_time_.is_valid()) {
-    tablet()->mvcc_manager()->Aborted(hybrid_time_);
-  }
-
+void WriteOperationState::Release() {
   ReleaseDocDbLocks();
 
-  // After aborting, we may respond to the RPC and delete the
+  // After releasing, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
 }
 
 void WriteOperationState::UpdateRequestFromConsensusRound() {
   request_ = consensus_round()->replicate_msg()->mutable_write_request();
-}
-
-void WriteOperationState::Commit() {
-  tablet()->mvcc_manager()->Replicated(hybrid_time_);
-  ReleaseDocDbLocks();
-
-  // After committing, we may respond to the RPC and delete the
-  // original request, so null them out here.
-  ResetRpcFields();
 }
 
 void WriteOperationState::ReleaseDocDbLocks() {
@@ -249,10 +230,8 @@ string WriteOperationState::ToString() const {
     ts_str = "<unassigned>";
   }
 
-  return Substitute("WriteOperationState $0 [op_id=($1), ts=$2]",
-                    this,
-                    op_id().ShortDebugString(),
-                    ts_str);
+  return Format("WriteOperationState $0 [op_id=($1), ts=$2]",
+                static_cast<const void*>(this), op_id(), ts_str);
 }
 
 HybridTime WriteOperationState::WriteHybridTime() const {

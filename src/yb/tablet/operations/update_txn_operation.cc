@@ -45,19 +45,6 @@ Status UpdateTxnOperation::Prepare() {
   return Status::OK();
 }
 
-void UpdateTxnOperation::DoStart() {
-  VLOG_WITH_PREFIX(2) << "DoStart";
-
-  HybridTime ht = state()->hybrid_time_even_if_unset();
-  bool was_valid = ht.is_valid();
-  if (!was_valid) {
-    // Add only leader operation here, since follower operations are already registered in MVCC,
-    // as soon as they received.
-    state()->tablet()->mvcc_manager()->AddPending(&ht);
-    state()->set_hybrid_time(ht);
-  }
-}
-
 TransactionCoordinator& UpdateTxnOperation::transaction_coordinator() const {
   return *state()->tablet()->transaction_coordinator();
 }
@@ -66,9 +53,6 @@ Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_st
   VLOG_WITH_PREFIX(2) << "Replicated";
 
   auto* state = this->state();
-  auto scope_exit = ScopeExit([state] {
-    state->tablet()->mvcc_manager()->Replicated(state->hybrid_time());
-  });
 
   auto transaction_participant = state->tablet()->transaction_participant();
   if (transaction_participant) {
@@ -97,11 +81,6 @@ string UpdateTxnOperation::ToString() const {
 }
 
 Status UpdateTxnOperation::DoAborted(const Status& status) {
-  auto hybrid_time = state()->hybrid_time_even_if_unset();
-  if (hybrid_time.is_valid()) {
-    state()->tablet()->mvcc_manager()->Aborted(hybrid_time);
-  }
-
   if (state()->tablet()->transaction_coordinator()) {
     LOG_WITH_PREFIX(INFO) << "Aborted";
     TransactionCoordinator::AbortedData data = {

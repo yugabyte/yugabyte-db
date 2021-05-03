@@ -353,7 +353,7 @@ class MasterSnapshotCoordinator::Impl {
       .restore_at = HybridTime::FromPB(state.request()->snapshot_hybrid_time()),
       .restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(
         state.request()->restoration_id())),
-      .op_id = OpId::FromPB(state.op_id()),
+      .op_id = state.op_id(),
       .write_time = state.hybrid_time(),
       .term = leader_term,
     });

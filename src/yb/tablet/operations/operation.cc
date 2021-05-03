@@ -55,10 +55,6 @@ Operation::Operation(std::unique_ptr<OperationState> state,
       operation_type_(operation_type) {
 }
 
-void Operation::Start() {
-  DoStart();
-}
-
 std::string Operation::LogPrefix() const {
   return Format("T $0 $1: ", state()->tablet()->tablet_id(), this);
 }
@@ -66,7 +62,12 @@ std::string Operation::LogPrefix() const {
 Status Operation::Replicated(int64_t leader_term) {
   Status complete_status = Status::OK();
   RETURN_NOT_OK(DoReplicated(leader_term, &complete_status));
-  state()->CompleteWithStatus(complete_status);
+  auto* state = this->state();
+  if (state->use_mvcc()) {
+    state->tablet()->mvcc_manager()->Replicated(state->hybrid_time(), state->op_id());
+  }
+  state->Release();
+  state->CompleteWithStatus(complete_status);
   return Status::OK();
 }
 
@@ -93,7 +94,7 @@ OperationState::OperationState(Tablet* tablet)
 void OperationState::set_consensus_round(
     const scoped_refptr<consensus::ConsensusRound>& consensus_round) {
   consensus_round_ = consensus_round;
-  op_id_ = consensus_round_->id();
+  op_id_ = OpId::FromPB(consensus_round_->id());
   UpdateRequestFromConsensusRound();
 }
 
@@ -134,6 +135,9 @@ void OperationState::LeaderInit(const OpId& op_id, const OpId& committed_op_id) 
   committed_op_id.ToPB(replicate_msg->mutable_committed_op_id());
   replicate_msg->set_hybrid_time(hybrid_time_.ToUint64());
   replicate_msg->set_monotonic_counter(*tablet()->monotonic_counter());
+}
+
+void OperationState::Release() {
 }
 
 void ExclusiveSchemaOperationStateBase::ReleasePermitToken() {

@@ -859,7 +859,7 @@ Status TSTabletManager::ApplyTabletSplit(
 
     // Copy raft group metadata.
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
-        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, yb::OpId::FromPB(op_state->op_id()),
+        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, op_state->op_id(),
         op_state->hybrid_time()));
     LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
                           << " tablet: " << new_tablet_id;

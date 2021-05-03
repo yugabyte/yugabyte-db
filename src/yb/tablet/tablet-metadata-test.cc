@@ -132,9 +132,7 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   request.set_snapshot_id(snapshotId);
   tablet::SnapshotOperationState tx_state(tablet.get(), &request);
   tx_state.set_hybrid_time(tablet->clock()->Now());
-  auto* op_id = tx_state.mutable_op_id();
-  op_id->set_index(2);
-  op_id->set_term(-1);
+  tx_state.set_op_id(OpId(-1, 2));
   ASSERT_OK(tablet->snapshots().Create(&tx_state));
 
   ASSERT_TRUE(env_->DirExists(tablet->metadata()->rocksdb_dir()));
@@ -142,7 +140,7 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   ASSERT_TRUE(env_->DirExists(tablet->metadata()->snapshots_dir()));
 
   CHECK_OK(tablet->metadata()->DeleteTabletData(
-    TabletDataState::TABLET_DATA_DELETED, yb::OpId::FromPB(*op_id)));
+    TabletDataState::TABLET_DATA_DELETED, tx_state.op_id()));
 
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->rocksdb_dir()));
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->intents_rocksdb_dir()));

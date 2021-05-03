@@ -255,34 +255,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
 
-  // Finish the Prepare phase of a write transaction.
-  //
-  // Starts an MVCC transaction and assigns a timestamp for the transaction.
-  //
-  // This should always be done _after_ any relevant row locks are acquired
-  // (using CreatePreparedInsert/CreatePreparedMutate). This ensures that,
-  // within each row, timestamps only move forward. If we took a timestamp before
-  // getting the row lock, we could have the following situation:
-  //
-  //   Thread 1         |  Thread 2
-  //   ----------------------
-  //   Start tx 1       |
-  //                    |  Start tx 2
-  //                    |  Obtain row lock
-  //                    |  Update row
-  //                    |  Commit tx 2
-  //   Obtain row lock  |
-  //   Delete row       |
-  //   Commit tx 1
-  //
-  // This would cause the mutation list to look like: @t1: DELETE, @t2: UPDATE
-  // which is invalid, since we expect to be able to be able to replay mutations
-  // in increasing timestamp order on a given row.
-  //
-  // TODO: rename this to something like "FinishPrepare" or "StartApply", since
-  // it's not the first thing in a transaction!
-  void StartOperation(WriteOperationState* operation_state);
-
   // Apply all of the row operations associated with this transaction.
   CHECKED_STATUS ApplyRowOperations(
       WriteOperationState* operation_state,

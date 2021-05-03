@@ -68,7 +68,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
-  OpIdPB op_id;
+  OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
   bool sealed = false;
@@ -80,7 +80,7 @@ struct TransactionApplyData {
 };
 
 struct RemoveIntentsData {
-  OpIdPB op_id;
+  OpId op_id;
   HybridTime log_ht;
 };
 
@@ -190,7 +190,7 @@ class TransactionParticipant : public TransactionStatusManager {
   struct ReplicatedData {
     int64_t leader_term = -1;
     const tserver::TransactionStatePB& state;
-    const OpIdPB& op_id;
+    const OpId& op_id;
     HybridTime hybrid_time;
     bool sealed = false;
     AlreadyAppliedToRegularDB already_applied_to_regular_db;
