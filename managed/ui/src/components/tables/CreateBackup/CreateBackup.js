@@ -81,6 +81,8 @@ export default class CreateBackup extends Component {
 
     if (isDefinedNotNull(values.storageConfigUUID)) {
       let backupType = null;
+      let frequency = null;
+
       if (this.state.backupType === 'ysql') {
         backupType = YSQL_TABLE_TYPE;
       } else if (this.state.backupType === 'ycql') {
@@ -89,18 +91,17 @@ export default class CreateBackup extends Component {
         backupType = YEDIS_TABLE_TYPE;
       }
 
-      let frequency = null;
-      if(!isEmptyString(values.schedulingFrequency)) {
-        if(values?.schedulingFrequencyUnit?.value === 'Hours') {
+      if (!isEmptyString(values.schedulingFrequency)) {
+        if (values?.schedulingFrequencyUnit?.value === 'Hours') {
           frequency =
             values?.schedulingFrequency % 1
               ? (values?.schedulingFrequency % 1) * 3600 * 1000 +
                 Math.floor(values?.schedulingFrequency) * 3600 * 1000
               : values?.schedulingFrequency * 3600 * 1000;
-        } else if ( values?.schedulingFrequencyUnit?.value === 'Minutes') {
-          frequency = values?.schedulingFrequency * 60 * 1000
+        } else if (values?.schedulingFrequencyUnit?.value === 'Minutes') {
+          frequency = values?.schedulingFrequency * 60 * 1000;
         }
-        frequency = Math.round(frequency)
+        frequency = Math.round(frequency);
       }
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
@@ -436,14 +437,14 @@ export default class CreateBackup extends Component {
                           readOnly={isSchedulingFrequencyReadOnly}
                           type={'number'}
                           label={'Backup frequency'}
-                          placeholder={'Interval'}
+                          placeholder='Interval'
                         />
                       </Col>
                       <Col xs={6}>
                         <Field
-                          name="schedulingFrequencyUnit"
+                          name='schedulingFrequencyUnit'
                           component={YBFormSelect}
-                          label={'Frequency Unit'}
+                          label='Frequency Unit'
                           options={schedulingFrequencyUnitOptions}
                         />
                       </Col>
