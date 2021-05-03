@@ -39,7 +39,7 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
     request.set_snapshot_id(kSnapshotId);
     tablet::SnapshotOperationState tx_state(tablet().get(), &request);
     tx_state.set_hybrid_time(tablet()->clock()->Now());
-    tablet_peer_->log()->GetLatestEntryOpId().ToPB(tx_state.mutable_op_id());
+    tx_state.set_op_id(tablet_peer_->log()->GetLatestEntryOpId());
     ASSERT_OK(tablet()->snapshots().Create(&tx_state));
 
     // Create extra file to check that it will not break snapshot files collecting
