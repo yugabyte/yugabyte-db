@@ -322,8 +322,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
-      // a clean state to delete the node. Log it and skip the node.
-      if (node.cloudInfo.private_ip == null) {
       // a clean state to delete the node. Log it, free up the onprem node
       // so that the client can use the node instance to create another universe.
       if (node.cloudInfo.private_ip == null){
