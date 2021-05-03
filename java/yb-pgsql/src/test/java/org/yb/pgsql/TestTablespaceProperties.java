@@ -73,6 +73,9 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
+    builder.addMasterFlag("vmodule", "sys_catalog=5,cluster_balance=1");
+    builder.addMasterFlag("ysql_tablespace_info_refresh_secs",
+                          Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
     builder.perTServerFlags(perTserverZonePlacementFlags);
   }
 
@@ -228,10 +231,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
     // Set required YB-Master flags.
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-      assertTrue(client.setFlag(hp, "ysql_tablespace_info_refresh_secs",
-            Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS)));
       assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
-      assertTrue(client.setFlag(hp, "v", "3"));
     }
 
     negativeTest();
@@ -268,7 +268,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     YBClient client = miniCluster.getClient();
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
       assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "false"));
-      assertTrue(client.setFlag(hp, "v", "3"));
     }
 
     // At this point, since tablespaces are disabled, the LB will detect that the older
@@ -302,7 +301,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
       assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
-      assertTrue(client.setFlag(hp, "v", "3"));
     }
 
     // Since the tablespace-id was not checked during creation, the tablet replicas
