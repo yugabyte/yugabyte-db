@@ -15,75 +15,71 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Depending on your cloud or on-premises environment, YugabyteDB universe data can be saved to the following storage options.
-
-## Local storage
-
-To create a local directory on a tserver to back up to, follow these steps:
-
-1. Select **Connect** in the **Nodes** tab of the universe and then select the server from **Admin Host**.
-
-    ![Connect Modal](/images/yp/br-connect-modal.png)
-
-2. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`.
-
-    ```sh
-    $ sudo mkdir /backup; sudo chown yugabyte /backup
-    ```
-
-{{< note title="Note" >}}
-
-When you have more than one node, an `nfs` mounted on each server is recommended, and
-creating a local backup folder on each server will not work.
-
-{{< /note >}}
+Depending on your environment, you can save your YugabyteDB universe data to a variety of storage solutions.
 
 ## Amazon S3
 
-To configure Amazon S3 as the backup target, follow these steps:
+You can configure Amazon S3 as your backup target as follows:
 
-1. Click **Configs** on the left panel.
-2. Select the **Backup** tab.
-3. Click **Amazon S3** and enter values for **Access Key**, **Access Secret**, **S3 Bucket**, and **S3 Bucket Host Base**.
+1. Navigate to **Configs** > **Backup** > **amazon S3**.
+
+2. Enter values for **Access Key** and **Access Secret** fields. 
+
+   You may use Identity Access Management (IAM).
+
+3. Enter values for the **S3 Bucket** and **S3 Bucket Host Base** fields.
+
+   For information on how to obtain AWS credentials, see [Understanding and getting your AWS credentials](https://docs.aws.amazon.com/general/latest/gr/aws-sec-cred-types.html).
 
 4. Click **Save**.
 
 ![AWS Backup](/images/yp/cloud-provider-configuration-backup-aws.png)
 
-The **Access Key** and **Access Secret** values can be added for the IAM of the user.
+You can configure access control for the S3 bucket as follows: 
 
-## NFS
+- Provide the required access control list (ACL), and then define **List, Write** permissions to access **Objects**, as well as **Read, Write** permissions for the bucket, as shown in the following illustration: <br><br>
+  ![img](/images/yp/backup-aws-access-control.png)
+- Create Bucket policy to enable access to the objects stored in the bucket.
 
-To configure NFS as the backup target, follow these steps:
+## Network File Share
 
-1. Select **Configuration** on the left panel.
-2. Select the **Backup** tab.
-3. Click **NFS** and enter the **NFS Storage Path** (`/backup` or another directory).
-4. Click **Save**.
+You can configure Network File Share (NFS) as your backup target as follows:
+
+1. Navigate to **Configs** > **Backup** > **NFS**.
+3. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the Yugabyte Platform instance.
+3. Click **Save**.
 
 ![NFS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
 
-## Google Cloud Storage (GCS)
+## Google Cloud Storage
 
-To configure GCS as the backup target, follow these steps:
+You can configure Google Cloud Storage (GCS) as your backup target as follows:
 
-1. Click **Configs** on the left panel.
-2. Click the **Backup** tab.
-3. Click **GCS** and enter values for **GCS Bucket** and **GCS Credentials**.
+1. Navigate to **Configs** > **Backup** > **GCS**.
+
+3. Complete  **GCS Bucket** and **GCS Credentials** fields.
+
+   For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
+
 4. Click **Save**.
 
 ![GCS Backup](/images/yp/cloud-provider-configuration-backup-gcs.png)
 
+You can configure access control for the S3 bucket as follows: 
+
+- Provide the required access control list (ACL) and set it as either uniform or fine-grained (for object-level access).
+- Add permissions, such as roles and members.
+
 ## Microsoft Azure
 
-To configure Azure as the backup target, follow these steps:
+You can configure Azure as your backup target as follows:
 
 1. Create a storage account in Azure as follows:
 
     <br/>
 
-    * Navigate to Portal > Storage Account and click Add (+).
-    * Fill in the mandatory fields: resource group, storage account name, and location.
+    * Navigate to **Portal > Storage Account** and click **Add** (+).
+    * Complete the mandatory fields, such as **Resource group**, **Storage account name**, and **Location**, as per the following illustration:
 
     <br/>
 
@@ -93,14 +89,14 @@ To configure Azure as the backup target, follow these steps:
 
     <br/>
 
-    * Open the storage account, which is “storagetestazure” in this section's screenshots.
-    * Navigate to Blob Service > Container > + Container and click Create.
+    * Open the storage account (for example, **storagetestazure**, as shown in the following illustration).
+    * Navigate to **Blob service > Containers > + Container** and then click **Create**.
 
     <br/>
 
     ![Azure blob container creation](/images/yp/cloud-provider-configuration-backup-azure-blob-container.png)
 
-1. Get the container URL by navigating to container > Properties.
+1. Obtain the container URL by navigating to **Container > Properties**, as shown in the following illustration:<br>
 
     <br/>
 
@@ -110,21 +106,19 @@ To configure Azure as the backup target, follow these steps:
 
     <br/>
 
-    * Navigate to the container > Shared access Signature.
-    * Select “Object” under “Allowed Resource Types”.
-    * Click “Generate SAS and connection string”, and copy the SAS token. Note that the token should start with `?sv=`.
+    * Navigate to **Container > Shared access signature**, as shown in the following illustration.
+    * Select **Allowed Resource Types > Object**.
+    * Click **Generate SAS and connection string** and copy the SAS token. Note that the token should start with `?sv=`.
 
     <br/>
 
     ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
-1. On your Yugabyte Platform instance, provide the container URL and SAS token for creating a backup:
+1. On your Yugabyte Platform instance, provide the container URL and SAS token for creating a backup, as follows:
 
     <br/>
 
-    * Click **Configs** on the left panel.
-    * Click the **Backup** tab.
-    * Click **Azure** and enter values for **Container URL** and **SAS Token**.
-    * Click **Save**.
-
+    * Navigate to **Configs** > **Backup** > **Azure**.
+    * Enter values for the **Container URL** and **SAS Token** fields, as shown in the following illustration, and then click **Save**.<br><br>
+    
     ![Azure Backup](/images/yp/cloud-provider-configuration-backup-azure.png)
