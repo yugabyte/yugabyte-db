@@ -94,7 +94,8 @@ Result<std::vector<client::YBTableName>> ResolveTableNames(
     ClusterAdminClientClass* client,
     CLIArgumentsIterator i,
     const CLIArgumentsIterator& end,
-    TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
+    const TailArgumentsProcessor& tail_processor = TailArgumentsProcessor(),
+    bool allow_namespace_only = false);
 
 Result<client::YBTableName> ResolveSingleTableName(
     ClusterAdminClientClass* client,

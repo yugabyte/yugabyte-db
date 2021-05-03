@@ -398,7 +398,10 @@ RESET ROLE;
 CREATE SCHEMA test_roles_schema AUTHORIZATION pg_signal_backend; --success
 SET ROLE regress_testrol2;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 UPDATE pg_proc SET proacl = null WHERE proname LIKE 'testagg_';
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
+
 SELECT proname, proacl FROM pg_proc WHERE proname LIKE 'testagg_';
 
 REVOKE ALL PRIVILEGES ON FUNCTION testagg1(int2) FROM PUBLIC;

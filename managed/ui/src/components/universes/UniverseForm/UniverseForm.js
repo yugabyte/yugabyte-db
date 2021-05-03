@@ -160,6 +160,7 @@ class UniverseForm extends Component {
           volumeSize: formValues[clusterType].volumeSize,
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
+          throughput: formValues[clusterType].throughput,
           mountPoints: formValues[clusterType].mountPoints,
           storageType: formValues[clusterType].storageType,
           storageClass: 'standard'
@@ -382,6 +383,7 @@ class UniverseForm extends Component {
           volumeSize: formValues[clusterType].volumeSize,
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
+          throughput: formValues[clusterType].throughput,
           mountPoints: formValues[clusterType].mountPoints,
           storageType: formValues[clusterType].storageType
         }
@@ -950,6 +952,7 @@ class PrimaryClusterFields extends Component {
           'primary.instanceTags',
           'primary.ybSoftwareVersion',
           'primary.diskIops',
+          'primary.throughput',
           'primary.numVolumes',
           'primary.volumeSize',
           'primary.storageType',
@@ -986,6 +989,7 @@ class ReadOnlyClusterFields extends Component {
           'async.instanceType',
           'async.ybSoftwareVersion',
           'async.diskIops',
+          'async.throughput',
           'async.numVolumes',
           'async.volumeSize',
           'async.storageType',

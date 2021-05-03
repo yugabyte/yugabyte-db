@@ -343,7 +343,7 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
     std::unique_ptr<client::YBClient> client;
     std::unique_ptr<client::TableHandle> table;
     client::YBSessionPtr session;
-    std::future<Status> future;
+    std::future<client::FlushStatus> future;
   };
 
   std::vector<Item> items;
@@ -370,7 +370,7 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
   }
 
   for (auto& item : items) {
-    ASSERT_OK(item.future.get());
+    ASSERT_OK(item.future.get().status);
   }
 }
 

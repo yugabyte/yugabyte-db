@@ -105,8 +105,8 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.put("code", "tc");
     params.put("email", "foo@bar.com");
     params.put("name", "Test Customer");
-    params.put("password", "new-password");
-    params.put("confirmPassword", "new-password");
+    params.put("password", "new_Passw0rd");
+    params.put("confirmPassword", "new_Passw0rd");
     params.put("callhomeLevel", "LOW");
     Result result =
       route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
@@ -415,7 +415,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Region r1 = Region.create(provider, "region-2", "PlacementRegion-2", "default-image");
     AvailabilityZone.create(r1, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r1, "az-3", "PlacementAZ-3", "subnet-3");
-    az3.setConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
+    az3.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");

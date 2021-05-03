@@ -319,15 +319,19 @@ public class TestClusterBase extends BaseCQLTest {
     return newMasters;
   }
 
-  public void performFullMasterMove() throws Exception {
+  public void performFullMasterMove(Map<String, String> extra_args) throws Exception {
     // Create a copy to store original list.
     Map<HostAndPort, MiniYBDaemon> originalMasters = new HashMap<>(miniCluster.getMasters());
     for (HostAndPort originalMaster : originalMasters.keySet()) {
       // Add new master.
-      HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
+      HostAndPort masterRpcHostPort = miniCluster.startShellMaster(extra_args);
       addMaster(masterRpcHostPort);
       removeMaster(originalMaster);
     }
+  }
+
+  public void performFullMasterMove() throws Exception {
+    performFullMasterMove(new TreeMap<String, String>());
   }
 
   public Set<HostAndPort> startNewMasters(int numMasters) throws Exception {
@@ -402,11 +406,13 @@ public class TestClusterBase extends BaseCQLTest {
     addNewTServers(numTservers, null);
   }
 
-  protected void addNewTServers(int numTservers, List<String> tserverArgs) throws Exception {
+  protected void addNewTServers(
+      int numTservers,
+      Map<String, String> tserverFlags) throws Exception {
     int expectedTServers = miniCluster.getTabletServers().size() + numTservers;
     // Now double the number of tservers to expand the cluster and verify load spreads.
     for (int i = 0; i < numTservers; i++) {
-      miniCluster.startTServer(tserverArgs);
+      miniCluster.startTServer(tserverFlags);
     }
 
     // Wait for the CQL client to discover the new nodes.
@@ -759,7 +765,8 @@ public class TestClusterBase extends BaseCQLTest {
     int num_tablets_moved_to_new_tserver = 12;
 
     int rbs_delay_sec = 15;
-    addNewTServers(1, Arrays.asList("--TEST_simulate_long_remote_bootstrap_sec=" + rbs_delay_sec));
+    addNewTServers(1, Collections.singletonMap("TEST_simulate_long_remote_bootstrap_sec",
+                                               String.valueOf(rbs_delay_sec)));
 
     // Load balancer should not become idle while long RBS is half-way.
     assertFalse(client.waitForLoadBalancerIdle(

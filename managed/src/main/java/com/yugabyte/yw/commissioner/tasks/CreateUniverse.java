@@ -168,9 +168,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Update the DNS entry for all the nodes once, using the primary cluster type.
       createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
-                                primaryCluster.userIntent.providerType,
-                                primaryCluster.userIntent.provider,
-                                primaryCluster.userIntent.universeName)
+                                primaryCluster.userIntent)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Create alert definitions.

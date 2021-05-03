@@ -513,6 +513,8 @@ void YBCPgSetThreadLocalErrMsg(const void* new_msg);
 
 const void* YBCPgGetThreadLocalErrMsg();
 
+void YBCPgResetCatalogReadTime();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

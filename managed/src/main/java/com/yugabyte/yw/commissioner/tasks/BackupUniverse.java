@@ -81,7 +81,7 @@ public class BackupUniverse extends UniverseTaskBase {
 
       Set<String> tableNames = taskParams().getTableNames()
         .stream()
-        .map(tableName -> taskParams().keyspace + ":" + tableName)
+        .map(tableName -> taskParams().getKeyspace() + ":" + tableName)
         .collect(Collectors.toSet());
 
       taskInfo = String.join(",", tableNames);

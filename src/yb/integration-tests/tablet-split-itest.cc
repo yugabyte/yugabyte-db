@@ -97,20 +97,7 @@ Result<size_t> SelectRowsCount(
       session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
       *req->mutable_paging_state() = std::move(paging_state);
     }
-    Status s;
-    RETURN_NOT_OK(WaitFor([&] {
-      s = session->ApplyAndFlush(op);
-      if (s.ok()) {
-        return true;
-      }
-      for (auto& error : session->GetAndClearPendingErrors()) {
-        if (error->status().IsTryAgain()) {
-          return false;
-        }
-      }
-      return true;
-    }, 15s * kTimeMultiplier, "Waiting for session flush"));
-    RETURN_NOT_OK(s);
+    RETURN_NOT_OK(session->ApplyAndFlush(op));
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     row_count += rowblock->row_count();
     if (!op->response().has_paging_state()) {
@@ -1183,8 +1170,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
       const auto tablet = peer->shared_tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
       tablet->ForceRocksDBCompactInTest();
-      scoped_refptr<master::TableInfo> table_info;
-      ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
+      auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
 
       expect_split = table_info->NumTablets() < FLAGS_tablet_split_limit_per_table;
 
@@ -1211,8 +1197,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
     return !s.IsTryAgain();
   }, 60s * kTimeMultiplier, "Waiting for successful write"));
 
-  scoped_refptr<master::TableInfo> table_info;
-  ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
+  auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
   ASSERT_EQ(table_info->NumTablets(), FLAGS_tablet_split_limit_per_table);
 }
 

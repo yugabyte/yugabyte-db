@@ -910,6 +910,10 @@ OpGroup YBPgsqlReadOp::group() {
       ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
 }
 
+void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
+  used_read_time_ = used_time;
+}
+
 ////////////////////////////////////////////////////////////
 // YBNoOp
 ////////////////////////////////////////////////////////////

@@ -21,6 +21,7 @@
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/db/db_impl.h"
@@ -292,76 +293,75 @@ namespace {
 
 std::mutex rocksdb_flags_mutex;
 
-// Auto initialize some of the RocksDB flags that are defaulted to -1.
-void AutoInitRocksDBFlags(rocksdb::Options* options) {
-  const int kNumCpus = base::NumCPUs();
-  std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
-
+int32_t GetMaxBackgroundFlushes() {
+  const auto kNumCpus = base::NumCPUs();
   if (FLAGS_rocksdb_max_background_flushes == -1) {
     constexpr auto kCpusPerFlushThread = 8;
     constexpr auto kAutoMaxBackgroundFlushesHighLimit = 4;
     auto flushes = 1 + kNumCpus / kCpusPerFlushThread;
-    FLAGS_rocksdb_max_background_flushes = std::min(flushes, kAutoMaxBackgroundFlushesHighLimit);
-    LOG(INFO) << "Auto setting FLAGS_rocksdb_max_background_flushes to "
-              << FLAGS_rocksdb_max_background_flushes;
+    auto max_flushes = std::min(flushes, kAutoMaxBackgroundFlushesHighLimit);
+    LOG(INFO) << "Overriding FLAGS_rocksdb_max_background_flushes to " << max_flushes;
+    return max_flushes;
+  } else {
+    return FLAGS_rocksdb_max_background_flushes;
   }
-  options->max_background_flushes = FLAGS_rocksdb_max_background_flushes;
+}
+
+// This controls the maximum number of schedulable compactions, per each instance of rocksdb, of
+// which we will have many. We also do not want to waste resources by having too many queued
+// compactions.
+int32_t GetMaxBackgroundCompactions() {
+  if (FLAGS_rocksdb_disable_compactions) {
+    return 0;
+  }
+  int rocksdb_max_background_compactions = FLAGS_rocksdb_max_background_compactions;
+
+  if (rocksdb_max_background_compactions >= 0) {
+    return rocksdb_max_background_compactions;
+  }
+
+  const auto kNumCpus = base::NumCPUs();
+  if (kNumCpus <= 4) {
+    rocksdb_max_background_compactions = 1;
+  } else if (kNumCpus <= 8) {
+    rocksdb_max_background_compactions = 2;
+  } else if (kNumCpus <= 32) {
+    rocksdb_max_background_compactions = 3;
+  } else {
+    rocksdb_max_background_compactions = 4;
+  }
+  LOG(INFO) << "FLAGS_rocksdb_max_background_compactions was not set, automatically configuring "
+      << rocksdb_max_background_compactions << " background compactions.";
+  return rocksdb_max_background_compactions;
+}
+
+int32_t GetBaseBackgroundCompactions() {
+  if (FLAGS_rocksdb_disable_compactions) {
+    return 0;
+  }
+
+  if (FLAGS_rocksdb_base_background_compactions == -1) {
+    const auto base_background_compactions = GetMaxBackgroundCompactions();
+    LOG(INFO) << "FLAGS_rocksdb_base_background_compactions was not set, automatically configuring "
+        << base_background_compactions << " base background compactions.";
+    return base_background_compactions;
+  }
+
+  return FLAGS_rocksdb_base_background_compactions;
+}
+
+// Auto initialize some of the RocksDB flags that are defaulted to -1.
+void AutoInitFromRocksDBFlags(rocksdb::Options* options) {
+  std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
+
+  options->max_background_flushes = GetMaxBackgroundFlushes();
 
   if (FLAGS_rocksdb_disable_compactions) {
     return;
   }
 
-  bool has_rocksdb_max_background_compactions = false;
-  // This controls the maximum number of schedulable compactions, per each instance of rocksdb, of
-  // which we will have many. We also do not want to waste resources by having too many queued
-  // compactions.
-  if (FLAGS_rocksdb_max_background_compactions == -1) {
-    if (kNumCpus <= 4) {
-      FLAGS_rocksdb_max_background_compactions = 1;
-    } else if (kNumCpus <= 8) {
-      FLAGS_rocksdb_max_background_compactions = 2;
-    } else if (kNumCpus <= 32) {
-      FLAGS_rocksdb_max_background_compactions = 3;
-    } else {
-      FLAGS_rocksdb_max_background_compactions = 4;
-    }
-    LOG(INFO) << "Auto setting FLAGS_rocksdb_max_background_compactions to "
-              << FLAGS_rocksdb_max_background_compactions;
-  } else {
-    // If we have provided an override, note that, so we can use that in the actual thread pool
-    // sizing as well.
-    has_rocksdb_max_background_compactions = true;
-  }
-  options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
-
-  if (FLAGS_rocksdb_base_background_compactions == -1) {
-    FLAGS_rocksdb_base_background_compactions = FLAGS_rocksdb_max_background_compactions;
-    LOG(INFO) << "Auto setting FLAGS_rocksdb_base_background_compactions to "
-              << FLAGS_rocksdb_base_background_compactions;
-  }
-  options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
-
-  // This controls the number of background threads to use in the compaction thread pool.
-  if (FLAGS_priority_thread_pool_size == -1) {
-    if (has_rocksdb_max_background_compactions) {
-      // If we did override the per-rocksdb flag, but not this one, just port over that value.
-      FLAGS_priority_thread_pool_size = FLAGS_rocksdb_max_background_compactions;
-    } else {
-      // If we did not override the per-rocksdb queue size, then just use a production friendly
-      // formula.
-      //
-      // For less then 8cpus, just manually tune to 1-2 threads. Above that, we can use 3.5/8.
-      if (kNumCpus < 4) {
-        FLAGS_priority_thread_pool_size = 1;
-      } else if (kNumCpus < 8) {
-        FLAGS_priority_thread_pool_size = 2;
-      } else {
-        FLAGS_priority_thread_pool_size = std::floor(kNumCpus * 3.5 / 8.0);
-      }
-    }
-    LOG(INFO) << "Auto setting FLAGS_priority_thread_pool_size to "
-              << FLAGS_priority_thread_pool_size;
-  }
+  options->max_background_compactions = GetMaxBackgroundCompactions();
+  options->base_background_compactions = GetBaseBackgroundCompactions();
 }
 
 class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
@@ -411,13 +411,60 @@ void AddSupportedFilterPolicy(
   table_options->supported_filter_policies->emplace(filter_policy->Name(), filter_policy);
 }
 
+PriorityThreadPool* GetGlobalPriorityThreadPool() {
+  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
+      GetGlobalRocksDBPriorityThreadPoolSize());
+  return &priority_thread_pool_for_compactions_and_flushes;
+}
+
 } // namespace
+
+rocksdb::Options TEST_AutoInitFromRocksDBFlags() {
+  rocksdb::Options options;
+  AutoInitFromRocksDBFlags(&options);
+  return options;
+}
+
+int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
+  if (FLAGS_rocksdb_disable_compactions) {
+    return FLAGS_priority_thread_pool_size;
+  }
+
+  auto priority_thread_pool_size = FLAGS_priority_thread_pool_size;
+  if (priority_thread_pool_size >= 0) {
+    return priority_thread_pool_size;
+  }
+
+  if (FLAGS_rocksdb_max_background_compactions != -1) {
+    // If we did set the per-rocksdb flag, but not FLAGS_priority_thread_pool_size, just port
+    // over that value.
+    priority_thread_pool_size = GetMaxBackgroundCompactions();
+  } else {
+    const int kNumCpus = base::NumCPUs();
+    // If we did not override the per-rocksdb queue size, then just use a production friendly
+    // formula.
+    //
+    // For less then 8cpus, just manually tune to 1-2 threads. Above that, we can use 3.5/8.
+    if (kNumCpus < 4) {
+      priority_thread_pool_size = 1;
+    } else if (kNumCpus < 8) {
+      priority_thread_pool_size = 2;
+    } else {
+      priority_thread_pool_size = (int32_t) std::floor(kNumCpus * 3.5 / 8.0);
+    }
+  }
+
+  LOG(INFO) << "FLAGS_priority_thread_pool_size was not set, automatically configuring to "
+      << priority_thread_pool_size << ".";
+
+  return priority_thread_pool_size;
+}
 
 void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options) {
-  AutoInitRocksDBFlags(options);
+  AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
   options->disableDataSync = true;
@@ -434,10 +481,7 @@ void InitRocksDBOptions(
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
-  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
-      FLAGS_priority_thread_pool_size);
-  options->priority_thread_pool_for_compactions_and_flushes =
-      &priority_thread_pool_for_compactions_and_flushes;
+  options->priority_thread_pool_for_compactions_and_flushes = GetGlobalPriorityThreadPool();
 
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
@@ -496,7 +540,7 @@ void InitRocksDBOptions(
   // Set the number of levels to 1.
   options->num_levels = 1;
 
-  AutoInitRocksDBFlags(options);
+  AutoInitFromRocksDBFlags(options);
   if (compactions_enabled) {
     options->level0_file_num_compaction_trigger = FLAGS_rocksdb_level0_file_num_compaction_trigger;
     options->level0_slowdown_writes_trigger = max_if_negative(
