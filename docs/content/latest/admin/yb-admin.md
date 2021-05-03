@@ -45,11 +45,11 @@ $ ./bin/yb-admin --help
 * [Table](#table-commands)
 * [Backup and snapshot](#backup-and-snapshot-commands)
 * [Deployment topology](#deployment-topology-commands)
-    * [Multi-zone and multi-region](#multi-zone-and-multi-region-deployment-commands)
-    * [Master-follower](#master-follower-deployment-commands)
-    * [Read replica](#read-replica-deployment-commands)
+  * [Multi-zone and multi-region](#multi-zone-and-multi-region-deployment-commands)
+  * [Master-follower](#master-follower-deployment-commands)
+  * [Read replica](#read-replica-deployment-commands)
 * [Security](#security-commands)
-    * [Encryption at rest](#encryption-at-rest-commands)
+  * [Encryption at rest](#encryption-at-rest-commands)
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
@@ -719,7 +719,7 @@ The filter expression is a list of acceptable objects, which can be either raw t
 
 **Example**
 
-Take a snapshot of the `ysql.yugabyte` table once per minute, and retain each snapshot for 10 minutes:
+Take a snapshot of the `ysql.yugabyte` database once per minute, and retain each snapshot for 10 minutes:
 
 ```sh
 yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
@@ -790,7 +790,7 @@ yb-admin list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 
 #### restore_snapshot_schedule
 
-Schedules group a set of items into a single tracking object (the _schedule_). When you restore, you can choose a particular schedule and a time window, and revert the state of all affected objects back to the chosen time.
+Schedules group a set of items into a single tracking object (the _schedule_). When you restore, you can choose a particular schedule and a point in time, and revert the state of all affected objects back to the chosen time.
 
 **Syntax**
 
