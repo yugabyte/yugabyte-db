@@ -420,6 +420,9 @@ Tablet::~Tablet() {
     LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
         << "Destroying Tablet that did not complete shutdown: " << state;
   }
+  if (block_based_table_mem_tracker_) {
+    block_based_table_mem_tracker_->UnregisterFromParent();
+  }
   mem_tracker_->UnregisterFromParent();
 }
 
