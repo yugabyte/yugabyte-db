@@ -1018,6 +1018,42 @@ TEST_F(QLTabletTest, OperationMemTracking) {
   ASSERT_TRUE(tracked_by_log_cache);
 }
 
+// Checks the existance of the BlockBasedTable memtracker and verifies that its size is greater
+// than zero after creating a table and flushing it.  Then deletes the table, and verifies that
+// the memtracker is removed.
+TEST_F(QLTabletTest, BlockCacheMemTracking) {
+  const auto kSleepTime = NonTsanVsTsan(5s, 1s);
+  constexpr size_t kTotalRows = 10000;
+  const string kBlockTrackerName = "BlockBasedTable";
+
+  TableHandle table;
+  CreateTable(kTable1Name, &table, 1);
+  FillTable(0, kTotalRows, table);
+
+  auto server_tracker = MemTracker::GetRootTracker()->FindChild("server 1");
+  auto block_cache_tracker = server_tracker->FindChild(kBlockTrackerName);
+  ASSERT_TRUE(block_cache_tracker);
+
+  std::this_thread::sleep_for(kSleepTime);
+  LOG(INFO) << "Flushing tablets";
+  ASSERT_OK(cluster_->FlushTablets());
+  std::this_thread::sleep_for(kSleepTime);
+
+  auto block_cache_children = block_cache_tracker->ListChildren();
+  // check that there is exactly one child memtracker
+  ASSERT_EQ(block_cache_children.size(), 1);
+  // check that the child memtracker has a consumption greater than zero
+  ASSERT_GT(block_cache_children[0]->consumption(), 0);
+
+  LOG(INFO) << "Deleting table";
+  ASSERT_OK(client_->DeleteTable(kTable1Name, true));
+  std::this_thread::sleep_for(kSleepTime);
+
+  // after table deletion, assert that there is no longer a block cache memtracker
+  block_cache_tracker = server_tracker->FindChild(kBlockTrackerName);
+  ASSERT_FALSE(block_cache_tracker);
+}
+
 // Checks history cutoff for cluster against previous state.
 // Committed history cutoff should not go backward.
 // Updates committed_history_cutoff with current state.
