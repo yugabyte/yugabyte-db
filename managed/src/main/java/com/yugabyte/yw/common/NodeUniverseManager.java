@@ -22,7 +22,7 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
 
-  public ShellResponse downloadNodeLogs(NodeDetails node, Universe universe,
+  public synchronized ShellResponse downloadNodeLogs(NodeDetails node, Universe universe,
                                         String targetLocalFile) {
     List<String> commandArgs = new ArrayList<>();
 

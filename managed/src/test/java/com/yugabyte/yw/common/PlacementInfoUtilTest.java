@@ -8,62 +8,45 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.InstanceType;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
-import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
-import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.EDIT;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import play.libs.Json;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
+import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.EDIT;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Matchers.anyMap;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
 public class PlacementInfoUtilTest extends FakeDBApplication {
@@ -1158,9 +1141,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<String, String> config = new HashMap<>();
     config.put("KUBE_DOMAIN", "test");
-    az1.setConfig(config);
-    az2.setConfig(config);
-    az3.setConfig(config);
+    az1.updateConfig(config);
+    az2.updateConfig(config);
+    az3.updateConfig(config);
     Map<UUID, String> expectedDomains = new HashMap<>();
     expectedDomains.put(az1.uuid, "svc.test");
     expectedDomains.put(az2.uuid, "svc.test");
@@ -1310,13 +1293,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<String, String> config = new HashMap();
     Map<UUID, Map<String, String>> expectedConfigs = new HashMap<>();
     config.put("KUBECONFIG", "az1");
-    az1.setConfig(config);
+    az1.updateConfig(config);
     expectedConfigs.put(az1.uuid, az1.getConfig());
     config.put("KUBECONFIG", "az2");
-    az2.setConfig(config);
+    az2.updateConfig(config);
     expectedConfigs.put(az2.uuid, az2.getConfig());
     config.put("KUBECONFIG", "az3");
-    az3.setConfig(config);
+    az3.updateConfig(config);
     expectedConfigs.put(az3.uuid, az3.getConfig());
 
     PlacementInfo pi = new PlacementInfo();
@@ -1435,17 +1418,17 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<String, String> expectedConfigs = new HashMap<>();
     config.put("KUBECONFIG", "az1");
     config.put("KUBENAMESPACE", "ns-1");
-    az1.setConfig(config);
+    az1.updateConfig(config);
     expectedConfigs.put("ns-1", "az1");
 
     config.put("KUBECONFIG", "az2");
     config.put("KUBENAMESPACE", "ns-2");
-    az2.setConfig(config);
+    az2.updateConfig(config);
     expectedConfigs.put("ns-2", "az2");
 
     config.remove("KUBENAMESPACE");
     config.put("KUBECONFIG", "az3");
-    az3.setConfig(config);
+    az3.updateConfig(config);
     expectedConfigs.put(String.format("%s-%s", nodePrefix, az3.code), "az3");
 
     PlacementInfo pi = new PlacementInfo();

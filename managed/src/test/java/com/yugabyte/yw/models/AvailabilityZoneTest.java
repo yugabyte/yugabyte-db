@@ -2,22 +2,16 @@
 
 package com.yugabyte.yw.models;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
-
-import java.util.Set;
-
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.yugabyte.yw.common.FakeDBApplication;
+import java.util.Set;
 
-import com.google.common.collect.ImmutableMap;
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
 
 public class AvailabilityZoneTest extends FakeDBApplication {
   Region defaultRegion;
@@ -96,7 +90,7 @@ public class AvailabilityZoneTest extends FakeDBApplication {
   @Test
   public void testNotNullConfig() {
     AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "A Zone", "subnet-1");
-    az.setConfig(ImmutableMap.of("Foo", "Bar"));
+    az.updateConfig(ImmutableMap.of("Foo", "Bar"));
     az.save();
     assertNotNull(az.uuid);
     assertNotNull(az.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));

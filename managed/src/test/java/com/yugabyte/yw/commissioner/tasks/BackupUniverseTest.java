@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
@@ -17,25 +16,20 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import static org.mockito.Mockito.mock;
-import org.yb.client.YBClient;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.YBClient;
 import org.yb.master.Master;
 
-import java.util.UUID;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.models.Backup.BackupState.Completed;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 
 @RunWith(MockitoJUnitRunner.class)
@@ -61,19 +55,19 @@ public class BackupUniverseTest extends CommissionerBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {}
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    defaultUniverse.setConfig(config);
+    defaultUniverse.updateConfig(config);
   }
 
   private TaskInfo submitTask(BackupTableParams.ActionType actionType, boolean enableVerboseLogs) {
     BackupTableParams backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.tableName = "bar";
-    backupTableParams.keyspace = "foo";
+    backupTableParams.setTableName("bar");
+    backupTableParams.setKeyspace("foo");
     backupTableParams.tableUUID = UUID.randomUUID();
     backupTableParams.storageConfigUUID = UUID.randomUUID();
     backupTableParams.actionType = actionType;

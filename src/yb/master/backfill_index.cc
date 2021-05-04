@@ -266,19 +266,19 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
     boost::optional<uint32_t> expected_version,
     bool update_state_to_running) {
   auto l = table->LockForWrite();
-  uint32_t current_version = l->data().pb.version();
+  uint32_t current_version = l->pb.version();
   if (expected_version && *expected_version != current_version) {
     return STATUS(AlreadyPresent, "Table has already moved to a different version.");
   }
-  l->mutable_data()->pb.clear_fully_applied_schema();
-  l->mutable_data()->pb.clear_fully_applied_schema_version();
-  l->mutable_data()->pb.clear_fully_applied_indexes();
-  l->mutable_data()->pb.clear_fully_applied_index_info();
+  l.mutable_data()->pb.clear_fully_applied_schema();
+  l.mutable_data()->pb.clear_fully_applied_schema_version();
+  l.mutable_data()->pb.clear_fully_applied_indexes();
+  l.mutable_data()->pb.clear_fully_applied_index_info();
   if (update_state_to_running) {
-    l->mutable_data()->set_state(
+    l.mutable_data()->set_state(
         SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
   } else {
-    l->mutable_data()->set_state(
+    l.mutable_data()->set_state(
         SysTablesEntryPB::ALTERING, Substitute("Current schema version=$0", current_version));
   }
 
@@ -290,7 +290,7 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
     return s;
   }
 
-  l->Commit();
+  l.Commit();
   LOG(INFO) << table->ToString() << " - Alter table completed version=" << current_version;
   return Status::OK();
 }
@@ -315,7 +315,7 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
   {
     TRACE("Locking indexed table");
     auto l = indexed_table->LockForWrite();
-    auto& indexed_table_data = *l->mutable_data();
+    auto& indexed_table_data = *l.mutable_data();
     auto& indexed_table_pb = indexed_table_data.pb;
     if (current_version && *current_version != indexed_table_pb.version()) {
       LOG(INFO) << "The table schema version "
@@ -364,7 +364,7 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
 
     // Update the in-memory state.
     TRACE("Committing in-memory state");
-    l->Commit();
+    l.Commit();
   }
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms > 0)) {
     TRACE("Sleeping for $0 ms",
@@ -394,16 +394,12 @@ Status MultiStageAlterTable::StartBackfillingData(
   VLOG(0) << __func__ << " starting backfill on " << indexed_table->ToString() << " for "
           << yb::ToString(idx_infos);
 
-  scoped_refptr<NamespaceInfo> ns_info;
-  NamespaceIdentifierPB ns_identifier;
-  ns_identifier.set_id(indexed_table->namespace_id());
-  RETURN_NOT_OK_PREPEND(
-      catalog_manager->FindNamespace(ns_identifier, &ns_info),
-      "Unable to get namespace info for backfill");
+  auto ns_info = catalog_manager->FindNamespaceById(indexed_table->namespace_id());
+  RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for backfill");
 
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(), indexed_table, idx_infos,
-      ns_info);
+      *ns_info);
   backfill_table->Launch();
   return Status::OK();
 }
@@ -456,14 +452,14 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     VLOG(1) << ("Locking indexed table");
     auto l = indexed_table->LockForRead();
     VLOG(1) << ("Locked indexed table");
-    if (current_version != l->data().pb.version()) {
+    if (current_version != l->pb.version()) {
       LOG(WARNING) << "Somebody launched the next version before we got to it.";
       return Status::OK();
     }
 
     // Attempt to find an index that requires us to just launch the next state (i.e. not backfill)
-    for (int i = 0; i < l->data().pb.indexes_size(); i++) {
-      const IndexInfoPB& idx_pb = l->data().pb.indexes(i);
+    for (int i = 0; i < l->pb.indexes_size(); i++) {
+      const IndexInfoPB& idx_pb = l->pb.indexes(i);
       if (!idx_pb.has_index_permissions()) {
         continue;
       }
@@ -706,7 +702,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
                           << read_timestamp.ToString();
     {
       auto l = indexed_table_->LockForWrite();
-      l->mutable_data()
+      l.mutable_data()
           ->pb.mutable_schema()
           ->mutable_table_properties()
           ->set_backfilling_timestamp(read_timestamp.ToUint64());
@@ -714,7 +710,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
           master_->catalog_manager()->sys_catalog_->UpdateItem(
               indexed_table_.get(), leader_term()),
           "Failed to persist backfilling timestamp. Abandoning.");
-      l->Commit();
+      l.Commit();
     }
     VLOG_WITH_PREFIX(2) << "Saved " << read_timestamp
                         << " as backfilling_timestamp";
@@ -746,7 +742,7 @@ void BackfillTable::Done(const Status& s) {
       // Set error message.
       {
         auto l = indexed_table_->LockForWrite();
-        auto& indexed_table_data = *l->mutable_data();
+        auto& indexed_table_data = *l.mutable_data();
         auto& indexed_table_pb = indexed_table_data.pb;
         for (int i = 0; i < indexed_table_pb.indexes_size(); i++) {
           IndexInfoPB* idx_pb = indexed_table_pb.mutable_indexes(i);
@@ -759,7 +755,7 @@ void BackfillTable::Done(const Status& s) {
         WARN_NOT_OK(master_->catalog_manager()->sys_catalog_->UpdateItem(
                         indexed_table_.get(), leader_term()),
                     "Could not add error message.");
-        l->Commit();
+        l.Commit();
       }
       // Now start aborting.
       WARN_NOT_OK(AlterTableStateToAbort(),
@@ -847,14 +843,14 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
 
   {
     auto l = indexed_table_->LockForWrite();
-    l->mutable_data()
+    l.mutable_data()
         ->pb.mutable_schema()
         ->mutable_table_properties()
         ->clear_backfilling_timestamp();
     RETURN_NOT_OK_PREPEND(master_->catalog_manager()->sys_catalog_->UpdateItem(
                               indexed_table_.get(), leader_term()),
                           "Could not clear backfilling timestamp.");
-    l->Commit();
+    l.Commit();
   }
   VLOG_WITH_PREFIX(2) << "Cleared backfilling timestamp.";
   return Status::OK();
@@ -863,16 +859,9 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
 Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     const TableId &index_table_id) {
   DVLOG(3) << __PRETTY_FUNCTION__;
-  scoped_refptr<TableInfo> index_table_info;
-  TableIdentifierPB index_table_id_pb;
-  index_table_id_pb.set_table_id(index_table_id);
-  RETURN_NOT_OK_PREPEND(
-      master_->catalog_manager()->FindTable(index_table_id_pb,
-                                            &index_table_info),
-      yb::Format("Could not find table info for the index table $0 to enable "
-                 "compactions. "
-                 "This is ok in case somebody issued a delete index.",
-                 yb::ToString(index_table_id)));
+  scoped_refptr<TableInfo> index_table_info = VERIFY_RESULT_PREPEND(
+      master_->catalog_manager()->FindTableById(index_table_id),
+      "This is ok in case somebody issued a delete index.");
 
   // Add a sleep here to wait until the Table is fully created.
   bool is_ready = false;
@@ -881,7 +870,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     if (!first_run) {
       YB_LOG_EVERY_N_SECS(INFO, 1) << "Waiting for the previous alter table to "
                                       "complete on the index table "
-                                   << yb::ToString(index_table_id);
+                                   << index_table_id;
       SleepFor(
           MonoDelta::FromMilliseconds(FLAGS_index_backfill_wait_for_alter_table_completion_ms));
     }
@@ -889,7 +878,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     {
       VLOG(2) << __func__ << ": Trying to lock index table for Read";
       auto l = index_table_info->LockForRead();
-      is_ready = (l->data().pb.state() == SysTablesEntryPB::RUNNING);
+      is_ready = (l->pb.state() == SysTablesEntryPB::RUNNING);
     }
     VLOG(2) << __func__ << ": Unlocked index table for Read";
   } while (!is_ready);
@@ -898,7 +887,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     VLOG(2) << __func__ << ": Trying to lock index table for Write";
     auto l = index_table_info->LockForWrite();
     VLOG(2) << __func__ << ": locked index table for Write";
-    l->mutable_data()->pb.mutable_schema()->mutable_table_properties()
+    l.mutable_data()->pb.mutable_schema()->mutable_table_properties()
         ->set_retain_delete_markers(false);
 
     // Update sys-catalog with the new indexed table info.
@@ -912,7 +901,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
 
     // Update the in-memory state.
     TRACE("Committing in-memory state");
-    l->Commit();
+    l.Commit();
   }
   VLOG(2) << __func__ << ": Unlocked index table for Read";
   VLOG(1) << "Sending backfill done requests to the Index table";

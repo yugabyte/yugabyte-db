@@ -420,9 +420,10 @@ bool YBSingleThreadedWriter::Write(
                  << " (" << apply_status.ToString() << ")";
     return false;
   }
-  Status flush_status = session_->Flush();
-  if (!flush_status.ok()) {
-    for (const auto& error : session_->GetAndClearPendingErrors()) {
+  const auto flush_status = session_->FlushAndGetOpsErrors();
+  const auto& status = flush_status.status;
+  if (!status.ok()) {
+    for (const auto& error : flush_status.errors) {
       // It means that key was actually written successfully, but our retry failed because
       // it was detected as duplicate request.
       if (error->status().IsAlreadyPresent()) {
@@ -432,7 +433,7 @@ bool YBSingleThreadedWriter::Write(
     }
 
     LOG(WARNING) << "Error inserting key '" << key_str << "': "
-                 << "Flush() failed (" << flush_status << ")";
+                 << "Flush() failed (" << status << ")";
     return false;
   }
   if (insert->response().status() != QLResponsePB::YQL_STATUS_OK) {
@@ -449,11 +450,7 @@ bool YBSingleThreadedWriter::Write(
 }
 
 void YBSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const string& key_str) {
-  if (session_ != nullptr) {
-    for (const auto& error : session_->GetAndClearPendingErrors()) {
-      LOG(WARNING) << "Explicit error while inserting: " << error->status().ToString();
-    }
-  }
+  // Already handled in YBSingleThreadedWriter::Write.
 }
 
 void YBSingleThreadedWriter::CloseSession() { CHECK_OK(session_->Close()); }

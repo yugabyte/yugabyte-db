@@ -3,8 +3,8 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -20,11 +20,12 @@ import org.mockito.ArgumentCaptor;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.UUID;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.forms.BackupTableParams.ActionType.RESTORE;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -221,8 +222,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
     assertNotEquals(b.backupUUID, backup.backupUUID);
     assertNotNull(backup);
-    assertValue(backup.backupInfo, "actionType", "RESTORE");
-    assertValue(backup.backupInfo, "storageLocation", "s3://foo/bar");
+    assertEquals(backup.getBackupInfo().actionType, RESTORE);
+    assertEquals(backup.getBackupInfo().storageLocation, "s3://foo/bar");
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 

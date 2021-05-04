@@ -163,8 +163,11 @@ public class NodeManagerTest extends FakeDBApplication {
     params.deviceInfo.numVolumes = 2;
     if (testData.cloudType.equals(Common.CloudType.aws)) {
       params.deviceInfo.storageType = testData.storageType;
-      if (testData.storageType != null && testData.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
+      if (testData.storageType != null && testData.storageType.isIopsProvisioning()) {
         params.deviceInfo.diskIops = 240;
+      }
+      if (testData.storageType != null && testData.storageType.isThroughputProvisioning()) {
+        params.deviceInfo.throughput = 250;
       }
     }
   }
@@ -198,15 +201,17 @@ public class NodeManagerTest extends FakeDBApplication {
     customCertInfo.rootCertPath = "/path/to/cert.crt";
     customCertInfo.nodeCertPath = "/path/to/rootcert.crt";
     customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
+    String clientCertPath = "/path/to/clientcert.crt";
+    String clientKeyPath = "/path/to/clientkey.crt";
     if (t.privateKey == null) {
       cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID, params.nodePrefix,
                                     today, nextYear, TestHelper.TMP_PATH + "/ca.crt",
-                                    customCertInfo);
+                                    customCertInfo, clientCertPath, clientKeyPath);
     } else {
       cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID,
-                                    params.nodePrefix, today, nextYear, t.privateKey,
-                                    TestHelper.TMP_PATH + "/ca.crt",
-                                    CertificateInfo.Type.SelfSigned);
+                                    params.nodePrefix, today, nextYear,
+                                    TestHelper.TMP_PATH + "/ca.crt", t.privateKey,
+                                    clientCertPath, clientKeyPath);
     }
 
     Universe u = createUniverse();
@@ -379,6 +384,9 @@ public class NodeManagerTest extends FakeDBApplication {
             if (configureParams.enableClientToNodeEncrypt) {
               gflags.put("use_client_to_server_encryption", "true");
             }
+            if (configureParams.enableNodeToNodeClientVerification) {
+              gflags.put("node_to_node_encryption_use_client_certificates", "true");
+            }
             gflags.put(
               "allow_insecure_connections",
               configureParams.allowInsecure ? "true" : "false"
@@ -487,9 +495,13 @@ public class NodeManagerTest extends FakeDBApplication {
       if (type == NodeManager.NodeCommandType.Provision && deviceInfo.storageType != null) {
         expectedCommand.add("--volume_type");
         expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
-        if (deviceInfo.storageType == PublicCloudConstants.StorageType.IO1 && deviceInfo.diskIops != null) {
+        if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
           expectedCommand.add("--disk_iops");
           expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+        }
+        if (deviceInfo.storageType.isThroughputProvisioning() && deviceInfo.throughput != null) {
+          expectedCommand.add("--disk_throughput");
+          expectedCommand.add(Integer.toString(deviceInfo.throughput));
         }
       }
 
@@ -1130,6 +1142,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
+      params.enableNodeToNodeClientVerification = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;
@@ -1154,6 +1167,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
+      params.enableNodeToNodeClientVerification = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;
@@ -1193,6 +1207,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
       params.enableClientToNodeEncrypt = true;
+      params.enableNodeToNodeClientVerification = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;

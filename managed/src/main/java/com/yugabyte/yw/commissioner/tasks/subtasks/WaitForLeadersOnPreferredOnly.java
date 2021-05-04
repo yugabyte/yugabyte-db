@@ -55,12 +55,13 @@ public class WaitForLeadersOnPreferredOnly extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     boolean ret = false;
     YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      client = ybService.getClient(hostPorts, certificate);
+      client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
 
       ret = client.waitForAreLeadersOnPreferredOnlyCondition(TIMEOUT_SERVER_WAIT_MS);
     } catch (Exception e) {

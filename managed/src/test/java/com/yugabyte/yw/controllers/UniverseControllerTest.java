@@ -20,11 +20,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.io.FileUtils;
@@ -64,6 +61,7 @@ import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.PlacementInfoUtil.*;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
+import static junit.framework.TestCase.assertFalse;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
@@ -292,7 +290,7 @@ public class UniverseControllerTest extends WithApplication {
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockService.getClient(any(), any(), any())).thenReturn(mockClient);
     UniverseController universeController = new UniverseController(mockService);
 
     Result result = universeController.getMasterLeaderIP(customer.uuid, universe.universeUUID);
@@ -555,7 +553,7 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    az1.setConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns1"));
+    az1.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns1"));
     InstanceType i = InstanceType.upsert(p.uuid, "small", 10, 5.5,
                                          new InstanceType.InstanceTypeDetails());
 
@@ -675,7 +673,7 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "universeUUID", u.universeUUID.toString());
     assertNotNull(json.get("universeDetails"));
-    assertNotNull(json.get("universeConfig"));
+    assertTrue(json.get("universeConfig").asText().isEmpty());
 
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
@@ -1780,9 +1778,14 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    ObjectNode cloudInfo = Json.newObject();
+    cloudInfo.put("region", "region1");
+    ObjectNode nodeDetails = Json.newObject();
+    nodeDetails.put("nodeName", "testing-1");
+    nodeDetails.set("cloudInfo", cloudInfo);
+    ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", nodeDetails);
+    bodyJson.set("nodeDetailsSet", nodeDetailsSet);
     bodyJson.put("nodePrefix", "demo-node");
 
     // TODO: (Daniel) - Add encryptionAtRestConfig to the payload to actually
@@ -1800,7 +1803,7 @@ public class UniverseControllerTest extends WithApplication {
             json.get("universeUUID").asText() +
             "-1.key"
     );
-    assertTrue(!key.exists());
+    assertFalse(key.exists());
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
 
     ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor
@@ -1844,9 +1847,20 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    NodeDetails nodeDetails1 = new NodeDetails();
+    nodeDetails1.nodeName = "testing-1";
+    nodeDetails1.cloudInfo = new CloudSpecificInfo();
+    nodeDetails1.cloudInfo.region = "region-1";
+    JsonNode jsonObject = Json.toJson(nodeDetails1);
+
+    ObjectNode cloudInfo = Json.newObject();
+    cloudInfo.put("region", "region1");
+    ObjectNode nodeDetails = Json.newObject();
+    nodeDetails.put("nodeName", "testing-1");
+    nodeDetails.set("cloudInfo", cloudInfo);
+    ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", nodeDetails);
+    bodyJson.set("nodeDetailsSet", nodeDetailsSet);
     bodyJson.put("nodePrefix", "demo-node");
     bodyJson.put(
             "encryptionAtRestConfig",
@@ -1902,9 +1916,14 @@ public class UniverseControllerTest extends WithApplication {
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray()
             .add(Json.newObject().set("userIntent", userIntentJson));
-    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    ObjectNode cloudInfo = Json.newObject();
+    cloudInfo.put("region", "region1");
+    ObjectNode nodeDetails = Json.newObject();
+    nodeDetails.put("nodeName", "testing-1");
+    nodeDetails.set("cloudInfo", cloudInfo);
+    ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     createBodyJson.set("clusters", clustersJsonArray);
-    createBodyJson.set("nodeDetailsSet", nodeDetails);
+    createBodyJson.set("nodeDetailsSet", nodeDetailsSet);
     createBodyJson.put("nodePrefix", "demo-node");
 
     String createUrl = "/api/customers/" + customer.uuid + "/universes";

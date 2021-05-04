@@ -187,7 +187,7 @@ class Executor : public QLExprExecutor {
   void FlushAsync();
 
   // Callback for FlushAsync.
-  void FlushAsyncDone(Status s, ExecContext* exec_context = nullptr);
+  void FlushAsyncDone(client::FlushStatus* s, ExecContext* exec_context = nullptr);
 
   // Callback for Commit.
   void CommitDone(Status s, ExecContext* exec_context);

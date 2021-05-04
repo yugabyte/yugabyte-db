@@ -58,7 +58,10 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 
@@ -119,7 +122,9 @@ using docdb::ValueType;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;
+using itest::TabletServerMap;
 using itest::TabletServerMapUnowned;
+using itest::TServerDetails;
 using itest::RemoveServer;
 using itest::StartElection;
 using itest::WaitUntilNumberOfAliveTServersEqual;
@@ -290,13 +295,13 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
       int inserted = last_row_in_batch - first_row_in_batch;
 
-      Status s = session->Flush();
+      const auto flush_status = session->FlushAndGetOpsErrors();
+      const auto& s = flush_status.status;
       if (PREDICT_FALSE(!s.ok())) {
-        client::CollectedErrors errors = session->GetAndClearPendingErrors();
-        for (const auto& e : errors) {
+        for (const auto& e : flush_status.errors) {
           ASSERT_TRUE(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status();
         }
-        inserted -= errors.size();
+        inserted -= flush_status.errors.size();
       }
 
       for (CountDownLatch* latch : latches) {

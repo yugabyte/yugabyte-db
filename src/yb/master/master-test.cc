@@ -564,8 +564,8 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   // Check prometheus metrics via webserver to verify block_cache metrics exist
-  string addr = yb::ToString(mini_master_->bound_http_addr());
-  string url = strings::Substitute("http://$0/prometheus-metrics", ToString(addr));
+  string addr = AsString(mini_master_->bound_http_addr());
+  string url = strings::Substitute("http://$0/prometheus-metrics", AsString(addr));
   EasyCurl curl;
   faststring buf;
 
@@ -709,7 +709,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
       auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
       ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
       auto l = iter->second->LockForRead();
-      ASSERT_EQ(l->data().pb.state(), SysTabletsEntryPB::DELETED);
+      ASSERT_EQ(l->pb.state(), SysTabletsEntryPB::DELETED);
     }
   }
 }
@@ -1772,8 +1772,8 @@ TEST_F(MasterTest, TestFullTableName) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "The object does not exist");
+    auto status = StatusFromPB(resp.error().status());
+    ASSERT_EQ(MasterError(status), MasterErrorPB::OBJECT_NOT_FOUND);
   }
 
   // Delete the table.

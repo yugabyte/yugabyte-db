@@ -78,12 +78,12 @@ HybridTime AddLogical(HybridTime input, uint64_t delta) {
 TEST_F(MvccTest, Basic) {
   constexpr size_t kTotalEntries = 10;
   vector<HybridTime> hts(kTotalEntries);
-  for (auto& ht : hts) {
-    manager_.AddPending(&ht);
+  for (int i = 0; i != kTotalEntries; ++i) {
+    hts[i] = manager_.AddLeaderPending(OpId(1, i));
   }
-  for (const auto& ht : hts) {
-    manager_.Replicated(ht);
-    ASSERT_EQ(ht, manager_.LastReplicatedHybridTime());
+  for (int i = 0; i != kTotalEntries; ++i) {
+    manager_.Replicated(hts[i], OpId(1, i));
+    ASSERT_EQ(hts[i], manager_.LastReplicatedHybridTime());
   }
 }
 
@@ -104,17 +104,16 @@ TEST_F(MvccTest, SafeHybridTimeToReadAt) {
   ASSERT_EQ(ht_lease.lease, manager_.SafeTime(ht_lease));
 
   HybridTime ht1 = clock_->Now();
-  manager_.AddPending(&ht1);
+  manager_.AddFollowerPending(ht1, OpId(1, 1));
   ASSERT_EQ(ht1.Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
 
-  HybridTime ht2;
-  manager_.AddPending(&ht2);
+  HybridTime ht2 = manager_.AddLeaderPending(OpId(1, 2));
   ASSERT_EQ(ht1.Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
 
-  manager_.Replicated(ht1);
+  manager_.Replicated(ht1, OpId(1, 1));
   ASSERT_EQ(ht2.Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
 
-  manager_.Replicated(ht2);
+  manager_.Replicated(ht2, OpId(1, 2));
   time = clock_->Now();
   ht_lease = {
     .time = time,
@@ -125,7 +124,7 @@ TEST_F(MvccTest, SafeHybridTimeToReadAt) {
   manager_.TEST_DumpTrace(&mvcc_op_trace_stream);
   const auto mvcc_trace = mvcc_op_trace_stream.str();
   ASSERT_STR_CONTAINS(mvcc_trace, "1. SafeTime");
-  ASSERT_STR_CONTAINS(mvcc_trace, "2. AddPending");
+  ASSERT_STR_CONTAINS(mvcc_trace, "2. AddFollowerPending");
   ASSERT_STR_CONTAINS(mvcc_trace, "8. Replicated");
   ASSERT_STR_CONTAINS(mvcc_trace, "9. SafeTime");
 }
@@ -133,15 +132,15 @@ TEST_F(MvccTest, SafeHybridTimeToReadAt) {
 TEST_F(MvccTest, Abort) {
   constexpr size_t kTotalEntries = 10;
   vector<HybridTime> hts(kTotalEntries);
-  for (auto& ht : hts) {
-    manager_.AddPending(&ht);
+  for (int i = 0; i != kTotalEntries; ++i) {
+    hts[i] = manager_.AddLeaderPending(OpId(1, i));
   }
   for (size_t i = 1; i < hts.size(); i += 2) {
-    manager_.Aborted(hts[i]);
+    manager_.Aborted(hts[i], OpId(1, i));
   }
   for (size_t i = 0; i < hts.size(); i += 2) {
     ASSERT_EQ(hts[i].Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
-    manager_.Replicated(hts[i]);
+    manager_.Replicated(hts[i], OpId(1, i));
   }
   auto now = clock_->Now();
   ASSERT_EQ(now, manager_.SafeTime({
@@ -152,15 +151,27 @@ TEST_F(MvccTest, Abort) {
 
 void MvccTest::RunRandomizedTest(bool use_ht_lease) {
   constexpr size_t kTotalOperations = 20000;
-  enum class Op { kAdd, kReplicated, kAborted };
+  enum class OpType { kAdd, kReplicated, kAborted };
+
+  struct Op {
+    OpType type;
+    HybridTime ht;
+    OpId op_id;
+
+    Op CopyAndChangeType(OpType new_type) const {
+      Op result = *this;
+      result.type = new_type;
+      return result;
+    }
+  };
 
   std::map<HybridTime, size_t> queue;
-  vector<HybridTime> alive;
+  vector<Op> alive;
   size_t counts[] = { 0, 0, 0 };
 
   std::atomic<bool> stopped { false };
 
-  const auto get_count = [&counts](Op op) { return counts[to_underlying(op)]; };
+  const auto get_count = [&counts](OpType op) { return counts[to_underlying(op)]; };
   LogicalClock* const logical_clock = down_cast<LogicalClock*>(clock_.get());
 
   std::atomic<uint64_t> max_ht_lease{0};
@@ -200,11 +211,12 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
     safetime_query_thread.join();
   });
 
-  vector<std::pair<Op, HybridTime>> ops;
+  vector<Op> ops;
   ops.reserve(kTotalOperations);
 
   const int kTargetConcurrency = 50;
 
+  int op_idx = 0;
   for (size_t i = 0; i < kTotalOperations || !alive.empty(); ++i) {
     int rnd;
     if (kTotalOperations - i <= alive.size()) {
@@ -223,33 +235,33 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
     }
     if (rnd < kTargetConcurrency) {
       // Start a new operation.
-      HybridTime ht;
-      manager_.AddPending(&ht);
-      alive.push_back(ht);
-      queue.emplace(alive.back(), alive.size() - 1);
-      ops.emplace_back(Op::kAdd, alive.back());
+      OpId op_id(1, ++op_idx);
+      HybridTime ht = manager_.AddLeaderPending(op_id);
+      alive.push_back(Op {.type = OpType::kAdd, .ht = ht, .op_id = op_id});
+      queue.emplace(alive.back().ht, alive.size() - 1);
+      ops.push_back(alive.back());
     } else {
       size_t idx;
       if (rnd & 1) {
         // Finish replication for the next operation.
         idx = queue.begin()->second;
-        ops.emplace_back(Op::kReplicated, alive[idx]);
-        manager_.Replicated(alive[idx]);
+        ops.push_back(alive[idx].CopyAndChangeType(OpType::kReplicated));
+        manager_.Replicated(alive[idx].ht, alive[idx].op_id);
       } else {
         // Abort a random operation that is alive.
         idx = RandomUniformInt<size_t>(0, alive.size() - 1);
-        ops.emplace_back(Op::kAborted, alive[idx]);
-        manager_.Aborted(alive[idx]);
+        ops.push_back(alive[idx].CopyAndChangeType(OpType::kAborted));
+        manager_.Aborted(alive[idx].ht, alive[idx].op_id);
       }
-      queue.erase(alive[idx]);
+      queue.erase(alive[idx].ht);
       alive[idx] = alive.back();
       alive.pop_back();
       if (idx != alive.size()) {
-        ASSERT_EQ(queue[alive[idx]], alive.size());
-        queue[alive[idx]] = idx;
+        ASSERT_EQ(queue[alive[idx].ht], alive.size());
+        queue[alive[idx].ht] = idx;
       }
     }
-    ++counts[to_underlying(ops.back().first)];
+    ++counts[to_underlying(ops.back().type)];
 
     HybridTime safe_time;
     if (alive.empty()) {
@@ -267,12 +279,13 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
       ASSERT_LE(safe_time.ToUint64(), max_ht_lease.load(std::memory_order_acquire));
     }
   }
-  LOG(INFO) << "Adds: " << get_count(Op::kAdd)
-            << ", replicates: " << get_count(Op::kReplicated)
-            << ", aborts: " << get_count(Op::kAborted);
-  const size_t replicated_and_aborted = get_count(Op::kReplicated) + get_count(Op::kAborted);
-  ASSERT_EQ(kTotalOperations, get_count(Op::kAdd) + replicated_and_aborted);
-  ASSERT_EQ(get_count(Op::kAdd), replicated_and_aborted);
+  LOG(INFO) << "Adds: " << get_count(OpType::kAdd)
+            << ", replicates: " << get_count(OpType::kReplicated)
+            << ", aborts: " << get_count(OpType::kAborted);
+  const size_t replicated_and_aborted =
+      get_count(OpType::kReplicated) + get_count(OpType::kAborted);
+  ASSERT_EQ(kTotalOperations, get_count(OpType::kAdd) + replicated_and_aborted);
+  ASSERT_EQ(get_count(OpType::kAdd), replicated_and_aborted);
 
   // Replay the recorded operations as if we are a follower receiving these operations from the
   // leader.
@@ -281,16 +294,16 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
   LOG(INFO) << "Shifting hybrid times by " << shift << " units and replaying in follower mode";
   auto start = std::chrono::steady_clock::now();
   for (auto& op : ops) {
-    op.second = HybridTime(op.second.ToUint64() + shift);
-    switch (op.first) {
-      case Op::kAdd:
-        manager_.AddPending(&op.second);
+    op.ht = HybridTime(op.ht.ToUint64() + shift);
+    switch (op.type) {
+      case OpType::kAdd:
+        manager_.AddFollowerPending(op.ht, op.op_id);
         break;
-      case Op::kReplicated:
-        manager_.Replicated(op.second);
+      case OpType::kReplicated:
+        manager_.Replicated(op.ht, op.op_id);
         break;
-      case Op::kAborted:
-        manager_.Aborted(op.second);
+      case OpType::kAborted:
+        manager_.Aborted(op.ht, op.op_id);
         break;
     }
   }
@@ -312,9 +325,8 @@ TEST_F(MvccTest, WaitForSafeTime) {
   auto limit = AddLogical(clock_->Now(), kLease);
   clock_->Update(AddLogical(limit, kDelta));
   HybridTime ht1 = clock_->Now();
-  manager_.AddPending(&ht1);
-  HybridTime ht2;
-  manager_.AddPending(&ht2);
+  manager_.AddFollowerPending(ht1, OpId(1, 1));
+  HybridTime ht2 = manager_.AddLeaderPending(OpId(1, 2));
   std::atomic<bool> t1_done(false);
   std::thread t1([this, ht2, &t1_done] {
     manager_.SafeTime(ht2.Decremented(), CoarseTimePoint::max(), FixedHybridTimeLease());
@@ -329,12 +341,12 @@ TEST_F(MvccTest, WaitForSafeTime) {
   ASSERT_FALSE(t1_done.load());
   ASSERT_FALSE(t2_done.load());
 
-  manager_.Replicated(ht1);
+  manager_.Replicated(ht1, OpId(1, 1));
   std::this_thread::sleep_for(100ms);
   ASSERT_TRUE(t1_done.load());
   ASSERT_FALSE(t2_done.load());
 
-  manager_.Replicated(ht2);
+  manager_.Replicated(ht2, OpId(1, 2));
   std::this_thread::sleep_for(100ms);
   ASSERT_TRUE(t1_done.load());
   ASSERT_TRUE(t2_done.load());
@@ -342,8 +354,7 @@ TEST_F(MvccTest, WaitForSafeTime) {
   t1.join();
   t2.join();
 
-  HybridTime ht3;
-  manager_.AddPending(&ht3);
+  HybridTime ht3 = manager_.AddLeaderPending(OpId(1, 3));
   ASSERT_FALSE(manager_.SafeTime(ht3, CoarseMonoClock::now() + 100ms, FixedHybridTimeLease()));
 }
 

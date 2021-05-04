@@ -934,6 +934,13 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreatedbStmt:
+		case T_ViewStmt: // CREATE VIEW
+		case T_CompositeTypeStmt: // CREATE TYPE
+		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
+		case T_CommentStmt: // COMMENT (create new comment)
+		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
+		case T_RuleStmt: // CREATE RULE
+		case T_TruncateStmt: // TRUNCATE changes system catalog in case of non-YB (i.e. TEMP) tables
 		{
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require

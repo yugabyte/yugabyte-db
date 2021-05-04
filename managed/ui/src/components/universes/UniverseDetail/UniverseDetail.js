@@ -45,7 +45,13 @@ import {
 } from '../../../utils/LayoutUtils';
 import './UniverseDetail.scss';
 
-export const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
+
+export const isEphemeralAwsStorageInstance = (instanceType) => {
+  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(
+    instanceType?.split?.('.')[0]
+  );
+}
 
 class UniverseDetail extends Component {
   constructor(props) {
@@ -455,12 +461,15 @@ class UniverseDetail extends Component {
       }
     } = currentUniverse;
 
-    const isEphemeralStorage =
+    const isEphemeralAwsStorage =
       nodeDetailsSet.find?.((node) => {
-        return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(
-          node.cloudInfo?.instance_type?.split?.('.')[0]
-        );
+        return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
       }) !== undefined;
+
+
+
+
+    
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -621,7 +630,7 @@ class UniverseDetail extends Component {
                       current status of the universe. */}
 
                       {isAWSUniverse(currentUniverse?.data) &&
-                        !isEphemeralStorage &&
+                        !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
                           featureFlags.released['pausedUniverse']) && (
                           <YBMenuItem onClick={showToggleUniverseStateModal}>

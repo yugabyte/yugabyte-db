@@ -172,20 +172,6 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
   return status.is_encrypted ? (status.header_size + metadata_start) : 0;
 }
 
-__attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS LockingCallback(
-    int mode, int n, const char* /*file*/, int /*line*/) {
-  CHECK_LT(static_cast<size_t>(n), crypto_mutexes.size());
-  if (mode & CRYPTO_LOCK) {
-    crypto_mutexes[n]->lock();
-  } else {
-    crypto_mutexes[n]->unlock();
-  }
-}
-
-__attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS ThreadId(CRYPTO_THREADID *tid) {
-  CRYPTO_THREADID_set_numeric(tid, Thread::CurrentThreadId());
-}
-
 class OpenSSLInitializer {
  public:
   OpenSSLInitializer() {
@@ -193,17 +179,9 @@ class OpenSSLInitializer {
     SSL_load_error_strings();
     OpenSSL_add_all_algorithms();
     OpenSSL_add_all_ciphers();
-
-    while (crypto_mutexes.size() != CRYPTO_num_locks()) {
-      crypto_mutexes.emplace_back(std::make_unique<std::mutex>());
-    }
-    CRYPTO_set_locking_callback(&LockingCallback);
-    CRYPTO_THREADID_set_callback(&ThreadId);
   }
 
   ~OpenSSLInitializer() {
-    CRYPTO_set_locking_callback(nullptr);
-    CRYPTO_THREADID_set_callback(nullptr);
     ERR_free_strings();
     EVP_cleanup();
     CRYPTO_cleanup_all_ex_data();
