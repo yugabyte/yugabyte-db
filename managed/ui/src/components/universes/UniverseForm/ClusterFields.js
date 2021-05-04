@@ -76,7 +76,7 @@ const DEFAULT_PORTS = {
 
 const DEFAULT_STORAGE_TYPES = {
   AWS: 'GP2',
-  GCP: 'Scratch',
+  GCP: 'Persistent',
   AZU: 'Premium_LRS'
 };
 
