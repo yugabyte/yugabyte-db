@@ -573,20 +573,9 @@ print_saved_log_path() {
 "Or using symlink:"$'\n\n'"less '$latest_log_symlink_path'"$'\n'
 }
 
-load_yb_build_configuration() {
-  local conf_file
-  for conf_file in /etc/yb_buildrc "$HOME/.yb_buildrc" ; do
-    if [[ -f "$conf_file" ]]; then
-      . "$conf_file"
-    fi
-  done
-}
-
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
-
-load_yb_build_configuration
 
 build_type=""
 verbose=false
