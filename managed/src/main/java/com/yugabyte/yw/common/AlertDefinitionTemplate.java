@@ -6,6 +6,7 @@ import java.util.EnumSet;
 
 public enum AlertDefinitionTemplate {
 
+  // @formatter:off
   REPLICATION_LAG("Replication Lag Alert",
       "max by (node_prefix) (avg_over_time(async_replication_committed_lag_micros" +
       "{node_prefix=\"__nodePrefix__\"}[10m]) or avg_over_time(async_replication_sent_lag_micros" +
@@ -15,10 +16,30 @@ public enum AlertDefinitionTemplate {
   CLOCK_SKEW("Clock Skew Alert",
       "max by (node_prefix) (max_over_time(hybrid_clock_skew" +
       "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 > {{ yb.alert.max_clock_skew_ms }}",
-      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_UNIVERSE), "yb.alert.max_clock_skew_ms");
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_UNIVERSE), "yb.alert.max_clock_skew_ms"),
 
-  public enum DefinitionSettings {
-    CREATE_FOR_NEW_UNIVERSE
+  MEMORY_CONSUMPTION(
+      "Memory Consumption Alert",
+      "(max by (node_prefix)"
+          + "   (avg_over_time(node_memory_MemTotal{node_prefix=\"__nodePrefix__\"}[10m])) -"
+          + " max by (node_prefix)"
+          + "   (avg_over_time(node_memory_Buffers{node_prefix=\"__nodePrefix__\"}[10m])) -"
+          + " max by (node_prefix)"
+          + "   (avg_over_time(node_memory_Cached{node_prefix=\"__nodePrefix__\"}[10m])) -"
+          + " max by (node_prefix)"
+          + "   (avg_over_time(node_memory_MemFree{node_prefix=\"__nodePrefix__\"}[10m])) -"
+          + " max by (node_prefix)"
+          + "   (avg_over_time(node_memory_Slab{node_prefix=\"__nodePrefix__\"}[10m]))) /"
+          + " (max by (node_prefix)"
+          + "   (avg_over_time(node_memory_MemTotal{node_prefix=\"__nodePrefix__\"}[10m])))"
+          + " > {{ yb.alert.max_memory_cons_pct }} / 100",
+      EnumSet.of(
+          DefinitionSettings.CREATE_FOR_NEW_UNIVERSE, DefinitionSettings.CREATE_ON_MIGRATION),
+      "yb.alert.max_memory_cons_pct");
+  // @formatter:on
+
+  enum DefinitionSettings {
+    CREATE_FOR_NEW_UNIVERSE, CREATE_ON_MIGRATION
   }
 
   private final String name;
@@ -50,6 +71,10 @@ public enum AlertDefinitionTemplate {
 
   public boolean isCreateForNewUniverse() {
     return settings.contains(DefinitionSettings.CREATE_FOR_NEW_UNIVERSE);
+  }
+
+  public boolean isCreateOnMigration() {
+    return settings.contains(DefinitionSettings.CREATE_ON_MIGRATION);
   }
 
   public String getName() {
