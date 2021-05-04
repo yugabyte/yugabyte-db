@@ -143,16 +143,16 @@ public class MetaMasterController extends Controller {
         Map<String, String> config = entry.getValue();
 
         String namespace = PlacementInfoUtil.getKubernetesNamespace(
-            isMultiAz, universeDetails.nodePrefix, azName, config);
+          isMultiAz, universeDetails.nodePrefix, azName, config);
 
         ShellResponse r = kubernetesManager.getServiceIPs(
-            config, namespace, type == ServerType.MASTER);
+          config, namespace, type == ServerType.MASTER);
         if (r.code != 0 || r.message == null) {
           LOG.warn("Kubernetes getServiceIPs api failed! {}", r.message);
           return null;
         }
         List<String> ips = Arrays.stream(r.message.split("\\|"))
-            .filter((ip) -> !ip.trim().isEmpty()).collect(Collectors.toList());
+          .filter((ip) -> !ip.trim().isEmpty()).collect(Collectors.toList());
         int rpcPort;
         switch (type) {
           case MASTER:
