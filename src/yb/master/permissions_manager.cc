@@ -310,7 +310,6 @@ Status PermissionsManager::CreateRole(
 
   LOG(INFO) << "CreateRole from " << RequestorString(rpc) << ": " << req->DebugString();
 
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
   Status s;
   {
     TRACE("Acquired catalog manager lock");
@@ -360,7 +359,6 @@ Status PermissionsManager::AlterRole(
 
   VLOG(1) << "AlterRole from " << RequestorString(rpc) << ": " << req->DebugString();
 
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
   Status s;
 
   TRACE("Acquired catalog manager lock");
@@ -439,7 +437,6 @@ Status PermissionsManager::DeleteRole(
 
   LOG(INFO) << "Servicing DeleteRole request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
   Status s;
 
   if (!req->has_name()) {
@@ -549,7 +546,6 @@ Status PermissionsManager::GrantRevokeRole(
 
   LOG(INFO) << "Servicing " << (req->revoke() ? "RevokeRole" : "GrantRole")
             << " request from " << RequestorString(rpc) << ": " << req->ShortDebugString();
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
 
   // Cannot grant or revoke itself.
   if (req->granted_role() == req->recipient_role()) {
@@ -817,7 +813,6 @@ Status PermissionsManager::GrantRevokePermission(
     rpc::RpcContext* rpc) {
   LOG(INFO) << (req->revoke() ? "Revoke" : "Grant") << " permission "
             << RequestorString(rpc) << ": " << req->ShortDebugString();
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
 
   std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
   TRACE("Acquired catalog manager lock");

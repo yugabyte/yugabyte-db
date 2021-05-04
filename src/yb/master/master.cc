@@ -186,10 +186,7 @@ Status Master::Init() {
       .AddMasterAddressSource([this] {
     std::vector<std::string> result;
     consensus::ConsensusStatePB state;
-    auto status = catalog_manager_->CheckOnline();
-    if (status.ok()) {
-      status = catalog_manager_->GetCurrentConfig(&state);
-    }
+    auto status = catalog_manager_->GetCurrentConfig(&state);
     if (!status.ok()) {
       LOG(WARNING) << "Failed to get current config: " << status;
       return result;
