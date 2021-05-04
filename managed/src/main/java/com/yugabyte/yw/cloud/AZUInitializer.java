@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.PriceComponent.PriceDetails;
@@ -112,7 +113,7 @@ public class AZUInitializer extends AbstractInitializer {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
-    return ApiResponse.success("Azure Initialized");
+    return YWSuccess.asResult("Azure Initialized");
 
   }
 }

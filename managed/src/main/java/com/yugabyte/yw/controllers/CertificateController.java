@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -24,7 +25,6 @@ import play.libs.Json;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
@@ -158,7 +158,7 @@ public class CertificateController extends AuthenticatedController {
       if (certificate.delete()) {
         Audit.createAuditEntry(ctx(), request());
         LOG.info("Successfully deleted the certificate:" + reqCertUUID);
-        return ApiResponse.success();
+        return YWSuccess.asResult();
       } else {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
       }

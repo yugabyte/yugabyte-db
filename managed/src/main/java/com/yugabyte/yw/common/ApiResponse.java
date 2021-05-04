@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.OK;
 
+import com.yugabyte.yw.forms.YWSuccess;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +18,10 @@ import play.mvc.Results;
 public class ApiResponse {
   public static final Logger LOG = LoggerFactory.getLogger(ApiResponse.class);
 
+  /**
+   * @deprecated Instead throw {@link YWServiceException}
+   */
+  @Deprecated
   public static Result error(int status, Object message) {
     LOG.error("Hit error " + status + ", message: " + errorJSON(message));
     return Results.status(status, errorJSON(message));
@@ -26,12 +31,9 @@ public class ApiResponse {
     return Results.status(OK, Json.toJson(message));
   }
 
-  public static Result success() {
-    ObjectNode responseJson = Json.newObject();
-    responseJson.put("success", true);
-    return success(responseJson);
-  }
-
+  /**
+   * @deprecated Instead throw {@link YWServiceException}
+   */
   public static JsonNode errorJSON(Object message) {
     ObjectNode jsonMsg = Json.newObject();
 

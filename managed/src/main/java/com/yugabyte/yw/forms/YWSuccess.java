@@ -11,24 +11,30 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import play.api.mvc.Results;
 import play.libs.Json;
 import play.mvc.Result;
 
+import static play.mvc.Results.ok;
+
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class YWSuccess {
-  public final boolean success = true;
+  public final boolean success;
   public final String message;
 
-  YWSuccess(String message) {
+  YWSuccess() {
+    this(true, null);
+  }
+
+  YWSuccess(boolean success, String message) {
+    this.success = success;
     this.message = message;
   }
 
   public static Result asResult() {
-    return asResult(null);
+    return ok(Json.toJson(new YWSuccess()));
   }
 
   public static Result asResult(String message) {
-    return play.mvc.Results.status(200, Json.toJson(new YWSuccess(message)));
+    return ok(Json.toJson(new YWSuccess(true, message)));
   }
 }

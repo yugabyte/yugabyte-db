@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData.ZoneData;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
@@ -127,7 +128,7 @@ public class CloudProviderController extends AuthenticatedController {
       InstanceType.deleteInstanceTypesForProvider(provider, config);
       provider.delete();
       Audit.createAuditEntry(ctx(), request());
-      return ApiResponse.success("Deleted provider: " + providerUUID);
+      return YWSuccess.asResult("Deleted provider: " + providerUUID);
     } catch (RuntimeException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);

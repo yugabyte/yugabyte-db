@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.UserRegisterFormData;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -17,7 +18,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Environment;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -178,7 +178,7 @@ public class UsersController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Request");
     }
     Audit.createAuditEntry(ctx(), request());
-    return ApiResponse.success();
+    return YWSuccess.asResult();
   }
 
   /**
@@ -213,7 +213,7 @@ public class UsersController extends AuthenticatedController {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
         user.save();
-        return ApiResponse.success();
+        return YWSuccess.asResult();
       }
     }
     return ApiResponse.error(BAD_REQUEST, "Invalid User Credentials.");
