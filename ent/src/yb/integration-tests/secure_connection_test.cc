@@ -36,6 +36,7 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_string(certs_dir);
+DECLARE_string(cipher_list);
 DECLARE_string(ssl_protocols);
 DECLARE_string(TEST_public_hostname_suffix);
 
@@ -175,6 +176,18 @@ TEST_F_EX(SecureConnectionTest, ClientCertificates, SecureConnectionWithClientCe
   TestSimpleOps();
 
   ASSERT_NOK(CreateBadClient());
+}
+
+class SecureConnectionCipherList : public SecureConnectionTest {
+  void SetUp() override {
+    FLAGS_cipher_list = "HIGH";
+    FLAGS_ssl_protocols = "tls12";
+    SecureConnectionTest::SetUp();
+  }
+};
+
+TEST_F_EX(SecureConnectionTest, CipherList, SecureConnectionCipherList) {
+  TestSimpleOps();
 }
 
 } // namespace yb

@@ -41,6 +41,9 @@ DEFINE_string(ssl_protocols, "",
               "List of allowed SSL protocols (ssl2, ssl3, tls10, tls11, tls12). "
                   "Empty to allow TLS only.");
 
+DEFINE_string(cipher_list, "",
+              "Define the list of available ciphers (TLSv1.2 and below).");
+
 namespace yb {
 namespace rpc {
 
@@ -134,6 +137,32 @@ Result<detail::EVP_PKEYPtr> GeneratePrivateKey(int bits) {
   return std::move(pkey);
 }
 
+class ExtensionConfigurator {
+ public:
+  explicit ExtensionConfigurator(X509 *cert) : cert_(cert) {
+    // No configuration database
+    X509V3_set_ctx_nodb(&ctx_);
+    // Both issuer and subject certs
+    X509V3_set_ctx(&ctx_, cert, cert, nullptr, nullptr, 0);
+  }
+
+  CHECKED_STATUS Add(int nid, const char* value) {
+    X509_EXTENSION *ex = X509V3_EXT_conf_nid(nullptr, &ctx_, nid, const_cast<char*>(value));
+    if (!ex) {
+      return SSL_STATUS(InvalidArgument, "Failed to create extension: $0");
+    }
+
+    X509_add_ext(cert_, ex, -1);
+    X509_EXTENSION_free(ex);
+
+    return Status::OK();
+  }
+
+ private:
+  X509V3_CTX ctx_;
+  X509* cert_;
+};
+
 Result<detail::X509Ptr> CreateCertificate(
     EVP_PKEY* key, const std::string& common_name, EVP_PKEY* ca_pkey, X509* ca_cert) {
   detail::X509Ptr cert(X509_new());
@@ -168,6 +197,9 @@ Result<detail::X509Ptr> CreateCertificate(
     if (!issuer) {
       return SSL_STATUS(IOError, "Failed to get CA subject name: $0");
     }
+  } else {
+    ExtensionConfigurator configurator(cert.get());
+    RETURN_NOT_OK(configurator.Add(NID_basic_constraints, "critical,CA:TRUE"));
   }
 
   if (X509_set_issuer_name(cert.get(), issuer) != 1) {
@@ -255,6 +287,15 @@ SecureContext::SecureContext() {
   int64_t protocols = ProtocolsOption();
   VLOG(1) << "Protocols option: " << protocols;
   SSL_CTX_set_options(context_.get(), protocols | SSL_OP_NO_COMPRESSION);
+
+  auto cipher_list = FLAGS_cipher_list;
+  if (!cipher_list.empty()) {
+    LOG(INFO) << "Use cipher list: " << cipher_list;
+    auto res = SSL_CTX_set_cipher_list(context_.get(), cipher_list.c_str());
+    LOG_IF(DFATAL, res != 1) << "Failed to set cipher list: "
+                             << SSLErrorMessage(ERR_get_error());
+  }
+
   auto res = SSL_CTX_set_session_id_context(context_.get(), kContextId, sizeof(kContextId));
   LOG_IF(DFATAL, res != 1) << "Failed to set session id for SSL context: "
                            << SSLErrorMessage(ERR_get_error());
@@ -397,6 +438,7 @@ class SecureStream : public Stream, public StreamContext {
   CHECKED_STATUS SendEncrypted(OutboundDataPtr data);
   Result<bool> WriteEncrypted(OutboundDataPtr data);
   CHECKED_STATUS ReadDecrypted();
+  CHECKED_STATUS HandshakeOrRead();
   Result<size_t> SslRead(void* buf, int num);
 
   std::string ToString() override;
@@ -416,6 +458,7 @@ class SecureStream : public Stream, public StreamContext {
 
   detail::BIOPtr bio_;
   detail::SSLPtr ssl_;
+  Status verification_status_;
 };
 
 Status SecureStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context) {
@@ -576,19 +619,7 @@ Result<ProcessDataResult> SecureStream::ProcessReceived(
     case SecureState::kDisabled:
       return context_->ProcessReceived(data, read_buffer_full);
 
-    case SecureState::kHandshake: {
-      size_t result = 0;
-      for (const auto& iov : data) {
-        auto written = BIO_write(bio_.get(), iov.iov_base, iov.iov_len);
-        result += written;
-        DCHECK_EQ(written, iov.iov_len);
-      }
-      auto handshake_status = Handshake();
-      LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
-      RETURN_NOT_OK(handshake_status);
-      return ProcessDataResult{ result, Slice() };
-    }
-
+    case SecureState::kHandshake: FALLTHROUGH_INTENDED;
     case SecureState::kEnabled: {
       size_t result = 0;
       for (const auto& iov : data) {
@@ -600,15 +631,29 @@ Result<ProcessDataResult> SecureStream::ProcessReceived(
             break;
           }
           slice.remove_prefix(len);
-          RETURN_NOT_OK(ReadDecrypted());
+          RETURN_NOT_OK(HandshakeOrRead());
         }
       }
-      RETURN_NOT_OK(ReadDecrypted());
+      RETURN_NOT_OK(HandshakeOrRead());
       return ProcessDataResult{ result, Slice() };
     }
   }
 
   return STATUS_FORMAT(IllegalState, "Unexpected state: $0", to_underlying(state_));
+}
+
+Status SecureStream::HandshakeOrRead() {
+  if (state_ == SecureState::kEnabled) {
+    return ReadDecrypted();
+  } else {
+    auto handshake_status = Handshake();
+    LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
+    RETURN_NOT_OK(handshake_status);
+  }
+  if (state_ == SecureState::kEnabled) {
+    return ReadDecrypted();
+  }
+  return Status::OK();
 }
 
 // Tries to do SSL_read up to num bytes from buf. Possible results:
@@ -774,7 +819,8 @@ Status SecureStream::Init() {
 }
 
 Status SecureStream::Established(SecureState state) {
-  VLOG_WITH_PREFIX(4) << "Established with state: " << state;
+  VLOG_WITH_PREFIX(4) << "Established with state: " << state << ", used cipher: "
+                      << SSL_get_cipher_name(ssl_.get());
 
   state_ = state;
   ResetLogPrefix();
