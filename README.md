@@ -1,4 +1,4 @@
-<img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/images/ybDB_horizontal.jpg" align="center" alt="YugabyteDB"/>
+<img src="https://www.yugabyte.com/wp-content/uploads/2021/05/yb_horizontal_alt_color_RGB.png" align="center" alt="YugabyteDB" width="50%"/>
 
 ---------------------------------------
 
