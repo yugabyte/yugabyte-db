@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
@@ -51,7 +52,7 @@ public class CustomerConfigController extends AuthenticatedController {
           "Customer Configuration could not be deleted.");
     }
     Audit.createAuditEntry(ctx(), request());
-    return ApiResponse.success("configUUID deleted");
+    return YWSuccess.asResult("configUUID deleted");
   }
 
   public Result list(UUID customerUUID) {
