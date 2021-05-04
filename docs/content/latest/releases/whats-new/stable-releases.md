@@ -20,7 +20,7 @@ Included here are the release notes for all releases in the v2.4 stable release 
 
 {{< /note >}}
 
-## v2.4.2.0 - April 26, 2021
+## v2.4.2.0 - May 3, 2021
 
 ### Downloads
 
