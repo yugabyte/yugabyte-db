@@ -130,6 +130,7 @@ public class CustomerConfig extends Model {
     return CustomerConfig.find.query().where().eq("customer_uuid", customerUUID).findList();
   }
 
+  @Deprecated
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
     return CustomerConfig.find.query().where()
       .eq("customer_uuid", customerUUID)

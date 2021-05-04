@@ -153,6 +153,8 @@ public class BackupsController extends AuthenticatedController {
 
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    // TODO(API): Let's get rid of raw Json.
+    // Create DeleteBackupReq in form package and bind to that
     ObjectNode formData = (ObjectNode) request().body().asJson();
     List<String> taskUUIDList = new ArrayList<>();
     for (JsonNode backupUUID : formData.get("backupUUID")) {
