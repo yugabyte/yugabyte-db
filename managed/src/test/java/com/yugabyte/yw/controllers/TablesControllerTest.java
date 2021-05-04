@@ -668,7 +668,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
-    Schedule schedule = Schedule.get(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getCronExpression(), "5 * * * *");
     assertAuditEntry(1, customer.uuid);
@@ -747,7 +747,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
-    Schedule schedule = Schedule.get(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getCronExpression(), "5 * * * *");
     assertAuditEntry(1, customer.uuid);
@@ -772,7 +772,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
-    Schedule schedule = Schedule.get(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getFrequency(), 6000);
     assertAuditEntry(1, customer.uuid);

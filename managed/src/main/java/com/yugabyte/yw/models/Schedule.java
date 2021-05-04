@@ -105,6 +105,10 @@ public class Schedule extends Model {
     return schedule;
   }
 
+   /**
+   * DEPRECATED: use {@link #getOrBadRequest()}
+   */
+  @Deprecated
   public static Schedule get(UUID scheduleUUID) {
     return find.query().where().idEq(scheduleUUID).findOne();
   }
