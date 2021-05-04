@@ -76,6 +76,11 @@ class AbstractMethod(object):
         self.preprocess_args(args)
         self.callback(args)
 
+    def _cleanup_dir(self, path):
+        for file in glob.glob("{}/*.*".format(path)):
+            os.remove(file)
+        os.rmdir(path)
+
 
 class AbstractInstancesMethod(AbstractMethod):
     """Superclass for instance-specific method preparation, such as the Ansible extra_vars and the
@@ -115,6 +120,8 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="desired size (gb) of each volume mounted on instance")
         self.parser.add_argument("--disk_iops", type=int, default=1000,
                                  help="desired iops for aws v4 instance volumes")
+        self.parser.add_argument("--disk_throughput", type=int, default=125,
+                                 help="desired throughput for aws gp3 instance volumes")
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")
@@ -157,9 +164,6 @@ class AbstractInstancesMethod(AbstractMethod):
             updated_args["ask_sudo_pass"] = True
         if args.volume_size:
             updated_args["ssd_size_gb"] = args.volume_size
-
-        if args.disk_iops:
-            updated_args["disk_iops"] = args.disk_iops
 
         if args.mount_points:
             self.mount_points = args.mount_points.strip()
@@ -754,24 +758,30 @@ class AccessCreateVaultMethod(AbstractVaultMethod):
 
     def callback(self, args):
         file_prefix = os.path.splitext(args.private_key_file)[0]
-        if args.vault_password_file is None:
-            vault_password = generate_random_password()
-            args.vault_password_file = "{}.vault_password".format(file_prefix)
-            with open(args.vault_password_file, "w") as f:
-                f.write(vault_password)
-        elif os.path.exists(args.vault_password_file):
-            with open(args.vault_password_file, "r") as f:
-                vault_password = f.read().strip()
 
-            if vault_password is None:
-                raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password_file))
-        else:
-            raise YBOpsRuntimeError("Vault password file doesn't exists.")
+        try:
+            if args.vault_password_file is None:
+                vault_password = generate_random_password()
+                args.vault_password_file = "{}.vault_password".format(file_prefix)
+                with open(args.vault_password_file, "w") as f:
+                    f.write(vault_password)
+            elif os.path.exists(args.vault_password_file):
+                with open(args.vault_password_file, "r") as f:
+                    vault_password = f.read().strip()
 
-        if args.vault_file is None:
-            args.vault_file = "{}.vault".format(file_prefix)
+                if vault_password is None:
+                    raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password_file))
+            else:
+                raise YBOpsRuntimeError("Vault password file doesn't exist.")
 
-        rsa_key = validated_key_file(args.private_key_file)
+            if args.vault_file is None:
+                args.vault_file = "{}.vault".format(file_prefix)
+
+            rsa_key = validated_key_file(args.private_key_file)
+        except Exception:
+            self._cleanup_dir(os.path.dirname(args.private_key_file))
+            raise
+
         # TODO: validate if the file provided is actually a private key file or not.
         public_key = format_rsa_key(rsa_key, public_key=True)
         private_key = format_rsa_key(rsa_key, public_key=False)
@@ -882,3 +892,20 @@ class AbstractNetworkMethod(AbstractMethod):
         super(AbstractNetworkMethod, self).preprocess_args(args)
         if args.metadata_override:
             self.cloud.update_metadata(args.metadata_override)
+
+
+class AccessDeleteKeyMethod(AbstractAccessMethod):
+    def __init__(self, base_command):
+        super(AccessDeleteKeyMethod, self).__init__(base_command, "delete-key")
+
+    def _delete_key_pair(self, args):
+        pass
+
+    def callback(self, args):
+        try:
+            self._delete_key_pair(args)
+            self._cleanup_dir(args.key_file_path)
+            print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
+        except Exception as e:
+            logging.error(e)
+            print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))

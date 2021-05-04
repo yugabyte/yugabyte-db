@@ -368,7 +368,7 @@ static relopt_int intRelOpts[] =
 			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
 			AccessExclusiveLock
 		},
-		-1, 0, INT_MAX
+		InvalidOid, FirstNormalObjectId, INT_MAX
 	},
 	{
 		{
@@ -377,7 +377,7 @@ static relopt_int intRelOpts[] =
 			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
 			AccessExclusiveLock
 		},
-		-1, FirstNormalObjectId, INT_MAX
+		InvalidOid, FirstNormalObjectId, INT_MAX
 	},
 	/* list terminator */
 	{{NULL}}

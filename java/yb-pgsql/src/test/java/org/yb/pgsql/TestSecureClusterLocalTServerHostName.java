@@ -25,7 +25,7 @@ public class TestSecureClusterLocalTServerHostName extends TestSecureCluster {
 
   @Override
   protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getMasterAndTServerFlags();
+    Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("use_node_hostname_for_local_tserver", "true");
     return flagMap;
   }

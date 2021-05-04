@@ -103,7 +103,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {}
 
     mockWaits(mockClient, 4);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     preflightSuccess = new ShellResponse();
@@ -268,7 +268,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeSuccess() {
     mockWaits(mockClient, 3);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 3);
     verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -361,7 +361,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeToJoinClusterState() {
     mockWaits(mockClient, 3);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(false);
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 3);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());

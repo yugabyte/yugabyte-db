@@ -944,20 +944,6 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   return NewRowIterator(table_info->schema, boost::none, {}, table_id);
 }
 
-void Tablet::StartOperation(WriteOperationState* operation_state) {
-  // If the state already has a hybrid_time then we're replaying a transaction that occurred
-  // before a crash or at another node.
-  DVLOG(4) << __PRETTY_FUNCTION__ << " for " << yb::ToString(operation_state->request());
-  HybridTime ht = operation_state->hybrid_time_even_if_unset();
-  bool was_valid = ht.is_valid();
-  if (!was_valid) {
-    // Add only leader operation here, since follower operations already registered in MVCC,
-    // as soon as they received.
-    mvcc_.AddPending(&ht);
-    operation_state->set_hybrid_time(ht);
-  }
-}
-
 Status Tablet::ApplyRowOperations(
     WriteOperationState* operation_state, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   const auto& write_request =
@@ -980,7 +966,7 @@ Status Tablet::ApplyOperationState(
     const docdb::KeyValueWriteBatchPB& write_batch,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   docdb::ConsensusFrontiers frontiers;
-  set_op_id(yb::OpId::FromPB(operation_state.op_id()), &frontiers);
+  set_op_id(operation_state.op_id(), &frontiers);
 
   auto hybrid_time = operation_state.WriteHybridTime();
 
@@ -1488,14 +1474,15 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
 
 void Tablet::UpdateQLIndexesFlushed(
     WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
-    const IndexOps& index_ops, const Status& status) {
+    const IndexOps& index_ops, client::FlushStatus* flush_status) {
   std::unique_ptr<WriteOperation> operation(op);
 
+  const auto& status = flush_status->status;
   if (PREDICT_FALSE(!status.ok())) {
     // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
     // returns IOError. When it happens, retrieves the errors and discard the IOError.
     if (status.IsIOError()) {
-      for (const auto& error : session->GetAndClearPendingErrors()) {
+      for (const auto& error : flush_status->errors) {
         // return just the first error seen.
         operation->state()->CompleteWithStatus(error->status());
         return;
@@ -1858,7 +1845,7 @@ Status Tablet::ImportData(const std::string& source_dir) {
 
 template <class Data>
 void InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
-  set_op_id({data.op_id.term(), data.op_id.index()}, frontiers);
+  set_op_id(data.op_id, frontiers);
   set_hybrid_time(data.log_ht, frontiers);
 }
 
@@ -1877,7 +1864,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
   docdb::ConsensusFrontiers* frontiers_ptr = nullptr;
-  if (data.op_id.IsInitialized()) {
+  if (!data.op_id.empty()) {
     InitFrontiers(data, &frontiers);
     frontiers_ptr = &frontiers;
   }
@@ -2519,7 +2506,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   }
 
   docdb::ConsensusFrontier frontier;
-  frontier.set_op_id({state->op_id().term(), state->op_id().index()});
+  frontier.set_op_id(state->op_id());
   frontier.set_hybrid_time(state->hybrid_time());
   // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
   // different tablet in an arbitrary Raft group, here there is no possibility of the flushed

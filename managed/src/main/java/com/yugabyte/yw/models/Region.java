@@ -14,6 +14,7 @@ import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.ebean.*;
 import io.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
@@ -34,6 +35,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Region extends Model {
   private static final String SECURITY_GROUP_KEY = "sg_id";
   private static final String VNET_KEY = "vnet";

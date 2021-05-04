@@ -2,19 +2,11 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.junit.Before;
 import org.junit.Test;
@@ -22,24 +14,16 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
-
-import java.util.LinkedList;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.UUID;
-
 import play.libs.Json;
 
+import java.util.*;
+
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
   public class TableManagerTest extends FakeDBApplication {
@@ -116,8 +100,8 @@ import static org.mockito.Mockito.when;
 
   private BulkImportParams getBulkImportParams() {
     BulkImportParams bulkImportParams = new BulkImportParams();
-    bulkImportParams.tableName = "mock_table";
-    bulkImportParams.keyspace = "mock_ks";
+    bulkImportParams.setTableName("mock_table");
+    bulkImportParams.setKeyspace("mock_ks");
     bulkImportParams.s3Bucket = "s3://foo.bar.com/bulkload";
     bulkImportParams.universeUUID = testUniverse.universeUUID;
     return bulkImportParams;
@@ -128,8 +112,8 @@ import static org.mockito.Mockito.when;
     if (actionType.equals(BackupTableParams.ActionType.CREATE)) {
       backupTableParams.tableUUID = UUID.randomUUID();
     }
-    backupTableParams.tableName = "mock_table";
-    backupTableParams.keyspace = "mock_ks";
+    backupTableParams.setTableName("mock_table");
+    backupTableParams.setKeyspace("mock_ks");
     backupTableParams.actionType = actionType;
     backupTableParams.universeUUID = testUniverse.universeUUID;
     return backupTableParams;
@@ -145,14 +129,14 @@ import static org.mockito.Mockito.when;
     backupTableParams.universeUUID = testUniverse.universeUUID;
     List<BackupTableParams> backupList = new ArrayList<>();
     BackupTableParams b1Params = new BackupTableParams();
-    b1Params.tableName = "mock_table";
-    b1Params.keyspace = "mock_ks";
+    b1Params.setTableName("mock_table");
+    b1Params.setKeyspace("mock_ks");
     b1Params.actionType = actionType;
     b1Params.universeUUID = testUniverse.universeUUID;
     b1Params.storageConfigUUID = storageUUID;
     backupList.add(b1Params);
     BackupTableParams b2Params = new BackupTableParams();
-    b2Params.keyspace = "mock_ysql";
+    b2Params.setKeyspace("mock_ysql");
     b2Params.actionType = actionType;
     b2Params.universeUUID = testUniverse.universeUUID;
     b2Params.storageConfigUUID = storageUUID;
@@ -172,9 +156,9 @@ import static org.mockito.Mockito.when;
     cmd.add("--masters");
     cmd.add(testUniverse.getMasterAddresses());
     cmd.add("--table");
-    cmd.add(bulkImportParams.tableName);
+    cmd.add(bulkImportParams.getTableName());
     cmd.add("--keyspace");
-    cmd.add(bulkImportParams.keyspace);
+    cmd.add(bulkImportParams.getKeyspace());
     cmd.add("--key_path");
     cmd.add(pkPath);
     cmd.add("--instance_count");
@@ -226,15 +210,15 @@ import static org.mockito.Mockito.when;
           cmd.add("--table");
           cmd.add(tableName);
           cmd.add("--keyspace");
-          cmd.add(backupTableParams.keyspace);
+          cmd.add(backupTableParams.getKeyspace());
         }
       } else {
-        if (backupTableParams.tableName != null) {
+        if (backupTableParams.getTableName() != null) {
           cmd.add("--table");
-          cmd.add(backupTableParams.tableName);
+          cmd.add(backupTableParams.getTableName());
         }
         cmd.add("--keyspace");
-        cmd.add(backupTableParams.keyspace);
+        cmd.add(backupTableParams.getKeyspace());
       }
       if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE) &&
           backupTableParams.tableUUID != null) {

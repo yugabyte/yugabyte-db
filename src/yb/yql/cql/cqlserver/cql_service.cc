@@ -179,11 +179,6 @@ void CQLServiceImpl::Shutdown() {
   for (const auto& processor : processors) {
     processor->Shutdown();
   }
-
-  auto client = this->client();
-  if (client) {
-    client->messenger()->Shutdown();
-  }
 }
 
 void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
