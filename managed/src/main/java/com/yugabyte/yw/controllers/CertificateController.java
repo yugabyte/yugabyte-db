@@ -44,10 +44,10 @@ public class CertificateController extends AuthenticatedController {
   @Inject
   ValidatingFormFactory formFactory;
   
-  public Result upload(UUID customerUUID) throws IOException, NoSuchAlgorithmException {
-    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
+  public Result upload(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-
+    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
+    
     Date certStart = new Date(formData.get().certStart);
     Date certExpiry = new Date(formData.get().certExpiry);
     String label = formData.get().label;
@@ -77,9 +77,7 @@ public class CertificateController extends AuthenticatedController {
     return ApiResponse.success(certUUID);
   }
 
-  public Result getClientCert(UUID customerUUID, UUID rootCA) throws NoSuchAlgorithmException,
-      IOException, OperatorCreationException, CertificateException, InvalidKeyException,
-      NoSuchProviderException, SignatureException {
+  public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
     Customer.getOrBadRequest(customerUUID);
     Long certTimeMillis = formData.get().certStart;

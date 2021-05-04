@@ -72,8 +72,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
+import static play.mvc.Http.Status.*;
 /**
  * Helper class for Certificates
  */
@@ -154,137 +153,153 @@ public class CertificateHelper {
   }
 
   public static JsonNode createClientCertificate(UUID rootCA, String storagePath, String username,
-      Date certStart, Date certExpiry) throws NoSuchAlgorithmException, IOException,
-      OperatorCreationException, CertificateException, InvalidKeyException,
-      NoSuchProviderException, SignatureException {
+                                                 Date certStart, Date certExpiry) {
     LOG.info("Creating client certificate signed by root CA {} and user {} at path {}",
       rootCA, username, storagePath);
-    // Add the security provider in case createClientCertificate was never called.
-    KeyPair clientKeyPair = getKeyPairObject();
+    try {
+      // Add the security provider in case createClientCertificate was never called.
+      KeyPair clientKeyPair = getKeyPairObject();
 
-    Calendar cal = Calendar.getInstance();
-    if (certStart == null) {
-      certStart = cal.getTime();
+      Calendar cal = Calendar.getInstance();
+      if (certStart == null) {
+        certStart = cal.getTime();
+      }
+      if (certExpiry == null) {
+        cal.add(Calendar.YEAR, 1);
+        certExpiry = cal.getTime();
+      }
+
+      CertificateInfo cert = CertificateInfo.get(rootCA);
+      if (cert.privateKey == null) {
+        throw new YWServiceException(BAD_REQUEST, "Keyfile cannot be null!");
+      }
+      X509Certificate cer = getX509CertificateCertObject(FileUtils.readFileToString
+          (new File(cert.certificate)));
+      X500Name subject = new JcaX509CertificateHolder(cer).getSubject();
+      PrivateKey pk = null;
+      try {
+        pk = getPrivateKey(FileUtils.readFileToString(new File(cert.privateKey)));
+      } catch (Exception e) {
+        LOG.error("Unable to create client CA for username {} using root CA {}",
+          username, rootCA, e);
+        throw new YWServiceException(BAD_REQUEST, "Could not create client cert.");
+      }
+
+      X500Name clientCertSubject = new X500Name(String.format("CN=%s", username));
+      BigInteger clientSerial = BigInteger.valueOf(System.currentTimeMillis());
+      PKCS10CertificationRequestBuilder p10Builder = new JcaPKCS10CertificationRequestBuilder(
+        clientCertSubject,
+        clientKeyPair.getPublic());
+      ContentSigner csrContentSigner = new JcaContentSignerBuilder("SHA256withRSA")
+        .build(pk);
+      PKCS10CertificationRequest csr = p10Builder.build(csrContentSigner);
+
+      KeyUsage keyUsage = new KeyUsage(KeyUsage.digitalSignature | KeyUsage.nonRepudiation |
+        KeyUsage.keyEncipherment | KeyUsage.keyCertSign);
+
+      X509v3CertificateBuilder clientCertBuilder = new X509v3CertificateBuilder(
+        subject, clientSerial, certStart, certExpiry,
+        csr.getSubject(), csr.getSubjectPublicKeyInfo());
+      JcaX509ExtensionUtils clientCertExtUtils = new JcaX509ExtensionUtils();
+      clientCertBuilder.addExtension(Extension.basicConstraints, true,
+        new BasicConstraints(false).toASN1Primitive());
+      clientCertBuilder.addExtension(Extension.authorityKeyIdentifier, false,
+        clientCertExtUtils.createAuthorityKeyIdentifier(cer));
+      clientCertBuilder.addExtension(Extension.subjectKeyIdentifier, false,
+        clientCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
+      clientCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
+
+      X509CertificateHolder clientCertHolder = clientCertBuilder.build(csrContentSigner);
+      X509Certificate clientCert = new JcaX509CertificateConverter()
+        .setProvider(new BouncyCastleProvider())
+        .getCertificate(clientCertHolder);
+
+      clientCert.verify(cer.getPublicKey(), "BC");
+
+      JcaPEMWriter clientCertWriter;
+      JcaPEMWriter clientKeyWriter;
+      StringWriter certWriter = new StringWriter();
+      StringWriter keyWriter = new StringWriter();
+      ObjectNode bodyJson = Json.newObject();
+      if (storagePath != null) {
+        String clientCertPath = String.format("%s/%s", storagePath, CLIENT_CERT);
+        String clientKeyPath = String.format("%s/%s", storagePath, CLIENT_KEY);
+        File clientCertfile = new File(clientCertPath);
+        File clientKeyfile = new File(clientKeyPath);
+        clientCertWriter = new JcaPEMWriter(new FileWriter(clientCertfile));
+        clientKeyWriter = new JcaPEMWriter(new FileWriter(clientKeyfile));
+      } else {
+        clientCertWriter = new JcaPEMWriter(certWriter);
+        clientKeyWriter = new JcaPEMWriter(keyWriter);
+      }
+      clientCertWriter.writeObject(clientCert);
+      clientCertWriter.flush();
+      clientKeyWriter.writeObject(clientKeyPair.getPrivate());
+      clientKeyWriter.flush();
+      if (storagePath == null) {
+        bodyJson.put(CLIENT_CERT, certWriter.toString());
+        bodyJson.put(CLIENT_KEY, keyWriter.toString());
+      }
+      LOG.info("Created Client CA for username {} signed by root CA {}.", username, rootCA);
+      return bodyJson;
+
+    } catch (NoSuchAlgorithmException | IOException | OperatorCreationException |
+      CertificateException | InvalidKeyException | NoSuchProviderException |
+      SignatureException e) {
+      LOG.error("Unable to create client CA for username {} using root CA {}", username, rootCA, e);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Could not create client cert.");
     }
-    if (certExpiry == null) {
-      cal.add(Calendar.YEAR, 1);
-      certExpiry = cal.getTime();
-    }
-
-    CertificateInfo cert = CertificateInfo.get(rootCA);
-    if (cert.privateKey == null) {
-      throw new YWServiceException(BAD_REQUEST, "Keyfile cannot be null!");
-    }
-    X509Certificate cer = getX509CertificateCertObject(FileUtils.readFileToString
-        (new File(cert.certificate)));
-    X500Name subject = new JcaX509CertificateHolder(cer).getSubject();
-    PrivateKey pk = null;
-    pk = getPrivateKey(FileUtils.readFileToString(new File(cert.privateKey)));
-
-    X500Name clientCertSubject = new X500Name(String.format("CN=%s", username));
-    BigInteger clientSerial = BigInteger.valueOf(System.currentTimeMillis());
-    PKCS10CertificationRequestBuilder p10Builder = new JcaPKCS10CertificationRequestBuilder(
-      clientCertSubject,
-      clientKeyPair.getPublic());
-    ContentSigner csrContentSigner = new JcaContentSignerBuilder("SHA256withRSA")
-      .build(pk);
-    PKCS10CertificationRequest csr = p10Builder.build(csrContentSigner);
-
-    KeyUsage keyUsage = new KeyUsage(KeyUsage.digitalSignature | KeyUsage.nonRepudiation |
-      KeyUsage.keyEncipherment | KeyUsage.keyCertSign);
-
-    X509v3CertificateBuilder clientCertBuilder = new X509v3CertificateBuilder(
-      subject, clientSerial, certStart, certExpiry,
-      csr.getSubject(), csr.getSubjectPublicKeyInfo());
-    JcaX509ExtensionUtils clientCertExtUtils = new JcaX509ExtensionUtils();
-    clientCertBuilder.addExtension(Extension.basicConstraints, true,
-      new BasicConstraints(false).toASN1Primitive());
-    clientCertBuilder.addExtension(Extension.authorityKeyIdentifier, false,
-      clientCertExtUtils.createAuthorityKeyIdentifier(cer));
-    clientCertBuilder.addExtension(Extension.subjectKeyIdentifier, false,
-      clientCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
-    clientCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
-
-    X509CertificateHolder clientCertHolder = clientCertBuilder.build(csrContentSigner);
-    X509Certificate clientCert = new JcaX509CertificateConverter()
-      .setProvider(new BouncyCastleProvider())
-      .getCertificate(clientCertHolder);
-
-    clientCert.verify(cer.getPublicKey(), "BC");
-
-    JcaPEMWriter clientCertWriter;
-    JcaPEMWriter clientKeyWriter;
-    StringWriter certWriter = new StringWriter();
-    StringWriter keyWriter = new StringWriter();
-    ObjectNode bodyJson = Json.newObject();
-    if (storagePath != null) {
-      String clientCertPath = String.format("%s/%s", storagePath, CLIENT_CERT);
-      String clientKeyPath = String.format("%s/%s", storagePath, CLIENT_KEY);
-      File clientCertfile = new File(clientCertPath);
-      File clientKeyfile = new File(clientKeyPath);
-      clientCertWriter = new JcaPEMWriter(new FileWriter(clientCertfile));
-      clientKeyWriter = new JcaPEMWriter(new FileWriter(clientKeyfile));
-    } else {
-      clientCertWriter = new JcaPEMWriter(certWriter);
-      clientKeyWriter = new JcaPEMWriter(keyWriter);
-    }
-    clientCertWriter.writeObject(clientCert);
-    clientCertWriter.flush();
-    clientKeyWriter.writeObject(clientKeyPair.getPrivate());
-    clientKeyWriter.flush();
-    if (storagePath == null) {
-      bodyJson.put(CLIENT_CERT, certWriter.toString());
-      bodyJson.put(CLIENT_KEY, keyWriter.toString());
-    }
-    LOG.info("Created Client CA for username {} signed by root CA {}.", username, rootCA);
-    return bodyJson;
   }
 
   public static UUID uploadRootCA(
     String label, UUID customerUUID, String storagePath,
     String certContent, String keyContent, Date certStart,
     Date certExpiry, CertificateInfo.Type certType,
-    CertificateParams.CustomCertInfo customCertInfo) throws IOException, NoSuchAlgorithmException {
+    CertificateParams.CustomCertInfo customCertInfo) {
+    try {
+      if (certContent == null) {
+        throw new YWServiceException(BAD_REQUEST, "Certfile can't be null");
+      }
+      UUID rootCA_UUID = UUID.randomUUID();
+      String keyPath = null;
+      X509Certificate x509Certificate = getX509CertificateCertObject(certContent);
+      if (certType == CertificateInfo.Type.SelfSigned) {
+        if (!verifySignature(x509Certificate, keyContent))
+          throw new YWServiceException(BAD_REQUEST, "Invalid certificate.");
+        keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
+          customerUUID.toString(), rootCA_UUID.toString());
+      } else {
+        if (!isValidCACert(x509Certificate))
+          throw new YWServiceException(BAD_REQUEST, "Invalid CA certificate.");
+      }
+      String certPath = String.format("%s/certs/%s/%s/ca.%s", storagePath,
+        customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
 
-    if (certContent == null) {
-      throw new RuntimeException("Certfile can't be null");
+      writeCertFileContentToCertPath(getX509CertificateCertObject(certContent), certPath);
+      LOG.info(
+        "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
+        label, rootCA_UUID, certType,
+        certPath, ((keyPath == null) ? "no private key" : keyPath)
+      );
+      CertificateInfo cert;
+    
+      if (certType == CertificateInfo.Type.SelfSigned) {
+        writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
+        cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+          certExpiry, keyPath, certPath, certType);
+      } else {
+        cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+          certExpiry, certPath, customCertInfo);
+      }
+      return cert.uuid;
+    } catch (IOException | NoSuchAlgorithmException e) {
+      LOG.error("Could not generate checksum for cert");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Checksum generation failed.");
     }
-    UUID rootCA_UUID = UUID.randomUUID();
-    String keyPath = null;
-    X509Certificate x509Certificate = getX509CertificateCertObject(certContent);
-    if (certType == CertificateInfo.Type.SelfSigned) {
-      if (!verifySignature(x509Certificate, keyContent))
-        throw new YWServiceException(BAD_REQUEST, "Invalid certificate.");
-      keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
-        customerUUID.toString(), rootCA_UUID.toString());
-    } else {
-      if (!isValidCACert(x509Certificate))
-      throw new YWServiceException(BAD_REQUEST, "Invalid CA certificate.");
-    }
-    String certPath = String.format("%s/certs/%s/%s/ca.%s", storagePath,
-      customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
-
-
-    writeCertFileContentToCertPath(getX509CertificateCertObject(certContent), certPath);
-    LOG.info(
-      "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
-      label, rootCA_UUID, certType,
-      certPath, ((keyPath == null) ? "no private key" : keyPath)
-    );
-    CertificateInfo cert;
-    if (certType == CertificateInfo.Type.SelfSigned) {
-      writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
-      cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
-        certExpiry, keyPath, certPath, certType);
-    } else {
-      cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
-        certExpiry, certPath, customCertInfo);
-    }
-    return cert.uuid;
   }
 
   public static String getCertPEMFileContents(UUID rootCA) {
-    CertificateInfo cert = CertificateInfo.getOrBadRequest(rootCA);
+    CertificateInfo cert = CertificateInfo.get(rootCA);
     String certPEM = FileUtils.readFileToString(new File(cert.certificate));
     return certPEM;
   }
