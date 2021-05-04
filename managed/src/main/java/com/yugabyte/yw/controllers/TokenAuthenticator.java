@@ -89,7 +89,8 @@ public class TokenAuthenticator extends Action.Simple {
     // Prometheus can scrape database nodes.
     if (Pattern.matches(String.format("^.*/universes/%s/proxy/%s/(metrics|prometheus-metrics)$",
           patternForUUID, patternForHost), path) &&
-      !runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.metrics_auth_proxy")) {
+      !runtimeConfigFactory.globalRuntimeConf()
+                           .getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
       return delegate.call(ctx);
     }
 
