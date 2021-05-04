@@ -82,7 +82,7 @@ public class BackupTable extends AbstractTaskBase {
           }
         }
       } else {
-        LOG.info("Skipping table {}:{}", taskParams().keyspace, taskParams().tableName);
+        LOG.info("Skipping table {}:{}", taskParams().getKeyspace(), taskParams().getTableName());
         backup.transitionState(Backup.BackupState.Skipped);
       }
     } catch (Exception e) {

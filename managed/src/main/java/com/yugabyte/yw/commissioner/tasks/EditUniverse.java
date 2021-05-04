@@ -75,8 +75,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
         // Update the DNS entry for this universe, based in primary provider info.
         UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-        createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, primaryIntent.providerType,
-                primaryIntent.provider, primaryIntent.universeName)
+        createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, primaryIntent)
                 .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.

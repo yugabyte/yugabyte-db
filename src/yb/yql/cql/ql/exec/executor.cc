@@ -1588,8 +1588,8 @@ void Executor::FlushAsync() {
     auto exec_context = pair.second;
     session->SetRejectionScoreSource(rejection_score_source);
     TRACE("Flush Async");
-    session->FlushAsync([this, exec_context](const Status& s) {
-        FlushAsyncDone(s, exec_context);
+    session->FlushAsync([this, exec_context](client::FlushStatus* flush_status) {
+        FlushAsyncDone(flush_status, exec_context);
       });
   }
 
@@ -1621,22 +1621,17 @@ void Executor::FlushAsync() {
 // ExecContexts, care must be taken so that the callbacks only update the individual ExecContexts.
 // Any update on data structures shared in Executor should either be protected by a mutex or
 // deferred to ProcessAsyncResults() that will be invoked exclusively.
-void Executor::FlushAsyncDone(Status s, ExecContext* exec_context) {
+void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* exec_context) {
   TRACE("Flush Async Done");
   // Process FlushAsync status for either transactional session in an ExecContext, or the
   // non-transactional session in the Executor for other ExecContexts with no transactional session.
-  const YBSessionPtr& session = exec_context != nullptr ? GetSession(exec_context) : session_;
 
   // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
   // returns IOError. When it happens, retrieves the errors and discard the IOError.
-
-  // We need temp variable here to have ownership of failed ops, so they don't get released
-  // concurrently.
-  client::CollectedErrors pending_errors;
+  Status s = flush_status->status;
   OpErrors op_errors;
   if (s.IsIOError()) {
-    pending_errors = session->GetAndClearPendingErrors();
-    for (const auto& error : pending_errors) {
+    for (const auto& error : flush_status->errors) {
       op_errors[static_cast<const client::YBqlOp*>(&error->failed_op())] = error->status();
     }
     s = Status::OK();

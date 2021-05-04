@@ -246,7 +246,9 @@ bool TableIterator::ExecuteOps() {
     REPORT_AND_RETURN_FALSE_IF_NOT_OK(session_->Apply(ops_[i]));
   }
 
-  REPORT_AND_RETURN_FALSE_IF_NOT_OK(session_->Flush());
+  if (!IsFlushStatusOkOrHandleErrors(session_->FlushAndGetOpsErrors())) {
+    return false;
+  }
 
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
     const auto& op = ops_[i];
@@ -279,7 +281,10 @@ void TableIterator::Move() {
       if (paging_state_) {
         auto& op = ops_[ops_index_];
         *op->mutable_request()->mutable_paging_state() = *paging_state_;
-        REPORT_AND_RETURN_IF_NOT_OK(session_->ApplyAndFlush(op));
+        REPORT_AND_RETURN_IF_NOT_OK(session_->Apply(op));
+        if (!IsFlushStatusOkOrHandleErrors(session_->FlushAndGetOpsErrors())) {
+          return;
+        }
         if (QLResponsePB::YQL_STATUS_OK != op->response().status()) {
           HandleError(STATUS_FORMAT(RuntimeError, "Error for $0: $1", *op, op->response()));
         }
@@ -313,16 +318,24 @@ void TableIterator::Move() {
   }
 }
 
+bool TableIterator::IsFlushStatusOkOrHandleErrors(FlushStatus flush_status) {
+  if (flush_status.status.ok()) {
+    return true;
+  }
+  HandleError(flush_status.status);
+  if (!error_handler_) {
+    for (const auto& error : flush_status.errors) {
+      LOG(ERROR) << "Failed operation: " << error->failed_op().ToString()
+                 << ", status: " << error->status();
+    }
+  }
+  return false;
+}
+
 void TableIterator::HandleError(const Status& status) {
   if (error_handler_) {
     error_handler_(status);
   } else {
-    CollectedErrors errors = session_->GetAndClearPendingErrors();
-    for (const auto& error : errors) {
-      LOG(ERROR) << "Failed operation: " << error->failed_op().ToString()
-                 << ", status: " << error->status();
-    }
-
     LOG(FATAL) << "Failed: " << status;
   }
   // Makes this iterator == end().

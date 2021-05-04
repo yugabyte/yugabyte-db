@@ -2,24 +2,26 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import static org.junit.Assert.assertEquals;
-
-import org.junit.Test;
-import org.junit.runner.RunWith;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import play.libs.Json;
 
-import play.api.Play;
+import static org.junit.Assert.assertEquals;
 
 @RunWith(JUnitParamsRunner.class)
 public class CustomerConfigValidatorTest {
 
-  private CustomerConfigValidator validator = new CustomerConfigValidator();
+  private CustomerConfigValidator customerConfigValidator;
+
+  @Before
+  public void setUp() {
+    customerConfigValidator = new CustomerConfigValidator(null);
+  }
 
   @Test
   // @formatter:off
@@ -52,7 +54,8 @@ public class CustomerConfigValidatorTest {
   public void testValidateDataContent_Storage_OneParamToCheck(String storageType, String fieldName,
       String fieldValue, boolean expectedResult) {
     ObjectNode data = Json.newObject().put(fieldName, fieldValue);
-    ObjectNode result = validator.validateDataContent(createFormData("STORAGE", storageType, data));
+    ObjectNode result = customerConfigValidator
+      .validateDataContent(createFormData("STORAGE", storageType, data));
     assertEquals(expectedResult, result.size() == 0);
   }
 
@@ -87,7 +90,8 @@ public class CustomerConfigValidatorTest {
     ObjectNode data = Json.newObject();
     data.put(fieldName1, fieldValue1);
     data.put(fieldName2, fieldValue2);
-    ObjectNode result = validator.validateDataContent(createFormData("STORAGE", storageType, data));
+    ObjectNode result = customerConfigValidator
+      .validateDataContent(createFormData("STORAGE", storageType, data));
     assertEquals(expectedResult, result.size() == 0);
   }
 

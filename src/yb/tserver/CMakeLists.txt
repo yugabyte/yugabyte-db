@@ -163,6 +163,7 @@ set(TSERVER_SRCS
   remote_bootstrap_session.cc
   remote_bootstrap_snapshots.cc
   service_util.cc
+  tablet_memory_manager.cc
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc

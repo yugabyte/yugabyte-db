@@ -48,9 +48,9 @@ class TableRange;
 class YBSchema;
 
 
-// Log any pending errors in the given session, and then crash the current
+// Log any pending errors in the given session flush status, and then crash the current
 // process.
-void LogSessionErrorsAndDie(const YBSessionPtr& session, const Status& s);
+void LogSessionErrorsAndDie(const FlushStatus& flush_status);
 
 // Flush the given session. If any errors occur, log them and crash
 // the process.

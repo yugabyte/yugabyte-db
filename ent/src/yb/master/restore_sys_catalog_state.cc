@@ -119,17 +119,49 @@ Status RestoreSysCatalogState::DetermineEntries() {
   return Status::OK();
 }
 
+Result<bool> RestoreSysCatalogState::TableMatchesIdentifier(
+    const TableId& id, const SysTablesEntryPB& table, const TableIdentifierPB& table_identifier) {
+  if (table_identifier.has_table_id()) {
+    return id == table_identifier.table_id();
+  }
+  if (!table_identifier.table_name().empty() && table_identifier.table_name() != table.name()) {
+    return false;
+  }
+  if (table_identifier.has_namespace_()) {
+    auto namespace_it = namespaces_.find(table.namespace_id());
+    if (namespace_it == namespaces_.end()) {
+      return STATUS_FORMAT(Corruption, "Namespace $0 was not loaded", table.namespace_id());
+    }
+
+    const auto& ns = table_identifier.namespace_();
+    if (ns.has_id()) {
+      return table.namespace_id() == ns.id();
+    }
+    if (ns.has_database_type() && ns.database_type() != namespace_it->second.database_type()) {
+      return false;
+    }
+    if (ns.has_name()) {
+      return table.namespace_name() == ns.name();
+    }
+
+    return STATUS_FORMAT(
+      InvalidArgument, "Wrong namespace identifier format: $0", ns);
+  }
+  return STATUS_FORMAT(
+    InvalidArgument, "Wrong table identifier format: $0", table_identifier);
+}
+
 Result<bool> RestoreSysCatalogState::MatchTable(const TableId& id, const SysTablesEntryPB& table) {
   VLOG(1) << __func__ << "(" << id << ", " << table.ShortDebugString() << ")";
+  // Postgres system tables are part of system catalog, so they are restored using
+  // separate mechanism.
+  if (table.schema().table_properties().is_ysql_catalog_table()) {
+    return false;
+  }
   for (const auto& table_identifier : restoration_.filter.tables().tables()) {
-    if (table_identifier.has_table_id()) {
-      return id == table_identifier.table_id();
+    if (VERIFY_RESULT(TableMatchesIdentifier(id, table, table_identifier))) {
+      return true;
     }
-    if (table_identifier.has_table_name()) {
-      return STATUS(NotSupported, "Table name filters are not implemented for PITR");
-    }
-    return STATUS_FORMAT(
-      InvalidArgument, "Wrong table identifier format: $0", table_identifier);
   }
   return false;
 }

@@ -155,9 +155,9 @@ public class MiniYBCluster implements AutoCloseable {
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
    */
   MiniYBCluster(MiniYBClusterParameters clusterParameters,
-                List<String> masterArgs,
-                List<List<String>> tserverArgs,
-                List<String> commonTServerArgs,
+                Map<String, String> masterFlags,
+                Map<String, String> commonTserverFlags,
+                List<Map<String, String>> perTserverFlags,
                 Map<String, String> tserverEnvVars,
                 String testClassName,
                 String certFile,
@@ -178,8 +178,8 @@ public class MiniYBCluster implements AutoCloseable {
     this.clientPort = clientPort;
 
     startCluster(
-        clusterParameters.numMasters, clusterParameters.numTservers, masterArgs, tserverArgs,
-        commonTServerArgs, tserverEnvVars);
+        clusterParameters.numMasters, clusterParameters.numTservers, masterFlags,
+        commonTserverFlags, perTserverFlags, tserverEnvVars);
   }
 
   public void startSyncClientAndWaitForMasterLeader() throws Exception {
@@ -421,21 +421,22 @@ public class MiniYBCluster implements AutoCloseable {
    *
    * @param numMasters how many masters to start
    * @param numTservers how many tablet servers to start
-   * @param masterArgs extra master arguments
-   * @param perTServerArgs per-tablet server arguments
+   * @param masterFlags extra master flags
+   * @param commonTserverFlags extra tablet server flags
+   * @param perTserverFlags extra per-tablet server flags (higher priority)
    */
   private void startCluster(int numMasters,
                             int numTservers,
-                            List<String> masterArgs,
-                            List<List<String>> perTServerArgs,
-                            List<String> commonTServerArgs,
+                            Map<String, String> masterFlags,
+                            Map<String, String> commonTserverFlags,
+                            List<Map<String, String>> perTserverFlags,
                             Map<String, String> tserverEnvVars) throws Exception {
     Preconditions.checkArgument(numMasters > 0, "Need at least one master");
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
-    Preconditions.checkNotNull(perTServerArgs);
-    if (perTServerArgs.size() != numTservers) {
+    Preconditions.checkNotNull(perTserverFlags);
+    if (!perTserverFlags.isEmpty() && perTserverFlags.size() != numTservers) {
       throw new AssertionError("numTservers=" + numTservers + " but (perTServerArgs has " +
-          perTServerArgs.size() + " elements");
+          perTserverFlags.size() + " elements");
     }
     // The following props are set via yb-client's pom.
     String baseDirPath = TestUtils.getBaseTmpDir();
@@ -448,30 +449,28 @@ public class MiniYBCluster implements AutoCloseable {
                (envVarValue == null ? "not set" : envVarValue));
     }
     LOG.info("Starting {} masters...", numMasters);
-    startMasters(numMasters, baseDirPath, masterArgs);
+    startMasters(numMasters, baseDirPath, masterFlags);
 
     startSyncClientAndWaitForMasterLeader();
 
     LOG.info("Starting {} tablet servers...", numTservers);
-    startTabletServers(numTservers, perTServerArgs, commonTServerArgs, tserverEnvVars);
+    startTabletServers(numTservers, commonTserverFlags, perTserverFlags, tserverEnvVars);
   }
 
   private void startTabletServers(
       int numTservers,
-      List<List<String>> tserverArgs,
-      List<String> commonTServerArgs,
+      Map<String, String> commonTserverFlags,
+      List<Map<String, String>> perTserverFlags,
       Map<String, String> tserverEnvVars) throws Exception {
-    LOG.info("startTabletServers: numTServers=" + numTservers +
-        ", tserverArgs=" + tserverArgs +
-        ", commonTServerArgs=" + commonTServerArgs);
+    LOG.info("startTabletServers: numTServers={}, commonTserverFlags={}, perTserverFlags={}",
+        numTservers, commonTserverFlags, perTserverFlags);
 
     for (int i = 0; i < numTservers; i++) {
-      List<String> concatenatedArgs = new ArrayList<>();
-      if (tserverArgs.get(i) != null) {
-        concatenatedArgs.addAll(tserverArgs.get(i));
+      Map<String, String> currTserverFlags = new TreeMap<>(commonTserverFlags);
+      if (!perTserverFlags.isEmpty() && perTserverFlags.get(i) != null) {
+        currTserverFlags.putAll(perTserverFlags.get(i));
       }
-      concatenatedArgs.addAll(commonTServerArgs);
-      startTServer(concatenatedArgs, tserverEnvVars);
+      startTServer(currTserverFlags, tserverEnvVars);
     }
 
     long tserverStartupDeadlineMs = System.currentTimeMillis() + 60000;
@@ -500,27 +499,28 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Wrote flags file content: " + content);
   }
 
-  public void startTServer(List<String> tserverArgs) throws Exception {
-    startTServer(tserverArgs, null, null, null);
+  public void startTServer(Map<String, String> tserverFlags) throws Exception {
+    startTServer(tserverFlags, null, null, null);
   }
 
-  public void startTServer(List<String> tserverArgs,
+  public void startTServer(Map<String, String> tserverFlags,
                            Map<String, String> tserverEnvVars) throws Exception {
-    startTServer(tserverArgs, null, null, tserverEnvVars);
+    startTServer(tserverFlags, null, null, tserverEnvVars);
   }
 
-  public void startTServer(List<String> tserverArgs, String tserverBindAddress,
+  public void startTServer(Map<String, String> tserverFlags,
+                           String tserverBindAddress,
                            Integer tserverRpcPort) throws Exception {
-    startTServer(tserverArgs, tserverBindAddress, tserverRpcPort, null);
+    startTServer(tserverFlags, tserverBindAddress, tserverRpcPort, null);
   }
 
-  public void startTServer(List<String> tserverArgs, String tserverBindAddress,
+  public void startTServer(Map<String, String> tserverFlags,
+                           String tserverBindAddress,
                            Integer tserverRpcPort,
                            Map<String, String> tserverEnvVars) throws Exception {
     LOG.info("Starting a tablet server: " +
-        "tserverArgs=" + tserverArgs +
-        ", tserverBindAddress=" + tserverBindAddress +
-        ", tserverRpcPort=" + tserverRpcPort);
+        "tserverFlags={}, tserverBindAddress={}, tserverRpcPort={}",
+        tserverFlags, tserverBindAddress, tserverRpcPort);
     String baseDirPath = TestUtils.getBaseTmpDir();
     long now = System.currentTimeMillis();
     if (tserverBindAddress == null) {
@@ -571,10 +571,8 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
 
-    if (tserverArgs != null) {
-      for (String arg : tserverArgs) {
-        tsCmdLine.add(arg);
-      }
+    if (tserverFlags != null) {
+      tsCmdLine.addAll(CommandUtil.flagsToArgs(tserverFlags));
     }
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.TSERVER,
@@ -694,13 +692,13 @@ public class MiniYBCluster implements AutoCloseable {
    *
    * @param numMasters number of masters to start
    * @param baseDirPath  the base directory where the mini cluster stores its data
-   * @param extraMasterArgs common command-line arguments to pass to all masters
+   * @param extraMasterFlags common command-line flags to pass to all masters
    * @throws Exception if we are unable to start the masters
    */
   private void startMasters(
       int numMasters,
       String baseDirPath,
-      List<String> extraMasterArgs) throws Exception {
+      Map<String, String> extraMasterFlags) throws Exception {
     assert(masterHostPorts.isEmpty());
 
     // Get the list of web and RPC ports to use for the master consensus configuration:
@@ -728,8 +726,8 @@ public class MiniYBCluster implements AutoCloseable {
       List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
         masterBindAddress, masterRpcPort, masterWebPort);
       masterCmdLine.add("--master_addresses=" + masterAddresses);
-      if (extraMasterArgs != null) {
-        masterCmdLine.addAll(extraMasterArgs);
+      if (extraMasterFlags != null) {
+        masterCmdLine.addAll(CommandUtil.flagsToArgs(extraMasterFlags));
       }
       if (clusterParameters.startPgSqlProxy) {
         masterCmdLine.add("--master_auto_run_initdb");

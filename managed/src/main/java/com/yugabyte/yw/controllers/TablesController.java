@@ -2,47 +2,39 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.List;
-import java.util.UUID;
-import java.util.Arrays;
-import java.util.ArrayList;
-import java.util.HashMap;
-
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.metrics.MetricQueryResponse;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.Common.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 import org.yb.master.Master.RelationType;
-import org.yb.Common.TableType;
-
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.services.YBClientService;
-
-
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
+
+import java.util.*;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
@@ -126,10 +118,11 @@ public class TablesController extends AuthenticatedController {
       LOG.warn(errMsg);
       return ApiResponse.success(errMsg);
     }
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate);
+      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
       GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
           tableUUID.toString().replace("-", ""));
       ybService.closeClient(client, masterAddresses);
@@ -213,10 +206,11 @@ public class TablesController extends AuthenticatedController {
       );
     }
 
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate);
+      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
@@ -265,12 +259,13 @@ public class TablesController extends AuthenticatedController {
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
     try {
-      String certificate = universe.getCertificate();
+      String certificate = universe.getCertificateNodeToNode();
+      String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
       if (masterAddresses.isEmpty()) {
         LOG.warn("Expected error. Masters are not currently queryable.");
         return ok("Expected error. Masters are not currently queryable.");
       }
-      client = ybService.getClient(masterAddresses, certificate);
+      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
       GetTableSchemaResponse response = client.getTableSchemaByUUID(
         tableUUID.toString().replace("-", ""));
 
@@ -397,23 +392,23 @@ public class TablesController extends AuthenticatedController {
           taskParams.cronExpression);
       UUID scheduleUUID = schedule.getScheduleUUID();
       LOG.info("Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
-          tableUUID, taskParams.tableName, scheduleUUID);
+          tableUUID, taskParams.getTableName(), scheduleUUID);
       resultNode.put("scheduleUUID", scheduleUUID.toString());
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     } else {
       Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
       LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
-          tableUUID, taskParams.tableName, taskUUID);
+          tableUUID, taskParams.getTableName(), taskUUID);
       backup.setTaskUUID(taskUUID);
       CustomerTask.create(customer,
           taskParams.universeUUID,
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Create,
-          taskParams.tableName);
+          taskParams.getTableName());
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-          tableUUID, taskParams.keyspace, taskParams.tableName);
+          tableUUID, taskParams.getTableNames(), taskParams.getTableName());
       resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     }
@@ -445,9 +440,19 @@ public class TablesController extends AuthenticatedController {
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
-      Provider provider = Provider.get(customerUUID, cloudType);
+
+      Provider provider = null;
+      try {
+        provider = Provider.get(customerUUID,
+          UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+      } catch(IllegalArgumentException ex) {
+        String errMsg = "Could not find AWS provider for customer UUID: " + customerUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
       if (provider == null) {
-        String errMsg = "Could not find Provider aws for customer UUID: " + customerUUID;
+        String errMsg = "Could not find AWS provider for customer UUID: " + customerUUID;
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
@@ -465,16 +470,16 @@ public class TablesController extends AuthenticatedController {
 
       UUID taskUUID = commissioner.submit(TaskType.ImportIntoTable, taskParams);
       LOG.info("Submitted import into table for {}:{}, task uuid = {}.",
-          tableUUID, taskParams.tableName, taskUUID);
+          tableUUID, taskParams.getTableName(), taskUUID);
 
       CustomerTask.create(customer,
           universe.universeUUID,
           taskUUID,
           CustomerTask.TargetType.Table,
           CustomerTask.TaskType.BulkImportData,
-          taskParams.tableName);
+          taskParams.getTableName());
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-          tableUUID, taskParams.keyspace, taskParams.tableName);
+          tableUUID, taskParams.getTableName(), taskParams.getTableName());
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
@@ -499,11 +504,12 @@ public class TablesController extends AuthenticatedController {
       LOG.warn(errMsg);
       return false;
     }
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     YBClient client = null;
 
     try {
-      client = ybService.getClient(masterAddresses, certificate);
+      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       // Match if the table is an index or ysql table.

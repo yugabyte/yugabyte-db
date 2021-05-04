@@ -54,7 +54,7 @@ DEFINE_int32(load_balancer_initial_delay_secs, 120,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
-DEFINE_bool(sys_catalog_respect_affinity_task, false,
+DEFINE_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
@@ -170,6 +170,9 @@ void CatalogManagerBgTasks::Run() {
           YB_LOG_EVERY_N(INFO, 10) << s.message().ToBuffer();
         }
       }
+
+      // Start the tablespace background task.
+      catalog_manager_->StartTablespaceBgTaskIfStopped();
     }
     WARN_NOT_OK(catalog_manager_->encryption_manager_->
                 GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),

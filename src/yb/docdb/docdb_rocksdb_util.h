@@ -106,15 +106,7 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
 // Request RocksDB compaction and wait until it completes.
 CHECKED_STATUS ForceRocksDBCompact(rocksdb::DB* db);
 
-std::shared_ptr<MemTracker> InitBlockCacheMemTracker(
-    const int32_t default_block_cache_size_percentage,
-    const std::shared_ptr<MemTracker>& mem_tracker);
-
-std::shared_ptr<GarbageCollector> InitBlockCache(
-    const scoped_refptr<MetricEntity>& metrics,
-    const int32_t default_block_cache_size_percentage,
-    MemTracker* block_based_table_mem_tracker,
-    tablet::TabletOptions* options);
+rocksdb::Options TEST_AutoInitFromRocksDBFlags();
 
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
@@ -126,6 +118,9 @@ void InitRocksDBOptions(
 
 // Sets logs prefix for RocksDB options. This will also reinitialize options->info_log.
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix);
+
+// Gets the configured size of the node-global RocksDB priority thread pool.
+int32_t GetGlobalRocksDBPriorityThreadPoolSize();
 
 // Class to edit RocksDB manifest w/o fully loading DB into memory.
 class RocksDBPatcher {
