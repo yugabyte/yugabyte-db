@@ -1546,22 +1546,6 @@ void CatalogManager::CompleteShutdown() {
   }
 }
 
-Status CatalogManager::CheckOnline() const {
-  State state;
-  {
-    std::lock_guard<simple_spinlock> l(state_lock_);
-    state = state_;
-  }
-
-  if (PREDICT_FALSE(state == State::kClosing)) {
-    return STATUS(ShutdownInProgress, "CatalogManager is shutting down");
-  }
-  if (PREDICT_FALSE(state != State::kRunning)) {
-    return STATUS(ServiceUnavailable, "CatalogManager is not running");
-  }
-  return Status::OK();
-}
-
 Status CatalogManager::AbortTableCreation(TableInfo* table,
                                           const vector<TabletInfo*>& tablets,
                                           const Status& s,
@@ -2064,7 +2048,6 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
 
 Status CatalogManager::TEST_SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
-  RETURN_NOT_OK(CheckOnline());
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
@@ -2135,8 +2118,6 @@ Status CatalogManager::DoSplitTablet(
 }
 
 Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id) {
-  RETURN_NOT_OK(CheckOnline());
-
   std::lock_guard<LockType> l(lock_);
   TRACE("Acquired catalog manager lock");
 
@@ -2156,8 +2137,6 @@ Status CatalogManager::SplitTablet(
 
 Status CatalogManager::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
-
   const auto source_tablet_id = req->tablet_id();
   const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(source_tablet_id));
   const auto source_partition = source_tablet_info->LockForRead()->pb.partition();
@@ -2176,8 +2155,6 @@ Status CatalogManager::SplitTablet(
 }
 
 Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
-  RETURN_NOT_OK(CheckOnline());
-
   std::vector<TabletInfoPtr> tablet_infos;
   {
     std::lock_guard<LockType> lock(lock_);
@@ -2330,8 +2307,6 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
 Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                                         ReservePgsqlOidsResponsePB* resp,
                                         rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
-
   VLOG(1) << "ReservePgsqlOids request: " << req->ShortDebugString();
 
   // Lookup namespace
@@ -2385,7 +2360,6 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
 Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
                                             GetYsqlCatalogConfigResponsePB* resp,
                                             rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
   VLOG(1) << "GetYsqlCatalogConfig request: " << req->ShortDebugString();
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
   resp->set_version(l->pb.ysql_catalog_config().version());
@@ -2458,7 +2432,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    CreateTableResponsePB* resp,
                                    rpc::RpcContext* rpc) {
   DVLOG(3) << __PRETTY_FUNCTION__ << " Begin. " << orig_req->DebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   const bool is_pg_table = orig_req->table_type() == PGSQL_TABLE_TYPE;
   const bool is_pg_catalog_table = is_pg_table && orig_req->is_pg_catalog_table();
@@ -3250,8 +3223,6 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
 
 Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                          IsCreateTableDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   TRACE("Looking up table");
   // 1. Lookup the table and verify if it exists.
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -3665,8 +3636,6 @@ Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
   LOG(INFO) << "Servicing TruncateTable request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   for (int i = 0; i < req->table_ids_size(); i++) {
     RETURN_NOT_OK(TruncateTable(req->table_ids(i), resp, rpc));
   }
@@ -3736,7 +3705,6 @@ void CatalogManager::SendTruncateTabletRequest(const scoped_refptr<TabletInfo>& 
 Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                                            IsTruncateTableDoneResponsePB* resp) {
   LOG(INFO) << "Servicing IsTruncateTableDone request for table id " << req->table_id();
-  RETURN_NOT_OK(CheckOnline());
 
   // Lookup the truncated table.
   TRACE("Looking up table $0", req->table_id());
@@ -3886,8 +3854,6 @@ Status CatalogManager::DeleteTable(
     const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
 
   if (req->is_index_table()) {
     TRACE("Looking up index");
@@ -4175,8 +4141,6 @@ void CatalogManager::CleanUpDeletedTables() {
 
 Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
                                          IsDeleteTableDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   // Lookup the deleted table.
   TRACE("Looking up table $0", req->table_id());
   scoped_refptr<TableInfo> table;
@@ -4324,8 +4288,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
                                   rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing AlterTable request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
 
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
@@ -4526,8 +4488,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
 Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                                         IsAlterTableDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   // 1. Lookup the table and verify if it exists.
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -4603,8 +4563,6 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
                                       GetTableSchemaResponsePB* resp) {
   VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -4621,8 +4579,6 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
                                               GetTableSchemaResponsePB* resp,
                                               bool get_fully_applied_indexes) {
   VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
 
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
@@ -4710,7 +4666,6 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
                                                 GetColocatedTabletSchemaResponsePB* resp) {
   VLOG(1) << "Servicing GetColocatedTabletSchema request for " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   // Lookup the given parent colocated table and verify if it exists.
   TRACE("Looking up table");
@@ -4764,8 +4719,6 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
 
 Status CatalogManager::ListTables(const ListTablesRequestPB* req,
                                   ListTablesResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   NamespaceId namespace_id;
 
   // Validate namespace.
@@ -5668,8 +5621,6 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
 Status CatalogManager::ListTablegroups(const ListTablegroupsRequestPB* req,
                                        ListTablegroupsResponsePB* resp,
                                        rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
-
   SharedLock<LockType> l(lock_);
 
   if (!req->has_namespace_id()) {
@@ -5705,7 +5656,6 @@ bool CatalogManager::HasTablegroups() {
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
   Status return_status;
 
   // Copy the request, so we can fill in some defaults.
@@ -6038,8 +5988,6 @@ Status CatalogManager::VerifyNamespacePgLayer(
 // Get the information about an in-progress create operation.
 Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
                                              IsCreateNamespaceDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto ns_pb = req->namespace_();
 
   // 1. Lookup the namespace and verify it exists.
@@ -6101,8 +6049,6 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                        rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing DeleteNamespace request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
 
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up keyspace");
@@ -6400,8 +6346,6 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 // Get the information about an in-progress delete operation.
 Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestPB* req,
                                              IsDeleteNamespaceDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto ns_pb = req->namespace_();
 
   // 1. Lookup the namespace and verify it exists.
@@ -6440,8 +6384,6 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
                                       rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing AlterNamespace request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
 
   auto database = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
 
@@ -6503,7 +6445,6 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 
 Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
                                       ListNamespacesResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
   NamespaceInfoMap namespace_ids_copy;
   {
     SharedLock<LockType> l(lock_);
@@ -6533,7 +6474,6 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
                                         GetNamespaceInfoResponsePB* resp,
                                         rpc::RpcContext* rpc) {
   LOG(INFO) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   // Look up the namespace and verify if it exists.
   TRACE("Looking up namespace");
@@ -6597,7 +6537,6 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
   LOG(INFO) << "CreateUDType from " << RequestorString(rpc)
             << ": " << req->DebugString();
 
-  RETURN_NOT_OK(CheckOnline());
   Status s;
   scoped_refptr<UDTypeInfo> tp;
   scoped_refptr<NamespaceInfo> ns;
@@ -6688,7 +6627,6 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
   LOG(INFO) << "Servicing DeleteUDType request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
-      RETURN_NOT_OK(CheckOnline());
   scoped_refptr<UDTypeInfo> tp;
   scoped_refptr<NamespaceInfo> ns;
 
@@ -6797,7 +6735,6 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                      rpc::RpcContext* rpc) {
   LOG(INFO) << "GetUDTypeInfo from " << RequestorString(rpc)
             << ": " << req->DebugString();
-      RETURN_NOT_OK(CheckOnline());
   Status s;
   scoped_refptr<UDTypeInfo> tp;
   scoped_refptr<NamespaceInfo> ns;
@@ -6845,8 +6782,6 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
 
 Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
                                    ListUDTypesResponsePB* resp) {
-
-  RETURN_NOT_OK(CheckOnline());
 
   SharedLock<LockType> l(lock_);
 
@@ -6931,8 +6866,6 @@ Status CatalogManager::InitDbFinished(Status initdb_status, int64_t term) {
 CHECKED_STATUS CatalogManager::IsInitDbDone(
     const IsInitDbDoneRequestPB* req,
     IsInitDbDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
   const auto& ysql_catalog_config = l->pb.ysql_catalog_config();
   resp->set_pg_proc_exists(pg_proc_exists_.load(std::memory_order_acquire));
@@ -6946,8 +6879,6 @@ CHECKED_STATUS CatalogManager::IsInitDbDone(
 
 Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
                                              uint64_t* last_breaking_version) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
   if (table_info != nullptr) {
     return sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
@@ -8331,8 +8262,6 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 }
 
 Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const TabletId& id) {
-  RETURN_NOT_OK(CheckOnline());
-
   const auto iter = system_tablets_.find(id);
   if (iter == system_tablets_.end()) {
     return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid system tablet id", id);
@@ -8341,7 +8270,6 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const
 }
 
 Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocationsPB* locs_pb) {
-  RETURN_NOT_OK(CheckOnline());
   scoped_refptr<TabletInfo> tablet_info;
   {
     SharedLock<LockType> l(lock_);
@@ -8364,8 +8292,6 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
 
 Status CatalogManager::GetTabletLocations(
     scoped_refptr<TabletInfo> tablet_info, TabletLocationsPB* locs_pb) {
-  RETURN_NOT_OK(CheckOnline());
-
   DCHECK_EQ(locs_pb->replicas().size(), 0);
   locs_pb->mutable_replicas()->Clear();
   return BuildLocationsForTablet(tablet_info, locs_pb);
@@ -8374,7 +8300,6 @@ Status CatalogManager::GetTabletLocations(
 Status CatalogManager::GetTableLocations(
     const GetTableLocationsRequestPB* req,
     GetTableLocationsResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
   VLOG(4) << "GetTableLocations: " << req->ShortDebugString();
 
   // If start-key is > end-key report an error instead of swap the two
