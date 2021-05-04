@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -109,5 +110,17 @@ public class AssertHelper {
   public static void assertAuditEntry(int numEntries, UUID uuid) {
     List<Audit> auditEntries = Audit.getAll(uuid);
     assertEquals(auditEntries.size(), numEntries);
+  }
+
+  public static void assertYWSuccess(Result result, String expectedMessage) {
+    assertOk(result);
+    YWSuccess ywSuccess = Json.fromJson(Json.parse(contentAsString(result)), YWSuccess.class);
+    assertEquals(expectedMessage, ywSuccess.message);
+  }
+
+  private static void assertYWSuccessNoMessage(Result result) {
+    assertOk(result);
+    YWSuccess ywSuccess = Json.fromJson(Json.parse(contentAsString(result)), YWSuccess.class);
+    assertNull(ywSuccess.message);
   }
 }
