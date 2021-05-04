@@ -114,10 +114,7 @@ public class AccessManager extends DevopsBase {
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     // Removing paths from keyCode.
     keyCode = Util.getFileName(keyCode);
-    AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
-    if (accessKey != null) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Duplicate Access KeyCode: " + keyCode);
-    }
+    AccessKey accessKey = AccessKey.getOrBadRequest(region.provider.uuid, keyCode);
     Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
     if (!Files.exists(source)) {
@@ -145,7 +142,7 @@ public class AccessManager extends DevopsBase {
     JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
     if (vaultResponse.has("error")) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR,
-          vaultResponse.get("error").asText());
+          "Vault Creation failed with : " + vaultResponse.get("error").asText());
     }
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
@@ -229,7 +226,8 @@ public class AccessManager extends DevopsBase {
 
     JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
     if (response.has("error")) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, response.get("error").asText());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, 
+          "Parsing or Region failed with : " +response.get("error").asText());
     }
 
     if (accessKey == null) {
@@ -238,7 +236,8 @@ public class AccessManager extends DevopsBase {
       keyInfo.privateKey = response.get("private_key").asText();
       JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
       if (response.has("error")) {
-        throw new YWServiceException(INTERNAL_SERVER_ERROR, response.get("error").asText());
+        throw new YWServiceException(INTERNAL_SERVER_ERROR, 
+            "Vault Creation failed with : " +response.get("error").asText());
       }
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();

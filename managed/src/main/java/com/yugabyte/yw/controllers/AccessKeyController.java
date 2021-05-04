@@ -45,14 +45,16 @@ public class AccessKeyController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
   public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
-    validateUUIDs(customerUUID, providerUUID);
+    Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
 
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
     return ApiResponse.success(accessKey);
   }
 
   public Result list(UUID customerUUID, UUID providerUUID) {
-    validateUUIDs(customerUUID, providerUUID);
+    Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
 
     List<AccessKey> accessKeys;
     accessKeys = AccessKey.getAll(providerUUID);
@@ -124,28 +126,16 @@ public class AccessKeyController extends AuthenticatedController {
   }
 
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
-    validateUUIDs(customerUUID, providerUUID);
+    Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
     LOG.info(
       "Deleting access key {} for customer {}, provider {}",
       keyCode, customerUUID, providerUUID
     );
 
-    accessKey.delete(); 
+    accessKey.deleteOrThrow(); 
     Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success("Deleted KeyCode: " + keyCode);
-  }
-
-  private void validateUUIDs(UUID customerUUID, UUID providerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    Provider provider = Provider.find.query().where()
-        .eq("customer_uuid", customerUUID)
-        .idEq(providerUUID).findOne();
-    if (provider == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-    }
   }
 }

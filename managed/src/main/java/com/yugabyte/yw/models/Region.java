@@ -191,6 +191,10 @@ public class Region extends Model {
     return region;
   }
 
+   /**
+   * DEPRECATED: use {@link #getOrBadRequest()}
+   */
+  @Deprecated()
   public static Region get(UUID regionUUID) {
     return find.query().fetch("provider").where().idEq(regionUUID).findOne();
   }

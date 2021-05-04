@@ -62,12 +62,11 @@ public class AccessKey extends Model {
     return accessKey;
   }
 
-  public boolean delete() {
+  public void deleteOrThrow() {
     if(!super.delete()) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR,
           "Delete unsuccessfull for : " + this.idKey);
     }
-    return true;
   }
 
   private static final Finder<AccessKeyId, AccessKey> find =
