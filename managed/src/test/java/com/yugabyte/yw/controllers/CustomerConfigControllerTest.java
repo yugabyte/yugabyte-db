@@ -214,7 +214,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   public void testEditWithBackupLocation() {
     ObjectNode bodyJson = Json.newObject();
     JsonNode data = Json.parse("{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY-NEW\", " +
-        "\"ACCESS_SECRET\": \"A-SECRET-NEW\"}");
+        "\"ACCESS_SECRET\": \"DATA\"}");
     bodyJson.put("name", "test1");
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
@@ -228,6 +228,6 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
     // SHould be updated and the API response should give asked data.
     assertEquals("A-*****EW", json.get("data").get("ACCESS_KEY").textValue());
-    assertEquals("A-********EW", json.get("data").get("ACCESS_SECRET").textValue());
+    assertEquals("********", json.get("data").get("ACCESS_SECRET").textValue());
   }
 }
