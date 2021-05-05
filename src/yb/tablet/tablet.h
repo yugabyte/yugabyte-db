@@ -542,6 +542,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
+  std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
   void ListenNumSSTFilesChanged(std::function<void()> listener);
@@ -855,8 +856,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     CleanupIntentFiles();
   }
 
-  template <class Functor>
-  uint64_t GetRegularDbStat(const Functor& functor) const;
+  template <class Functor, class Value>
+  Value GetRegularDbStat(const Functor& functor, const Value& default_value) const;
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
