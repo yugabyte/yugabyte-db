@@ -60,7 +60,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";

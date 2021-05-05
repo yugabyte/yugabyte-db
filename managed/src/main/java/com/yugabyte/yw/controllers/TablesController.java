@@ -120,11 +120,10 @@ public class TablesController extends AuthenticatedController {
       // TODO: This should be temporary unavailable error and not a success!!
       return YWSuccess.asResult(errMsg);
     }
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
           tableUUID.toString().replace("-", ""));
       ybService.closeClient(client, masterAddresses);
@@ -208,11 +207,10 @@ public class TablesController extends AuthenticatedController {
       );
     }
 
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
@@ -261,13 +259,12 @@ public class TablesController extends AuthenticatedController {
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
     try {
-      String certificate = universe.getCertificateNodeToNode();
-      String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+      String certificate = universe.getCertificate();
       if (masterAddresses.isEmpty()) {
         LOG.warn("Expected error. Masters are not currently queryable.");
         return ok("Expected error. Masters are not currently queryable.");
       }
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse response = client.getTableSchemaByUUID(
         tableUUID.toString().replace("-", ""));
 
@@ -506,12 +503,11 @@ public class TablesController extends AuthenticatedController {
       LOG.warn(errMsg);
       return false;
     }
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
 
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       // Match if the table is an index or ysql table.
