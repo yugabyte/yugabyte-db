@@ -9243,5 +9243,28 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
+void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
+                                             const TabletPathInfoPB& info) {
+  for (const auto& path : info.list_path()) {
+    for (const auto& tablet_info : path.tablet()) {
+      const string& tablet_id = tablet_info.tablet_id();
+      scoped_refptr<TabletInfo> tablet;
+      {
+        SharedLock<LockType> catalog_lock(lock_);
+        tablet = FindPtrOrNull(*tablet_map_, tablet_id);
+      }
+      if (!tablet) {
+        LOG(WARNING) << Format("Tablet $0 not found", tablet_id);
+        continue;
+      }
+      TabletReplicaDriveInfo drive_info{path.path_id(),
+                                        tablet_info.sst_file_size(),
+                                        tablet_info.wal_file_size(),
+                                        tablet_info.uncompressed_sst_file_size()};
+      tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
+    }
+  }
+}
+
 }  // namespace master
 }  // namespace yb
