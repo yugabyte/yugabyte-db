@@ -2733,15 +2733,12 @@ TEST_F(CppCassandraDriverTest, BigQueryExpr) {
   }
 
   auto start = MonoTime::Now();
-  auto result = ASSERT_RESULT(session_.ExecuteWithResult(Format(
+  auto result = ASSERT_RESULT(session_.FetchValue<std::string>(Format(
       "SELECT MAX(key) FROM $0", kTableName)));
   auto finish = MonoTime::Now();
   LOG(INFO) << "Time: " << finish - start;
 
-  auto iterator = result.CreateIterator();
-  ASSERT_TRUE(iterator.Next());
-  LOG(INFO) << "Result: " << iterator.Row().Value(0).ToString();
-  ASSERT_FALSE(iterator.Next());
+  LOG(INFO) << "Result: " << result;
 }
 
 class CppCassandraDriverSmallSoftLimitTest : public CppCassandraDriverTest {

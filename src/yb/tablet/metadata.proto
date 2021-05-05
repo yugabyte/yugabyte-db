@@ -217,6 +217,9 @@ message RaftGroupReplicaSuperBlockPB {
 
   // Is this tablet currently a consumer tablet for 2dc replication.
   optional bool is_under_twodc_replication = 27;
+
+  // Reject client queries (read and write) to this tablet like it does not present.
+  optional bool hidden = 28;
 }
 
 message FilePB {

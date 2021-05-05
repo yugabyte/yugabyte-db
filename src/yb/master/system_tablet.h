@@ -37,6 +37,10 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const TabletId& tablet_id() const override;
 
+  bool system() const override {
+    return true;
+  }
+
   tablet::TabletRetentionPolicy* RetentionPolicy() override {
     return nullptr;
   }

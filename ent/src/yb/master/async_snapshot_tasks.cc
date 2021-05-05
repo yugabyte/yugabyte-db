@@ -157,6 +157,7 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
     req.set_schema_version(schema_version_);
     *req.mutable_schema() = schema_;
     *req.mutable_indexes() = indexes_;
+    req.set_hide(hide_);
   }
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 
@@ -184,6 +185,13 @@ void AsyncTabletSnapshotOp::Finished(const Status& status) {
   } else {
     callback_(&resp_);
   }
+}
+
+void AsyncTabletSnapshotOp::SetMetadata(const SysTablesEntryPB& pb) {
+  has_metadata_ = true;
+  schema_version_ = pb.version();
+  schema_ = pb.schema();
+  indexes_ = pb.indexes();
 }
 
 } // namespace master

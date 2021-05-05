@@ -51,6 +51,8 @@ class AbstractTablet {
 
   virtual const std::string& tablet_id() const = 0;
 
+  virtual bool system() const = 0;
+
   //------------------------------------------------------------------------------------------------
   // Redis support.
   virtual CHECKED_STATUS HandleRedisReadRequest(

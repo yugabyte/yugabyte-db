@@ -332,6 +332,8 @@ message SysTabletsEntryPB {
 
   // Tablet IDs for this tablet split if they have been registered in master.
   repeated bytes split_tablet_ids = 14;
+
+  optional bool hidden = 15;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

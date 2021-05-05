@@ -232,6 +232,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
       tablet::TABLET_DATA_TOMBSTONED,
       cas_config_opid_index_less_or_equal,
+      false,
       &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -245,6 +246,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
                                           tablet::TABLET_DATA_DELETED,
                                           cas_config_opid_index_less_or_equal,
+                                          false,
                                           &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);

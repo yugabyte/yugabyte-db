@@ -48,13 +48,7 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
     snapshot_hybrid_time_ = value;
   }
 
-  void SetMetadata(uint32_t schema_version, const SchemaPB& schema,
-                   const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
-    has_metadata_ = true;
-    schema_version_ = schema_version;
-    schema_ = schema;
-    indexes_ = indexes;
-  }
+  void SetMetadata(const SysTablesEntryPB& pb);
 
   void SetCallback(TabletSnapshotOperationCallback callback) {
     callback_ = std::move(callback);
@@ -79,6 +73,7 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   uint32_t schema_version_;
   SchemaPB schema_;
   google::protobuf::RepeatedPtrField<IndexInfoPB> indexes_;
+  bool hide_ = false;
 };
 
 } // namespace master

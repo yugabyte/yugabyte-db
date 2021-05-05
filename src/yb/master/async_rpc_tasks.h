@@ -368,7 +368,12 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Delete Tablet"; }
 
   std::string description() const override {
-    return "Delete Tablet RPC for " + tablet_id_ + " on TS=" + permanent_uuid_;
+    return Format("$0 Tablet RPC for $1 on TS=$2",
+                  hide_only_ ? "Hide" : "Delete", tablet_id_, permanent_uuid_);
+  }
+
+  void set_hide_only(bool value) {
+    hide_only_ = value;
   }
 
  protected:
@@ -383,6 +388,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   const boost::optional<int64_t> cas_config_opid_index_less_or_equal_;
   const std::string reason_;
   tserver::DeleteTabletResponsePB resp_;
+  bool hide_only_ = false;
 };
 
 // Send the "Alter Table" with the latest table schema to the leader replica

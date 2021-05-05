@@ -136,6 +136,8 @@ typedef unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 
 typedef unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
+YB_STRONGLY_TYPED_BOOL(HideOnly);
+
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -1068,16 +1070,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
   // table are appended to the lists. The caller will be responsible for committing the change and
   // deleting the actual table and tablets.
-  CHECKED_STATUS DeleteTableInMemory(const TableIdentifierPB& table_identifier,
-                                     bool is_index_table,
-                                     bool update_indexed_table,
-                                     std::vector<scoped_refptr<TableInfo>>* tables,
-                                     std::vector<TableInfo::WriteLock>* table_lcks,
-                                     DeleteTableResponsePB* resp,
-                                     rpc::RpcContext* rpc);
+  CHECKED_STATUS DeleteTableInMemory(
+      const TableIdentifierPB& table_identifier,
+      bool is_index_table,
+      bool update_indexed_table,
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
+      std::vector<scoped_refptr<TableInfo>>* tables,
+      std::vector<TableInfo::WriteLock>* table_lcks,
+      DeleteTableResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   // Request tablet servers to delete all replicas of the tablet.
-  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg);
+  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg, bool hide_only);
 
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.
@@ -1087,11 +1091,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
-  CHECKED_STATUS DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
+  CHECKED_STATUS DeleteTabletsAndSendRequests(const TableInfoPtr& table, HideOnly hide_only);
 
   // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
   CHECKED_STATUS DeleteTabletListAndSendRequests(
-      const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg);
+      const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
+      HideOnly hide_only);
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
@@ -1100,7 +1105,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
                                const scoped_refptr<TableInfo>& table,
                                TSDescriptor* ts_desc,
-                               const std::string& reason);
+                               const std::string& reason,
+                               bool hide_only = false);
 
   // Start a task to request the specified tablet leader to step down and optionally to remove
   // the server that is over-replicated. A new tablet server can be specified to start an election
@@ -1242,8 +1248,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
 
-  virtual Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
-    return SnapshotSchedulesToTabletsMap();
+  virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
+      SysRowEntry::Type type) {
+    return SnapshotSchedulesToObjectIdsMap();
   }
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo

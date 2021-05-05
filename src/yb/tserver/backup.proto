@@ -70,6 +70,8 @@ message TabletSnapshotOpRequestPB {
   repeated IndexInfoPB indexes = 14;
 
   fixed64 previous_snapshot_hybrid_time = 15;
+
+  bool hide = 16;
 }
 
 message TabletSnapshotOpResponsePB {

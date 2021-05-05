@@ -216,6 +216,9 @@ message DeleteTabletRequestPB {
   // the value of the committed config opid index and shutting down the tablet
   // for deletion. See comments in ts_tablet_manager.cc
   optional int64 cas_config_opid_index_less_or_equal = 5;
+
+  // Hide tablet instead of deleting it.
+  optional bool hide_only = 6;
 }
 
 message DeleteTabletResponsePB {

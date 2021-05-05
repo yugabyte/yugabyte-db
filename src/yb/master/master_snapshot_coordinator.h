@@ -102,7 +102,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   void SysCatalogLoaded(int64_t term);
 
   // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
-  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap();
+  Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
+      SysRowEntry::Type type);
 
   void Start();
 
