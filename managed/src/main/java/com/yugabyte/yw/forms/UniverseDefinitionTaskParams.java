@@ -302,8 +302,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean enableClientToNodeEncrypt = false;
 
-    public boolean enableNodeToNodeClientVerification = false;
-
     public boolean enableVolumeEncryption = false;
 
     public boolean enableIPV6 = false;
@@ -364,13 +362,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
-      newUserIntent.enableNodeToNodeClientVerification = enableNodeToNodeClientVerification;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
-      newUserIntent.enableVolumeEncryption = enableVolumeEncryption;
-      newUserIntent.enableIPV6 = enableIPV6;
-      newUserIntent.enableExposingService = enableExposingService;
-      newUserIntent.awsArnString = awsArnString;
-      newUserIntent.useHostname = useHostname;
       return newUserIntent;
     }
 
