@@ -103,7 +103,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ex) {}
-    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
 
   }
 

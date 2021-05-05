@@ -46,7 +46,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean enableYEDIS = false;
     public boolean enableNodeToNodeEncrypt = false;
     public boolean enableClientToNodeEncrypt = false;
-    public boolean enableNodeToNodeClientVerification = false;
     public boolean allowInsecure = true;
     public Map<String, String> gflags = new HashMap<>();
     public Set<String> gflagsToRemove = new HashSet<>();

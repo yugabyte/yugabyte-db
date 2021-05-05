@@ -95,7 +95,7 @@ public class CertificateController extends AuthenticatedController {
 
     try {
       JsonNode result = CertificateHelper.createClientCertificate(
-          rootCA, formData.get().username, certStart, certExpiry, false);
+          rootCA, null, formData.get().username, certStart, certExpiry);
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(result);
     } catch (Exception e) {

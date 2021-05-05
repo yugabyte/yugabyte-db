@@ -108,7 +108,7 @@ public class YBMetricQueryComponent {
     }
     Cluster.Builder builder = Cluster.builder()
                               .addContactPointsWithPorts(addresses);
-    String certificate = Universe.getOrBadRequest(universeUUID).getCertificateClientToNode();
+    String certificate = Universe.getOrBadRequest(universeUUID).getCertificate();
     if (certificate != null) {
       builder.withSSL(SslHelper.getSSLOptions(certificate));
     }
@@ -142,10 +142,9 @@ public class YBMetricQueryComponent {
     Map<String, String> nameToUUID = new HashMap<>();
     Map<String, String> uuidToIP = new HashMap<>();
     String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
 
       // Fetch the tablet servers.
       ListTabletServersResponse listTServerResp = client.listTabletServers();

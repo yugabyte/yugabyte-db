@@ -87,7 +87,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {}
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
-    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
   }
 
   private void setupUniverseSingleAZ(boolean setMasters) {

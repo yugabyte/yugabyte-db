@@ -72,7 +72,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         try {
           when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
         } catch (Exception e) {}
-        when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
         dummyShellResponse =  new ShellResponse();
         dummyShellResponse.message = "true";
         when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);

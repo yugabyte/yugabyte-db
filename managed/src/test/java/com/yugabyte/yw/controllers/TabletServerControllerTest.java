@@ -52,7 +52,7 @@ public class TabletServerControllerTest extends FakeDBApplication {
     when(mockClient.listTabletServers()).thenReturn(mockResponse);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(testHostAndPort);
     when(mockService.getClient(any())).thenReturn(mockClient);
-    when(mockService.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockService.getClient(any(), any())).thenReturn(mockClient);
     tabletController = new TabletServerController(mockService);
     when(mockApiHelper.getRequest(anyString())).thenReturn(Json.newObject());
     tabletController.apiHelper = mockApiHelper;

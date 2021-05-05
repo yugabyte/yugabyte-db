@@ -1253,9 +1253,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
 
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
-    YBClient client = ybService.getClient(masterAddrs, certificate, rpcClientCertFiles);
+    String certificate = universe.getCertificate();
+    YBClient client = ybService.getClient(masterAddrs, certificate);
 
     HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip,
         server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
@@ -1346,12 +1345,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private synchronized static int getClusterConfigVersion(Universe universe) {
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
-    final String certificate = universe.getCertificateNodeToNode();
-    final String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    final String certificate = universe.getCertificate();
     YBClient client = null;
     int version;
     try {
-      client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
+      client = ybService.getClient(hostPorts, certificate);
       version = client.getMasterClusterConfig().getConfig().getVersion();
       ybService.closeClient(client, hostPorts);
     } catch (Exception e) {
@@ -1398,11 +1396,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
+      client = ybService.getClient(hostPorts, certificate);
       int version = universe.version;
       ModifyClusterConfigIncrementVersion modifyConfig =
         new ModifyClusterConfigIncrementVersion(client, version);

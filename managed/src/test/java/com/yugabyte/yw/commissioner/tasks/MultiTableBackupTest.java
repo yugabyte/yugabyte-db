@@ -104,7 +104,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
     } catch (Exception e) {}
-    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
       when(mockClient.getTableSchemaByUUID(table1UUID.toString().replace("-", "")))
