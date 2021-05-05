@@ -284,6 +284,10 @@ class Log : public RefCountedThreadSafe<Log> {
     return log_prefix_;
   }
 
+  std::string wal_dir() const {
+    return wal_dir_;
+  }
+
   void set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {
     // TODO: check that the passed index is greater than the current index.
     cdc_min_replicated_index_.store(cdc_min_replicated_index, std::memory_order_release);

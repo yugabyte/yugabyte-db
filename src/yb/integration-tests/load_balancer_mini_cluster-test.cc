@@ -212,5 +212,28 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
   }, kDefaultTimeout, "IsLBSkippingDeletedTables"));
 }
 
+// Check flow tablet size data from tserver to master
+TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    scoped_refptr<master::TableInfo> tbl_info =
+      mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+          GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
+                                                    table_name().namespace_name(),
+                                                    table_name().table_name());
+    vector<scoped_refptr<master::TabletInfo>> tablets;
+    tbl_info->GetAllTablets(&tablets);
+
+    for (const auto& tablet : tablets) {
+      auto replica_map = tablet->GetReplicaLocations();
+      for (const auto& replica : *replica_map.get()) {
+        if (!replica.second.drive_info.ts_path.empty()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, MonoDelta::FromMilliseconds(10000), "WaitForTabletDataSize"));
+}
+
 } // namespace integration_tests
 } // namespace yb

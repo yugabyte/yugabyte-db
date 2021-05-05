@@ -386,9 +386,6 @@ class TabletPeer : public consensus::ConsensusContext,
 
   TableType table_type();
 
-  // Return granular types of on-disk size of this tablet replica, in bytes.
-  TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
-
   // Returns the number of segments in log_.
   int GetNumLogSegments() const;
 
@@ -494,6 +491,9 @@ class TabletPeer : public consensus::ConsensusContext,
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
   rpc::Scheduler& scheduler() const override;
+
+  // Return granular types of on-disk size of this tablet replica, in bytes.
+  TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
 
   MetricRegistry* metric_registry_;
 

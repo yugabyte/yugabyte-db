@@ -794,6 +794,9 @@ class DB {
   // instance.
   virtual uint64_t GetCurrentVersionSstFilesSize() { return 0; }
   virtual uint64_t GetCurrentVersionSstFilesUncompressedSize() { return 0; }
+  virtual std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() {
+    return std::pair<uint64_t, uint64_t>(0, 0);
+  }
 
   // Returns total number of SST Files.
   virtual uint64_t GetCurrentVersionNumSSTFiles() { return 0; }

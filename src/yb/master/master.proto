@@ -734,6 +734,21 @@ message TabletForSplitPB {
   required bytes split_encoded_key = 3;
 }
 
+message ListTabletsOnPathPB {
+  required bytes path_id = 1;
+  message TabletOnPath {
+    required bytes tablet_id = 1;
+    optional uint64 sst_file_size = 2;
+    optional uint64 wal_file_size = 3;
+    optional uint64 uncompressed_sst_file_size = 4;
+  }
+  repeated TabletOnPath tablet = 2;
+}
+
+message TabletPathInfoPB {
+  repeated ListTabletsOnPathPB list_path = 1;
+}
+
 message TSSnapshotScheduleInfoPB {
   optional bytes id = 1;
   optional fixed64 last_snapshot_hybrid_time = 2;
@@ -785,6 +800,8 @@ message TSHeartbeatRequestPB {
 
   // Roundtrip time for previous heartbeat in microseconds.
   optional int64 rtt_us = 12;
+
+  optional TabletPathInfoPB tablet_path_info = 13;
 }
 
 message TSHeartbeatResponsePB {

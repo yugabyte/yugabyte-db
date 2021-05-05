@@ -761,6 +761,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id);
 
+  void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

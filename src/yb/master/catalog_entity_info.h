@@ -51,6 +51,15 @@
 namespace yb {
 namespace master {
 
+// Drive usage information on a current replica of a tablet.
+// This allows us to look at individual resource usage per replica of a tablet.
+struct TabletReplicaDriveInfo {
+  std::string ts_path;
+  uint64 sst_files_size = 0;
+  uint64 wal_files_size = 0;
+  uint64 uncompressed_sst_file_size = 0;
+};
+
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
 struct TabletReplica {
@@ -65,9 +74,13 @@ struct TabletReplica {
   // relevant, for example.
   bool should_disable_lb_move = false;
 
+  TabletReplicaDriveInfo drive_info;
+
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
+
+  void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
 
   bool IsStale() const;
 
@@ -197,6 +210,10 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
+
+  // Updates a replica in replica_locations_ map if it exists.
+  void UpdateReplicaDriveInfo(const std::string& ts_uuid,
+                              const TabletReplicaDriveInfo& drive_info);
 
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
