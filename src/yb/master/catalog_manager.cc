@@ -3710,7 +3710,7 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
   TRACE("Looking up table $0", req->table_id());
   scoped_refptr<TableInfo> table;
   {
-    std::lock_guard<LockType> l_map(lock_);
+    SharedLock<LockType> cm_shared_lock(lock_);
     table = FindPtrOrNull(*table_ids_map_, req->table_id());
   }
 
@@ -4145,7 +4145,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   TRACE("Looking up table $0", req->table_id());
   scoped_refptr<TableInfo> table;
   {
-    std::lock_guard<LockType> l_map(lock_);
+    SharedLock<LockType> cm_shared_lock(lock_);
     table = FindPtrOrNull(*table_ids_map_, req->table_id());
   }
 
@@ -4316,6 +4316,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
   }
+  if (req->has_new_namespace() || req->has_new_table_name()) {
+
+    if (new_namespace_id.empty()) {
+      const Status s = STATUS(InvalidArgument, "No namespace used");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
+    }
+  }
 
   TRACE("Locking table");
   auto l = table->LockForWrite();
@@ -4344,11 +4351,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Try to acquire the new table name.
   if (req->has_new_namespace() || req->has_new_table_name()) {
-
-    if (new_namespace_id.empty()) {
-      const Status s = STATUS(InvalidArgument, "No namespace used");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
-    }
 
     // Postgres handles name uniqueness constraints in it's own layer.
     if (l->table_type() != PGSQL_TABLE_TYPE) {
@@ -6100,13 +6102,9 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
       }
     }
-  }
 
-  // Only empty namespace can be deleted.
-  TRACE("Looking for types in the keyspace");
-  {
-    SharedLock<LockType> catalog_lock(lock_);
-    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
+    // Only empty namespace can be deleted.
+    TRACE("Looking for types in the keyspace");
 
     for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
       auto ltm = entry.second->LockForRead();
@@ -6139,9 +6137,11 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Remove the namespace from all CatalogManager mappings.
   {
     std::lock_guard<LockType> l_map(lock_);
-    namespace_names_mapper_[ns->database_type()].erase(ns->name());
+    if (namespace_names_mapper_[ns->database_type()].erase(ns->name()) < 1) {
+      LOG(WARNING) << Format("Could not remove namespace from names map, id=$1", ns->id());
+    }
     if (namespace_ids_map_.erase(ns->id()) < 1) {
-      LOG(WARNING) << Format("Could not remove namespace from maps, id=$1", ns->id());
+      LOG(WARNING) << Format("Could not remove namespace from ids map, id=$1", ns->id());
     }
   }
 
@@ -6348,7 +6348,7 @@ Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestP
                                              IsDeleteNamespaceDoneResponsePB* resp) {
   auto ns_pb = req->namespace_();
 
-  // 1. Lookup the namespace and verify it exists.
+  // Lookup the namespace and verify it exists.
   TRACE("Looking up keyspace");
   auto ns = FindNamespace(ns_pb);
   if (!ns.ok()) {
@@ -6369,7 +6369,7 @@ Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestP
     resp->set_done(false);
   } else {
     Status s = STATUS_SUBSTITUTE(IllegalState,
-        "Servicing IsDeleteTableDone request for $0: NOT deleted (state=$1)",
+        "Servicing IsDeleteNamespaceDone request for $0: NOT deleted (state=$1)",
         ns_pb.DebugString(), metadata.state());
     LOG(WARNING) << s.ToString();
     // Done != Successful.  We just want to let the user know the delete has finished processing.
@@ -6520,7 +6520,7 @@ Status CatalogManager::RedisConfigGet(
   DCHECK(req->has_keyword());
   resp->set_keyword(req->keyword());
   TRACE("Acquired catalog manager lock");
-  std::lock_guard<LockType> l_big(lock_);
+  SharedLock<LockType> l_big(lock_);
   scoped_refptr<RedisConfigInfo> cfg = FindPtrOrNull(redis_config_map_, req->keyword());
   if (cfg == nullptr) {
     Status s = STATUS_SUBSTITUTE(NotFound, "Redis config for $0 does not exists", req->keyword());
@@ -6680,14 +6680,11 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
       auto ltm = entry.second->LockForRead();
 
       for (int i = 0; i < ltm->field_types_size(); i++) {
-        std::vector<std::string> referenced_udts;
         // Only need to check direct (non-transitive) type dependencies here.
         // This also means we report more precise errors for in-use types.
-        QLType::GetUserDefinedTypeIds(ltm->field_types(i),
+        if (QLType::DoesUserDefinedTypeIdExist(ltm->field_types(i),
                                       false /* transitive */,
-                                      &referenced_udts);
-        auto it = std::find(referenced_udts.begin(), referenced_udts.end(), tp->id());
-        if (it != referenced_udts.end()) {
+                                      tp->id())) {
           Status s = STATUS(QLError,
               Substitute("Cannot delete type '$0.$1'. It is used in field $2 of type '$3'",
                   ns->name(), tp->name(), ltm->field_names(i), ltm->name()));
