@@ -468,8 +468,14 @@ class MasterSnapshotCoordinator::Impl {
       // TODO(pitr) Notify user about failures.
       auto status = context_.VerifyRestoredObjects(*restoration);
       LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
+      std::vector<TabletId> restore_tablets;
+      for (const auto& id_and_type : restoration->objects_to_restore) {
+        if (id_and_type.second == SysRowEntry::TABLET) {
+          restore_tablets.push_back(id_and_type.first);
+        }
+      }
       status = DoRestore(restoration->snapshot_id, restoration->restore_at,
-                         restoration->restoration_id, restoration->obsolete_tablets,
+                         restoration->restoration_id, restore_tablets,
                          RestorePhase::kPostSysCatalogLoad, term);
       LOG_IF(DFATAL, !status.ok())
           << "Failed to restore tablets for restoration "
@@ -477,7 +483,8 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
+  Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
+      SysRowEntry::Type type) {
     std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -485,16 +492,16 @@ class MasterSnapshotCoordinator::Impl {
         schedules.emplace_back(schedule->id(), schedule->options().filter());
       }
     }
-    SnapshotSchedulesToTabletsMap result;
+    SnapshotSchedulesToObjectIdsMap result;
     for (const auto& id_and_filter : schedules) {
       auto entries = VERIFY_RESULT(CollectEntries(id_and_filter.second));
-      auto& tablets = result[id_and_filter.first];
+      auto& ids = result[id_and_filter.first];
       for (const auto& entry : entries.entries()) {
-        if (entry.type() == SysRowEntry::TABLET) {
-          tablets.push_back(entry.id());
+        if (entry.type() == type) {
+          ids.push_back(entry.id());
         }
       }
-      std::sort(tablets.begin(), tablets.end());
+      std::sort(ids.begin(), ids.end());
     }
     return result;
   }
@@ -913,10 +920,11 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS DoRestore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-      const TxnSnapshotRestorationId& restoration_id, const std::vector<TabletId>& obsolete_tablets,
+      const TxnSnapshotRestorationId& restoration_id, const std::vector<TabletId>& restore_tablets,
       RestorePhase phase, int64_t leader_term) {
     TabletInfos tablet_infos;
     bool restore_sys_catalog;
+    std::unordered_set<TabletId> snapshot_tablets;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
@@ -933,13 +941,16 @@ class MasterSnapshotCoordinator::Impl {
         restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
       }
       if (!restore_sys_catalog) {
-        LOG(INFO) << "PITR: Obsolete tablets: " << AsString(obsolete_tablets);
-        // New tablets could be created between restoration point and snapshot time.
-        // In this case we should remove those tablets from restoration, since they will be deleted
-        // and we should NOT restore data on them.
-        restoration_ptr->RemoveTablets(obsolete_tablets);
+        if (phase == RestorePhase::kPostSysCatalogLoad) {
+          LOG(INFO) << "PITR: Restore tablets: " << AsString(restore_tablets);
+          // New tablets could be changed between restoration point and snapshot time.
+          // So we take tablets list from actual catalog state.
+          restoration_ptr->InitTabletIds(restore_tablets);
+        }
         tablet_infos = restoration_ptr->PrepareOperations();
       }
+      auto tablet_ids = snapshot.tablet_ids();
+      snapshot_tablets.insert(tablet_ids.begin(), tablet_ids.end());
     }
 
     // If sys catalog is restored, then tablets data will be restored after that using postponed
@@ -949,9 +960,13 @@ class MasterSnapshotCoordinator::Impl {
     } else {
       auto snapshot_id_str = snapshot_id.AsSlice().ToBuffer();
       SendMetadata send_metadata(phase == RestorePhase::kPostSysCatalogLoad);
+      LOG(INFO) << "Restore tablets: " << AsString(tablet_infos);
       for (const auto& tablet : tablet_infos) {
+        // If this tablet did not participate in snapshot, i.e. was deleted.
+        // We just change hybrid hybrid time limit and clear hide state.
         context_.SendRestoreTabletSnapshotRequest(
-            tablet, snapshot_id_str, restore_at, send_metadata,
+            tablet, snapshot_tablets.count(tablet->id()) ? snapshot_id_str : std::string(),
+            restore_at, send_metadata,
             MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id()));
       }
     }
@@ -1091,9 +1106,9 @@ Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* r
   return impl_->FillHeartbeatResponse(resp);
 }
 
-Result<SnapshotSchedulesToTabletsMap>
-    MasterSnapshotCoordinator::MakeSnapshotSchedulesToTabletsMap() {
-  return impl_->MakeSnapshotSchedulesToTabletsMap();
+Result<SnapshotSchedulesToObjectIdsMap>
+    MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::Type type) {
+  return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 
 void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t term) {

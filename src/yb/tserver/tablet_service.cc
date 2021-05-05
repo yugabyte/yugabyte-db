@@ -1222,6 +1222,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   Status s = server_->tablet_manager()->DeleteTablet(req->tablet_id(),
                                                      delete_type,
                                                      cas_config_opid_index_less_or_equal,
+                                                     req->hide_only(),
                                                      &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
@@ -1417,6 +1418,13 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   if (!tablet ||
       !CheckWriteThrottlingOrRespond(
           req->rejection_score(), tablet.peer.get(), resp, &context)) {
+    return;
+  }
+
+  if (tablet.peer->tablet()->metadata()->hidden()) {
+    auto status = STATUS(NotFound, "Tablet not found", req->tablet_id());
+    SetupErrorAndRespond(
+        resp->mutable_error(), status, TabletServerErrorPB::TABLET_NOT_FOUND, &context);
     return;
   }
 
@@ -1916,6 +1924,14 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       return;
     }
     leader_peer.leader_term = yb::OpId::kUnknownTerm;
+  }
+
+  if (!read_context.tablet->system() &&
+      down_cast<Tablet*>(read_context.tablet.get())->metadata()->hidden()) {
+    auto status = STATUS(NotFound, "Tablet not found", req->tablet_id());
+    SetupErrorAndRespond(
+        resp->mutable_error(), status, TabletServerErrorPB::TABLET_NOT_FOUND, &context);
+    return;
   }
 
   if (FLAGS_TEST_simulate_time_out_failures_msecs > 0 && RandomUniformInt(0, 10) < 2) {

@@ -14,6 +14,8 @@
 #ifndef YB_MASTER_STATE_WITH_TABLETS_H
 #define YB_MASTER_STATE_WITH_TABLETS_H
 
+#include <boost/iterator/transform_iterator.hpp>
+
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
@@ -69,6 +71,7 @@ class StateWithTablets {
 
   template <class TabletIds>
   void InitTabletIds(const TabletIds& tablet_ids, SysSnapshotEntryPB::State state) {
+    tablets_.clear();
     for (const auto& id : tablet_ids) {
       tablets_.emplace(id, state);
     }
@@ -122,6 +125,13 @@ class StateWithTablets {
   void RemoveTablets(const std::vector<std::string>& tablet_ids);
 
   virtual bool IsTerminalFailure(const Status& status) = 0;
+
+  auto tablet_ids() const {
+    auto lambda = [](const TabletData& data) { return data.id; };
+    return boost::make_iterator_range(
+        boost::make_transform_iterator(tablets_.begin(), lambda),
+        boost::make_transform_iterator(tablets_.end(), lambda));
+  }
 
  protected:
   struct TabletData {

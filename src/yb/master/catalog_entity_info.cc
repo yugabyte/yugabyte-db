@@ -396,7 +396,8 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
 bool TableInfo::AreAllTabletsDeleted() const {
   shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
-    if (!e.second->LockForRead()->is_deleted()) {
+    auto tablet_lock = e.second->LockForRead();
+    if (!tablet_lock->is_deleted() && !tablet_lock->pb.hidden()) {
       return false;
     }
   }
