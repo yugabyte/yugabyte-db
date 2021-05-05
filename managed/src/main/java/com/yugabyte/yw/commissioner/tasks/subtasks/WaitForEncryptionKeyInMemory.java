@@ -54,10 +54,9 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
                 EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
             YBClient client = null;
             String hostPorts = universe.getMasterAddresses();
-            String certificate = universe.getCertificateNodeToNode();
-            String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+            String certificate = universe.getCertificate();
             try {
-                client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
+                client = ybService.getClient(hostPorts, certificate);
                 KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.universeUUID);
                 if (!client.waitForMasterHasUniverseKeyInMemory(
                         KEY_IN_MEMORY_TIMEOUT,
