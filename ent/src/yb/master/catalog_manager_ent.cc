@@ -1392,9 +1392,7 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(
     call->SetSnapshotHybridTime(restore_at);
   }
   if (send_metadata) {
-    auto lock = tablet->table()->LockForRead();
-    const auto& pb = lock->pb;
-    call->SetMetadata(pb.version(), pb.schema(), pb.indexes());
+    call->SetMetadata(tablet->table()->LockForRead()->pb);
   }
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
@@ -3404,8 +3402,9 @@ void CatalogManager::Started() {
   snapshot_coordinator_.Start();
 }
 
-Result<SnapshotSchedulesToTabletsMap> CatalogManager::MakeSnapshotSchedulesToTabletsMap() {
-  return snapshot_coordinator_.MakeSnapshotSchedulesToTabletsMap();
+Result<SnapshotSchedulesToObjectIdsMap> CatalogManager::MakeSnapshotSchedulesToObjectIdsMap(
+    SysRowEntry::Type type) {
+  return snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 
 void CatalogManager::SysCatalogLoaded(int64_t term) {

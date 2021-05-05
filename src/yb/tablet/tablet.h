@@ -408,6 +408,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   const std::string& tablet_id() const override { return metadata_->raft_group_id(); }
 
+  bool system() const override {
+    return false;
+  }
+
   // Return the metrics for this tablet.
   // May be nullptr in unit tests, etc.
   TabletMetrics* metrics() { return metrics_.get(); }

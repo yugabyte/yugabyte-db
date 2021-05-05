@@ -1051,7 +1051,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     }
     if (intents_write_batch.Count() != 0) {
       if (!metadata_->is_under_twodc_replication()) {
-        RETURN_NOT_OK(metadata_->set_is_under_twodc_replication(true));
+        RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
       }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
     }

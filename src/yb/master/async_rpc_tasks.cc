@@ -618,14 +618,14 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
     if (table_) {
       LOG_WITH_PREFIX(INFO)
           << "TS " << permanent_uuid_ << ": tablet " << tablet_id_
-          << " (table " << table_->ToString() << ") successfully deleted";
+          << " (table " << table_->ToString() << ") successfully done";
     } else {
       LOG_WITH_PREFIX(WARNING)
           << "TS " << permanent_uuid_ << ": tablet " << tablet_id_
           << " did not belong to a known table, but was successfully deleted";
     }
     TransitionToCompleteState();
-    VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": delete complete on tablet " << tablet_id_;
+    VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id_;
   }
 }
 
@@ -635,6 +635,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
   req.set_tablet_id(tablet_id_);
   req.set_reason(reason_);
   req.set_delete_type(delete_type_);
+  if (hide_only_) {
+    req.set_hide_only(hide_only_);
+  }
   if (cas_config_opid_index_less_or_equal_) {
     req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
   }
