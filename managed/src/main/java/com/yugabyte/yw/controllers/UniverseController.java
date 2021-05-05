@@ -102,6 +102,31 @@ public class UniverseController extends AuthenticatedController {
     this.ybService = service;
   }
 
+  private boolean validateEncryption(ObjectNode formData) {
+    ArrayNode clusters = (ArrayNode) formData.get("clusters");
+    if (clusters == null)
+      return true;
+    for (JsonNode cluster : clusters) {
+      JsonNode userIntent = cluster.get("userIntent");
+      if (userIntent == null)
+        return true;
+
+      JsonNode nodeToNodeEncryptionJson = userIntent.get("enableNodeToNodeEncrypt");
+      JsonNode clientToNodeEncryptionJson = userIntent.get("enableClientToNodeEncrypt");
+
+      boolean nodeToNodeEncryption =
+        nodeToNodeEncryptionJson != null && nodeToNodeEncryptionJson.asBoolean();
+      boolean clientToNodeEncryption =
+        clientToNodeEncryptionJson != null && clientToNodeEncryptionJson.asBoolean();
+
+      if (!nodeToNodeEncryption && clientToNodeEncryption) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   /**
    * API that checks if a Universe with a given name already exists.
    *
@@ -340,6 +365,12 @@ public class UniverseController extends AuthenticatedController {
       !Util.isValidUniverseNameFormat(taskParams.getPrimaryCluster().userIntent.universeName)) {
       throw new YWServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
+    if (!validateEncryption(formData)) {
+      return ApiResponse.error(
+        BAD_REQUEST,
+        "Node-to-node TLS needs to be enabled for client-to-node TLS to be enabled"
+      );
+    }
 
     // Set the provider code.
     for (Cluster c : taskParams.clusters) {
@@ -430,49 +461,36 @@ public class UniverseController extends AuthenticatedController {
           taskParams.rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix,
             customerUUID, appConfig.getString("yb.storage.path"));
         }
-        CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
-        if (cert.certType == CertificateInfo.Type.SelfSigned) {
-          // Check if the platform cert already exists. If not, create one.
-          if (cert.platformCert == null) {
-            CertificateHelper.createPlatformCertificate(taskParams.rootCA,
-                CertificateHelper.DEFAULT_CLIENT, null, null,
-                true /* if cert files need to be saved or just returned. */);
+        // If client encryption is enabled, generate the client cert file for each node.
+        if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
+          CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+          if (cert.certType == CertificateInfo.Type.SelfSigned) {
             CertificateHelper.createClientCertificate(taskParams.rootCA,
-                CertificateHelper.DEFAULT_CLIENT, null, null,
-                true /* if cert files need to be saved or just returned. */);
-            cert.setPlatformCert(CertificateHelper.getPlatformCertFile(taskParams.rootCA));
-            cert.setPlatformKey(CertificateHelper.getPlatformKeyFile(taskParams.rootCA));
-          }
-          if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
-            primaryCluster.userIntent.enableNodeToNodeClientVerification = true;
-          }
-        } else {
-          if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(
-              CloudType.onprem)) {
-            throw new YWServiceException(
-                BAD_REQUEST,
-                "Custom certificates are only supported for onprem providers."
-            );
-          }
-          if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
-            String errMsg = String.format("The certificate %s needs info. Update the cert" +
-                " and retry.",
-              CertificateInfo.get(taskParams.rootCA).label);
-            LOG.error(errMsg);
-            throw new YWServiceException(BAD_REQUEST, errMsg);
-          }
-          LOG.info(
-              "Skipping client certificate creation for universe {} ({}) " +
-              "because cert {} (type {})is not a self-signed cert.",
-              universe.name, universe.universeUUID, taskParams.rootCA, cert.certType
-          );
-          // If the platform cert is present, we can use mTLS.
-          if (cert.platformCert != null) {
-            if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
-              primaryCluster.userIntent.enableNodeToNodeClientVerification = true;
+              String.format(CertificateHelper.CERT_PATH, appConfig.getString("yb.storage.path"),
+                customerUUID.toString(), taskParams.rootCA.toString()),
+              CertificateHelper.DEFAULT_CLIENT, null, null);
+            } else {
+              if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(
+                CloudType.onprem)) {
+                throw new YWServiceException(
+                  BAD_REQUEST,
+                  "Custom certificates are only supported for onprem providers."
+                );
+              }
+              if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
+                String errMsg = String.format("The certificate %s needs info. Update the cert" +
+                    " and retry.",
+                  CertificateInfo.get(taskParams.rootCA).label);
+                LOG.error(errMsg);
+                throw new YWServiceException(BAD_REQUEST, errMsg);
+              }
+              LOG.info(
+                "Skipping client certificate creation for universe {} ({}) " +
+                  "because cert {} (type {})is not a self-signed cert.",
+                universe.name, universe.universeUUID, taskParams.rootCA, cert.certType
+              );
             }
           }
-        }
         // Set the flag to mark the universe as using TLS enabled and therefore not allowing
         // insecure connections.
         taskParams.allowInsecure = false;
@@ -1351,12 +1369,11 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     // Get and return Leader IP
     try {
-      client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
+      client = ybService.getClient(hostPorts, certificate);
       ObjectNode result = Json.newObject()
         .put("privateIP", client.getLeaderMasterHostAndPort().getHost());
       ybService.closeClient(client, hostPorts);
