@@ -22,7 +22,7 @@ export const ChangeOrAddProvider = ({
     if (currentCloudProviders && !currentCloudProviders?.uuid) {
       setCurrentCloudProviders(getCurrentProviders(configuredProviders));
     }
-  }, [configuredProviders]);
+  }, [configuredProviders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Row className="provider-row-flex" data-testid="change-or-add-provider">
