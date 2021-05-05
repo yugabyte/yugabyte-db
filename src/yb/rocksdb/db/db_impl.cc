@@ -1934,6 +1934,18 @@ uint64_t DBImpl::GetCurrentVersionSstFilesUncompressedSize() {
   return total_uncompressed_file_size;
 }
 
+std::pair<uint64_t, uint64_t> DBImpl::GetCurrentVersionSstFilesAllSizes() {
+  std::vector<rocksdb::LiveFileMetaData> file_metadata;
+  GetLiveFilesMetaData(&file_metadata);
+  uint64_t total_sst_file_size = 0;
+  uint64_t total_uncompressed_file_size = 0;
+  for (const auto& meta : file_metadata) {
+    total_sst_file_size += meta.total_size;
+    total_uncompressed_file_size += meta.uncompressed_size;
+  }
+  return std::pair<uint64_t, uint64_t>(total_sst_file_size, total_uncompressed_file_size);
+}
+
 uint64_t DBImpl::GetCurrentVersionNumSSTFiles() {
   InstrumentedMutexLock lock(&mutex_);
   return default_cf_handle_->cfd()->current()->storage_info()->NumFiles();
