@@ -15,19 +15,19 @@ menu:
 <div>
 
   <div class="col-12 col-md-6 col-lg-12">
-      <a class="section-link icon-offset" href="latest-releases/">
+      <a class="section-link icon-offset" href="latest-release/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-              <div class="title">What's new in the v2.5 latest release series</div>
+              <div class="title">What's new in the v2.7 latest release series</div>
           </div>
           <div class="body">
-              Features, enhancements, and fixes in the v2.5 latest release series.
+              Features, enhancements, and fixes in the v2.7 latest release series.
           </div>
       </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12">
-      <a class="section-link icon-offset" href="stable-releases/">
+      <a class="section-link icon-offset" href="stable-release/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
               <div class="title">What's new in the v2.4 current stable release series</div>

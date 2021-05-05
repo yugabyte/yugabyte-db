@@ -48,10 +48,11 @@ For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.5](../whats-new/latest-releases) ![LATEST](/images/releases/latest.png) | Nov 12, 2020 | --- | --- |
-| [v2.4](../whats-new/stable-releases) ![CURRENT STABLE](/images/releases/current-stable.png) | Jan 22, 2021 | Jan 22, 2022 | Jul 21, 2022 |
+| [v2.7](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | May 5, 2021 | --- | --- |
+| [v2.4](../whats-new/stable-release) ![CURRENT STABLE](/images/releases/current-stable.png) | Jan 22, 2021 | Jan 22, 2022 | Jul 21, 2022 |
+| [v2.5](../earlier-releases/v2.5) | Nov 12, 2020 | --- | --- |
 | [v2.3](../whats-new/latest-releases) | Sep 08, 2020 | --- | --- |
-| [v2.2](../whats-new/stable-releases) | Jul 15, 2020 | Jul 15, 2021 | Jan 15, 2022 |
+| [v2.2](../earlier-releases/v2.2.0) | Jul 15, 2020 | Jul 15, 2021 | Jan 15, 2022 |
 | [v2.1](../earlier-releases/v2.1.0) | Feb 25, 2020 | Feb 25, 2021 | Aug 08, 2021 |
 | [v2.0](../earlier-releases/v2.0.0) | Sep 17, 2019 | Sep 17, 2020 | Mar 03, 2021 |
 | [v1.3](../earlier-releases/v1.3.0) | Jul 15, 2019 | Jul 15, 2020 | Jan 15, 2021 |
@@ -64,12 +65,15 @@ The table below includes tentative release dates for upcoming release series, su
 
 For information on key features planned for the upcoming releases, visit [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap).
 
-| Release series | Planned release   |
-| :------------- | :---------------- |
-| v2.4 (stable)  | Jan 2021          |
-| v2.5           | Nov 2020          |
-| v2.6 (stable)  | Apr 2021          |
-| v2.7           | Feb 2021          |
+| Release series | Planned release |
+| :------------- | :-------------- |
+| v2.5 | November 2020 |
+| v2.4 (stable) | mid-January 2021 |
+| v2.7 | May 2021 |
+| v2.6 (stable) | June 2021 |
+| v2.9 | mid-July 2021 |
+| v2.8 (stable) | mid-September 2021 |
+| v2.11 | mid-November 2021 |
 
 ## Recommended release series for projects
 
@@ -78,6 +82,6 @@ To ensure that your production go-live uses the most up-to-date stable release, 
 | Production go-live  | Recommended release series |
 | :------------------ | :------------------------- |
 | < 3 months          | v2.4 (current stable)      |
-| > 3 months          | v2.5 (latest)              |
+| > 3 months          | v2.7 (latest)              |
 
 If your production go-live is more than three months from now, start your development and testing with the latest release series. By the time your production is ready to go live, the current stable release series, based on the latest release series you used for development and testing, will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.
