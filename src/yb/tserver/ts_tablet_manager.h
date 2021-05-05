@@ -179,10 +179,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // raft config change op has an opid_index equal to or less than the specified
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
-  CHECKED_STATUS DeleteTablet(const TabletId& tablet_id,
-                      tablet::TabletDataState delete_type,
-                      const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-                      boost::optional<TabletServerErrorPB::Code>* error_code);
+  // If `hide_only` is true, then just hide tablet instead of deleting it.
+  CHECKED_STATUS DeleteTablet(
+      const TabletId& tablet_id,
+      tablet::TabletDataState delete_type,
+      const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
+      bool hide_only,
+      boost::optional<TabletServerErrorPB::Code>* error_code);
 
   // Lookup the given tablet peer by its ID.
   // Returns true if the tablet is found successfully.
