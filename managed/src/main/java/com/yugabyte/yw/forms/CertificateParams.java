@@ -34,11 +34,6 @@ public class CertificateParams {
     public String rootCertPath;
     public String clientCertPath;
     public String clientKeyPath;
-
-    // For supporting mTLS, we want the users to upload a certificate for
-    // the platform as well;
-    public String platformCertContent = null;
-    public String platformKeyContent = null;
   }
 
   public CustomCertInfo customCertInfo;
