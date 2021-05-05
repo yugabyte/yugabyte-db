@@ -5,6 +5,7 @@ linkTitle: v2.4 (stable)
 description: Enhancements, changes, and resolved issues in the current stable release series recommended for production deployments.
 headcontent: Features, enhancements, and resolved issues in the current stable release series recommended for production deployments.
 aliases:
+  - /latest/releases/whats-new/stable-releases/
 menu:
   latest:
     identifier: stable-release

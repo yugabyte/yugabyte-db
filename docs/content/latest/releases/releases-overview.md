@@ -48,7 +48,7 @@ For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.7](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | April 26, 2021 | --- | --- |
+| [v2.7](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | May 5, 2021 | --- | --- |
 | [v2.4](../whats-new/stable-release) ![CURRENT STABLE](/images/releases/current-stable.png) | Jan 22, 2021 | Jan 22, 2022 | Jul 21, 2022 |
 | [v2.5](../earlier-releases/v2.5) | Nov 12, 2020 | --- | --- |
 | [v2.3](../whats-new/latest-releases) | Sep 08, 2020 | --- | --- |
@@ -69,8 +69,8 @@ For information on key features planned for the upcoming releases, visit [Curren
 | :------------- | :-------------- |
 | v2.5 | November 2020 |
 | v2.4 (stable) | mid-January 2021 |
-| v2.7 | mid-March 2021 |
-| v2.6 (stable) | mid-May 2021 |
+| v2.7 | May 2021 |
+| v2.6 (stable) | May 2021 |
 | v2.9 | mid-July 2021 |
 | v2.8 (stable) | mid-September 2021 |
 | v2.11 | mid-November 2021 |

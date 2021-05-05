@@ -16,7 +16,7 @@ isTocNested: true
 showAsideToc: true 
 ---
 
-## v2.7.0 - Apr 19, 2021
+## v2.7.0 - May 5, 2021
 
 Yugabyte release 2.7.0 builds on our work in the 2.5 series, which fed into the 2.4 stable release. With release 2.7.0, we're planning development on a number of [new features](#new-features), as well as refinements to existing functionality.
 
