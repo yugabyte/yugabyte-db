@@ -150,8 +150,6 @@ The following procedure describes how to rotate the existing custom certificates
 
 ![edit-tls](/images/yp/encryption-in-transit/edit-tls.png)    
 
-
-
 ### How to Expand the Universe
 
 You can expand universes configured with custom CA-signed certificates.
@@ -263,6 +261,6 @@ As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering sig
 You can set the TLS version for node-to-node and client-node communication. To enforce the minimum TLS version of 1.2, add the following flag for T-Server: 
 
 ```
-ssl_protocols = tlsv12
+ssl_protocols = tls12
 ```
 

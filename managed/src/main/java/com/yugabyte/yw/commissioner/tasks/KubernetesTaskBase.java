@@ -28,24 +28,22 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesTaskBase.class);
 
   public class KubernetesPlacement {
+    PlacementInfo placementInfo;
     Map<UUID, Integer> masters = new HashMap<>();
     Map<UUID, Integer> tservers = new HashMap<>();
     Map<UUID, Map<String, String>> configs = new HashMap<>();
 
     public KubernetesPlacement(PlacementInfo pi) {
+      placementInfo = pi;
       masters = PlacementInfoUtil.getNumMasterPerAZ(pi);
       tservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
 
@@ -194,6 +192,21 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     Map<UUID, Integer> serversToUpdate = serverType == ServerType.MASTER ?
         newPlacement.masters : newPlacement.tservers;
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
+
+    if (serverType == ServerType.TSERVER) {
+      Map<UUID, PlacementInfo.PlacementAZ> placementAZMap =
+        PlacementInfoUtil.getPlacementAZMap(newPlacement.placementInfo);
+
+      List<UUID> sortedZonesToUpdate = serversToUpdate.keySet().stream()
+        .sorted(Comparator.comparing(
+          zoneUUID -> !placementAZMap.get(zoneUUID).isAffinitized))
+        .collect(Collectors.toList());
+
+      // Put isAffinitized availability zones first
+      serversToUpdate = sortedZonesToUpdate.stream()
+        .collect(Collectors.toMap(
+          Function.identity(), serversToUpdate::get, (a, b) -> a, LinkedHashMap::new));
+     }
 
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();

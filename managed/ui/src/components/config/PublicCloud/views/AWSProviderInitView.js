@@ -93,6 +93,7 @@ class renderAZMappingForm extends Component {
       this.props.fields.push({});
     }
   }
+
   componentDidUpdate(prevProps) {
     const { zones } = this.props;
     if (!_.isEqual(zones, prevProps.zones)) {
@@ -100,6 +101,7 @@ class renderAZMappingForm extends Component {
       this.props.fields.push({});
     }
   }
+
   render() {
     const { fields, zones, regionFormData } = this.props;
     const addFlagItem = function () {
@@ -170,24 +172,24 @@ class renderRegions extends Component {
       </option>,
       ...(this.state.editRegionIndex === undefined
         ? //if add new flow - remove already added regions from region select picker
-        _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
-          <option key={index + 1} value={region.destVpcRegion}>
-            {region.destVpcRegion}
-          </option>
-        ))
+          _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
+            <option key={index + 1} value={region.destVpcRegion}>
+              {region.destVpcRegion}
+            </option>
+          ))
         : //if edit flow - remove already added regions from region select picker except one to edit and mark it selected
-        _.differenceBy(
-          regionsData,
-          _.filter(
-            formRegions,
-            (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
-          ),
-          'destVpcRegion'
-        ).map((region, index) => (
-          <option key={index + 1} value={region.destVpcRegion}>
-            {region.destVpcRegion}
-          </option>
-        )))
+          _.differenceBy(
+            regionsData,
+            _.filter(
+              formRegions,
+              (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
+            ),
+            'destVpcRegion'
+          ).map((region, index) => (
+            <option key={index + 1} value={region.destVpcRegion}>
+              {region.destVpcRegion}
+            </option>
+          )))
     ];
 
     //depending on selected region fetch zones matching this region
@@ -533,26 +535,18 @@ class AWSProviderInitView extends Component {
         );
     }
 
+    regionFormVals['perRegionMetadata'] = perRegionMetadata;
+    regionFormVals['sshUser'] = formValues.sshUser;
+
     if (this.state.keypairsInputType === 'custom_keypairs') {
       regionFormVals['keyPairName'] = formValues.keyPairName;
-      regionFormVals['sshUser'] = formValues.sshUser;
-    }
-    regionFormVals['perRegionMetadata'] = perRegionMetadata;
 
-    const sshPrivateKeyText = formValues.sshPrivateKeyContent;
-
-    if (this.state.keypairsInputType === 'custom_keypairs') {
-      if (isNonEmptyObject(sshPrivateKeyText)) {
+      if (isNonEmptyObject(formValues.sshPrivateKeyContent)) {
         const reader = new FileReader();
-        reader.readAsText(sshPrivateKeyText);
-        // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
-        reader.onloadend = () => {
-          try {
-            regionFormVals['sshPrivateKeyContent'] = JSON.parse(reader.result);
-          } catch (e) {
-            this.setState({ error: 'Invalid PEM Config file' });
-          }
-        };
+        reader.readAsText(formValues.sshPrivateKeyContent);
+        reader.onload = () => {
+          regionFormVals['sshPrivateKeyContent'] = reader.result;
+        };    
       }
       return this.props.createAWSProvider(
         formValues.accountName,
@@ -729,6 +723,22 @@ class AWSProviderInitView extends Component {
     );
   }
 
+  rowSshUser() {
+    const userLabel = 'SSH User';
+    const userTooltipContent = 'Custom SSH user associated with this key.';
+    return this.generateRow(
+      userLabel,
+      <Field
+        name="sshUser"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={userLabel}
+        infoContent={userTooltipContent}
+      />
+    );
+  }
+
   rowCustomKeypair() {
     const nameLabel = 'Keypair Name';
     const nameTooltipContent =
@@ -758,24 +768,10 @@ class AWSProviderInitView extends Component {
         infoContent={pemTooltipContent}
       />
     );
-    const userLabel = 'SSH User';
-    const userTooltipContent = 'Custom SSH user associated with this key.';
-    const sshUserRow = this.generateRow(
-      userLabel,
-      <Field
-        name="sshUser"
-        type="text"
-        component={YBTextInputWithLabel}
-        normalize={trimString}
-        infoTitle={userLabel}
-        infoContent={userTooltipContent}
-      />
-    );
     return (
       <Fragment>
         {nameRow}
         {pemContentRow}
-        {sshUserRow}
       </Fragment>
     );
   }
@@ -831,7 +827,7 @@ class AWSProviderInitView extends Component {
   }
 
   render() {
-    const { handleSubmit, submitting, error, formRegions } = this.props;
+    const { handleSubmit, submitting, error, formRegions, onBack, isBack } = this.props;
     // VPC and region setup.
     const network_setup_options = [
       <option key={1} value={'new_vpc'}>
@@ -898,6 +894,7 @@ class AWSProviderInitView extends Component {
                 {divider}
                 {this.rowKeypairInput(keypair_input_options)}
                 {this.rowSshPort()}
+                {this.rowSshUser()}
                 {customKeypairRows}
                 {divider}
                 {this.rowHostedZoneToggle()}
@@ -916,6 +913,14 @@ class AWSProviderInitView extends Component {
               disabled={submitting}
               btnType="submit"
             />
+            {isBack && (
+              <YBButton
+                onClick={onBack}
+                btnText="Back"
+                btnClass="btn btn-default"
+                disabled={submitting}
+              />
+            )}
           </div>
         </form>
       </div>
@@ -948,6 +953,14 @@ function validate(values) {
     if (!isNonEmptyString(values.destVpcRegion)) {
       errors.destVpcRegion = 'VPC region is required';
     }
+  }
+
+  if (isNonEmptyObject(values.sshPrivateKeyContent)) {
+    if (values.sshPrivateKeyContent.size > 256 * 1024) {
+      errors.sshPrivateKeyContent = 'PEM file size exceeds 256Kb';
+    }
+  } else if (values.keypairs_input === 'custom_keypairs') {
+    errors.sshPrivateKeyContent = 'Please choose a private key file';
   }
 
   if (values.setupHostedZone && !isNonEmptyString(values.hostedZoneId)) {

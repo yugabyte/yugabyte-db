@@ -800,7 +800,7 @@ TEST_F(QLTabletTest, LeaderChange) {
     }
   }
 
-  ASSERT_OK(flush_future.get());
+  ASSERT_OK(flush_future.get().status);
   ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, write_op->response().status());
 
   ASSERT_EQ(GetValue(session, kKey, table), kValue3);
@@ -856,8 +856,8 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
     }
     auto future_del = session1->FlushFuture();
     auto future_update = session2->FlushFuture();
-    ASSERT_OK(future_del.get());
-    ASSERT_OK(future_update.get());
+    ASSERT_OK(future_del.get().status);
+    ASSERT_OK(future_update.get().status);
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op_del->response().status());
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op_update->response().status());
 
@@ -1004,7 +1004,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
       if (future.wait_for(kWaitInterval) == std::future_status::ready) {
         LOG(INFO) << "Value written";
         deadline = std::chrono::steady_clock::now() + 3s;
-        ASSERT_OK(future.get());
+        ASSERT_OK(future.get().status);
         ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
       }
     } else if (deadline < std::chrono::steady_clock::now() || tracked_by_log_cache) {

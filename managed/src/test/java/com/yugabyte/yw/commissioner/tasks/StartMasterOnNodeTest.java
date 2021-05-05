@@ -81,7 +81,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
     } catch (Exception e) {}
 
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
 
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
@@ -89,7 +89,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
-    taskParams.clusters.addAll(Universe.get(taskParams.universeUUID).getUniverseDetails().clusters);
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
     taskParams.expectedUniverseVersion = 2;
     taskParams.nodeName = nodeName;
     try {

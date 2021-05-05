@@ -584,6 +584,7 @@ class TransactionParticipant::Impl
             *client_result,
             &req,
             [this, handle](const Status& status,
+                           const tserver::UpdateTransactionRequestPB& req,
                            const tserver::UpdateTransactionResponsePB& resp) {
               client::UpdateClock(resp, &participant_context_);
               rpcs_.Unregister(handle);
@@ -1297,7 +1298,7 @@ class TransactionParticipant::Impl
     TransactionApplyData data = {
         .leader_term = term,
         .transaction_id = *id,
-        .op_id = OpIdPB(),
+        .op_id = OpId(),
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
         .sealed = state->request()->sealed(),

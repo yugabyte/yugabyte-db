@@ -8,7 +8,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -104,7 +103,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {}
 
     mockWaits(mockClient, 4);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     preflightSuccess = new ShellResponse();
@@ -139,7 +138,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(UUID universeUUID, String nodeName, int version) {
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
 
@@ -269,7 +268,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeSuccess() {
     mockWaits(mockClient, 3);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 3);
     verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -362,12 +361,12 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeToJoinClusterState() {
     mockWaits(mockClient, 3);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(false);
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 3);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
 
-    Universe universe = Universe.get(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     assertEquals(NodeDetails.NodeState.ToJoinCluster, universe.getNode(DEFAULT_NODE_NAME).state);
   }
 }

@@ -41,11 +41,10 @@ class SnapshotTestBase : public TransactionTestBase<MiniCluster> {
       const TxnSnapshotId& snapshot_id, MonoDelta duration = kWaitTimeout);
 
   Result<TxnSnapshotRestorationId> StartRestoration(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(),
-      int64_t interval = 0);
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime());
   Result<bool> IsRestorationDone(const TxnSnapshotRestorationId& restoration_id);
   CHECKED_STATUS RestoreSnapshot(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(), int64_t interval = 0);
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime());
 };
 
 } // namespace client

@@ -54,11 +54,7 @@ fi
 YB_BASH_COMMON_DIR=$YB_SRC_ROOT/submodules/yugabyte-bash-common
 
 # Initialize submodules. Only do this when the source directory is a git directory.
-#
-# The "thirdparty" subdirectory of the source directory is a submodule with a special location
-# (outside of the "submodules" subdirectory).
-if [[ ! -d $YB_BASH_COMMON_DIR     || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ||
-      ! -d $YB_SRC_ROOT/thirdparty || -z "$( ls -A "$YB_SRC_ROOT/thirdparty" )" ]] &&
+if [[ ! -d $YB_BASH_COMMON_DIR || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ]] &&
    [[ -d $YB_SRC_ROOT/.git ]]; then
   ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
 fi
@@ -2093,6 +2089,27 @@ VIRTUALENV DEBUGGING
   fi
 
   export VIRTUAL_ENV
+}
+
+set_pythonpath_called=false
+
+set_pythonpath() {
+  if [[ $set_pythonpath_called == "true" ]]; then
+    return
+  fi
+  set_pythonpath_called=true
+
+  if [[ ! -d ${YB_SRC_ROOT:-} ]]; then
+    fatal "YB_SRC_ROOT is not set or does not exist; ${YB_SRC_ROOT:-undefined}"
+  fi
+
+  local new_entry=$YB_SRC_ROOT/python
+  if [[ -z ${PYTHONPATH:-} ]]; then
+    PYTHONPATH=$new_entry
+  else
+    PYTHONPATH=$new_entry:$PYTHONPATH
+  fi
+  export PYTHONPATH
 }
 
 log_file_existence() {

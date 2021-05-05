@@ -12,9 +12,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -187,12 +187,14 @@ public class SubTaskGroup implements Runnable {
           LOG.error(errorString);
         }
       } catch (Exception e) {
-        errorString = "Failed to execute task " + taskInfo.getTaskDetails() + ", hit error " +
-            e.getMessage() + ".";
-        LOG.error(errorString, e);
+        errorString = "Failed to execute task " +
+          StringUtils.abbreviate(taskInfo.getTaskDetails().toString(), 200) +
+          ", hit error " + StringUtils.abbreviate(e.getMessage(), 2000) + ".";
+        LOG.error("Failed to execute task " + taskInfo.getTaskDetails() + ", hit error.", e);
       } finally {
         if (errorString != null) {
           hasErrored = true;
+          // TODO: Avoid this deepCopy
           ObjectNode details = taskInfo.getTaskDetails().deepCopy();
           details.put("errorString", errorString);
           taskInfo.setTaskDetails(details);

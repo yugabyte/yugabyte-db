@@ -58,7 +58,7 @@ const mapDispatchToProps = (dispatch) => {
           toast.warn('Warning: Deleting configuration returned unsuccessful response.');
         })
         .catch((err) => {
-          console.error(err)
+          console.error(err);
         });
     }
   };

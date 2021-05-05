@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUni
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -70,7 +69,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
     ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
@@ -183,14 +182,14 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     assertClusterCreateSequence(subTasksByPosition, false);
 
     UniverseDefinitionTaskParams univUTP =
-        Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+        Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
   }
 
   @Test
   public void testClusterCreateFailure() {
     UniverseDefinitionTaskParams univUTP =
-      Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+      Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;

@@ -15,16 +15,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -257,7 +254,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   private Map<String, String> getClusterIpForLoadBalancer() {
-    Universe u = Universe.get(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     PlacementInfo pi = taskParams().placementInfo;
 
     Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
@@ -298,7 +295,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   private void processNodeInfo() {
     ObjectNode pods = Json.newObject();
-    Universe u = Universe.get(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     UUID placementUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
     PlacementInfo pi = taskParams().placementInfo;
 
@@ -411,7 +408,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private int getNumNodes() {
     Provider provider = Provider.get(taskParams().providerUUID);
     if (provider != null) {
-      Universe u = Universe.get(taskParams().universeUUID);
+      Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
       UniverseDefinitionTaskParams.UserIntent userIntent =
           u.getUniverseDetails().getPrimaryCluster().userIntent;
       return userIntent.numNodes;
@@ -424,7 +421,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Yaml yaml = new Yaml();
 
     // TODO: decide if the user want to expose all the services or just master.
-    overrides = (HashMap<String, Object>) yaml.load(
+    overrides = yaml.load(
         application.resourceAsStream("k8s-expose-all.yml")
     );
 
@@ -433,7 +430,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> azConfig = new HashMap<String, String>();
     Map<String, String> regionConfig = new HashMap<String, String>();
 
-    Universe u = Universe.get(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     // TODO: This only takes into account primary cluster for Kubernetes, we need to
     // address ReadReplica clusters as well.
     UniverseDefinitionTaskParams.UserIntent userIntent =

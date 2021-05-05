@@ -3995,7 +3995,7 @@ int db_bench_tool(int argc, char** argv) {
 
   FLAGS_compaction_style_e = (rocksdb::CompactionStyle) FLAGS_compaction_style;
   if (FLAGS_statistics) {
-    dbstats = rocksdb::CreateDBStatistics();
+    dbstats = rocksdb::CreateDBStatisticsForTests();
   }
   FLAGS_compaction_pri_e = (rocksdb::CompactionPri)FLAGS_compaction_pri;
 

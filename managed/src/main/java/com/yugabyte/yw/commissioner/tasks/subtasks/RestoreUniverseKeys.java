@@ -78,9 +78,10 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
     }
 
     private void sendKeyToMasters(byte[] keyRef, UUID kmsConfigUUID) {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         String hostPorts = universe.getMasterAddresses();
-        String certificate = universe.getCertificate();
+        String certificate = universe.getCertificateNodeToNode();
+        String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
         YBClient client = null;
         try {
             byte[] keyVal = keyManager.getUniverseKey(
@@ -89,7 +90,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
                     keyRef
             );
             String encodedKeyRef = Base64.getEncoder().encodeToString(keyRef);
-            client = ybService.getClient(hostPorts, certificate);
+            client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
             List<HostAndPort> masterAddrs = Arrays
                     .stream(hostPorts.split(","))
                     .map(addr -> HostAndPort.fromString(addr))
@@ -140,14 +141,15 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
 
     @Override
     public void run() {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         String hostPorts = universe.getMasterAddresses();
-        String certificate = universe.getCertificate();
+        String certificate = universe.getCertificateNodeToNode();
+        String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
         YBClient client = null;
         byte[] activeKeyRef = null;
         try {
           LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-          client = ybService.getClient(hostPorts, certificate);
+          client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
 
           Consumer<JsonNode> restoreToUniverse = (JsonNode backupEntry) -> {
             final byte[] universeKeyRef = Base64

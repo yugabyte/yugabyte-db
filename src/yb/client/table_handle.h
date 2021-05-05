@@ -182,6 +182,7 @@ class TableIterator : public std::iterator<
   bool ExecuteOps();
   void Move();
   void HandleError(const Status& status);
+  bool IsFlushStatusOkOrHandleErrors(FlushStatus flush_status);
 
   const TableHandle* table_;
   std::vector<YBqlReadOpPtr> ops_;

@@ -30,13 +30,14 @@ RestorationState::RestorationState(
   InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
 }
 
-CHECKED_STATUS RestorationState::ToPB(SnapshotInfoPB* out) {
+CHECKED_STATUS RestorationState::ToPB(RestorationInfoPB* out) {
   out->set_id(restoration_id_.data(), restoration_id_.size());
   auto& entry = *out->mutable_entry();
+  entry.set_snapshot_id(snapshot_id_.data(), snapshot_id_.size());
 
   entry.set_state(VERIFY_RESULT(AggregatedState()));
 
-  TabletsToPB(entry.mutable_tablet_snapshots());
+  TabletsToPB(entry.mutable_tablet_restorations());
 
   return Status::OK();
 }

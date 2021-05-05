@@ -170,6 +170,9 @@ void CatalogManagerBgTasks::Run() {
           YB_LOG_EVERY_N(INFO, 10) << s.message().ToBuffer();
         }
       }
+
+      // Start the tablespace background task.
+      catalog_manager_->StartTablespaceBgTaskIfStopped();
     }
     WARN_NOT_OK(catalog_manager_->encryption_manager_->
                 GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),

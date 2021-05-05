@@ -152,7 +152,6 @@ class ChangeMetadataOperation : public Operation {
 
  private:
   // Starts the ChangeMetadataOperation by assigning it a timestamp.
-  void DoStart() override;
   CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
   CHECKED_STATUS DoAborted(const Status& status) override;
 

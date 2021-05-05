@@ -219,6 +219,7 @@ DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC 
 DECLARE_bool(disable_alter_vs_write_mutual_exclusion);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
+DECLARE_int64(transaction_rpc_timeout_ms);
 
 DEFINE_test_flag(int32, txn_status_table_tablet_creation_delay_ms, 0,
                  "Extra delay to slowdown creation of transaction status table tablet.");
@@ -230,6 +231,8 @@ DEFINE_test_flag(int32, transactional_read_delay_ms, 0,
                  "Amount of time to delay between transaction status check and reading start.");
 
 DEFINE_test_flag(int32, alter_schema_delay_ms, 0, "Delay before processing AlterSchema.");
+
+double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
 namespace tserver {
@@ -940,6 +943,12 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
 
+  if (req->state().status() == TransactionStatus::CREATED &&
+      RandomActWithProbability(TEST_delay_create_transaction_probability)) {
+    std::this_thread::sleep_for(
+        (FLAGS_transaction_rpc_timeout_ms + RandomUniformInt(-200, 200)) * 1ms);
+  }
+
   VLOG(1) << "UpdateTransaction: " << req->ShortDebugString()
           << ", context: " << context.ToString();
   LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
@@ -1008,7 +1017,7 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
 
   PerformAtLeader(req, resp, &context,
       [req, resp, &context](const LeaderTabletPeer& tablet_peer) {
-    auto* transaction_coordinator = tablet_peer.peer->tablet()->transaction_coordinator();
+    auto* transaction_coordinator = tablet_peer.tablet->transaction_coordinator();
     if (!transaction_coordinator) {
       return STATUS_FORMAT(
           InvalidArgument, "No transaction coordinator at tablet $0",
@@ -1266,21 +1275,22 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       }
     }
   }
-  for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-    resp->set_failed_tablet_id(tablet->tablet_id());
-    if (req->is_compaction()) {
-      tablet->ForceRocksDBCompactInTest();
-    } else {
+  if (req->is_compaction()) {
+    RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+        server_->tablet_manager()->TriggerCompactionAndWait(tablet_ptrs), resp, &context);
+  } else {
+    for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+      resp->set_failed_tablet_id(tablet->tablet_id());
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+      resp->clear_failed_tablet_id();
     }
-    resp->clear_failed_tablet_id();
-  }
 
-  // Wait for end of all flush operations.
-  for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-    resp->set_failed_tablet_id(tablet->tablet_id());
-    RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
-    resp->clear_failed_tablet_id();
+    // Wait for end of all flush operations.
+    for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+      resp->set_failed_tablet_id(tablet->tablet_id());
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
+      resp->clear_failed_tablet_id();
+    }
   }
 
   context.RespondSuccess();
@@ -1806,7 +1816,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
       "tablet_id", req->tablet_id());
   VLOG(2) << "Received Read RPC: " << req->DebugString();
-
   // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
   // the first request to a given tablet by a particular transaction assume that the tablet already
   // has the transaction metadata, including the isolation level, and those requests expect us to
@@ -2065,10 +2074,9 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
     read_context->resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
 
-  // It was read as part of transaction, but read time was not specified.
-  // I.e. allow_retry is true.
-  // So we just picked a read time and we should tell it back to the caller.
-  if (read_context->req->has_transaction() && read_context->allow_retry) {
+  // In case read time was not specified (i.e. allow_retry is true)
+  // we just picked a read time and we should communicate it back to the caller.
+  if (read_context->allow_retry) {
     read_context->used_read_time.ToPB(read_context->resp->mutable_used_read_time());
   }
 

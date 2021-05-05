@@ -57,6 +57,9 @@ void StateWithTablets::InitTablets(
 }
 
 Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
+  if (tablets_.empty()) {
+    return InitialStateToTerminalState(initial_state_);
+  }
   SysSnapshotEntryPB::State result = initial_state_;
   bool has_initial = false;
   for (const auto& tablet : tablets_) {
@@ -115,16 +118,6 @@ std::vector<TabletId> StateWithTablets::TabletIdsInState(SysSnapshotEntryPB::Sta
     }
   }
   return result;
-}
-
-void StateWithTablets::TabletsToPB(
-    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* out) {
-  out->Reserve(tablets_.size());
-  for (const auto& tablet : tablets_) {
-    auto* tablet_state = out->Add();
-    tablet_state->set_id(tablet.id);
-    tablet_state->set_state(tablet.state);
-  }
 }
 
 void StateWithTablets::Done(const TabletId& tablet_id, const Status& status) {
@@ -211,6 +204,12 @@ const std::string& StateWithTablets::InitialStateName() const {
 void StateWithTablets::CheckCompleteness() {
   if (num_tablets_in_initial_state_ == 0) {
     complete_at_ = CoarseMonoClock::Now();
+  }
+}
+
+void StateWithTablets::RemoveTablets(const std::vector<std::string>& tablet_ids) {
+  for (const auto& id : tablet_ids) {
+    tablets_.erase(id);
   }
 }
 

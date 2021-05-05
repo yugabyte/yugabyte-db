@@ -111,12 +111,6 @@ Status ChangeMetadataOperation::Prepare() {
   return Status::OK();
 }
 
-void ChangeMetadataOperation::DoStart() {
-  state()->TrySetHybridTimeFromClock();
-  TRACE("START. HybridTime: $0",
-      server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
-}
-
 Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY CHANGE-METADATA: Starting");
 

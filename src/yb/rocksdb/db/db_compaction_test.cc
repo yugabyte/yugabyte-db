@@ -2074,7 +2074,7 @@ TEST_F(DBCompactionTest, L0_CompactionBug_Issue44_b) {
 TEST_P(DBCompactionTestWithParam, ManualCompaction) {
   Options options = CurrentOptions();
   options.max_subcompactions = max_subcompactions_;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   CreateAndReopenWithCF({"pikachu"}, options);
 
   // iter - 0 with 7 levels
@@ -2126,7 +2126,7 @@ TEST_P(DBCompactionTestWithParam, ManualCompaction) {
       options.max_background_flushes = 0;
       options.num_levels = 3;
       options.create_if_missing = true;
-      options.statistics = rocksdb::CreateDBStatistics();
+      options.statistics = rocksdb::CreateDBStatisticsForTests();
       DestroyAndReopen(options);
       CreateAndReopenWithCF({"pikachu"}, options);
     }
