@@ -3067,15 +3067,15 @@ size_t Tablet::TEST_CountRegularDBRecords() {
   return result;
 }
 
-template <class Functor>
-uint64_t Tablet::GetRegularDbStat(const Functor& functor) const {
+template <class Functor, class Value>
+Value Tablet::GetRegularDbStat(const Functor& functor, const Value& default_value) const {
   ScopedRWOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
   // In order to get actual stats we would have to wait.
   // This would give us correct stats but would make this request slower.
   if (!scoped_operation.ok() || !regular_db_) {
-    return 0;
+    return default_value;
   }
   return functor();
 }
@@ -3084,19 +3084,25 @@ uint64_t Tablet::GetRegularDbStat(const Functor& functor) const {
 uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
   return GetRegularDbStat([this] {
     return regular_db_->GetCurrentVersionSstFilesSize();
-  });
+  }, 0);
 }
 
 uint64_t Tablet::GetCurrentVersionSstFilesUncompressedSize() const {
   return GetRegularDbStat([this] {
     return regular_db_->GetCurrentVersionSstFilesUncompressedSize();
-  });
+  }, 0);
+}
+
+std::pair<uint64_t, uint64_t> Tablet::GetCurrentVersionSstFilesAllSizes() const {
+  return GetRegularDbStat([this] {
+    return regular_db_->GetCurrentVersionSstFilesAllSizes();
+  }, std::pair<uint64_t, uint64_t>(0, 0));
 }
 
 uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
   return GetRegularDbStat([this] {
     return regular_db_->GetCurrentVersionNumSSTFiles();
-  });
+  }, 0);
 }
 
 std::pair<int, int> Tablet::GetNumMemtables() const {
