@@ -46,6 +46,7 @@ struct TabletSnapshots::RestoreMetadata {
   boost::optional<Schema> schema;
   boost::optional<IndexMap> index_map;
   uint32_t schema_version;
+  bool hide;
 };
 
 TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}
@@ -202,9 +203,11 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   const std::string snapshot_dir = VERIFY_RESULT(tx_state->GetSnapshotDir());
   auto restore_at = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time());
 
-  RETURN_NOT_OK_PREPEND(
-      FileExists(&rocksdb_env(), snapshot_dir),
-      Format("Snapshot directory does not exist: $0", snapshot_dir));
+  if (!snapshot_dir.empty()) {
+    RETURN_NOT_OK_PREPEND(
+        FileExists(&rocksdb_env(), snapshot_dir),
+        Format("Snapshot directory does not exist: $0", snapshot_dir));
+  }
 
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(tx_state->op_id());
@@ -212,9 +215,11 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   RestoreMetadata restore_metadata;
   if (tx_state->request()->has_schema()) {
     restore_metadata.schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(tx_state->request()->schema(), restore_metadata.schema.get_ptr()));
-    restore_metadata.index_map.emplace(tx_state->request()->indexes());
-    restore_metadata.schema_version = tx_state->request()->schema_version();
+    const auto& request = *tx_state->request();
+    RETURN_NOT_OK(SchemaFromPB(request.schema(), restore_metadata.schema.get_ptr()));
+    restore_metadata.index_map.emplace(request.indexes());
+    restore_metadata.schema_version = request.schema_version();
+    restore_metadata.hide = request.hide();
   }
   const Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
@@ -241,14 +246,21 @@ Status TabletSnapshots::RestoreCheckpoint(
   const string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
 
-  // Destroy DB object.
-  // TODO: snapshot current DB and try to restore it in case of failure.
-  RETURN_NOT_OK(ResetRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue));
+  if (dir.empty()) {
+    // Just change rocksdb hybrid time limit, because it should be in retention interval.
+    // TODO(pitr) apply transactions and reset intents.
+    RETURN_NOT_OK(ResetRocksDBs(Destroy::kFalse, DisableFlushOnShutdown::kFalse));
+  } else {
+    // Destroy DB object.
+    // TODO: snapshot current DB and try to restore it in case of failure.
+    RETURN_NOT_OK(ResetRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue));
 
-  auto s = CopyDirectory(&rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
-    return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
+    auto s = CopyDirectory(
+        &rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
+    if (PREDICT_FALSE(!s.ok())) {
+      LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
+      return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
+    }
   }
 
   {
@@ -268,13 +280,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
         restore_metadata.schema_version);
-    RETURN_NOT_OK(tablet().metadata()->Flush());
-    ResetYBMetaDataCache();
+    RETURN_NOT_OK(tablet().metadata()->SetHiddenAndFlush(restore_metadata.hide));
+    RefreshYBMetaDataCache();
   }
 
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
-  s = OpenRocksDBs();
+  auto s = OpenRocksDBs();
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed tablet db opening from checkpoint: " << s;
     return s;

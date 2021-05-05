@@ -45,6 +45,9 @@ Result<std::string> SnapshotOperationState::GetSnapshotDir() const {
   if (!request.snapshot_dir_override().empty()) {
     return request.snapshot_dir_override();
   }
+  if (request.snapshot_id().empty()) {
+    return std::string();
+  }
   std::string snapshot_id_str;
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(request.snapshot_id());
   if (txn_snapshot_id) {
@@ -62,6 +65,9 @@ Status SnapshotOperationState::DoCheckOperationRequirements() {
   }
 
   const string snapshot_dir = VERIFY_RESULT(GetSnapshotDir());
+  if (snapshot_dir.empty()) {
+    return Status::OK();
+  }
   Status s = tablet()->rocksdb_env().FileExists(snapshot_dir);
 
   if (!s.ok()) {
