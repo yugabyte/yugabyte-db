@@ -37,6 +37,7 @@ public class UniverseResp {
   public final UniverseDefinitionTaskParamsResp universeDetails;
   public final Map<String, String> universeConfig;
   public final String taskUUID;
+  public final String sampleAppCommandTxt;
 
   public UniverseResp(Universe entity) {
     this(entity, null, null);
@@ -46,7 +47,8 @@ public class UniverseResp {
     this(entity, taskUUID, null);
   }
 
-  public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resources) {
+  public UniverseResp(Universe entity, UUID taskUUID
+    , UniverseResourceDetails resources, String sampleAppCommandTxt) {
     universeUUID = entity.universeUUID.toString();
     name = entity.name;
     creationDate = entity.creationDate.toString();
@@ -55,9 +57,13 @@ public class UniverseResp {
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
     this.taskUUID = taskUUID == null ? null : taskUUID.toString();
     Collection<NodeDetails> nodes = entity.getUniverseDetails().nodeDetailsSet;
-
     this.resources = resources;
     universeConfig = entity.getConfig();
+    this.sampleAppCommandTxt = sampleAppCommandTxt;
+  }
+
+  public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resource) {
+    this(entity, taskUUID, resource, null);
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources
