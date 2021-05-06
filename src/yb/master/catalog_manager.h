@@ -366,6 +366,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Work to delete YSQL database tables, handled asynchronously from the User API call.
   void DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database);
 
+  // Work to delete YCQL database, handled asynchronously from the User API call.
+  void DeleteYcqlDatabaseAsync(scoped_refptr<NamespaceInfo> database);
+
   // Delete all tables in YSQL database.
   CHECKED_STATUS DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database);
 
