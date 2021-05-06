@@ -679,8 +679,7 @@ pg_unicode_to_server(pg_wchar c, unsigned char *s)
 	if (orafce_Utf8ToServerConvProc == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("conversion between %s and %s is not supported",
-						pg_enc2name_tbl[PG_UTF8].name,
+				 errmsg("conversion between UTF8 and %s is not supported",
 						GetDatabaseEncodingName())));
 
 	/* Construct UTF-8 source string */
