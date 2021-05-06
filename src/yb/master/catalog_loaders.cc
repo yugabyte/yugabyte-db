@@ -318,10 +318,15 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       }
       l.Commit();
       LOG(INFO) << "Loaded metadata to DELETE namespace " << ns->ToString();
-      LOG_IF(DFATAL, ns->database_type() != YQL_DATABASE_PGSQL) << "PGSQL Databases only";
-      WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+      if (ns->database_type() != YQL_DATABASE_PGSQL) {
+        WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+          std::bind(&CatalogManager::DeleteYcqlDatabaseAsync, catalog_manager_, ns)),
+          "Could not submit DeleteYcqlDatabaseAsync to thread pool");
+      } else {
+        WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
           std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns)),
           "Could not submit DeleteYsqlDatabaseAsync to thread pool");
+      }
       break;
     case SysNamespaceEntryPB::DELETED:
       LOG(INFO) << "Skipping metadata for namespace (state="  << metadata.state()
