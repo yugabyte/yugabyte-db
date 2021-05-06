@@ -143,7 +143,7 @@ class GcpQueryCurrentHostMethod(AbstractMethod):
         self.need_validation = False
 
     def callback(self, args):
-        print(json.dumps(self.cloud.get_current_host_info()))
+        print(json.dumps(list(self.cloud.get_current_host_info())))
 
 
 class GcpQueryPreemptibleInstanceMethod(AbstractMethod):
