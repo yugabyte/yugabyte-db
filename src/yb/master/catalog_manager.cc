@@ -6270,6 +6270,81 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   return Status::OK();
 }
 
+void CatalogManager::DeleteYcqlDatabaseAsync(scoped_refptr<NamespaceInfo> database) {
+  TRACE("Locking keyspace");
+  auto l = database->LockForWrite();
+
+  // Only empty namespace can be deleted.
+  TRACE("Looking for tables in the keyspace");
+  {
+    SharedLock<LockType> catalog_lock(lock_);
+    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
+
+    for (const TableInfoMap::value_type& entry : *table_ids_map_) {
+      auto ltm = entry.second->LockForRead();
+
+      if (!ltm->started_deleting() && ltm->namespace_id() == database->id()) {
+        LOG(WARNING) << "Cannot delete keyspace which has " << ltm->name()
+          << " with id=" << entry.second->id();
+        return;
+      }
+    }
+  }
+
+  // Only empty namespace can be deleted.
+  TRACE("Looking for types in the keyspace");
+  {
+    SharedLock<LockType> catalog_lock(lock_);
+    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
+
+    for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
+      auto ltm = entry.second->LockForRead();
+
+      if (ltm->namespace_id() == database->id()) {
+        LOG(WARNING) << "Cannot delete keyspace which has type: " << ltm->name()
+          << " with id=" << entry.second->id();
+        return;
+      }
+    }
+  }
+
+  // [Delete]. Skip the DELETING->DELETED state, since no tables are present in this namespace.
+  TRACE("Updating metadata on disk");
+  // Update sys-catalog.
+  Status s = sys_catalog_->DeleteItem(database.get(), leader_ready_term());
+  if (!s.ok()) {
+    // The mutation will be aborted when 'l' exits the scope on early return.
+    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
+                                     s.ToString()));
+    LOG(WARNING) << s.ToString();
+    return;
+  }
+
+  // Update the in-memory state.
+  TRACE("Committing in-memory state");
+  l.Commit();
+
+  // Remove the namespace from all CatalogManager mappings.
+  {
+    std::lock_guard<LockType> l_map(lock_);
+    namespace_names_mapper_[database->database_type()].erase(database->name());
+    if (namespace_ids_map_.erase(database->id()) < 1) {
+      LOG(WARNING) << Format("Could not remove namespace from maps, id=$1", database->id());
+    }
+  }
+
+  // Delete any permissions granted on this keyspace to any role. See comment in DeleteTable() for
+  // more details.
+  string canonical_resource = get_canonical_keyspace(database->name());
+  DeleteNamespaceResponsePB resp;
+  s = permissions_manager_->RemoveAllPermissionsForResource(canonical_resource, &resp);
+  if (s.ok()) {
+    LOG(INFO) << "Successfully deleted keyspace " << database->ToString();
+  } else {
+    LOG(WARNING) << "Error deleting keyspace " << database->ToString() << ": " << s;
+  }
+}
+
 Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
                                           DeleteNamespaceResponsePB* resp,
                                           rpc::RpcContext* rpc) {
