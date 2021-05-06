@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -23,6 +24,7 @@ import javax.persistence.Id;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class CustomerConfig extends Model {
@@ -128,11 +130,21 @@ public class CustomerConfig extends Model {
     return CustomerConfig.find.query().where().eq("customer_uuid", customerUUID).findList();
   }
 
+  @Deprecated
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
     return CustomerConfig.find.query().where()
       .eq("customer_uuid", customerUUID)
       .idEq(configUUID)
       .findOne();
+  }
+
+  public static CustomerConfig getOrBadRequest(UUID customerUUID, UUID configUUID) {
+    CustomerConfig storageConfig = get(customerUUID, configUUID);
+    if (storageConfig == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid StorageConfig UUID: "
+          + configUUID);
+    }
+    return storageConfig;
   }
 
   public static CustomerConfig get(UUID configUUID) {
