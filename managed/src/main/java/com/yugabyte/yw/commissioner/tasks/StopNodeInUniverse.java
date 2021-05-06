@@ -13,6 +13,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -81,6 +83,13 @@ public class StopNodeInUniverse extends UniverseTaskBase {
 
       // Update Node State to Stopped
       createSetNodeStateTask(currentNode, NodeState.Stopped)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
+
+      // Update the DNS entry for this universe.
+      UniverseDefinitionTaskParams.UserIntent userIntent = universe.getUniverseDetails()
+          .getClusterByUuid(currentNode.placementUuid)
+          .userIntent;
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
       // Mark universe task state to success

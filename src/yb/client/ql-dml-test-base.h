@@ -97,7 +97,8 @@ Result<int32_t> SelectRow(
 Result<std::map<int32_t, int32_t>> SelectAllRows(TableHandle* table, const YBSessionPtr& session);
 
 Result<YBqlWriteOpPtr> Increment(
-    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta = 1);
+    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta = 1,
+    Flush flush = Flush::kFalse);
 
 } // namespace kv_table_test
 

@@ -99,6 +99,7 @@ SELECT * FROM temptest;
 DROP TABLE temptest;
 
 -- test ON COMMIT DROP
+-- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 
 BEGIN;
 

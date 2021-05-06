@@ -8,7 +8,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -55,7 +54,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         try {
           when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
         } catch (Exception e) {}
-        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+        when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
         Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
         AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
         // create default universe
@@ -81,7 +80,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
     private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
       taskParams.clusters
-          .addAll(Universe.get(taskParams.universeUUID).getUniverseDetails().clusters);
+          .addAll(Universe.getOrBadRequest(taskParams.universeUUID).getUniverseDetails().clusters);
       taskParams.expectedUniverseVersion = 2;
       taskParams.nodeName = nodeName;
       try {

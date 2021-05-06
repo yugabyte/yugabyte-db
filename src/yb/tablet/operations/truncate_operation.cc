@@ -51,13 +51,6 @@ consensus::ReplicateMsgPtr TruncateOperation::NewReplicateMsg() {
   return result;
 }
 
-void TruncateOperation::DoStart() {
-  state()->TrySetHybridTimeFromClock();
-
-  TRACE("START TRUNCATE: hybrid time: $0",
-        server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
-}
-
 Status TruncateOperation::DoAborted(const Status& status) {
   return status;
 }

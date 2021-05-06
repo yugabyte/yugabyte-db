@@ -94,18 +94,6 @@ struct Persistent {
   DataEntryPB pb;
 };
 
-// This class is used to manage locking of the persistent metadata returned from the
-// MetadataCowWrapper objects.
-template <class MetadataClass>
-class MetadataLock : public CowLock<typename MetadataClass::cow_state> {
- public:
-  typedef CowLock<typename MetadataClass::cow_state> super;
-  MetadataLock(MetadataClass* info, typename super::LockMode mode)
-      : super(DCHECK_NOTNULL(info)->mutable_metadata(), mode) {}
-  MetadataLock(const MetadataClass* info, typename super::LockMode mode)
-      : super(&(DCHECK_NOTNULL(info))->metadata(), mode) {}
-};
-
 // This class is a base wrapper around accessors for the persistent proto data, through CowObject.
 // The locks are taken on subclasses of this class, around the object returned from metadata().
 template <class PersistentDataEntryPB>
@@ -113,7 +101,8 @@ class MetadataCowWrapper {
  public:
   // Type declaration for use in the Lock classes.
   typedef PersistentDataEntryPB cow_state;
-  typedef MetadataLock<MetadataCowWrapper<PersistentDataEntryPB>> lock_type;
+  typedef CowWriteLock<cow_state> WriteLock;
+  typedef CowReadLock<cow_state> ReadLock;
 
   // This method should return the id to be written into the sys_catalog id column.
   virtual const std::string& id() const = 0;
@@ -129,12 +118,12 @@ class MetadataCowWrapper {
   const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
   CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
 
-  std::unique_ptr<lock_type> LockForRead() const {
-    return std::unique_ptr<lock_type>(new lock_type(this, lock_type::READ));
+  ReadLock LockForRead() const {
+    return ReadLock(&metadata());
   }
 
-  std::unique_ptr<lock_type> LockForWrite() {
-    return std::unique_ptr<lock_type>(new lock_type(this, lock_type::WRITE));
+  WriteLock LockForWrite() {
+    return WriteLock(mutable_metadata());
   }
 
  protected:
@@ -424,9 +413,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   boost::optional<TabletId> AreAllTabletsRunning() const {
     std::lock_guard<decltype(lock_)> l(lock_);
-    for (const auto& tabletIt : tablet_map_) {
-      const auto& table = tabletIt.second;
-      if (table->LockForRead()->data().pb.state() != SysTabletsEntryPB::RUNNING) {
+    for (const auto& tablet_it : tablet_map_) {
+      const auto& table = tablet_it.second;
+      if (table->LockForRead().data().pb.state() != SysTabletsEntryPB::RUNNING) {
         return table->tablet_id();
       }
     }

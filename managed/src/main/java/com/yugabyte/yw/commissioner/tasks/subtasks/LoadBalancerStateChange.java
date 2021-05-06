@@ -58,13 +58,14 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
   public void run() {
     ChangeLoadBalancerStateResponse resp;
     YBClient client = null;
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     try {
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
 
-      client = ybService.getClient(masterHostPorts, certificate);
+      client = ybService.getClient(masterHostPorts, certificate, rpcClientCertFiles);
       resp = client.changeLoadBalancerState(taskParams().enable);
     } catch (Exception e) {
       LOG.error("{} hit exception : {}", getName(), e.getMessage());

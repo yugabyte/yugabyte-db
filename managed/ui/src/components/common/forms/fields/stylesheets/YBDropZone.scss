@@ -1,5 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import '../../../../../_style/colors.scss';
+
 .drop-zone-file {
   position: absolute;
   top: 10px;
@@ -15,6 +17,13 @@
     .upload-file-button {
       border-radius: 7px;
       overflow: hidden;
+    }
+
+    &.has-error {
+      .upload-file-button {
+        border: 1px solid $YB_ERROR_TEXT_COLOR;
+        color: $YB_ERROR_TEXT_COLOR;
+      }
     }
     &.has-value {
       p {

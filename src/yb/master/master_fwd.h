@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -62,7 +63,14 @@ class TabletReportPB;
 typedef scoped_refptr<TabletInfo> TabletInfoPtr;
 typedef std::vector<TabletInfoPtr> TabletInfos;
 
+struct SnapshotScheduleRestoration;
+using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestoration>;
+
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
+
+YB_DEFINE_ENUM(
+    CollectFlag, (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress));
+using CollectFlags = EnumBitSet<CollectFlag>;
 
 } // namespace master
 } // namespace yb

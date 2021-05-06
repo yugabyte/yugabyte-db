@@ -286,115 +286,6 @@ using docdb::StorageDbType;
 
 namespace {
 
-void EmitRocksDbMetricsAsJson(
-    std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
-    std::shared_ptr<rocksdb::Statistics> intentsdb_statistics,
-    JsonWriter* writer,
-    const MetricJsonOptions& opts) {
-  // Make sure the class member 'regulardb_statistics_' exists, as this is the stats object
-  // maintained by RocksDB for this tablet.
-  if (regulardb_statistics == nullptr) {
-    return;
-  }
-  // Emit all the ticker (gauge) metrics.
-  const bool export_intentdb_metrics =
-      intentsdb_statistics && GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics);
-  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
-    // Start the metric object.
-    writer->StartObject();
-    // Write the name.
-    writer->String("name");
-    writer->String(entry.second);
-    // Write the value.
-    uint64_t value = regulardb_statistics->getTickerCount(entry.first);
-    writer->String("value");
-    writer->Uint64(value);
-    // Finish the metric object.
-    writer->EndObject();
-    if (export_intentdb_metrics) {
-      // Start the metric object.
-      writer->StartObject();
-      // Write the name.
-      writer->String("name");
-      writer->String(Format("intentsdb_$0", entry.second));
-      // Write the value.
-      uint64_t value = intentsdb_statistics->getTickerCount(entry.first);
-      writer->String("value");
-      writer->Uint64(value);
-      // Finish the metric object.
-      writer->EndObject();
-    }
-  }
-  // Emit all the histogram metrics.
-  rocksdb::HistogramData histogram_data;
-  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
-    // Start the metric object.
-    writer->StartObject();
-    // Write the name.
-    writer->String("name");
-    writer->String(entry.second);
-    // Write the value.
-    regulardb_statistics->histogramData(entry.first, &histogram_data);
-    writer->String("total_count");
-    writer->Double(histogram_data.count);
-    writer->String("min");
-    writer->Double(histogram_data.min);
-    writer->String("mean");
-    writer->Double(histogram_data.average);
-    writer->String("median");
-    writer->Double(histogram_data.median);
-    writer->String("std_dev");
-    writer->Double(histogram_data.standard_deviation);
-    writer->String("percentile_95");
-    writer->Double(histogram_data.percentile95);
-    writer->String("percentile_99");
-    writer->Double(histogram_data.percentile99);
-    writer->String("max");
-    writer->Double(histogram_data.max);
-    writer->String("total_sum");
-    writer->Double(histogram_data.sum);
-    // Finish the metric object.
-    writer->EndObject();
-  }
-}
-
-CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
-    std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
-    std::shared_ptr<rocksdb::Statistics> intentsdb_statistics,
-    PrometheusWriter* writer,
-    const MetricEntity::AttributeMap& attrs) {
-  // Make sure the class member 'regulardb_statistics_' exists, as this is the stats object
-  // maintained by RocksDB for this tablet.
-  if (regulardb_statistics == nullptr) {
-    return Status::OK();
-  }
-  const bool export_intentdb_metrics =
-      intentsdb_statistics && GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics);
-  // Emit all the ticker (gauge) metrics.
-  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        attrs, entry.second, regulardb_statistics->getTickerCount(entry.first)));
-    if (export_intentdb_metrics) {
-      RETURN_NOT_OK(writer->WriteSingleEntry(
-          attrs, Format("intentsdb_$0", entry.second),
-          intentsdb_statistics->getTickerCount(entry.first)));
-    }
-  }
-  // Emit all the histogram metrics.
-  rocksdb::HistogramData histogram_data;
-  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
-    regulardb_statistics->histogramData(entry.first, &histogram_data);
-
-    auto copy_of_attr = attrs;
-    const std::string hist_name = entry.second;
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_sum", histogram_data.sum));
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_count", histogram_data.count));
-  }
-  return Status::OK();
-}
-
 docdb::PartialRangeKeyIntents UsePartialRangeKeyIntents(const RaftGroupMetadata& metadata) {
   return docdb::PartialRangeKeyIntents(metadata.table_type() == TableType::PGSQL_TABLE_TYPE);
 }
@@ -464,35 +355,12 @@ Tablet::Tablet(const TabletInitData& data)
     tablet_metrics_entity_ =
         METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
-    regulardb_statistics_ = rocksdb::CreateDBStatistics();
-    intentsdb_statistics_ = rocksdb::CreateDBStatistics();
-    auto regulardb_statistics = regulardb_statistics_;
-    auto intentsdb_statistics = intentsdb_statistics_;
-    tablet_metrics_entity_->AddExternalJsonMetricsCb(
-        [regulardb_statistics, intentsdb_statistics](
-            JsonWriter* jw, const MetricJsonOptions& opts) {
-          // Assume all rocksdb statistics are at "info" level.
-          if (MetricLevel::kInfo < opts.level) {
-            return;
-          }
-
-          EmitRocksDbMetricsAsJson(regulardb_statistics, intentsdb_statistics, jw, opts);
-        });
-
-    tablet_metrics_entity_->AddExternalPrometheusMetricsCb(
-        [regulardb_statistics, intentsdb_statistics, attrs](
-            PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
-          // Assume all rocksdb statistics are at "info" level.
-          if (MetricLevel::kInfo < opts.level) {
-            return;
-          }
-
-          auto s =
-              EmitRocksDbMetricsAsPrometheus(regulardb_statistics, intentsdb_statistics, pw, attrs);
-          if (!s.ok()) {
-            YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();
-          }
-        });
+    regulardb_statistics_ =
+        rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
+    intentsdb_statistics_ =
+        (GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics)
+             ? rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_, true)
+             : rocksdb::CreateDBStatistics(table_metrics_entity_, nullptr, true));
 
     metrics_.reset(new TabletMetrics(table_metrics_entity_, tablet_metrics_entity_));
 
@@ -1076,20 +944,6 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   return NewRowIterator(table_info->schema, boost::none, {}, table_id);
 }
 
-void Tablet::StartOperation(WriteOperationState* operation_state) {
-  // If the state already has a hybrid_time then we're replaying a transaction that occurred
-  // before a crash or at another node.
-  DVLOG(4) << __PRETTY_FUNCTION__ << " for " << yb::ToString(operation_state->request());
-  HybridTime ht = operation_state->hybrid_time_even_if_unset();
-  bool was_valid = ht.is_valid();
-  if (!was_valid) {
-    // Add only leader operation here, since follower operations already registered in MVCC,
-    // as soon as they received.
-    mvcc_.AddPending(&ht);
-    operation_state->set_hybrid_time(ht);
-  }
-}
-
 Status Tablet::ApplyRowOperations(
     WriteOperationState* operation_state, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   const auto& write_request =
@@ -1112,7 +966,7 @@ Status Tablet::ApplyOperationState(
     const docdb::KeyValueWriteBatchPB& write_batch,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   docdb::ConsensusFrontiers frontiers;
-  set_op_id(yb::OpId::FromPB(operation_state.op_id()), &frontiers);
+  set_op_id(operation_state.op_id(), &frontiers);
 
   auto hybrid_time = operation_state.WriteHybridTime();
 
@@ -1620,14 +1474,15 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
 
 void Tablet::UpdateQLIndexesFlushed(
     WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
-    const IndexOps& index_ops, const Status& status) {
+    const IndexOps& index_ops, client::FlushStatus* flush_status) {
   std::unique_ptr<WriteOperation> operation(op);
 
+  const auto& status = flush_status->status;
   if (PREDICT_FALSE(!status.ok())) {
     // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
     // returns IOError. When it happens, retrieves the errors and discard the IOError.
     if (status.IsIOError()) {
-      for (const auto& error : session->GetAndClearPendingErrors()) {
+      for (const auto& error : flush_status->errors) {
         // return just the first error seen.
         operation->state()->CompleteWithStatus(error->status());
         return;
@@ -1990,7 +1845,7 @@ Status Tablet::ImportData(const std::string& source_dir) {
 
 template <class Data>
 void InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
-  set_op_id({data.op_id.term(), data.op_id.index()}, frontiers);
+  set_op_id(data.op_id, frontiers);
   set_hybrid_time(data.log_ht, frontiers);
 }
 
@@ -2009,7 +1864,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
   docdb::ConsensusFrontiers* frontiers_ptr = nullptr;
-  if (data.op_id.IsInitialized()) {
+  if (!data.op_id.empty()) {
     InitFrontiers(data, &frontiers);
     frontiers_ptr = &frontiers;
   }
@@ -2651,7 +2506,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   }
 
   docdb::ConsensusFrontier frontier;
-  frontier.set_op_id({state->op_id().term(), state->op_id().index()});
+  frontier.set_op_id(state->op_id());
   frontier.set_hybrid_time(state->hybrid_time());
   // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
   // different tablet in an arbitrary Raft group, here there is no possibility of the flushed

@@ -778,16 +778,6 @@ Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
   return Status::OK();
 }
 
-Result<IndexPermissions> PgApiImpl::WaitUntilIndexPermissionsAtLeast(
-    const PgObjectId& table_id,
-    const PgObjectId& index_id,
-    const IndexPermissions& target_index_permissions) {
-  return pg_session_->WaitUntilIndexPermissionsAtLeast(
-      table_id,
-      index_id,
-      target_index_permissions);
-}
-
 Status PgApiImpl::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
   return pg_session_->AsyncUpdateIndexPermissions(indexed_table_id);
 }
@@ -1299,7 +1289,17 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
     pg_session_->DropBufferedOperations();
   }
 
-  return pg_txn_manager_->ExitSeparateDdlTxnMode(success);
+  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(success));
+  ReadHybridTime read_time;
+  if (success) {
+    // Next reads from catalog tables have to see changes made by the DDL transaction.
+    ResetCatalogReadTime();
+  }
+  return Status::OK();
+}
+
+void PgApiImpl::ResetCatalogReadTime() {
+  pg_session_->ResetCatalogReadPoint();
 }
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(

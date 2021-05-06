@@ -4,10 +4,14 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Provider;
+
+import org.pac4j.oidc.client.KeycloakOidcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,12 +23,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Singleton
 public class AccessManager extends DevopsBase {
@@ -149,6 +155,40 @@ public class AccessManager extends DevopsBase {
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
+  public AccessKey saveAndAddKey(UUID regionUUID, String keyContents,
+                                    String keyCode, KeyType keyType,
+                                    String sshUser, Integer sshPort,
+                                    boolean airGapInstall, boolean skipProvisioning) {
+    AccessKey key = null;
+    Path tempFile = null;
+
+    try {
+      tempFile = Files.createTempFile(keyCode, keyType.getExtension());
+      Files.write(tempFile, keyContents.getBytes());
+
+      key = uploadKeyFile(regionUUID, tempFile.toFile(), keyCode,
+        keyType, sshUser, sshPort, airGapInstall, skipProvisioning);
+
+      File pemFile = new File(key.getKeyInfo().privateKey);
+      key = addKey(regionUUID, keyCode, pemFile, sshUser, sshPort, airGapInstall,
+        skipProvisioning);
+    } catch (NoSuchFileException ioe) {
+      LOG.error(ioe.getMessage(), ioe);
+    } catch (IOException ioe) {
+      LOG.error(ioe.getMessage(), ioe);
+      throw new RuntimeException("Could not create AccessKey", ioe);
+    } finally {
+      try {
+        if (tempFile != null) {
+          Files.delete(tempFile);
+        }
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+      }
+    }
+
+    return key;
+  }
   // This method would create a public/private key file and upload that to
   // the provider cloud account. And store the credentials file in the keyFilePath
   // and return the file names. It will also create the vault file.
@@ -228,7 +268,6 @@ public class AccessManager extends DevopsBase {
   }
 
   public JsonNode deleteKey(UUID regionUUID, String keyCode) {
-    List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     if (region == null) {
       throw new RuntimeException("Invalid Region UUID: " + regionUUID);
@@ -237,21 +276,45 @@ public class AccessManager extends DevopsBase {
     switch(Common.CloudType.valueOf(region.provider.code)) {
       case aws:
       case azu:
-        String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
-
-        commandArgs.add("--key_pair_name");
-        commandArgs.add(keyCode);
-        commandArgs.add("--key_file_path");
-        commandArgs.add(keyFilePath);
-        JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
-        if (response.has("error")) {
-          throw new RuntimeException(response.get("error").asText());
-        }
-        return response;
+      case gcp:
+      case onprem:
+        return deleteKey(region.provider.uuid, region.uuid, keyCode);
       default:
         return null;
     }
   }
+
+  public JsonNode deleteKeyByProvider(Provider provider, String keyCode) {
+    List<Region> regions = Region.getByProvider(provider.uuid);
+    if (regions == null || regions.isEmpty()) {
+      return null;
+    }
+
+    if (Common.CloudType.valueOf(provider.code) == Common.CloudType.aws) {
+      ObjectMapper mapper = play.libs.Json.newDefaultMapper();
+      ArrayNode ret = mapper.getNodeFactory().arrayNode();
+      regions.stream().map(r -> deleteKey(provider.uuid, r.uuid, keyCode))
+        .collect(Collectors.toList()).forEach(ret::add);
+      return ret;
+    } else {
+      return deleteKey(provider.uuid, regions.get(0).uuid, keyCode);
+    }
+  }
+
+  private JsonNode deleteKey(UUID providerUUID, UUID regionUUID, String keyCode) {
+    List<String> commandArgs = new ArrayList<String>();
+    String keyFilePath = getOrCreateKeyFilePath(providerUUID);
+
+    commandArgs.add("--key_pair_name");
+    commandArgs.add(keyCode);
+    commandArgs.add("--key_file_path");
+    commandArgs.add(keyFilePath);
+    JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
+    if (response.has("error")) {
+      throw new RuntimeException(response.get("error").asText());
+    }
+    return response;
+}
 
   public String createCredentialsFile(UUID providerUUID, JsonNode credentials)
       throws IOException {

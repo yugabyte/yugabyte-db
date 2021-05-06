@@ -8,6 +8,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import org.apache.commons.exec.OS;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
@@ -62,7 +63,7 @@ public class SwamperHelperTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     try {
@@ -114,7 +115,11 @@ public class SwamperHelperTest extends FakeDBApplication {
 
   @Test(expected = RuntimeException.class)
   public void testUniverseTargetWriteFailure() {
-    when(appConfig.getString("yb.swamper.targetPath")).thenReturn("/sys");
+    String swamperFilePath = "/sys";
+    if (OS.isFamilyMac()) {
+      swamperFilePath = "/System";
+    }
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(swamperFilePath);
     Universe u = createUniverse();
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     swamperHelper.writeUniverseTargetJson(u.universeUUID);

@@ -64,7 +64,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Update the universe to the latest state and
       // check if the nodes already exist in the cloud provider, if so,
       // fail the universe creation.
-      universe = Universe.get(universe.universeUUID);
+      universe = Universe.getOrBadRequest(universe.universeUUID);
       checkIfNodesExist(universe);
       Cluster primaryCluster = taskParams().getPrimaryCluster();
 
@@ -168,9 +168,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Update the DNS entry for all the nodes once, using the primary cluster type.
       createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
-                                primaryCluster.userIntent.providerType,
-                                primaryCluster.userIntent.provider,
-                                primaryCluster.userIntent.universeName)
+                                primaryCluster.userIntent)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Create alert definitions.

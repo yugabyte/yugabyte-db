@@ -66,7 +66,7 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
   return Create(CreateSnapshotData {
     .snapshot_hybrid_time = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time()),
     .hybrid_time = tx_state->hybrid_time(),
-    .op_id = OpId::FromPB(tx_state->op_id()),
+    .op_id = tx_state->op_id(),
     .snapshot_dir = VERIFY_RESULT(tx_state->GetSnapshotDir()),
     .schedule_id = TryFullyDecodeSnapshotScheduleId(tx_state->request()->schedule_id()),
   });

@@ -22,8 +22,6 @@ import play.mvc.Result;
 import java.util.UUID;
 
 
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
-
 public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
 
@@ -87,7 +85,7 @@ public class CustomerConfigController extends AuthenticatedController {
     JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
     config.data = Json.toJson(updatedData);
     config.update();
-    Audit.createAuditEntry(ctx(), request());
+    // Add audit entry after #8051 checked in as the config data contains confidential info.
     return ApiResponse.success(config);
   }
 }

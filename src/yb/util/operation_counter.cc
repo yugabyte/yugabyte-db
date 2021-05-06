@@ -174,7 +174,7 @@ Status RWOperationCounter::WaitForOpsToFinish(
 ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTimePoint& deadline)
     : data_{counter, counter ? counter->resource_name() : ""
 #ifndef NDEBUG
-            , LongOperationTracker("ScopedRWOperation", 1s)
+            , counter ? LongOperationTracker("ScopedRWOperation", 1s) : LongOperationTracker()
 #endif
       } {
   if (counter != nullptr) {

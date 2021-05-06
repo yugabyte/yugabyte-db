@@ -57,23 +57,7 @@ public class QueryHelper {
   }
 
   public JsonNode slowQueries(Universe universe) {
-    RunQueryFormData ysqlQuery = new RunQueryFormData();
-    ysqlQuery.query = SLOW_QUERY_STATS_SQL;
-    ysqlQuery.db_name = "postgres";
-    JsonNode ysqlResponse = ysqlQueryExecutor.executeQuery(universe, ysqlQuery).get("result");
-    ArrayNode queries = Json.newArray();
-    if (ysqlResponse.isArray()) {
-      for (JsonNode queryObject : ysqlResponse) {
-        if (!EXCLUDED_QUERY_STATEMENTS.contains(queryObject.get("query").asText())) {
-          queries.add(queryObject);
-        }
-      }
-    }
-    ObjectNode ysqlJson = Json.newObject();
-    ysqlJson.set("queries", queries);
-    ObjectNode responseJson = Json.newObject();
-    responseJson.set("ysql", ysqlJson);
-    return responseJson;
+    return query(universe, true);
   }
 
   public JsonNode resetQueries(Universe universe) {
@@ -102,9 +86,9 @@ public class QueryHelper {
 
         if (fetchSlowQueries) {
           callable = new SlowQueryExecutor(
-            node.nodeName,
             ip,
-            node.ysqlServerHttpPort
+            node.ysqlServerRpcPort,
+            SLOW_QUERY_STATS_SQL
           );
           Future<JsonNode> future = threadPool.submit(callable);
           futures.add(future);
@@ -132,6 +116,7 @@ public class QueryHelper {
     }
 
     try {
+      Map<String, JsonNode> queryMap = new HashMap<>();
       for (Future<JsonNode> future : futures) {
         JsonNode response = future.get();
         if (response.has("error")) {
@@ -142,13 +127,68 @@ public class QueryHelper {
             ycqlJson.put("errorCount", ycqlJson.get("errorCount").asInt() + 1);
           }
         } else {
-          if (response.has("ysql")) {
-            ArrayNode arr = (ArrayNode) ysqlJson.get("queries");
-            concatArrayNodes(arr, response.get("ysql"));
+          if (fetchSlowQueries) {
+            JsonNode ysqlResponse = response.get("result");
+            for (JsonNode queryObject : ysqlResponse) {
+              String queryStatement = queryObject.get("query").asText();
+              if (!EXCLUDED_QUERY_STATEMENTS.contains(queryStatement)) {
+                if (queryMap.containsKey(queryStatement)) {
+                  // Calculate new query stats
+                  ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryStatement);
+                  // Defining values to reuse
+                  double X_a = previousQueryObj.get("mean_time").asDouble();
+                  double X_b = queryObject.get("mean_time").asDouble();
+                  int n_a = previousQueryObj.get("calls").asInt();
+                  int n_b = queryObject.get("calls").asInt();
+                  double S_a = previousQueryObj.get("stddev_time").asDouble();
+                  double S_b = queryObject.get("stddev_time").asDouble();
 
-          } else if (response.has("ycql")) {
-            ArrayNode arr = (ArrayNode) ycqlJson.get("queries");
-            concatArrayNodes(arr, response.get("ycql"));
+                  double totalTime = previousQueryObj.get("total_time").asDouble() + queryObject.get("total_time").asDouble();
+                  int totalCalls = n_a + n_b;
+                  int rows = previousQueryObj.get("rows").asInt() + queryObject.get("rows").asInt();
+                  double minTime = Math.min(previousQueryObj.get("min_time").asDouble(), queryObject.get("min_time").asDouble());
+                  double maxTime = Math.max(previousQueryObj.get("max_time").asDouble(), queryObject.get("max_time").asDouble());
+                  int tmpTables = previousQueryObj.get("local_blks_written").asInt() + queryObject.get("local_blks_written").asInt();
+                  /**
+                   *  Formula to calculate std dev of two samples:
+                   *  Let mean, std dev, and size of sample A be X_a, S_a, n_a respectively; and
+                   *  mean, std dev, and size of sample B be X_b, S_b, n_b respectively.
+                   *  Then mean of combined sample X is given by
+                   *           n_a X_a + n_b X_b
+                   *      X =  -----------------
+                   *               n_a + n_b
+                   *
+                   *  The std dev of combined sample S is
+                   *           n_a ( S_a^2 + (X_a - X)^2) + n_b(S_b^2 + (X_b - X)^2)
+                   *      S =  -----------------------------------------------------
+                   *                              n_a + n_b
+                   */
+                  double averageTime = (n_a * X_a + n_b * X_b) / totalCalls;
+                  double stdDevTime = (n_a * (Math.pow(S_a, 2) + Math.pow(X_a - averageTime, 2)) +
+                    n_b * (Math.pow(S_b, 2) + Math.pow(X_b - averageTime, 2))) / totalCalls;
+                  previousQueryObj.put("total_time", totalTime);
+                  previousQueryObj.put("calls", totalCalls);
+                  previousQueryObj.put("rows", rows);
+                  previousQueryObj.put("min_time", minTime);
+                  previousQueryObj.put("max_time", maxTime);
+                  previousQueryObj.put("mean_time", averageTime);
+                  previousQueryObj.put("local_blks_written", tmpTables);
+                  previousQueryObj.put("stddev_time", stdDevTime);
+                } else {
+                  queryMap.put(queryStatement, queryObject);
+                }
+              }
+            }
+            ArrayNode queryArr = Json.newArray();
+            ysqlJson.set("queries", queryArr.addAll(queryMap.values()));
+          } else {
+            if (response.has("ysql")) {
+              ArrayNode arr = (ArrayNode) ysqlJson.get("queries");
+              concatArrayNodes(arr, response.get("ysql"));
+            } else if (response.has("ycql")) {
+              ArrayNode arr = (ArrayNode) ycqlJson.get("queries");
+              concatArrayNodes(arr, response.get("ycql"));
+            }
           }
         }
       }

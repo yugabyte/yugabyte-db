@@ -915,15 +915,15 @@ def create_instance(args):
             ebs = {
                 "DeleteOnTermination": True,
                 "VolumeType": args.volume_type,
-                # TODO: make this int.
                 "VolumeSize": args.volume_size
             }
             if args.cmk_res_name is not None:
                 ebs["Encrypted"] = True
                 ebs["KmsKeyId"] = args.cmk_res_name
-            if args.volume_type == "io1":
-                # TODO: make this int.
+            if args.volume_type == "io1" or args.volume_type == "gp3":
                 ebs["Iops"] = args.disk_iops
+            if args.volume_type == "gp3":
+                ebs["Throughput"] = args.disk_throughput
             volume = {
                 "DeviceName": "/dev/{}".format(device_name),
                 "Ebs": ebs

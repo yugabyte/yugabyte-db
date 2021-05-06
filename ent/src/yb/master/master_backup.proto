@@ -71,6 +71,8 @@ message CreateSnapshotRequestPB {
   // Interpet this snapshot as imported:
   // Snapshot will be created as COMPLETE and no tablet operations will be performed.
   optional bool imported = 4;
+
+  optional bytes schedule_id = 5; // Create snapshot to this schedule. Other fields are ignored.
 }
 
 message CreateSnapshotResponsePB {
@@ -83,6 +85,23 @@ message SnapshotInfoPB {
   optional bytes id = 1;
   // Detailed snapshot entries.
   optional SysSnapshotEntryPB entry = 2;
+}
+
+message TabletRestorationPB {
+  optional bytes id = 1;
+  optional SysSnapshotEntryPB.State state = 2;
+}
+
+message SysRestorationEntryPB {
+  optional SysSnapshotEntryPB.State state = 1 [ default = UNKNOWN ];
+  repeated TabletRestorationPB tablet_restorations = 2;
+  optional bytes snapshot_id = 8;
+}
+
+message RestorationInfoPB {
+  optional bytes id = 1;
+  // Detailed snapshot entries.
+  optional SysRestorationEntryPB entry = 2;
 }
 
 message ListSnapshotsRequestPB {
@@ -100,7 +119,6 @@ message ListSnapshotsResponsePB {
 message RestoreSnapshotRequestPB {
   optional bytes snapshot_id = 2;
   optional fixed64 restore_ht = 3; // Absolute Timing Option: Max HybridTime, in Micros.
-  optional fixed64 restore_interval = 4; // Relative Timing Option: Micros before Now to rewind.
 }
 
 message RestoreSnapshotResponsePB {
@@ -128,7 +146,7 @@ message ListSnapshotRestorationsRequestPB {
 message ListSnapshotRestorationsResponsePB {
   optional AppStatusPB status = 1;
 
-  repeated SnapshotInfoPB restorations = 2;
+  repeated RestorationInfoPB restorations = 2;
 }
 
 // ID mapping pair: old ID (object ID on external cluster) TO new ID

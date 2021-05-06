@@ -136,23 +136,6 @@ typedef unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 
 typedef unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
-// Component within the catalog manager which tracks blacklist (decommission) operation
-// related information.
-class BlacklistState {
- public:
-  BlacklistState() { Reset(); }
-  ~BlacklistState() {}
-
-  void Reset();
-
-  std::string ToString();
-
-  // Set of blacklisted servers host/ports. Protected by leader_lock_ in catalog manager.
-  std::unordered_set<HostPort, HostPortHash> tservers_;
-  // In-memory tracker for initial blacklist load.
-  int64_t initial_load_;
-};
-
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -450,6 +433,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 
+  ClusterLoadBalancer* load_balancer() { return load_balance_policy_.get(); }
+
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const;
@@ -538,9 +523,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // outstanding tasks are complete and the TS side tablets are deleted.
   // For system tables or colocated tables, we just need outstanding tasks to be done.
   //
-  // If all conditions are met, returns a lock in WRITE mode on this table, else nullptr.
-  std::unique_ptr<TableInfo::lock_type> MaybeTransitionTableToDeleted(
-      scoped_refptr<TableInfo> table);
+  // If all conditions are met, returns a locked write lock on this table.
+  // Otherwise lock is default constructed, i.e. not locked.
+  TableInfo::WriteLock MaybeTransitionTableToDeleted(TableInfoPtr table);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.
@@ -645,7 +630,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the percentage of leaders/tablets that have been moved off of the (leader) black-listed
   // tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
-      bool blacklist_leader) EXCLUDES(blacklist_lock_);
+      bool blacklist_leader);
 
   // API to check if all the live tservers have similar tablet workload.
   CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
@@ -678,18 +663,37 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns whether the table is a YCQL table.
   static bool IsYcqlTable(const TableInfo& table);
 
-  CHECKED_STATUS FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_identifier,
-                                       scoped_refptr<NamespaceInfo>* ns_info) const
-      REQUIRES_SHARED(lock_);
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceUnlocked(
+      const NamespaceIdentifierPB& ns_identifier) const REQUIRES_SHARED(lock_);
 
-  CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
-                               scoped_refptr<NamespaceInfo>* ns_info) const;
+  Result<scoped_refptr<NamespaceInfo>> FindNamespace(
+      const NamespaceIdentifierPB& ns_identifier) const EXCLUDES(lock_);
 
-  CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
-                           scoped_refptr<TableInfo>* table_info);
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(
+      const NamespaceId& id) const EXCLUDES(lock_);
+
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByIdUnlocked(
+      const NamespaceId& id) const REQUIRES_SHARED(lock_);
+
+  Result<scoped_refptr<TableInfo>> FindTableUnlocked(
+      const TableIdentifierPB& table_identifier) const REQUIRES_SHARED(lock_);
+
+  Result<scoped_refptr<TableInfo>> FindTable(
+      const TableIdentifierPB& table_identifier) const EXCLUDES(lock_);
+
+  Result<scoped_refptr<TableInfo>> FindTableById(const TableId& table_id) const EXCLUDES(lock_);
+
+  Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
+      const TableId& table_id) const REQUIRES_SHARED(lock_);
+
+  Result<bool> TableExists(
+      const std::string& namespace_name, const std::string& table_name) const EXCLUDES(lock_);
 
   Result<TableDescription> DescribeTable(
       const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress);
+
+  Result<TableDescription> DescribeTable(
+      const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
@@ -729,6 +733,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS DeleteTablet(
       const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc);
 
+  CHECKED_STATUS DeleteTablets(const std::vector<TabletId>& tablet_ids);
+
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
@@ -740,10 +746,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   MonoDelta TimeSinceElectedLeader();
 
   Result<std::vector<TableDescription>> CollectTables(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
       bool add_indexes,
-      bool include_parent_colocated_table = false,
-      bool succeed_if_create_in_progress = false);
+      bool include_parent_colocated_table = false);
+
+  Result<std::vector<TableDescription>> CollectTables(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
+      CollectFlags flags);
 
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
@@ -1064,7 +1073,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      bool is_index_table,
                                      bool update_indexed_table,
                                      std::vector<scoped_refptr<TableInfo>>* tables,
-                                     std::vector<std::unique_ptr<TableInfo::lock_type>>* table_lcks,
+                                     std::vector<TableInfo::WriteLock>* table_lcks,
                                      DeleteTableResponsePB* resp,
                                      rpc::RpcContext* rpc);
 
@@ -1151,14 +1160,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetAndUpdateYsqlTablespaceInfo();
 
   // Starts the periodic job to update tablespace info if it is not running.
-  void StartRefreshYSQLTablePlacementInfo();
+  void StartTablespaceBgTaskIfStopped();
 
   // Background task that refreshes the in-memory state for YSQL tables with their associated
   // tablespace info.
-  void RefreshYSQLTablePlacementInfo();
+  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped()
+  // above.
+  void RefreshTablespaceInfoPeriodically();
 
-  // Helper function to refresh tablespace_placement_map_ and table_to_tablespace_map_.
-  void DoRefreshYSQLTablePlacementInfo();
+  // Helper function to schedule the next iteration of the tablespace info task.
+  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
+
+  // Helper function to refresh the tablespace info.
+  void DoRefreshTablespaceInfo();
 
   // Report metrics.
   void ReportMetrics();
@@ -1179,19 +1193,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
 
-  // Set the current list of black listed nodes, which is used to track the load movement off of
-  // these nodes. Also sets the initial load (which is the number of tablets on these nodes)
-  // when the blacklist load removal operation was started. It permits overwrite semantics
-  // for the blacklist.
-  CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist) REQUIRES(blacklist_lock_);
-  CHECKED_STATUS SetLeaderBlacklist(const BlacklistPB& leader_blacklist) REQUIRES(blacklist_lock_);
-
   // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
   // Does not change any other tablets and their partitions.
   // Returns TabletInfo for registered tablet.
   Result<TabletInfo*> RegisterNewTabletForSplit(
       TabletInfo* source_tablet_info, const PartitionPB& partition,
-      TableInfo::lock_type* table_write_lock);
+      TableInfo::WriteLock* table_write_lock);
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
 
@@ -1204,7 +1211,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
 
   // Calculate the total number of replicas which are being handled by servers in state.
-  int64_t GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only);
+  int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
 
   int64_t leader_ready_term() EXCLUDES(state_lock_) {
     std::lock_guard<simple_spinlock> l(state_lock_);
@@ -1239,10 +1246,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   virtual Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
     return SnapshotSchedulesToTabletsMap();
   }
-
-  // ----------------------------------------------------------------------------------------------
-  // Private member fields
-  // ----------------------------------------------------------------------------------------------
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
@@ -1307,14 +1310,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
   std::unique_ptr<yb::ThreadPool> background_tasks_thread_pool_;
-
-  mutable LockType blacklist_lock_;
-
-  // Track all information related to the black list operations.
-  BlacklistState blacklistState GUARDED_BY(blacklist_lock_);
-
-  // Track all information related to the leader black list operations.
-  BlacklistState leaderBlacklistState GUARDED_BY(blacklist_lock_);
 
   // TODO: convert this to YB_DEFINE_ENUM for automatic pretty-printing.
   enum State {
@@ -1438,10 +1433,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map_ GUARDED_BY(tablespace_lock_);
 
   // Whether the periodic job to update tablespace info is running.
-  std::atomic<bool> tablespace_info_task_running_;
+  std::atomic<bool> tablespace_bg_task_running_;
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);
+
+  CHECKED_STATUS CollectTable(
+      const TableDescription& table_description,
+      CollectFlags flags,
+      std::vector<TableDescription>* all_tables,
+      std::unordered_set<NamespaceId>* parent_colocated_table_ids);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
@@ -1451,6 +1452,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   ServerRegistrationPB server_registration_;
+
+  BlacklistSet BlacklistSetFromPB();
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

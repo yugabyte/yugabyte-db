@@ -5,22 +5,23 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.TableManagerParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-
-import java.io.File;
-import java.util.*;
-
-import com.yugabyte.yw.common.PlacementInfoUtil;
-
 import org.yb.Common.TableType;
 import play.libs.Json;
 
-import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
-import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
-import static com.yugabyte.yw.common.TableManager.CommandSubType.DELETE;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static com.yugabyte.yw.common.TableManager.CommandSubType.*;
 
 @Singleton
 public class TableManager extends DevopsBase {
@@ -51,7 +52,7 @@ public class TableManager extends DevopsBase {
 
   public ShellResponse runCommand(CommandSubType subType,
                                                       TableManagerParams taskParams) {
-    Universe universe = Universe.get(taskParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
@@ -94,20 +95,20 @@ public class TableManager extends DevopsBase {
               commandArgs.add("--table");
               commandArgs.add(backupTableParams.tableNameList.get(listIndex));
               commandArgs.add("--keyspace");
-              commandArgs.add(backupTableParams.keyspace);
+              commandArgs.add(backupTableParams.getKeyspace());
               commandArgs.add("--table_uuid");
               commandArgs.add(backupTableParams.tableUUIDList.get(listIndex).toString());
             }
           } else {
-            if (backupTableParams.tableName != null) {
+            if (backupTableParams.getTableName() != null) {
               commandArgs.add("--table");
-              commandArgs.add(taskParams.tableName);
+              commandArgs.add(taskParams.getTableName());
             }
             commandArgs.add("--keyspace");
             if (backupTableParams.backupType == TableType.PGSQL_TABLE_TYPE) {
-              commandArgs.add("ysql." + taskParams.keyspace);
+              commandArgs.add("ysql." + taskParams.getKeyspace());
             } else {
-              commandArgs.add(taskParams.keyspace);
+              commandArgs.add(taskParams.getKeyspace());
             }
           }
         } else if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
@@ -116,13 +117,13 @@ public class TableManager extends DevopsBase {
               commandArgs.add("--table");
               commandArgs.add(tableName);
             }
-          } else if (backupTableParams.tableName != null) {
+          } else if (backupTableParams.getTableName() != null) {
             commandArgs.add("--table");
-            commandArgs.add(taskParams.tableName);
+            commandArgs.add(taskParams.getTableName());
           }
-          if (backupTableParams.keyspace != null) {
+          if (backupTableParams.getKeyspace() != null) {
             commandArgs.add("--keyspace");
-            commandArgs.add(backupTableParams.keyspace);
+            commandArgs.add(backupTableParams.getKeyspace());
           }
         }
 
@@ -164,9 +165,9 @@ public class TableManager extends DevopsBase {
       // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
       case BULK_IMPORT:
         commandArgs.add("--table");
-        commandArgs.add(taskParams.tableName);
+        commandArgs.add(taskParams.getTableName());
         commandArgs.add("--keyspace");
-        commandArgs.add(taskParams.keyspace);
+        commandArgs.add(taskParams.getKeyspace());
         BulkImportParams bulkImportParams = (BulkImportParams) taskParams;
         ReleaseManager.ReleaseMetadata metadata =
             releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);

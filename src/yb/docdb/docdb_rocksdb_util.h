@@ -29,6 +29,7 @@
 
 #include "yb/tablet/tablet_options.h"
 
+#include "yb/util/mem_tracker.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -105,6 +106,8 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
 // Request RocksDB compaction and wait until it completes.
 CHECKED_STATUS ForceRocksDBCompact(rocksdb::DB* db);
 
+rocksdb::Options TEST_AutoInitFromRocksDBFlags();
+
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
 // the tablet.
@@ -115,6 +118,9 @@ void InitRocksDBOptions(
 
 // Sets logs prefix for RocksDB options. This will also reinitialize options->info_log.
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix);
+
+// Gets the configured size of the node-global RocksDB priority thread pool.
+int32_t GetGlobalRocksDBPriorityThreadPoolSize();
 
 // Class to edit RocksDB manifest w/o fully loading DB into memory.
 class RocksDBPatcher {
