@@ -37,12 +37,6 @@ jobs:
           - name: "GCC 5, release, Linuxbrew, CentOS 7"
             os: ubuntu-20.04
             yb_build_args: release
-          - name: "Clang 7, ASAN, Linuxbrew, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: asan
-          - name: "Clang 7, TSAN, Linuxbrew, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: tsan
           - name: "Clang 11, debug, CentOS 7"
             os: ubuntu-20.04
             yb_build_args: --clang11 debug
