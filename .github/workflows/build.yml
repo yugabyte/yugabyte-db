@@ -21,17 +21,28 @@ on:
 jobs:
   # This workflow contains a single job called "build"
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
+    name: ${{ matrix.name }}
+
+    # Grab the latest CentOS 7 image from here:
+    # https://hub.docker.com/r/yugabyteci/yb_build_infra_centos7/tags?page=1&ordering=last_updated
 
     strategy:
+      fail-fast: false
       matrix:
-        name:
-          - "CentOS 7"
         include:
-          - name: "CentOS 7"
+          - name: "GCC 5, debug, Linuxbrew, CentOS 7"
             os: ubuntu-20.04
-            docker_image: yugabyteci/yb_build_infra_centos7:v2020-05-24T22_16_17
-
+            yb_build_args: debug
+          - name: "GCC 5, release, Linuxbrew, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: release
+          - name: "Clang 11, debug, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --clang11 debug
+          - name: "Clang 11, release, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --clang11 release
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
@@ -52,7 +63,7 @@ jobs:
               -i \
               "-w=$build_dir_in_container" \
               --mount type=bind,source="$PWD",target="$build_dir_in_container" \
-              "${{ matrix.docker_image }}" \
+              "yugabyteci/yb_build_infra_centos7:v2021-03-26T05_02_29" \
               bash -c '
                 set -euo pipefail -x
                 echo "OSTYPE (inside Docker): $OSTYPE"
@@ -69,7 +80,7 @@ jobs:
                   export PATH=/usr/local/bin:\$PATH
                   df -H /
                   echo ::group::Building YugabyteDB
-                  ./yb_build.sh release --download-thirdparty --ninja
+                  ./yb_build.sh release --download-thirdparty --ninja ${{ matrix.yb_build_args }}
                   echo ::endgroup::
                   df -H /
                 "
