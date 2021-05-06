@@ -42,6 +42,11 @@
 typedef struct cypher_yy_extra
 {
     List *result;
+    /*
+     * This node currently holds the EXPLAIN ExplainStmt node. It is generic in
+     * the event we need to allow more than just EXPLAIN to be passed up.
+     */
+    Node *extra;
 } cypher_yy_extra;
 
 /*

@@ -34,6 +34,7 @@
  * locate entries.
  */
 const ScanKeyword cypher_keywords[] = {
+    {"analyze", ANALYZE, RESERVED_KEYWORD},
     {"and", AND, RESERVED_KEYWORD},
     {"as", AS, RESERVED_KEYWORD},
     {"asc", ASC, RESERVED_KEYWORD},
@@ -49,6 +50,7 @@ const ScanKeyword cypher_keywords[] = {
     {"distinct", DISTINCT, RESERVED_KEYWORD},
     {"ends", ENDS, RESERVED_KEYWORD},
     {"exists", EXISTS, RESERVED_KEYWORD},
+    {"explain", EXPLAIN, RESERVED_KEYWORD},
     {"false", FALSE_P, RESERVED_KEYWORD},
     {"in", IN, RESERVED_KEYWORD},
     {"is", IS, RESERVED_KEYWORD},
@@ -64,6 +66,7 @@ const ScanKeyword cypher_keywords[] = {
     {"skip", SKIP, RESERVED_KEYWORD},
     {"starts", STARTS, RESERVED_KEYWORD},
     {"true", TRUE_P, RESERVED_KEYWORD},
+    {"verbose", VERBOSE, RESERVED_KEYWORD},
     {"where", WHERE, RESERVED_KEYWORD},
     {"with", WITH, RESERVED_KEYWORD}
 };

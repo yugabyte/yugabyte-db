@@ -128,6 +128,7 @@ List *parse_cypher(const char *s)
 
     scanner = ag_scanner_create(s);
     extra.result = NIL;
+    extra.extra = NULL;
 
     yyresult = cypher_yyparse(scanner, &extra);
 
@@ -140,5 +141,9 @@ List *parse_cypher(const char *s)
     if (yyresult)
         return NIL;
 
-    return extra.result;
+    /*
+     * Append the extra node node regardless of its value. Currently the extra
+     * node is only used by EXPLAIN
+    */
+    return lappend(extra.result, extra.extra);
 }

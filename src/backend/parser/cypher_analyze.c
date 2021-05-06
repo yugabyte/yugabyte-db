@@ -44,6 +44,8 @@
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
 
+static Node *extra_node = NULL;
+
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook;
 
 static void post_parse_analyze(ParseState *pstate, Query *query);
@@ -157,6 +159,8 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
     if (IsA(node, Query))
     {
         int flags;
+        bool result = false;
+        Query *query = (Query *)node;
 
         /*
          * QTW_EXAMINE_RTES
@@ -174,8 +178,54 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
         flags = QTW_EXAMINE_RTES | QTW_IGNORE_RT_SUBQUERIES |
                 QTW_IGNORE_JOINALIASES;
 
-        return query_tree_walker((Query *)node, convert_cypher_walker, pstate,
-                                 flags);
+        /* clear the global variable extra_node */
+        extra_node = NULL;
+
+        /* recurse on query */
+        result = query_tree_walker(query, convert_cypher_walker, pstate, flags);
+
+        /* check for EXPLAIN */
+        if (extra_node != NULL && nodeTag(extra_node) == T_ExplainStmt)
+        {
+            ExplainStmt *estmt = NULL;
+            Query *query_copy = NULL;
+            Query *query_node = NULL;
+
+            /*
+             * Create a copy of the query node. This is purposely a shallow copy
+             * because we are only moving the contents to another pointer.
+             */
+            query_copy = (Query *) palloc(sizeof(Query));
+            memcpy(query_copy, query, sizeof(Query));
+
+            /* build our Explain node and store the query node copy in it */
+            estmt = makeNode(ExplainStmt);
+            estmt->query = (Node *)query_copy;
+            estmt->options = ((ExplainStmt *)extra_node)->options;
+
+            /* build our replacement query node */
+            query_node = makeNode(Query);
+            query_node->commandType = CMD_UTILITY;
+            query_node->utilityStmt = (Node *)estmt;
+            query_node->canSetTag = true;
+
+            /* now replace the top query node with our replacement query node */
+            memcpy(query, query_node, sizeof(Query));
+
+            /*
+             * We need to free and clear the global variable when done. But, not
+             * the ExplainStmt options. Those will get freed by PG when the
+             * query is deleted.
+             */
+            ((ExplainStmt *)extra_node)->options = NULL;
+            pfree(extra_node);
+            extra_node = NULL;
+
+            /* we need to free query_node as it is no longer needed */
+            pfree(query_node);
+        }
+
+        return result;
     }
 
     return expression_tree_walker(node, convert_cypher_walker, pstate);
@@ -317,6 +367,27 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     setup_errpos_ecb(&ecb_state, pstate, query_loc);
 
     stmt = parse_cypher(query_str);
+
+    /*
+     * Extract any extra node passed up and assign it to the global variable
+     * 'extra_node' - if it wasn't already set. It will be at the end of the
+     * stmt list and needs to be removed for normal processing, regardless.
+     * It is done this way to allow utility commands to be processed against the
+     * AGE query tree. Currently, only EXPLAIN is passed here. But, it need not
+     * just be EXPLAIN - so long as it is carefully documented and carefully
+     * done.
+     */
+    if (extra_node == NULL)
+    {
+        extra_node = llast(stmt);
+        list_delete_ptr(stmt, extra_node);
+    }
+    else
+    {
+        Node *temp = llast(stmt);
+
+        list_delete_ptr(stmt, temp);
+    }
 
     cancel_errpos_ecb(&ecb_state);
 

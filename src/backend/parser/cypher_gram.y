@@ -77,11 +77,11 @@
 %token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ EQ_TILDE
 
 /* keywords in alphabetical order */
-%token <keyword> AND AS ASC ASCENDING
+%token <keyword> ANALYZE AND AS ASC ASCENDING
                  BY
                  COALESCE CONTAINS CREATE
                  DELETE DESC DESCENDING DETACH DISTINCT
-                 ENDS EXISTS
+                 ENDS EXISTS EXPLAIN
                  FALSE_P
                  IN IS
                  LIMIT
@@ -91,6 +91,7 @@
                  REMOVE RETURN
                  SET SKIP STARTS
                  TRUE_P
+                 VERBOSE
                  WHERE WITH
 
 /* query */
@@ -208,6 +209,64 @@ stmt:
                 yyerror(&yylloc, scanner, extra, "syntax error");
 
             extra->result = $1;
+            extra->extra = NULL;
+        }
+    | EXPLAIN single_query semicolon_opt
+        {
+            ExplainStmt *estmt = NULL;
+
+            if (yychar != YYEOF)
+                yyerror(&yylloc, scanner, extra, "syntax error");
+
+            extra->result = $2;
+
+            estmt = makeNode(ExplainStmt);
+            estmt->query = NULL;
+            estmt->options = NIL;
+            extra->extra = (Node *)estmt;
+        }
+    | EXPLAIN VERBOSE single_query semicolon_opt
+        {
+            ExplainStmt *estmt = NULL;
+
+            if (yychar != YYEOF)
+                yyerror(&yylloc, scanner, extra, "syntax error");
+
+            extra->result = $3;
+
+            estmt = makeNode(ExplainStmt);
+            estmt->query = NULL;
+            estmt->options = list_make1(makeDefElem("verbose", NULL, @2));;
+            extra->extra = (Node *)estmt;
+        }
+    | EXPLAIN ANALYZE single_query semicolon_opt
+        {
+            ExplainStmt *estmt = NULL;
+
+            if (yychar != YYEOF)
+                yyerror(&yylloc, scanner, extra, "syntax error");
+
+            extra->result = $3;
+
+            estmt = makeNode(ExplainStmt);
+            estmt->query = NULL;
+            estmt->options = list_make1(makeDefElem("analyze", NULL, @2));;
+            extra->extra = (Node *)estmt;
+        }
+    | EXPLAIN ANALYZE VERBOSE single_query semicolon_opt
+        {
+            ExplainStmt *estmt = NULL;
+
+            if (yychar != YYEOF)
+                yyerror(&yylloc, scanner, extra, "syntax error");
+
+            extra->result = $4;
+
+            estmt = makeNode(ExplainStmt);
+            estmt->query = NULL;
+            estmt->options = list_make2(makeDefElem("analyze", NULL, @2),
+                                        makeDefElem("verbose", NULL, @3));;
+            extra->extra = (Node *)estmt;
         }
     ;
 
