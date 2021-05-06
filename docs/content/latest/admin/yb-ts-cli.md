@@ -38,18 +38,18 @@ $ ./bin/yb-ts-cli
 
 The following commands are available:
 
-* [are_tablets_running](#are_tablets_running)
-* [is_server_ready](#is_server_ready)
-* [compact_all_tablets](#compact_all_tablets)
-* [compact_tablet](#compact_tablet)
-* [count_intents](#count_intents)
-* [current_hybrid_time](#current_hybrid_time)
-* [delete_tablet](#delete_tablet)
-* [dump_tablet](#dump_tablet)
-* [flush_all_tablets](#flush_all_tablets)
-* [flush_tablet](#flush_tablet)
-* [list_tablets](#list_tablets)
-* [set_flag](#set_flag)
+* [are_tablets_running](#are-tablets-running)
+* [is_server_ready](#is-server-ready)
+* [compact_all_tablets](#compact-all-tablets)
+* [compact_tablet](#compact-tablet)
+* [count_intents](#count-intents)
+* [current_hybrid_time](#current-hybrid-time)
+* [delete_tablet](#delete-tablet)
+* [dump_tablet](#dump-tablet)
+* [flush_all_tablets](#flush-all-tablets)
+* [flush_tablet](#flush-tablet)
+* [list_tablets](#list-tablets)
+* [set_flag](#set-flag)
 * [status](#status)
 
 ##### are_tablets_running
