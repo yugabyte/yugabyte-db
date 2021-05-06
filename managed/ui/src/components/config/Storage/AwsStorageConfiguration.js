@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBButton, YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull, isEmptyObject, isEmptyString, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull, isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 const required = (value) => value ? undefined : 'This field is required.';
@@ -43,7 +43,6 @@ class AwsStorageConfiguration extends Component {
 
   render() {
     const {
-      activeTab,
       customerConfigs,
       submitting,
       addConfig: { loading },
