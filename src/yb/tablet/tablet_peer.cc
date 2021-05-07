@@ -1133,8 +1133,9 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
         tablet_->GetCurrentVersionSstFilesUncompressedSize();
   }
 
-  if (log_) {
-    info.wal_files_disk_size = log_->OnDiskSize();
+  auto log = log_atomic_.load(std::memory_order_acquire);
+  if (log) {
+    info.wal_files_disk_size = log->OnDiskSize();
   }
 
   info.RecomputeTotalSize();
@@ -1142,7 +1143,8 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
 }
 
 int TabletPeer::GetNumLogSegments() const {
-  return (log_) ? log_->num_segments() : 0;
+  auto log = log_atomic_.load(std::memory_order_acquire);
+  return log ? log->num_segments() : 0;
 }
 
 std::string TabletPeer::LogPrefix() const {
