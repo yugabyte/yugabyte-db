@@ -229,7 +229,7 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field
                             name="accountName"
-                            placeholder="Kube Config name"
+                            placeholder="Provider name"
                             component={YBFormInput}
                             className={'kube-provider-input-field'}
                           />
