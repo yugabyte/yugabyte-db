@@ -98,7 +98,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     <a class="section-link icon-offset" href="query-1-performance/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">Query Optimization</div>
+        <div class="title">Query tuning</div>
       </div>
       <div class="body">
         Optimize query performance
