@@ -35,7 +35,7 @@ Refer to [Recovery scenarios](../point-in-time-restore-ysql#recovery-scenarios),
 
 ## Try out the PITR feature
 
-You can test the PITR feature (BETA) by creating a namespace and populating it, creating a snapshot, and restoring (be sure to check out the [limitations](#limitations)!) from that snapshot.
+You can test the PITR feature (BETA) by creating a namespace and populating it, creating a snapshot schedule, and restoring (be sure to check out the [limitations](#limitations)!) from that schedule.
 
 {{< tip title="Examples are simplified" >}}
 
