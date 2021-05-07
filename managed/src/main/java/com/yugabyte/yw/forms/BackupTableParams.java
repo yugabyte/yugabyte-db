@@ -68,8 +68,8 @@ public class BackupTableParams extends TableManagerParams {
     Set<String> tableNames = new HashSet<>();
     if (tableUUIDList != null && !tableUUIDList.isEmpty()) {
       tableNames.addAll(tableNameList);
-    } else if (tableName != null) {
-      tableNames.add(tableName);
+    } else if (getTableName() != null) {
+      tableNames.add(getTableName());
     }
 
     return tableNames;

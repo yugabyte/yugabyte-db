@@ -38,7 +38,15 @@ public class UniverseResp {
   public final JsonNode universeConfig;
   public final String taskUUID;
 
+  public UniverseResp(Universe entity) {
+    this(entity, null, null);
+  }
+
   public UniverseResp(Universe entity, UUID taskUUID) {
+    this(entity, taskUUID, null);
+  }
+
+  public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resources) {
     universeUUID = entity.universeUUID.toString();
     name = entity.name;
     creationDate = entity.creationDate.toString();
@@ -48,7 +56,7 @@ public class UniverseResp {
     this.taskUUID = taskUUID == null ? null : taskUUID.toString();
     Collection<NodeDetails> nodes = entity.getUniverseDetails().nodeDetailsSet;
 
-    resources = getResourcesOrNull(entity);
+    this.resources = resources;
     universeConfig = entity.config;
   }
 
@@ -56,16 +64,4 @@ public class UniverseResp {
   public Double getPricePerHour() {
     return resources == null ? null : resources.pricePerHour;
   }
-
-  private static UniverseResourceDetails getResourcesOrNull(Universe entity) {
-    try {
-      return UniverseResourceDetails.create(entity.getUniverseDetails());
-    } catch (Exception exception) {
-      // TODO: fixme. Because old Universe.toJson code was just silently masking all
-      //  the bugs in resources generation.
-      LOG.debug("Exception when generating UniverseResourceDetails", exception);
-      return null;
-    }
-  }
-
 }
