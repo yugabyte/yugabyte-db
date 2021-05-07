@@ -2059,6 +2059,13 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
 
 }  // namespace
 
+CHECKED_STATUS CatalogManager::TEST_SplitTablet(
+    const TabletId& tablet_id, const std::string& split_encoded_key,
+    const std::string& split_partition_key) {
+  auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
+}
+
 Status CatalogManager::TEST_SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
   return DoSplitTablet(source_tablet_info, split_hash_code);
@@ -2140,12 +2147,29 @@ Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& 
   return tablet_info;
 }
 
-Status CatalogManager::SplitTablet(
-    const TabletId& tablet_id, const std::string& split_encoded_key,
+void CatalogManager::SplitTabletWithKey(
+    const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
-  const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
+  // if it failed to submit that task. In other words, any failures here are not retriable, and
+  // success indicates that an async and automatically retrying task was submitted.
+  WARN_NOT_OK(
+    DoSplitTablet(tablet, split_encoded_key, split_partition_key),
+    Format("Failed to split tablet with GetSplitKey result for tablet: $0", tablet->tablet_id()));
+}
 
-  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
+Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
+  const auto tablet = VERIFY_RESULT(GetTabletInfo(tablet_id));
+
+  VLOG(2) << "Scheduling GetSplitKey request to leader tserver for source tablet ID: "
+          << tablet->tablet_id();
+  auto call = std::make_shared<AsyncGetTabletSplitKey>(
+      master_, AsyncTaskPool(), tablet,
+      [this, tablet](const std::string& split_encoded_key, const std::string& split_partition_key) {
+        SplitTabletWithKey(tablet, split_encoded_key, split_partition_key);
+      });
+  tablet->table()->AddTask(call);
+  return ScheduleTask(call);
 }
 
 Status CatalogManager::SplitTablet(
