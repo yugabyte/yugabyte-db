@@ -276,6 +276,120 @@ Relative times can be in any of the following formats (again, note that you can 
     (4 rows)
     ```
 
+## Undo metadata changes
+
+In addition to data changes, you can also use PITR to recover from metadata changes, such as creating and altering tables, and creating indexes.
+
+### Undo table creation
+
+1. Using the same keyspace as the previous scenarios, create a new table.
+
+    ```sql
+    create table t2(k int primary key);
+    ```
+
+1. Now restore back to a time before this table was created, as in [Restore from a relative time](#restore-from-a-relative-time).
+
+1. Due to a ycqlsh caching issue, to see the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+
+1. Check to see that table t2 is gone.
+
+    ```sh
+    ./bin/ycqlsh -e 'use pitr; describe tables;'
+    ```
+
+    ```output
+    employees
+    ```
+
+### Undo table alteration
+
+#### Undo ADD COLUMN
+
+1. Using the same keyspace as the previous scenarios, alter your table by adding a column.
+
+    ```sql
+    alter table pitr.employees add v2 int;
+    select * from pitr.employees;
+    ```
+
+    ```output
+     employee_no | name           | department | salary |  v2
+    -------------+----------------+------------+--------+------
+            1223 |   Lucille Ball | Operations |  70000 | null
+            1224 | John Zimmerman |      Sales |  60000 | null
+            1221 |     John Smith |  Marketing |  50000 | null
+            1222 |    Bette Davis |      Sales |  55000 | null
+
+    (4 rows)
+    ```
+
+1. Now restore back to a time before this table was altered, as in [Restore from a relative time](#restore-from-a-relative-time).
+
+1. Due to a ycqlsh caching issue, to see the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+
+1. Check to see that the v2 column is gone.
+
+    ```sql
+    ycqlsh:pitr> select * from employees;
+    ```
+
+    ```output
+     employee_no | name           | department | salary
+    -------------+----------------+------------+--------
+            1223 |   Lucille Ball | Operations |  70000
+            1224 | John Zimmerman |      Sales |  60000
+            1221 |     John Smith |  Marketing |  50000
+            1222 |    Bette Davis |      Sales |  55000
+
+    (4 rows)
+    ```
+
+#### Undo DROP COLUMN
+
+1. Using the same keyspace as the previous scenarios, alter your table by dropping a column.
+
+    ```sql
+    alter table pitr.employees drop salary;
+    select * from pitr.employees;
+    ```
+
+    ```output
+     employee_no | name           | department
+    -------------+----------------+-----------
+            1223 |   Lucille Ball | Operations
+            1224 | John Zimmerman |      Sales
+            1221 |     John Smith |  Marketing
+            1222 |    Bette Davis |      Sales
+
+    (4 rows)
+    ```
+
+1. Now restore back to a time before this table was altered, as in [Restore from a relative time](#restore-from-a-relative-time).
+
+1. Due to a ycqlsh caching issue, to see the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+
+1. Check to see that the salary column is back.
+
+    ```sql
+    ycqlsh:pitr> select * from employees;
+    ```
+
+    ```output
+     employee_no | name           | department | salary
+    -------------+----------------+------------+--------
+            1223 |   Lucille Ball | Operations |  70000
+            1224 | John Zimmerman |      Sales |  60000
+            1221 |     John Smith |  Marketing |  50000
+            1222 |    Bette Davis |      Sales |  55000
+
+    (4 rows)
+    ```
+
+### Undo index creation
+
+1. ...
+
 ## Limitations
 
 This is a BETA feature, and is in active development. Currently, you can recover from the following operations:
