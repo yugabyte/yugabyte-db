@@ -449,10 +449,11 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
         case PriorityThreadPoolTaskState::kNotStarted:
           higher_pri_worker = PickWorker();
           if (!higher_pri_worker) {
-            LOG(DFATAL) << Format(
+            LOG(WARNING) << Format(
                 "Unable to pick a worker for a higher priority task when trying to pause a lower "
-                    "priority task, paused: $1, free: $2, max: $3",
+                    "priority task, workers: $0, paused: $1, free: $2, max: $3",
                 workers_.size(), paused_workers_, free_workers_.size(), max_running_tasks_);
+            --paused_workers_;
             worker->Resumed();
             return;
           }
@@ -580,7 +581,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
   PriorityThreadPoolWorker* PickWorker() REQUIRES(mutex_) {
-    if (workers_.size() - paused_workers_ - free_workers_.size() >= max_running_tasks_) {
+    if (workers_.size() >= max_running_tasks_ + paused_workers_ + free_workers_.size()) {
       VLOG(1) << "We already have " << workers_.size() << " - " << paused_workers_ << " - "
               << free_workers_.size() << " >= " << max_running_tasks_
               << " workers running, we could not run a new worker.";
