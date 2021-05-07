@@ -20,6 +20,7 @@
 #include <boost/unordered_set.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/session.h"
 
 #include "yb/common/transaction.h"
 
@@ -63,7 +64,7 @@ class PgSessionAsyncRunResult {
 
   PgSessionAsyncRunResult() = default;
   PgSessionAsyncRunResult(PgsqlOpBuffer buffered_operations,
-                          std::future<Status> future_status,
+                          std::future<client::FlushStatus> future_status,
                           client::YBSessionPtr session);
   CHECKED_STATUS GetStatus(PgSession* session);
   bool InProgress() const;
@@ -72,8 +73,8 @@ class PgSessionAsyncRunResult {
   // buffered_operations_ holds buffered operations (if any) which were applied to
   // the YBSession object before the very first non-bufferable operation.
   // Result of these operations will be checked in the GetStatus() method.
-  PgsqlOpBuffer       buffered_operations_;
-  std::future<Status> future_status_;
+  PgsqlOpBuffer buffered_operations_;
+  std::future<client::FlushStatus> future_status_;
   client::YBSessionPtr session_;
 };
 

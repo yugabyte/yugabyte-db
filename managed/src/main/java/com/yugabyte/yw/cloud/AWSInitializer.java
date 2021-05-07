@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
@@ -41,9 +42,6 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 public class AWSInitializer extends AbstractInitializer {
   private static final boolean enableVerboseLogging = false;
 
-  private List<Map<String, String>> ec2AvailableInstances = new ArrayList<>();
-  private Provider provider;
-
   @Inject
   Environment environment;
 
@@ -58,7 +56,8 @@ public class AWSInitializer extends AbstractInitializer {
   @Override
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     try {
-      provider = Provider.get(customerUUID, providerUUID);
+      Provider provider = Provider.get(customerUUID, providerUUID);
+      InitializationContext context = new InitializationContext(provider);
 
       LOG.info("Initializing AWS instance type and pricing info.");
       LOG.info("This operation may take a few minutes...");
@@ -109,12 +108,12 @@ public class AWSInitializer extends AbstractInitializer {
         //  }
         JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
 
-        storeEBSPriceComponents(productDetailsListJson, onDemandJson);
-        storeInstancePriceComponents(productDetailsListJson, onDemandJson);
-        parseProductDetailsList(productDetailsListJson);
+        storeEBSPriceComponents(context, productDetailsListJson, onDemandJson);
+        storeInstancePriceComponents(context, productDetailsListJson, onDemandJson);
+        parseProductDetailsList(context, productDetailsListJson);
 
         // Create the instance types.
-        storeInstanceTypeInfoToDB();
+        storeInstanceTypeInfoToDB(context);
         LOG.info("Successfully stored pricing info for region {}", region.code);
       }
       LOG.info("Successfully finished parsing pricing info.");
@@ -123,7 +122,7 @@ public class AWSInitializer extends AbstractInitializer {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
-    return ApiResponse.success("AWS Initialized.");
+    return YWSuccess.asResult("AWS Initialized.");
   }
 
   /**
@@ -169,7 +168,9 @@ public class AWSInitializer extends AbstractInitializer {
    * @param productDetailsListJson Products sub-document with list of EC2 products along with SKU.
    * @param onDemandJson Price details json object.
    */
-  private void storeEBSPriceComponents(JsonNode productDetailsListJson, JsonNode onDemandJson) {
+  private void storeEBSPriceComponents(InitializationContext context,
+                                       JsonNode productDetailsListJson,
+                                       JsonNode onDemandJson) {
     LOG.info("Parsing product details list to store pricing info");
     for (JsonNode productDetailsJson : productDetailsListJson) {
       String sku = productDetailsJson.get("sku").textValue();
@@ -182,7 +183,7 @@ public class AWSInitializer extends AbstractInitializer {
         continue;
       }
       Region region = Region.find.query().where()
-          .eq("provider_uuid", provider.uuid)
+          .eq("provider_uuid", context.provider.uuid)
           .eq("name", regionJson.textValue())
           .findOne();
       if (region == null) {
@@ -196,13 +197,13 @@ public class AWSInitializer extends AbstractInitializer {
           case PRODUCT_FAMILY_STORAGE:
             JsonNode volumeType = attributesJson.get("volumeType");
             if (VOLUME_TYPE_PROVISIONED_IOPS.equals(volumeType.textValue())) {
-              storeEBSPriceComponent(sku, IO1_SIZE, region, onDemandJson);
+              storeEBSPriceComponent(context, sku, IO1_SIZE, region, onDemandJson);
             } else if (VOLUME_API_GENERAL_PURPOSE.equals(volumeType.textValue())) {
               JsonNode volumeApiName = attributesJson.get("volumeApiName");
               if (VOLUME_API_NAME_GP2.equals(volumeApiName.textValue())) {
-                storeEBSPriceComponent(sku, GP2_SIZE, region, onDemandJson);
+                storeEBSPriceComponent(context, sku, GP2_SIZE, region, onDemandJson);
               } else if (VOLUME_API_NAME_GP3.equals(volumeApiName.textValue())) {
-                storeEBSPriceComponent(sku, GP3_SIZE, region, onDemandJson);
+                storeEBSPriceComponent(context, sku, GP3_SIZE, region, onDemandJson);
               }
             }
             break;
@@ -210,9 +211,9 @@ public class AWSInitializer extends AbstractInitializer {
             if (GROUP_EBS_IOPS.equals(attributesJson.get("group").textValue())) {
               JsonNode volumeApiName = attributesJson.get("volumeApiName");
               if (VOLUME_API_NAME_IO1.equals(volumeApiName.textValue())) {
-                storeEBSPriceComponent(sku, IO1_PIOPS, region, onDemandJson);
+                storeEBSPriceComponent(context, sku, IO1_PIOPS, region, onDemandJson);
               } else if (VOLUME_API_NAME_GP3.equals(volumeApiName.textValue())) {
-                storeEBSPriceComponent(sku, GP3_PIOPS, region, onDemandJson);
+                storeEBSPriceComponent(context, sku, GP3_PIOPS, region, onDemandJson);
               }
             }
             break;
@@ -220,7 +221,7 @@ public class AWSInitializer extends AbstractInitializer {
             if (GROUP_EBS_THROUGHPUT.equals(attributesJson.get("group").textValue())) {
               JsonNode volumeApiName = attributesJson.get("volumeApiName");
               if (VOLUME_API_NAME_GP3.equals(volumeApiName.textValue())) {
-                storeEBSPriceComponent(sku, GP3_THROUGHPUT, region, onDemandJson);
+                storeEBSPriceComponent(context, sku, GP3_THROUGHPUT, region, onDemandJson);
               }
             }
             break;
@@ -239,7 +240,10 @@ public class AWSInitializer extends AbstractInitializer {
    * @param region The region the EBS item is in (e.g. us-west2).
    * @param onDemandJson Price details json object.
    */
-  private void storeEBSPriceComponent(String sku, String componentCode, Region region,
+  private void storeEBSPriceComponent(InitializationContext context,
+                                      String sku,
+                                      String componentCode,
+                                      Region region,
                                       JsonNode onDemandJson) {
     // Then create the pricing component object by grabbing the first item (should only have one)
     // and populating the PriceDetails with all the relevant information
@@ -266,7 +270,7 @@ public class AWSInitializer extends AbstractInitializer {
     priceDetails.effectiveDate = product.get("effectiveDate").textValue();
 
     // Save to db
-    PriceComponent.upsert(provider.uuid, region.code, componentCode, priceDetails);
+    PriceComponent.upsert(context.provider.uuid, region.code, componentCode, priceDetails);
   }
 
   /**
@@ -297,7 +301,8 @@ public class AWSInitializer extends AbstractInitializer {
    * @param productDetailsListJson Products sub-document with list of EC2 products along with SKU.
    * @param onDemandJson Price details json object.
    */
-  private void storeInstancePriceComponents(JsonNode productDetailsListJson,
+  private void storeInstancePriceComponents(InitializationContext context,
+                                            JsonNode productDetailsListJson,
                                             JsonNode onDemandJson) {
 
     // Get SKUs associated with Instances
@@ -332,10 +337,11 @@ public class AWSInitializer extends AbstractInitializer {
       if (include) {
         JsonNode attributesJson = productDetailsJson.get("attributes");
         storeInstancePriceComponent(
-            productDetailsJson.get("sku").textValue(),
-            attributesJson.get("instanceType").textValue(),
-            attributesJson.get("location").textValue(),
-            onDemandJson);
+          context,
+          productDetailsJson.get("sku").textValue(),
+          attributesJson.get("instanceType").textValue(),
+          attributesJson.get("location").textValue(),
+          onDemandJson);
       }
     }
   }
@@ -348,12 +354,15 @@ public class AWSInitializer extends AbstractInitializer {
    * @param regionName Name for the region the InstanceType is in (e.g. "US West (Oregon)").
    * @param onDemandJson Price details json object.
    */
-  private void storeInstancePriceComponent(String sku, String instanceCode, String regionName,
+  private void storeInstancePriceComponent(InitializationContext context,
+                                           String sku,
+                                           String instanceCode,
+                                           String regionName,
                                            JsonNode onDemandJson) {
 
     // First check that region exists
     Region region = Region.find.query().where()
-      .eq("provider_uuid", provider.uuid)
+      .eq("provider_uuid", context.provider.uuid)
       .eq("name", regionName)
       .findOne();
     if (region == null) {
@@ -387,7 +396,7 @@ public class AWSInitializer extends AbstractInitializer {
 
     // Save to db
     if (Double.parseDouble(pricePerUnit) != 0.0) {
-      PriceComponent.upsert(provider.uuid, region.code, instanceCode, priceDetails);
+      PriceComponent.upsert(context.provider.uuid, region.code, instanceCode, priceDetails);
     }
   }
 
@@ -423,7 +432,8 @@ public class AWSInitializer extends AbstractInitializer {
    *
    * @param productDetailsListJson A JSON blob as described above.
    */
-  private void parseProductDetailsList(JsonNode productDetailsListJson) {
+  private void parseProductDetailsList(InitializationContext context,
+                                       JsonNode productDetailsListJson) {
     LOG.info("Parsing product details list");
     Iterator<JsonNode> productDetailsListIter = productDetailsListJson.elements();
     while (productDetailsListIter.hasNext()) {
@@ -466,7 +476,7 @@ public class AWSInitializer extends AbstractInitializer {
         LOG.info("Found matching product with sku={}, instanceType={}", productAttrs.get("sku"),
             productAttrs.get("instanceType"));
       }
-      ec2AvailableInstances.add(productAttrs);
+      context.availableInstances.add(productAttrs);
     }
   }
 
@@ -504,13 +514,14 @@ public class AWSInitializer extends AbstractInitializer {
    * Store information about the various instance types to the database. Uses UPSERT semantics if
    * the row for the instance type already exists.
    */
-  private void storeInstanceTypeInfoToDB() {
+  private void storeInstanceTypeInfoToDB(InitializationContext context) {
     LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
+    Provider provider = context.provider;
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     InstanceType.resetInstanceTypeDetailsForProvider(provider.uuid);
     String instanceTypeCode = null;
 
-    for (Map<String, String> productAttrs : ec2AvailableInstances) {
+    for (Map<String, String> productAttrs : context.availableInstances) {
       // Get the instance type.
       instanceTypeCode = productAttrs.get("instanceType");
 

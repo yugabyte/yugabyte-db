@@ -7,6 +7,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.AccessManager.KeyType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -29,6 +30,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.*;
+
+import com.google.common.base.Strings;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CloudBootstrapTest extends CommissionerBaseTest {
@@ -122,12 +125,18 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       // Check AccessKey info.
       if (customAccessKey) {
         // TODO: might need to add port here.
-        verify(mockAccessManager, times(1)).addKey(
-            eq(r.uuid), eq(taskParams.keyPairName), any(), eq(taskParams.sshUser),
-            eq(taskParams.sshPort), eq(taskParams.airGapInstall), eq(false));
+        verify(mockAccessManager, times(1)).saveAndAddKey(
+            eq(r.uuid), eq(taskParams.sshPrivateKeyContent), eq(taskParams.keyPairName),
+            any(KeyType.class), eq(taskParams.sshUser), eq(taskParams.sshPort),
+            eq(taskParams.airGapInstall), eq(false));
       } else {
-        String expectedAccessKeyCode = String.format(
+        String expectedAccessKeyCode = taskParams.keyPairName;
+
+        if (Strings.isNullOrEmpty(expectedAccessKeyCode)) {
+          expectedAccessKeyCode = String.format(
             "yb-%s-%s_%s-key", defaultCustomer.code, provider.name.toLowerCase(), taskParams.providerUUID);
+        }
+
         verify(mockAccessManager, times(1)).addKey(eq(r.uuid), eq(expectedAccessKeyCode),
                any(),eq(taskParams.sshUser), eq(taskParams.sshPort), eq(taskParams.airGapInstall),
                eq(false));

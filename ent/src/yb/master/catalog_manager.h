@@ -169,7 +169,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
  private:
   friend class SnapshotLoader;
-  friend class ClusterLoadBalancer;
+  friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
   friend class UniverseReplicationLoader;
 
@@ -282,7 +282,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   int64_t LeaderTerm() override;
 
-  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() override;
+  Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
+      SysRowEntry::Type type) override;
 
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);

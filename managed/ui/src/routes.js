@@ -4,6 +4,8 @@ import Cookies from 'js-cookie';
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 import _ from 'lodash';
+import axios from 'axios';
+import { toast } from 'react-toastify';
 
 import {
   validateToken,
@@ -17,7 +19,7 @@ import {
 import { App } from './app/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import AuthenticatedComponent from './pages/AuthenticatedComponent';
+import AuthenticatedArea from './pages/AuthenticatedArea';
 import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
@@ -42,9 +44,9 @@ export const clearCredentials = () => {
   localStorage.removeItem('authToken');
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
-  localStorage.removeItem('userId');  
-  /* 
-   * Remove domain cookies if YW is running on subdomain. 
+  localStorage.removeItem('userId');
+  /*
+   * Remove domain cookies if YW is running on subdomain.
    * For context, see issue: https://github.com/yugabyte/yugabyte-db/issues/7653
    * We may want to remove this extra if-clause logic in the future when
    * we no longer rely on iframe authentication for cloud.
@@ -55,7 +57,7 @@ export const clearCredentials = () => {
     Cookies.remove('apiToken', { domain: cookiePath });
     Cookies.remove('authToken', { domain: cookiePath });
     Cookies.remove('customerId', { domain: cookiePath });
-    Cookies.remove('userId', { domain: cookiePath });  
+    Cookies.remove('userId', { domain: cookiePath });
   }
   Cookies.remove('apiToken');
   Cookies.remove('authToken');
@@ -78,6 +80,29 @@ function autoLogin(params)
       })
       browserHistory.push('/');
 }
+
+let expirationToastVisible = false;
+
+// global interceptor catching all responses with unauthorised code
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // skip 403 response for "/login" and "/register" endpoints
+    const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
+    const isUnauthorised = error.response?.status === 403;
+
+    // make sure there's a single session expired toast visible at a time
+    if (isUnauthorised && !isAllowedUrl && !expirationToastVisible) {
+      expirationToastVisible = true;
+      toast.error('Your session has expired, please login again', {
+        onClose: () => expirationToastVisible = false
+      });
+      browserHistory.push('/login');
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 function validateSession(store, replacePath, callback) {
   // Attempt to route to dashboard if tokens and cUUID exists or if insecure mode is on.
@@ -149,7 +174,7 @@ function validateSession(store, replacePath, callback) {
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
   const params = nextState?.location?.query;
-  
+
   if(!isNullOrEmpty(params)) {
        autoLogin(params);
        validateSession(store, replace, callback);
@@ -171,7 +196,7 @@ export default (store) => {
       <Route
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}
-        component={AuthenticatedComponent}
+        component={AuthenticatedArea}
       >
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>

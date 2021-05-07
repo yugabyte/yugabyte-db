@@ -363,6 +363,7 @@ Result<bool> TcpStream::Receive() {
     }
     return nread.status();
   }
+  DVLOG_WITH_PREFIX(4) << "socket_.Recvv() bytes: " << *nread;
 
   ReadBuffer().DataAppended(*nread);
   return *nread != 0;

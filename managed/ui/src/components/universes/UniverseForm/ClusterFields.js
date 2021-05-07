@@ -40,7 +40,7 @@ import {
 } from '../../../utils/UniverseUtils';
 import pluralize from 'pluralize';
 import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
-import { INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY } from '../UniverseDetail/UniverseDetail';
+import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -76,7 +76,7 @@ const DEFAULT_PORTS = {
 
 const DEFAULT_STORAGE_TYPES = {
   AWS: 'GP2',
-  GCP: 'Scratch',
+  GCP: 'Persistent',
   AZU: 'Premium_LRS'
 };
 
@@ -152,6 +152,7 @@ export default class ClusterFields extends Component {
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
+    this.clientToNodeEncryptField = this.clientToNodeEncryptField.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
     this.handleAwsArnChange = this.handleAwsArnChange.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
@@ -642,14 +643,17 @@ export default class ClusterFields extends Component {
         .join(',');
     }
     if (volumeDetail) {
+      let storageType = DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
+      if (instanceTypeSelectedData.providerCode === 'aws' &&
+        isEphemeralAwsStorageInstance(instanceTypeCode)) {
+        storageType = null;
+      }
+
       const deviceInfo = {
         volumeSize: volumeDetail.volumeSizeGB,
         numVolumes: volumesList.length,
         mountPoints: mountPoints,
-        storageType:
-          volumeDetail.volumeType === 'EBS'
-            ? DEFAULT_STORAGE_TYPES['AWS']
-            : DEFAULT_STORAGE_TYPES['GCP'],
+        storageType: storageType,
         storageClass: 'standard',
         diskIops: null,
         throughput: null
@@ -823,7 +827,16 @@ export default class ClusterFields extends Component {
     if (clusterType === 'primary') {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
       updateFormField('async.NodeToNodeEncrypt', event.target.checked);
-      this.setState({ enableNodeToNodeEncrypt: event.target.checked });
+
+      // If NodeToNodeEncrypt is false update ClientToNodeEncrypt field to false.
+      if (!event.target.checked) {
+        updateFormField('primary.enableClientToNodeEncrypt', event.target.checked);
+        updateFormField('async.enableClientToNodeEncrypt', event.target.checked);
+      }
+      this.setState({
+        enableNodeToNodeEncrypt: event.target.checked,
+        enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked
+      });
     }
   }
 
@@ -1099,9 +1112,8 @@ export default class ClusterFields extends Component {
   instanceTypeChanged(value) {
     const { updateFormField, clusterType } = this.props;
     const instanceTypeValue = value;
-    const instancePrefix = value.split('.')[0];
     this.setState({
-      awsInstanceWithEphemeralStorage: INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instancePrefix)
+      awsInstanceWithEphemeralStorage: isEphemeralAwsStorageInstance(instanceTypeValue)
     });
     updateFormField(`${clusterType}.instanceType`, instanceTypeValue);
     this.setState({ instanceTypeSelected: instanceTypeValue, nodeSetViaAZList: false });
@@ -1302,7 +1314,7 @@ export default class ClusterFields extends Component {
         const fixedVolumeInfo =
           (self.state.volumeType === 'SSD' || self.state.volumeType === 'NVME') &&
           currentProvider.code !== 'kubernetes' &&
-          deviceInfo.storageType === 'Scratch' &&
+          (!deviceInfo.storageType || deviceInfo.storageType === 'Scratch') &&
           currentProvider.code !== 'azu';
         const fixedNumVolumes =
           (self.state.volumeType === 'SSD' || self.state.volumeType === 'NVME') &&
@@ -1478,7 +1490,10 @@ export default class ClusterFields extends Component {
         <Field
           name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle}
-          isReadOnly={isFieldReadOnly}
+          isReadOnly={this.clientToNodeEncryptField(
+            isFieldReadOnly,
+            this.state.enableNodeToNodeEncrypt
+          )}
           disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}

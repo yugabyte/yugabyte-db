@@ -5,10 +5,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
@@ -91,27 +88,25 @@ public class Universe extends Model {
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public JsonNode config;
+  private Map<String, String> config;
 
   @JsonIgnore
-  public void setConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = this.getConfig();
-    String currConfigStr = Joiner.on(" ").withKeyValueSeparator("=").join(currConfig);
-    LOG.info("Setting config {} on universe {} [ {} ]", currConfigStr, name, universeUUID);
-    for (String key : configMap.keySet()) {
-      currConfig.put(key, configMap.get(key));
-    }
-    this.config = Json.toJson(currConfig);
+  public void setConfig(Map<String, String> newConfig) {
+    LOG.info("Setting config {} on universe {} [ {} ]",
+      Json.toJson(config), name, universeUUID);
+    this.config = newConfig;
     this.save();
+  }
+
+  public void updateConfig(Map<String, String> newConfig) {
+    Map<String, String> tmp = getConfig();
+    tmp.putAll(newConfig);
+    setConfig(tmp);
   }
 
   @JsonIgnore
   public Map<String, String> getConfig() {
-    if (this.config == null) {
-      return new HashMap<>();
-    } else {
-      return Json.fromJson(this.config, Map.class);
-    }
+    return config == null ? new HashMap<>() : config;
   }
 
   // The Json serialized version of universeDetails. This is used only in read from and writing to
@@ -249,6 +244,7 @@ public class Universe extends Model {
    * @param universeName String which contains the name which is to be checked
    * @return true if universe already exists, false otherwise
    */
+  @Deprecated
   public static boolean checkIfUniverseExists(String universeName) {
     return find.query().select("universeUUID").where().eq("name", universeName).findCount() > 0;
   }
@@ -311,10 +307,7 @@ public class Universe extends Model {
   }
 
   public static Universe getUniverseByName(String universeName) {
-    if (checkIfUniverseExists(universeName)) {
-      return find.query().where().eq("name", universeName).findOne();
-    }
-    return null;
+    return find.query().where().eq("name", universeName).findOne();
   }
 
   public static Optional<Universe> maybeGetUniverseByName(String universeName) {
@@ -401,6 +394,7 @@ public class Universe extends Model {
     // First get the universe.
     Universe universe = Universe.getOrBadRequest(universeUUID);
     // Make sure this universe has been locked.
+    // TODO: fixme. Useless check. java asserts are turned off by default in production code!!!
     assert !universe.universeDetails.updateInProgress;
     // Delete the universe.
     LOG.info("Deleting universe " + universe.name + ":" + universeUUID);
@@ -599,45 +593,16 @@ public class Universe extends Model {
   }
 
   /**
-   * Returns the certificate in case node to node TLS is enabled.
-   * @return certificate file if node to node TLS is enabled, null otherwise.
+   * Returns the certificate in case TLS is enabled.
+   *
+   * @return certificate file if TLS is enabled, null otherwise.
    */
-  public String getCertificateNodeToNode() {
-    // If universe does not have node to node enabled, return null.
-    UniverseDefinitionTaskParams details = this.getUniverseDetails();
-    if (details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
-      // This means there must be a root CA associated with it.
-      return CertificateInfo.get(details.rootCA).certificate;
+  public String getCertificate() {
+    UUID rootCA = this.getUniverseDetails().rootCA;
+    if (rootCA == null) {
+      return null;
     }
-    return null;
-  }
-
-  /**
-   * Returns the certificate and key in case client verification is enabled during TLS.
-   * @return String[] {client cert, client key} if mutual TLS is enabled.
-   */
-  public String[] getFilesForMutualTLS() {
-    UniverseDefinitionTaskParams details = this.getUniverseDetails();
-    if (details.getPrimaryCluster().userIntent.enableNodeToNodeClientVerification) {
-      // This means there must be a root CA associated with it.
-      return new String[] {CertificateInfo.get(details.rootCA).platformCert,
-                           CertificateInfo.get(details.rootCA).platformKey};
-    }
-    return new String[] {null, null};
-  }
-
-  /**
-   * Returns the certificate in case client to node TLS is enabled.
-   * @return certificate file if client to node TLS is enabled, null otherwise.
-   */
-  public String getCertificateClientToNode() {
-    // If universe does not have client to node enabled, return null.
-    UniverseDefinitionTaskParams details = this.getUniverseDetails();
-    if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
-      // This means there must be a root CA associated with it.
-      return CertificateInfo.get(details.rootCA).certificate;
-    }
-    return null;
+    return CertificateInfo.get(rootCA).certificate;
   }
 
   /**
@@ -846,10 +811,9 @@ public class Universe extends Model {
    */
   public HostAndPort getMasterLeader() {
     final String masterAddresses = getMasterAddresses();
-    final String cert = getCertificateNodeToNode();
-    final String[] clientFiles = getFilesForMutualTLS();
+    final String cert = getCertificate();
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
-    final YBClient client = ybService.getClient(masterAddresses, cert, clientFiles);
+    final YBClient client = ybService.getClient(masterAddresses, cert);
     final HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
     ybService.closeClient(client, masterAddresses);
     return leaderMasterHostAndPort;
@@ -899,5 +863,13 @@ public class Universe extends Model {
 
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
     return universeDetailsIfCertsExists(certUUID, customerUUID).size() != 0;
+  }
+
+  static boolean isUniversePaused(UUID uuid) {
+    Universe universe = maybeGet(uuid).orElse(null);
+    if (universe == null) {
+      return false;
+    }
+    return universe.getUniverseDetails().universePaused;
   }
 }

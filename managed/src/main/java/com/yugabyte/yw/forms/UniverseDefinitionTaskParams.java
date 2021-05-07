@@ -3,6 +3,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -17,11 +18,9 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import io.ebean.annotation.DbJson;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import javax.persistence.Column;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -43,16 +42,13 @@ import java.util.stream.Collectors;
  * <p>
  * NOTE #1: The regions can potentially be present in different clouds.
  */
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @Constraints.Required()
   @Constraints.MinLength(1)
   public List<Cluster> clusters = new LinkedList<>();
-
-  @Constraints.Required()
-  @DbJson
-  @Column(nullable = false, columnDefinition = "TEXT")
-  public JsonNode preflight_checks;
 
   @JsonIgnore
   // This is set during configure to figure out which cluster type is intended to be modified.
@@ -255,6 +251,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Nice name for the universe.
     public String universeName;
 
+    // TODO: https://github.com/yugabyte/yugabyte-db/issues/8190
     // The cloud provider UUID.
     public String provider;
 
@@ -301,8 +298,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public boolean enableNodeToNodeEncrypt = false;
 
     public boolean enableClientToNodeEncrypt = false;
-
-    public boolean enableNodeToNodeClientVerification = false;
 
     public boolean enableVolumeEncryption = false;
 
@@ -364,13 +359,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
-      newUserIntent.enableNodeToNodeClientVerification = enableNodeToNodeClientVerification;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
-      newUserIntent.enableVolumeEncryption = enableVolumeEncryption;
-      newUserIntent.enableIPV6 = enableIPV6;
-      newUserIntent.enableExposingService = enableExposingService;
-      newUserIntent.awsArnString = awsArnString;
-      newUserIntent.useHostname = useHostname;
       return newUserIntent;
     }
 
