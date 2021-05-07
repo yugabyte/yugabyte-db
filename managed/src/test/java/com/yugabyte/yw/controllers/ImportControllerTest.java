@@ -54,7 +54,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     mockResponse = mock(ListTabletServersResponse.class);
     when(mockApiHelper.getRequest(any(String.class))).thenReturn(Json.newObject());
-    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
@@ -172,8 +172,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertAuditEntry(numAuditsExpected, customer.uuid);
 
     // Confirm customer knows about this universe and has correct node names/ips.
-    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
-    result = doRequestWithAuthToken("GET", url, authToken);
+    String universeUrl = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
+    result = doRequestWithAuthToken("GET", universeUrl, authToken);
     assertOk(result);
     json = Json.parse(contentAsString(result));
     JsonNode universeDetails = json.get("universeDetails");
@@ -192,7 +192,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(3, numNodes);
 
     // Provider should have the instance type.
-    UUID provUUID = Provider.get(customer.uuid, CloudType.local).uuid;
+    UUID provUUID = Provider.get(customer.uuid, CloudType.local).get(0).uuid;
     url = "/api/customers/" + customer.uuid + "/providers/" + provUUID + "/instance_types/" +
           ImportUniverseFormData.DEFAULT_INSTANCE;
     result = doRequestWithAuthToken("GET", url, authToken);
@@ -202,26 +202,30 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(json.get("providerCode").asText(), CloudType.local.toString());
 
     // Edit should fail.
-    bodyJson = Json.newObject();
+    ObjectNode editUnivBody = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
       .put("universeName", universe.name)
       .put("numNodes", 5)
       .put("replicationFactor", 3);
-    bodyJson.set("clusters", Json.newArray().add(Json.newObject().set("userIntent", userIntentJson)));
-    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
-    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    editUnivBody.set("clusters",
+      Json.newArray().add(Json.newObject().set("userIntent", userIntentJson)));
+    result = assertThrows(YWServiceException.class,
+      () -> doRequestWithAuthTokenAndBody("PUT",
+        universeUrl,
+        authToken,
+        editUnivBody))
+      .getResult();
     assertBadRequest(result, "cannot be edited");
 
     // Node ops should fail.
-    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID + "/nodes/" +
-          nodeDetailsMap.elements().next().get("nodeName").asText();
-    bodyJson.put("nodeAction", NodeActionType.REMOVE.name());
-    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    String nodeUrl = "/api/customers/" + customer.uuid + "/universes/" + univUUID + "/nodes/" +
+      nodeDetailsMap.elements().next().get("nodeName").asText();
+    editUnivBody.put("nodeAction", NodeActionType.REMOVE.name());
+    result = doRequestWithAuthTokenAndBody("PUT", nodeUrl, authToken, editUnivBody);
     assertBadRequest(result, "Node actions cannot be performed on universe");
 
     // Delete should succeed.
-    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
-    result = doRequestWithAuthToken("DELETE", url, authToken);
+    result = doRequestWithAuthToken("DELETE", universeUrl, authToken);
     assertOk(result);
     json = Json.parse(contentAsString(result));
     UUID taskUUID = UUID.fromString(json.get("taskUUID").asText());
@@ -235,9 +239,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertValue(Json.toJson(deleteTaskInfo), "taskState", "Success");
     assertAuditEntry(numAuditsExpected + 1, customer.uuid);
 
-    String lookupUniverseUrl = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
     result = assertThrows(YWServiceException.class,
-      () -> doRequestWithAuthToken("GET", lookupUniverseUrl, authToken))
+      () -> doRequestWithAuthToken("GET", universeUrl, authToken))
       .getResult();
     String expectedResult = String.format("Cannot find universe %s", univUUID);
     assertBadRequest(result, expectedResult);

@@ -626,6 +626,8 @@ class DBImpl : public DB {
 
   uint64_t GetCurrentVersionSstFilesUncompressedSize() override;
 
+  std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() override;
+
   uint64_t GetCurrentVersionDataSstFilesSize() override;
 
   uint64_t GetCurrentVersionNumSSTFiles() override;

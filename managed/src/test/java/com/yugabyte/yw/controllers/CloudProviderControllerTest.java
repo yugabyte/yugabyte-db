@@ -16,7 +16,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.apache.commons.io.FileUtils;
-import org.hamcrest.MatcherAssert;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -38,9 +37,7 @@ import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static junit.framework.TestCase.assertTrue;
-import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
 
@@ -181,14 +178,16 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateDuplicateProvider() {
+  public void testCreateMultiInstanceProvider() {
     ModelFactory.awsProvider(customer);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
     Result result = createProvider(bodyJson);
-    assertBadRequest(result, "Duplicate provider code: aws");
-    assertAuditEntry(0, customer.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "name", "Amazon");
+    assertOk(result);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -378,10 +377,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    MatcherAssert.assertThat(json.asText(), allOf(notNullValue(),
-      equalTo("Deleted provider: " + p.uuid)));
+    assertYWSuccess(result, "Deleted provider: " + p.uuid);
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
     verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak.getKeyCode());
@@ -408,9 +404,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     InstanceType.createWithMetadata(p.uuid, "region-1", metaData);
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.asText(), allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
+    assertYWSuccess(result, "Deleted provider: " + p.uuid);
 
     assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
     assertNull(Provider.get(p.uuid));
@@ -421,9 +415,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.asText(), allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
+    assertYWSuccess(result, "Deleted provider: " + p.uuid);
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
     verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak.getKeyCode());
@@ -448,7 +440,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    userIntent.regionList = new ArrayList<UUID>();
+    userIntent.regionList = new ArrayList<>();
     userIntent.regionList.add(r.uuid);
     universe =
       Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
@@ -463,9 +455,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithoutAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
     Result result = deleteProvider(p.uuid);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.asText(), allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
+    assertYWSuccess(result, "Deleted provider: " + p.uuid);
     assertNull(Provider.get(p.uuid));
     assertAuditEntry(1, customer.uuid);
   }
@@ -485,7 +475,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testEditProviderKubernetes() {
-    Map<String, String> config = new HashMap<String, String>();
+    Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG_PROVIDER", "gke");
     config.put("KUBECONFIG_SERVICE_ACCOUNT", "yugabyte-helm");
     config.put("KUBECONFIG_STORAGE_CLASSES", "");
@@ -507,7 +497,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testEditProviderKubernetesConfigEdit() {
-    Map<String, String> config = new HashMap<String, String>();
+    Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG_PROVIDER", "gke");
     config.put("KUBECONFIG_SERVICE_ACCOUNT", "yugabyte-helm");
     config.put("KUBECONFIG_STORAGE_CLASSES", "");
@@ -528,7 +518,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertTrue(p.getConfig().get("KUBECONFIG").contains("test2.conf"));
     Path path = Paths.get(p.getConfig().get("KUBECONFIG"));
     try {
-      List contents = Files.readAllLines(path);
+      List<String> contents = Files.readAllLines(path);
       assertEquals(contents.get(0), "test5678");
     } catch (IOException e) {
       // Do nothing

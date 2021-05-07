@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
@@ -121,7 +122,7 @@ public class AWSInitializer extends AbstractInitializer {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
-    return ApiResponse.success("AWS Initialized.");
+    return YWSuccess.asResult("AWS Initialized.");
   }
 
   /**

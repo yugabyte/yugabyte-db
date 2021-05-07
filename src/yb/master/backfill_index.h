@@ -92,17 +92,13 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   Status UpdateSafeTime(const Status& s, HybridTime ht);
 
-  void Done(const Status& s);
+  void Done(const Status& s, const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return master_; }
 
   ThreadPool* threadpool() { return callback_pool_; }
 
-  const std::vector<IndexInfoPB>& indexes() const { return indexes_to_build_; }
-
-  std::string index_ids() const {
-    return index_ids_;
-  }
+  const std::string& requested_index_names() const { return requested_index_names_; }
 
   int32_t schema_version() const { return schema_version_; }
 
@@ -129,28 +125,41 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const std::string GetNamespaceName() const;
 
+  const std::vector<IndexInfoPB>& index_infos() const { return index_infos_; }
+
+  const std::unordered_set<TableId> indexes_to_build() const;
+
+  const TableId& indexed_table_id() const { return indexed_table_->id(); }
+
  private:
   void LaunchComputeSafeTimeForRead();
-
   void LaunchBackfill();
 
-  CHECKED_STATUS AlterTableStateToSuccess();
+  CHECKED_STATUS MarkAllIndexesAsFailed();
+  CHECKED_STATUS MarkAllIndexesAsSuccess();
+
+  CHECKED_STATUS MarkIndexesAsFailed(
+      const std::unordered_set<TableId>& indexes, const std::string& message);
+  CHECKED_STATUS MarkIndexesAsDesired(
+      const std::unordered_set<TableId>& index_ids, BackfillJobPB_State state,
+      const string message);
 
   CHECKED_STATUS AlterTableStateToAbort();
+  CHECKED_STATUS AlterTableStateToSuccess();
 
+  void CheckIfDone();
+  CHECKED_STATUS UpdateIndexPermissionsForIndexes();
   CHECKED_STATUS ClearCheckpointStateInTablets();
 
   // We want to prevent major compactions from garbage collecting delete markers
   // on an index table, until the backfill process is complete.
   // This API is used at the end of a successful backfill to enable major compactions
   // to gc delete markers on an index table.
-  CHECKED_STATUS
-  AllowCompactionsToGCDeleteMarkers(const TableId &index_table_id);
+  CHECKED_STATUS AllowCompactionsToGCDeleteMarkers(const TableId& index_table_id);
 
   // Send the "backfill done request" to all tablets of the specified table.
   CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
       const scoped_refptr<TableInfo> &index_table);
-
   // Send the "backfill done request" to the specified tablet.
   CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
       const scoped_refptr<TabletInfo> &index_table_tablet, const std::string &table_id);
@@ -158,11 +167,11 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Master* master_;
   ThreadPool* callback_pool_;
   const scoped_refptr<TableInfo> indexed_table_;
-  const std::vector<IndexInfoPB> indexes_to_build_;
+  const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
   int64_t leader_term_;
 
-  std::string index_ids_;
+  std::string requested_index_names_;
   std::atomic_bool done_{false};
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
@@ -170,14 +179,16 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   std::shared_ptr<BackfillTableJob> backfill_job_;
   mutable simple_spinlock mutex_;
   HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMin};
+  const std::unordered_set<TableId> requested_index_ids_;
   const scoped_refptr<NamespaceInfo> ns_info_;
 };
 
 class BackfillTableJob : public MonitoredTask {
  public:
   explicit BackfillTableJob(std::shared_ptr<BackfillTable> backfill_table)
-      : start_timestamp_(MonoTime::Now()), backfill_table_(backfill_table),
-        index_ids_(backfill_table_->index_ids()) {}
+      : start_timestamp_(MonoTime::Now()),
+        backfill_table_(backfill_table),
+        requested_index_names_(backfill_table_->requested_index_names()) {}
 
   Type type() const override { return BACKFILL_TABLE; }
 
@@ -208,7 +219,7 @@ class BackfillTableJob : public MonitoredTask {
   MonoTime start_timestamp_, completion_timestamp_;
   std::atomic<MonitoredTaskState> state_{MonitoredTaskState::kWaiting};
   std::shared_ptr<BackfillTable> backfill_table_;
-  std::string index_ids_;
+  const std::string requested_index_names_;
 };
 
 // A background task which is responsible for backfilling rows from a given
@@ -221,7 +232,10 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   void Launch() { LaunchNextChunkOrDone(); }
 
   void LaunchNextChunkOrDone();
-  void Done(const Status& status, const std::string& optional_next_row);
+  void Done(
+      const Status& status,
+      const boost::optional<string>& backfilled_until,
+      const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return backfill_table_->master(); }
 
@@ -231,9 +245,13 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
     return backfill_table_->read_time_for_backfill();
   }
 
-  const std::vector<IndexInfoPB>& indexes() { return backfill_table_->indexes(); }
+  const std::unordered_set<TableId> indexes_to_build() {
+    return backfill_table_->indexes_to_build();
+  }
+  const TableId& indexed_table_id() { return backfill_table_->indexed_table_id(); }
+  const std::vector<IndexInfoPB>& index_infos() const { return backfill_table_->index_infos(); }
 
-  std::string index_ids() { return backfill_table_->index_ids(); }
+  const std::string& requested_index_names() { return backfill_table_->requested_index_names(); }
 
   int32_t schema_version() { return backfill_table_->schema_version(); }
 
@@ -243,9 +261,13 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
     return done_.load(std::memory_order_acquire);
   }
 
+  std::string LogPrefix() const;
+
   const std::string GetNamespaceName() const { return backfill_table_->GetNamespaceName(); }
 
  private:
+  CHECKED_STATUS UpdateBackfilledUntil(const string& backfilled_until);
+
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
   Partition partition_;
@@ -254,7 +276,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   // backfill has been already processed (non-inclusive). The next
   // request to backfill has to start backfilling from this row till
   // the end of the tablet range.
-  std::string next_row_to_backfill_;
+  std::string backfilled_until_;
   std::atomic_bool done_{false};
 };
 
@@ -281,7 +303,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
 
   std::string description() const override {
     return yb::Format("GetSafeTime for $0 Backfilling index tables $1",
-                      tablet_id(), backfill_table_->index_ids());
+                      tablet_id(), backfill_table_->requested_index_names());
   }
 
  private:
@@ -314,7 +336,9 @@ class BackfillChunk : public RetryingTSRpcTask {
                           gscoped_ptr<TSPicker>(new PickLeaderReplica(
                               backfill_tablet->tablet())),
                           backfill_tablet->tablet()->table().get()),
-        backfill_tablet_(backfill_tablet), start_key_(start_key) {
+        indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
+        backfill_tablet_(backfill_tablet),
+        start_key_(start_key) {
     deadline_ = MonoTime::Max(); // Never time out.
   }
 
@@ -326,7 +350,7 @@ class BackfillChunk : public RetryingTSRpcTask {
 
   std::string description() const override {
     return yb::Format("Backfilling index_ids $0 for tablet $1 from key '$2'",
-                      backfill_tablet_->index_ids(), tablet_id(),
+                      indexes_being_backfilled_, tablet_id(),
                       b2a_hex(start_key_));
   }
 
@@ -352,6 +376,7 @@ class BackfillChunk : public RetryingTSRpcTask {
     return backfill_tablet_->tablet()->table()->GetTableType();
   }
 
+  const std::unordered_set<TableId> indexes_being_backfilled_;
   tserver::BackfillIndexResponsePB resp_;
   std::shared_ptr<BackfillTablet> backfill_tablet_;
   std::string start_key_;
