@@ -465,14 +465,14 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ) with transactions = { 'enabled' : true };
     ```
 
+1. Get a timestamp using one of the methods in [Restore from an absolute time](#restore-from-an-absolute-time).
+
 1. Remove the `salary` column from pitr.employees.
 
     ```sql
     use pitr;
     alter table employees drop salary;
     ```
-
-1. Get a timestamp using one of the methods in [Restore from an absolute time](#restore-from-an-absolute-time).
 
 1. Delete the `dont_deleteme` table.
 
