@@ -86,26 +86,42 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (4 rows)
     ```
 
-1. Create a snapshot of the table from a shell prompt:
+1. Create a snapshot schedule for the new `pitr` keyspace from a shell prompt. In this example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_database_snapshot pitr employees
+    $ bin/yb-admin create_snapshot_schedule 1 10 ycql.pitr
     ```
 
     ```output
-    Started snapshot creation: bb5fc435-a2b9-4f3a-a510-0bacc6aebccf
+    {
+        "schedule_id": "0e4ceb83-fe3d-43da-83c3-013a8ef592ca"
+    }
     ```
 
-1. Verify that the snapshot is complete:
+1. Verify that a snapshot has happened:
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ bin/yb-admin list_snapshot_schedules
     ```
 
     ```output
-    Snapshot UUID                         State
-    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
-    No snapshot restorations
+    {
+        "schedules": [
+            {
+                "id": "0e4ceb83-fe3d-43da-83c3-013a8ef592ca",
+                "options": {
+                    "interval": "60.000s",
+                    "retention": "600.000s"
+                },
+                "snapshots": [
+                    {
+                        "id": "8d588cb7-13f2-4bda-b584-e9be47a144c5",
+                        "snapshot_time_utc": "2021-05-07T20:16:08.492330+0000"
+                    }
+                ]
+            }
+        ]
+    }
     ```
 
 ### Restore from an absolute time
@@ -118,7 +134,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    1617818825.646913
+    1620418801.439626
     ```
 
     ```sh
@@ -127,16 +143,16 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    1617818868.669611
+    1620418817.729963
     ```
 
     ```sh
-    # Linux and some other systems (but not macOS): use the timestamp as-is
+    # Linux and some other systems (but NOT macOS): use the timestamp as-is
     $ date +%s%N | cut -b1-16
     ```
 
     ```output
-    1617818943892323
+    1620418843757085
     ```
 
 1. Add a row for employee 9999 to the table:
@@ -159,7 +175,20 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (5 rows)
     ```
 
-1. List snapshots, at a terminal prompt:
+1. Restore the snapshot schedule to the timestamp you obtained before you deleted the data, at a terminal prompt:
+
+    ```sh
+    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418801439626
+    ```
+
+    ```output
+    {
+        "snapshot_id": "2287921b-1cf9-4bbc-ad38-e309f86f72e9",
+        "restoration_id": "1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb"
+    }
+    ```
+
+1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
     $ bin/yb-admin list_snapshots
@@ -167,26 +196,15 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
     ```output
     Snapshot UUID                         State
-    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
-    No snapshot restorations
-    ```
-
-1. Restore the latest snapshot to the timestamp you obtained before you deleted the data, at a terminal prompt:
-
-    ```sh
-    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf 1617818943892323
-
-1. Next, verify the restoration is in `RESTORED` state:
-
-    ```sh
-    $ bin/yb-admin list_snapshots
-    ```
-
-    ```output
-    Snapshot UUID                         State
-    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
+    8d588cb7-13f2-4bda-b584-e9be47a144c5  COMPLETE
+    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
+    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
+    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
+    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
+    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
+    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
     Restoration UUID                      State
-    bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
+    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
     ```
 
 1. In the YCQL shell, verify the data is restored, and there is no row for employee 9999:
@@ -249,7 +267,14 @@ Relative times can be in any of the following formats (again, note that you can 
 1. At a terminal prompt, restore the snapshot you created earlier:
 
     ```sh
-    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf minus "5m"
+    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca minus "5m"
+    ```
+
+    ```output
+    {
+        "snapshot_id": "6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30",
+        "restoration_id": "f4256380-4f63-4937-830f-5be135d97717"
+    }
     ```
 
 1. Verify the restoration is in `RESTORED` state:
@@ -260,9 +285,19 @@ Relative times can be in any of the following formats (again, note that you can 
 
     ```output
     Snapshot UUID                         State
-    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
+    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
+    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
+    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
+    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
+    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
+    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
+    04b1e139-2c78-411d-bf0d-f8ee81263912  COMPLETE
+    6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30  COMPLETE
+    42e84f67-d517-4ed6-b571-d3b11059cfa6  COMPLETE
+    395e3e97-c259-46dd-a3ef-1b5441c6de10  COMPLETE
     Restoration UUID                      State
-    bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
+    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
+    f4256380-4f63-4937-830f-5be135d97717  RESTORED
     ```
 
 1. Verify the data is restored, and employee 1223 is back:
@@ -417,6 +452,38 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
     ```output
     <stdin>:1:Column family u't1_index' not found
+    ```
+
+### Undo table and column deletion
+
+1. Create a second table called `dont_deleteme`.
+
+    ```sql
+    create table dont_deleteme (
+      oops integer PRIMARY KEY,
+      mistake text
+    ) with transactions = { 'enabled' : true };
+    ```
+
+1. Remove the `salary` column from pitr.employees.
+
+    ```sql
+    use pitr;
+    alter table employees drop salary;
+    ```
+
+1. Get a timestamp using one of the methods in [Restore from an absolute time](#restore-from-an-absolute-time).
+
+1. Delete the `dont_deleteme` table.
+
+    ```sql
+    drop table dont_deleteme;
+    ```
+
+1. Restore to the timestamp.
+
+    ```sh
+    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418801439626
     ```
 
 ## Limitations

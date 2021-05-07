@@ -81,7 +81,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (4 rows)
     ```
 
-1. At a terminal prompt, create a snapshot of the table from a shell prompt:
+1. At a terminal prompt, create a snapshot of the database from a shell prompt:
 
     ```sh
     $ bin/yb-admin create_database_snapshot yugabyte
