@@ -488,13 +488,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ## Limitations
 
-This is a BETA feature, and is in active development. Currently, you can recover from the following operations:
+This is a BETA feature, and is in active development. Currently, you can recover from the following YCQL operations:
 
 * Data changes
-* CREATE INDEX
-* CREATE TABLE
+* CREATE and DROP TABLE
 * ALTER TABLE (including ADD and DROP COLUMN)
-* DROP TABLE
+* CREATE and DROP INDEX
 
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
