@@ -88,9 +88,6 @@ DEFINE_bool(ysql_beta_features, false,
 
 // Per-feature flags -- only relevant if ysql_beta_features is false.
 
-DEFINE_bool(ysql_beta_feature_extension, false,
-            "Whether to enable the 'extension' ysql beta feature");
-
 DEFINE_bool(ysql_beta_feature_tablegroup, true,
             "Whether to enable the incomplete 'tablegroup' ysql beta feature");
 
