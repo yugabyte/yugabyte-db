@@ -35,7 +35,7 @@ Refer to the [YSQL tab](../point-in-time-restore-ysql) for details on this featu
 
 ## Try out the PITR feature
 
-You can test the PITR feature (BETA) by creating a database and populating it, creating a snapshot, and restoring ([data only](#limitations)!) from that snapshot.
+You can test the PITR feature (BETA) by creating a database and populating it, creating a snapshot, and restoring (be sure to check out the [limitations](#limitations)!) from that snapshot.
 
 ### Create and snapshot a table
 
@@ -278,11 +278,15 @@ Relative times can be in any of the following formats (again, note that you can 
 
 ## Limitations
 
-This is a BETA feature, and is in active development. Currently, you can **restore data only**. The feature doesn't support metadata; in other words, rolling back past operations such as CREATE, ALTER, TRUNCATE, and DROP TABLE is unsupported.
+This is a BETA feature, and is in active development. Currently, you can recover from the following operations:
+
+* Data changes
+* CREATE INDEX
+* CREATE TABLE
+* ALTER TABLE (including ADD and DROP COLUMN)
+* DROP TABLE
 
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
 * Automatic configuration
-* Support for undoing metadata operations, such as CREATE, ALTER, TRUNCATE, or DROP TABLE
-* Schedules to take snapshots at user-defined intervals
 * Options to restore with different granularities, such as a single YSQL database or the whole YCQL dataset.
