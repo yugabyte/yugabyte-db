@@ -740,9 +740,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return *encryption_manager_;
   }
 
-  CHECKED_STATUS SplitTablet(
-      const TabletId& tablet_id, const std::string& split_encoded_key,
-      const std::string& split_partition_key);
+  CHECKED_STATUS SplitTablet(const TabletId& tablet_id);
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -756,6 +754,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
+
+  CHECKED_STATUS TEST_SplitTablet(
+      const TabletId& tablet_id, const std::string& split_encoded_key,
+      const std::string& split_partition_key);
 
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
@@ -1472,6 +1474,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       CollectFlags flags,
       std::vector<TableDescription>* all_tables,
       std::unordered_set<NamespaceId>* parent_colocated_table_ids);
+
+  void SplitTabletWithKey(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
+      const std::string& split_partition_key);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
