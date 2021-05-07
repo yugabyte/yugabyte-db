@@ -668,6 +668,26 @@ class AsyncRemoveTableFromTablet : public RetryingTSRpcTask {
   tserver::RemoveTableFromTabletResponsePB resp_;
 };
 
+class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
+ public:
+  AsyncGetTabletSplitKey(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      std::function<void(const std::string&, const std::string&)> result_cb);
+
+  Type type() const override { return ASYNC_GET_TABLET_SPLIT_KEY; }
+
+  std::string type_name() const override { return "Get Tablet Split Key"; }
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
+
+  tserver::GetSplitKeyRequestPB req_;
+  tserver::GetSplitKeyResponsePB resp_;
+  std::function<void(const std::string&, const std::string&)> result_cb_;
+};
+
 // Sends SplitTabletRequest with provided arguments to the service interface of the leader of the
 // tablet.
 class AsyncSplitTablet : public AsyncTabletLeaderTask {

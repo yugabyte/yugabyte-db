@@ -754,8 +754,8 @@ message TServerMetricsPB {
 
 message TabletForSplitPB {
   required bytes tablet_id = 1;
-  required bytes split_partition_key = 2;
-  required bytes split_encoded_key = 3;
+  required bytes OBSOLETE_split_partition_key = 2;
+  required bytes OBSOLETE_split_encoded_key = 3;
 }
 
 message ListTabletsOnPathPB {

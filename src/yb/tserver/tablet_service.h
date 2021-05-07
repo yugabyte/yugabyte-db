@@ -44,6 +44,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.service.h"
 #include "yb/tserver/tserver_service.service.h"
 
@@ -236,6 +237,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   // Called on the Index table(s) once the backfill is complete.
   void BackfillDone(
       const ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void GetSplitKey(
+      const GetSplitKeyRequestPB* req,
+      GetSplitKeyResponsePB* resp,
       rpc::RpcContext context) override;
 
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source

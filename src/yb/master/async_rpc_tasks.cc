@@ -1211,6 +1211,48 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
 }
 
 // ============================================================================
+//  Class AsyncGetTabletSplitKey.
+// ============================================================================
+AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
+    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    std::function<void(const std::string&, const std::string&)> result_cb)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
+  req_.set_tablet_id(tablet_id());
+}
+
+void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    const Status s = StatusFromPB(resp_.error().status());
+    const TabletServerErrorPB::Code code = resp_.error().code();
+    LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
+                             << ") failed for tablet " << tablet_id() << " with error code "
+                             << TabletServerErrorPB::Code_Name(code) << ": " << s;
+  } else {
+    VLOG_WITH_PREFIX(1)
+        << "TS " << permanent_uuid() << ": got split key for tablet " << tablet_id();
+    TransitionToCompleteState();
+  }
+
+  server::UpdateClock(resp_, master_->clock());
+}
+
+bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
+  req_.set_dest_uuid(permanent_uuid());
+  req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  ts_admin_proxy_->GetSplitKeyAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1)
+      << "Sent get split key request to " << permanent_uuid() << " (attempt " << attempt << "):\n"
+      << req_.DebugString();
+  return true;
+}
+
+void AsyncGetTabletSplitKey::Finished(const Status& status) {
+  if (status.ok()) {
+    result_cb_(resp_.split_encoded_key(), resp_.split_partition_key());
+  }
+}
+
+// ============================================================================
 //  Class AsyncSplitTablet.
 // ============================================================================
 AsyncSplitTablet::AsyncSplitTablet(
