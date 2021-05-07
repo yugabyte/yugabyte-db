@@ -177,7 +177,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    Snapshot UUID                     State
+    Snapshot UUID                         State
     bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
     Restoration UUID                      State
     bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
@@ -231,7 +231,7 @@ Relative times can be in any of the following formats (again, note that you can 
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1224 | John Zimmerman | Sales      |  60000
             1221 | John Smith     | Marketing  |  50000
@@ -253,7 +253,7 @@ Relative times can be in any of the following formats (again, note that you can 
     ```
 
     ```output
-    Snapshot UUID                     State
+    Snapshot UUID                         State
     bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
     Restoration UUID                      State
     bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED

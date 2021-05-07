@@ -72,7 +72,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -133,7 +133,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             9999 | Wrong Name     | Marketing  |  10000
@@ -172,7 +172,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    Snapshot UUID                     State
+    Snapshot UUID                         State
     bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
     Restoration UUID                      State
     bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
@@ -185,7 +185,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -259,7 +259,7 @@ Relative times can be in any of the following formats (again, note that you can 
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
