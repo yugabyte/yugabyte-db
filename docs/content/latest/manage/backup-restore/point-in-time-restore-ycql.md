@@ -30,12 +30,12 @@ showAsideToc: true
 </ul>
 
 {{< note>}}
-Refer to the [YSQL tab](../point-in-time-restore-ysql) for details on this feature.
+Refer to [Recovery scenarios](../point-in-time-restore-ysql#recovery-scenarios), [Features](../point-in-time-restore-ysql#features), [Use cases](../point-in-time-restore-ysql#use-cases), and [Limitations](#limitations) for details on this feature.
 {{</ note >}}
 
 ## Try out the PITR feature
 
-You can test the PITR feature (BETA) by creating a database and populating it, creating a snapshot, and restoring (be sure to check out the [limitations](#limitations)!) from that snapshot.
+You can test the PITR feature (BETA) by creating a namespace and populating it, creating a snapshot, and restoring (be sure to check out the [limitations](#limitations)!) from that snapshot.
 
 {{< tip title="Examples are simplified" >}}
 
