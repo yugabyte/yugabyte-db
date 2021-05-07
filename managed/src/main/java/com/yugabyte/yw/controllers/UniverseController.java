@@ -243,7 +243,7 @@ public class UniverseController extends AuthenticatedController {
 
     Form<RunQueryFormData> formData = formFactory.getFormDataOrBadRequest(RunQueryFormData.class);
 
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(ysqlQueryExecutor.executeQuery(universe, formData.get()));
   }
 
@@ -532,7 +532,7 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
       universe.universeUUID + ":" + universe.name);
 
-    Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
+    auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
     return ApiResponse.success(createResp(universe, taskUUID));
   }
 
@@ -581,7 +581,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
         universe.universeUUID + ":" + universe.name);
 
-      Audit.createAuditEntry(ctx(), request(),
+      auditService().createAuditEntry(ctx(), request(),
         Json.toJson(formData), taskUUID);
       return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Exception e) {
@@ -762,7 +762,7 @@ public class UniverseController extends AuthenticatedController {
       universe.name);
     LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
       universe.universeUUID, universe.name);
-    Audit.createAuditEntry(ctx(), request(),
+    auditService().createAuditEntry(ctx(), request(),
       Json.toJson(formData), taskUUID);
     return ApiResponse.success(createResp(universe, taskUUID));
   }
@@ -800,7 +800,7 @@ public class UniverseController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, "Invalid Query: Need to specify markActive value");
     }
     universe.updateConfig(config);
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return YWSuccess.asResult();
   }
 
@@ -827,7 +827,7 @@ public class UniverseController extends AuthenticatedController {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString());
     universe.updateConfig(config);
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return YWSuccess.asResult();
   }
 
@@ -903,7 +903,7 @@ public class UniverseController extends AuthenticatedController {
 
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
-    Audit.createAuditEntry(ctx(), request(), taskUUID);
+    auditService().createAuditEntry(ctx(), request(), taskUUID);
     return ApiResponse.success(response);
   }
 
@@ -939,7 +939,7 @@ public class UniverseController extends AuthenticatedController {
 
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
-    Audit.createAuditEntry(ctx(), request(), taskUUID);
+    auditService().createAuditEntry(ctx(), request(), taskUUID);
     return ApiResponse.success(response);
 
   }
@@ -991,7 +991,7 @@ public class UniverseController extends AuthenticatedController {
 
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
-    Audit.createAuditEntry(ctx(), request(), taskUUID);
+    auditService().createAuditEntry(ctx(), request(), taskUUID);
     return ApiResponse.success(response);
   }
 
@@ -1077,7 +1077,7 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
       taskUUID, universe.universeUUID, universe.name);
 
-    Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
+    auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
     return ApiResponse.success(createResp(universe, taskUUID));
   }
 
@@ -1134,7 +1134,7 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
       taskUUID, universe.universeUUID, universe.name);
 
-    Audit.createAuditEntry(ctx(), request(), taskUUID);
+    auditService().createAuditEntry(ctx(), request(), taskUUID);
     return ApiResponse.success(createResp(universe, taskUUID));
   }
 
@@ -1308,7 +1308,7 @@ public class UniverseController extends AuthenticatedController {
       universe.universeUUID, universe.name);
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
-    Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
+    auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
     return Results.status(OK, resultNode);
   }
 
@@ -1442,7 +1442,7 @@ public class UniverseController extends AuthenticatedController {
       universe.universeUUID, universe.name);
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
-    Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
+    auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
     return Results.status(OK, resultNode);
   }
 

@@ -49,6 +49,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
@@ -96,6 +97,7 @@ public class TablesControllerTest extends FakeDBApplication {
   private YBClientService mockService;
   private TablesController tablesController;
   private YBClient mockClient;
+  private AuditService auditService;
   private ListTablesResponse mockListTablesResponse;
   private GetTableSchemaResponse mockSchemaResponse;
 
@@ -115,7 +117,10 @@ public class TablesControllerTest extends FakeDBApplication {
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
+
+    auditService = new AuditService(app.config(), null);
     tablesController = new TablesController(mockService);
+    tablesController.setAuditService(auditService);
   }
 
   @Test

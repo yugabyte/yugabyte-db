@@ -147,7 +147,7 @@ public class BackupsController extends AuthenticatedController {
 
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     return ApiResponse.success(resultNode);
   }
 
@@ -176,7 +176,7 @@ public class BackupsController extends AuthenticatedController {
           CustomerTask.create(customer, uuid, taskUUID, CustomerTask.TargetType.Backup,
              CustomerTask.TaskType.Delete,"Backup");
           taskUUIDList.add(taskUUID.toString());
-          Audit.createAuditEntry(ctx(), request(), taskUUID);
+          auditService().createAuditEntry(ctx(), request(), taskUUID);
         }
       }
     }
