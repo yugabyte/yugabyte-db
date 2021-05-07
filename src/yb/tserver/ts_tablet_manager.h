@@ -566,9 +566,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::unique_ptr<rpc::Poller> tablets_cleaner_;
 
-  // Used for scheduling flushes
-  std::unique_ptr<BackgroundTask> background_task_;
-
   // Used for verifying tablet data integrity.
   std::unique_ptr<rpc::Poller> verify_tablet_data_poller_;
 
