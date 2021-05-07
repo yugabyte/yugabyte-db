@@ -37,6 +37,12 @@ Refer to the [YSQL tab](../point-in-time-restore-ysql) for details on this featu
 
 You can test the PITR feature (BETA) by creating a database and populating it, creating a snapshot, and restoring (be sure to check out the [limitations](#limitations)!) from that snapshot.
 
+{{< tip title="Examples are simplified" >}}
+
+The examples on this page are deliberately simple. In many of the scenarios presented, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
+
+{{< /tip >}}
+
 ### Create and snapshot a table
 
 Create and populate a table, look at a timestamp to which you'll restore, and then write a row.
@@ -59,7 +65,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
       name text,
       department text,
       salary integer
-    );
+    ) with transactions = { 'enabled' : true };
 
     insert into employees (employee_no, name, department, salary) values (1221, 'John Smith', 'Marketing', 50000);
     insert into employees (employee_no, name, department, salary) values (1222, 'Bette Davis', 'Sales', 55000);
@@ -388,7 +394,30 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ### Undo index creation
 
-1. ...
+1. Create an index on the table from the previous examples.
+
+    ```sql
+    use pitr;
+    create index t1_index on employees (employee_no);
+    describe index t1_index;
+    ```
+
+    ```output
+    CREATE INDEX t1_index ON pitr.employees (employee_no)
+    WITH transactions = {'enabled': 'true'};
+    ```
+
+1. Now restore back to a time before this index was created.
+
+    **Note**: Due to a ycqlsh caching issue, to see the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+
+    ```sh
+    ./bin/ycqlsh -e 'use pitr; describe table pitr.t1_index;'
+    ```
+
+    ```output
+    <stdin>:1:Column family u't1_index' not found
+    ```
 
 ## Limitations
 
