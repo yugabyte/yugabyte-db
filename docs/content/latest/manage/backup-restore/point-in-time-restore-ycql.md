@@ -345,7 +345,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ### Undo table alteration
 
-#### Undo ADD COLUMN
+#### Undo column addition
 
 1. Using the same keyspace as the previous scenarios, alter your table by adding a column.
 
@@ -386,7 +386,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-#### Undo DROP COLUMN
+#### Undo column deletion
 
 1. Using the same keyspace as the previous scenarios, alter your table by dropping a column.
 
@@ -454,7 +454,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     <stdin>:1:Column family u't1_index' not found
     ```
 
-### Undo table and column deletion
+### Undo table and index deletion
 
 1. Create a second table called `dont_deleteme`.
 
@@ -465,19 +465,26 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ) with transactions = { 'enabled' : true };
     ```
 
-1. Get a timestamp using one of the methods in [Restore from an absolute time](#restore-from-an-absolute-time).
-
-1. Remove the `salary` column from pitr.employees.
+1. Create an index on the table from the previous examples.
 
     ```sql
     use pitr;
-    alter table employees drop salary;
+    create index t1_index on employees (employee_no);
+    describe index t1_index;
     ```
 
-1. Delete the `dont_deleteme` table.
+    ```output
+    CREATE INDEX t1_index ON pitr.employees (employee_no)
+    WITH transactions = {'enabled': 'true'};
+    ```
+
+1. Get a timestamp using one of the methods in [Restore from an absolute time](#restore-from-an-absolute-time).
+
+1. Delete the new table and index.
 
     ```sql
     drop table dont_deleteme;
+    drop index t1_index;
     ```
 
 1. Restore to the timestamp.
