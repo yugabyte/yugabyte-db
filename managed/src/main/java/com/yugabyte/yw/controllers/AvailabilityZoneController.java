@@ -79,7 +79,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
         AvailabilityZone az = AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
         availabilityZones.put(az.code, az);
       }
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(availabilityZones);
     } catch (Exception e) {
       LOG.error(e.getMessage());
@@ -113,7 +113,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
       az.setActiveFlag(false);
       az.update();
       ObjectNode responseJson = Json.newObject();
-      Audit.createAuditEntry(ctx(), request());
+      auditService().createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     } catch (Exception e) {
