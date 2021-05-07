@@ -160,7 +160,7 @@ public class RegionController extends AuthenticatedController {
         region = Region.create(provider, regionCode, form.name, form.ybImage, form.latitude,
             form.longitude);
       }
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(region);
     } catch (Exception e) {
       LOG.error(e.getMessage());
@@ -190,7 +190,7 @@ public class RegionController extends AuthenticatedController {
 
     ObjectNode responseJson = Json.newObject();
     responseJson.put("success", true);
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success(responseJson);
   }
 }

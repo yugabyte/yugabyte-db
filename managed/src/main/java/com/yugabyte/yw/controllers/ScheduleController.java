@@ -49,7 +49,7 @@ public class ScheduleController extends AuthenticatedController {
 
     ObjectNode responseJson = Json.newObject();
     responseJson.put("success", true);
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success(responseJson);
   }
 }

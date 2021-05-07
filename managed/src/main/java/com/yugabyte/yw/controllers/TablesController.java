@@ -88,7 +88,7 @@ public class TablesController extends AuthenticatedController {
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
       LOG.error("Error creating table", e);
@@ -156,7 +156,7 @@ public class TablesController extends AuthenticatedController {
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), taskUUID);
       return ok(resultNode);
     } catch (Exception e) {
       LOG.error("Failed to get list of tables in universe " + universeUUID, e);
@@ -329,7 +329,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Submitted universe backup to be scheduled {}, schedule uuid = {}.",
           universeUUID, scheduleUUID);
       resultNode.put("scheduleUUID", scheduleUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
       LOG.info("Submitted task to universe {}, task uuid = {}.",
@@ -343,7 +343,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID,
           universe.name);
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     }
     return ApiResponse.success(resultNode);
   }
@@ -393,7 +393,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
           tableUUID, taskParams.getTableName(), scheduleUUID);
       resultNode.put("scheduleUUID", scheduleUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     } else {
       Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
@@ -409,7 +409,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
           tableUUID, taskParams.getTableNames(), taskParams.getTableName());
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     }
     return ApiResponse.success(resultNode);
   }
@@ -482,7 +482,7 @@ public class TablesController extends AuthenticatedController {
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
       return ApiResponse.success(resultNode);
     } catch (Exception e) {
       String errMsg = "Failed to bulk import data into table " + tableUUID + " in universe "
