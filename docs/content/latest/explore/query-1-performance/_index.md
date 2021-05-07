@@ -9,7 +9,7 @@ aliases:
 section: Explore
 menu:
   latest:
-    identifier: query-1-performance
+    identifier: query-tuning
     parent: explore
     weight: 235
 ---
