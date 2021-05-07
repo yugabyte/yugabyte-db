@@ -1390,6 +1390,47 @@ void TabletServiceAdminImpl::RemoveTableFromTablet(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::GetSplitKey(
+    const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
+    return;
+  }
+  server::UpdateClock(*req, server_->Clock());
+
+  auto leader_tablet_peer =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!leader_tablet_peer) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(NotFound, "Could not find requested leader tablet peer."),
+        &context);
+    return;
+  }
+
+  const auto& tablet = leader_tablet_peer.tablet;
+  const auto split_encoded_key = tablet->GetEncodedMiddleSplitKey();
+  if (split_encoded_key.ok()) {
+    resp->set_split_encoded_key(*split_encoded_key);
+  } else {
+    SetupErrorAndRespond(resp->mutable_error(), split_encoded_key.status(), &context);
+    return;
+  }
+
+  const auto doc_key_hash = docdb::DecodeDocKeyHash(*split_encoded_key);
+  if (doc_key_hash.ok()) {
+    if (doc_key_hash->has_value()) {
+      resp->set_split_partition_key(PartitionSchema::EncodeMultiColumnHashValue(
+          doc_key_hash->value()));
+    } else {
+      resp->set_split_partition_key(*split_encoded_key);
+    }
+  } else {
+    SetupErrorAndRespond(resp->mutable_error(), doc_key_hash.status(), &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
