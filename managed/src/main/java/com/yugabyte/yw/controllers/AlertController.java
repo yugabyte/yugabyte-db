@@ -102,7 +102,7 @@ public class AlertController extends AuthenticatedController {
     } else {
       Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
     }
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
   }
 
@@ -120,7 +120,7 @@ public class AlertController extends AuthenticatedController {
     }
     AlertFormData data = formData.get();
     Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
   }
 

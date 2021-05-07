@@ -118,7 +118,7 @@ public class InstanceTypeController extends AuthenticatedController {
       formData.get().numCores,
       formData.get().memSizeGB,
       formData.get().instanceTypeDetails);
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
     return ApiResponse.success(it);
   }
 
@@ -136,7 +136,7 @@ public class InstanceTypeController extends AuthenticatedController {
     instanceType.setActive(false);
     instanceType.save();
     ObjectNode responseJson = Json.newObject();
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     responseJson.put("success", true);
     return ApiResponse.success(responseJson);
   }

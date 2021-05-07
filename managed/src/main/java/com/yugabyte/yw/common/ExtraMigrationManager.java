@@ -4,13 +4,13 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-
 import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
@@ -29,6 +29,9 @@ public class ExtraMigrationManager extends DevopsBase {
 
   @Inject
   TemplateManager templateManager;
+
+  @Inject
+  AuditService auditService;
 
   @Override
   protected String getCommandType() {
@@ -88,5 +91,9 @@ public class ExtraMigrationManager extends DevopsBase {
 
   public void V68__Create_New_Alert_Definitions_Extra_Migration() {
     recreateMissedAlertDefinitions();
+  }
+
+  public void R__Redact_Secrets_From_Audit() {
+    auditService.redactSecretsFromAuditMigration();
   }
 }

@@ -102,11 +102,7 @@ public class UsersController extends AuthenticatedController {
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not create user");
     }
-    ObjectNode userInfo = Json.newObject()
-            .put("email", formData.getEmail())
-            .put("role", formData.getRole().name())
-            .put("customerUUID", customerUUID.toString());
-    Audit.createAuditEntry(ctx(), request(), userInfo);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
     return ApiResponse.success(user);
 
   }
@@ -137,7 +133,7 @@ public class UsersController extends AuthenticatedController {
     if (user.delete()) {
       ObjectNode responseJson = Json.newObject();
       responseJson.put("success", true);
-      Audit.createAuditEntry(ctx(), request());
+      auditService().createAuditEntry(ctx(), request());
       return ApiResponse.success(responseJson);
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
@@ -177,7 +173,7 @@ public class UsersController extends AuthenticatedController {
     } else {
       return ApiResponse.error(BAD_REQUEST, "Invalid Request");
     }
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return YWSuccess.asResult();
   }
 

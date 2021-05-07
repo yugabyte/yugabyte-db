@@ -6,4 +6,4 @@ import play.mvc.Controller;
 import play.mvc.With;
 
 @With(TokenAuthenticator.class)
-public abstract class AuthenticatedController extends Controller {}
+public abstract class AuthenticatedController extends AbstractPlatformController {}

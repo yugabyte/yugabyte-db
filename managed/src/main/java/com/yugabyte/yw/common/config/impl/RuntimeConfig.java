@@ -80,4 +80,11 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
     return this;
   }
 
+  public String getStringOrElse(String path, String defaultValue) {
+    if (hasPath(path)) {
+      return getString(path);
+    }
+    return defaultValue;
+  }
+
 }

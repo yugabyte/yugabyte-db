@@ -73,8 +73,7 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
 @RunWith(JUnitParamsRunner.class)
-public class
-UniverseControllerTest extends WithApplication {
+public class UniverseControllerTest extends WithApplication {
   private static Commissioner mockCommissioner;
   private static MetricQueryHelper mockMetricQueryHelper;
 

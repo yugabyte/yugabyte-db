@@ -101,7 +101,7 @@ public class ImportController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid customer uuid : " + customerUUID.toString());
     }
 
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
 
     if (importForm.singleStep) {
       importForm.currentState = State.BEGIN;

@@ -103,7 +103,7 @@ public class NodeInstanceController extends AuthenticatedController {
         }
       }
       if (nodes.size() > 0) {
-        Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+        auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
         return ApiResponse.success(nodes);
       }
       return ApiResponse.error(BAD_REQUEST,
@@ -144,7 +144,7 @@ public class NodeInstanceController extends AuthenticatedController {
       }
       if (nodeToBeFound != null) {
         nodeToBeFound.delete();
-        Audit.createAuditEntry(ctx(), request());
+        auditService().createAuditEntry(ctx(), request());
         return Results.status(OK);
       } else {
         return ApiResponse.error(BAD_REQUEST, "Node Not Found");
@@ -216,7 +216,7 @@ public class NodeInstanceController extends AuthenticatedController {
               taskUUID, universe.universeUUID, universe.name, nodeName);
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
       return ApiResponse.success(resultNode);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());

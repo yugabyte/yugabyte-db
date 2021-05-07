@@ -207,7 +207,7 @@ public class CustomerTaskController extends AuthenticatedController {
     LOG.info("Saved task uuid " + newTaskUUID + " in customer tasks table for universe " +
       universe.universeUUID + ":" + universe.name);
 
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
     return ApiResponse.success(new UniverseResp(universe, newTaskUUID));
   }
 }
