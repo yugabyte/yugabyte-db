@@ -715,7 +715,7 @@ yb-admin create_snapshot_schedule <snapshot-interval> <retention-time> <filter-e
 * _retention-time_: The number of minutes to keep a snapshot before deleting it.
 * _filter-expression_: The set of objects to include in the snapshot.
 
-The filter expression is a list of acceptable objects, which can be either raw tables, or keyspaces (YCQL) or databases (YSQL). For proper consistency guarantees, Yugabyte recommends setting this up on a per-keyspace (YCQL) or per-database (YSQL) level.
+The filter expression is a list of acceptable objects, which can be either raw tables, or keyspaces (YCQL) or databases (YSQL). For proper consistency guarantees, **Yugabyte recommends setting this up on a per-keyspace (YCQL) or per-database (YSQL) level**.
 
 **Example**
 
