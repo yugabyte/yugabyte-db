@@ -270,8 +270,10 @@ Status OutboundCall::SetRequestParam(
   size_t header_size = 0;
 
   RequestHeader header;
-  InitHeader(&header);
-  status = SerializeHeader(header, message_size, &buffer_, message_size, &header_size);
+  status = InitHeader(&header);
+  if (status.ok()) {
+    status = SerializeHeader(header, message_size, &buffer_, message_size, &header_size);
+  }
   remote_method_pool_->Release(header.release_remote_method());
   if (!status.ok()) {
     return status;
@@ -542,7 +544,12 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (!req.dump_timed_out() && state_value == RpcCallState::TIMED_OUT) {
     return false;
   }
-  InitHeader(resp->mutable_header());
+  if (!InitHeader(resp->mutable_header()).ok() && !req.dump_timed_out()) {
+    // Note that if we proceed here due to req.dump_timed_out() being true, then the
+    // header.timeout_millis() will be inaccurate/not-set. This is ok because DumpPB
+    // is only used for dumping the PB and not to send the RPC over the wire.
+    return false;
+  }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(start_).ToMilliseconds());
   resp->set_state(state_value);
   if (req.include_traces() && trace_) {
@@ -555,16 +562,21 @@ std::string OutboundCall::LogPrefix() const {
   return Format("{ OutboundCall@$0 } ", this);
 }
 
-void OutboundCall::InitHeader(RequestHeader* header) {
+Status OutboundCall::InitHeader(RequestHeader* header) {
   header->set_call_id(call_id_);
+  header->set_allocated_remote_method(remote_method_pool_->Take());
 
   if (!IsFinished()) {
     MonoDelta timeout = controller_->timeout();
     if (timeout.Initialized()) {
-      header->set_timeout_millis(timeout.ToMilliseconds());
+      auto timeout_millis = timeout.ToMilliseconds();
+      if (timeout_millis < 0) {
+        return STATUS(TimedOut, "Call timed out before sending");
+      }
+      header->set_timeout_millis(timeout_millis);
     }
   }
-  header->set_allocated_remote_method(remote_method_pool_->Take());
+  return Status::OK();
 }
 
 ///
