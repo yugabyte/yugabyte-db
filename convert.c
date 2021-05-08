@@ -923,4 +923,11 @@ invalid_pair:
 	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("invalid Unicode surrogate pair")));
+
+#if defined(_MSC_VER)
+
+	/* be MSVC quiet */
+	return 0;
+
+#endif
 }
