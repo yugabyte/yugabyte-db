@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.common.YWServiceException;
+
 import java.util.Date;
 import java.util.UUID;
 import java.util.List;
@@ -27,6 +29,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 
 @Entity
@@ -139,8 +143,17 @@ public class Users extends Model {
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {
   };
 
+  @Deprecated
   public static Users get(UUID userUUID) {
     return find.query().where().eq("uuid", userUUID).findOne();
+  }
+
+  public static Users getOrBadRequest(UUID userUUID) {
+    Users user = get(userUUID);
+    if (user == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Customer UUID:" + user);
+    }
+    return user;
   }
 
   public static List<Users> getAll(UUID customerUUID) {
