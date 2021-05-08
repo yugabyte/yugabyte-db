@@ -54,7 +54,7 @@ Update packages on your system, install development tools and additional package
 sudo yum update
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-devel python3 python3-pip python3-devel
-sudo yum install -y cmake3 ctest3
+sudo yum install -y cmake3 ctest3 ninja-build
 ```
 
 ## Prepare build tools
