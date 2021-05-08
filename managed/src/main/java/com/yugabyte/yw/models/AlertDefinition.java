@@ -20,7 +20,7 @@ import javax.persistence.*;
 import java.util.Set;
 import java.util.UUID;
 
-import static play.mvc.Http.Status.BAD_REQUEST;;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class AlertDefinition extends Model {
