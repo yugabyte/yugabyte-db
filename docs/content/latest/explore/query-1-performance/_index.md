@@ -40,4 +40,16 @@ menu:
       </div>
     </a>
   </div>
+ <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pg-stat-activity/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="articles">1 article</div>
+        <div class=“title”>View Live Queries with pg_stat_activity</div>
+      </div>
+      <div class="body">
+        Troubleshoot problems and identify long running queries with this activity view.
+      </div>
+    </a>
+  </div>
 </div>
