@@ -56,135 +56,112 @@ This tutorial assumes that:
 
 ## Create the sample Java application
 
-### Create the project's POM
+1. Create a project called "MySample".
 
-Create a file, named `pom.xml`, and then copy the following content into it. The Project Object Model (POM) includes configuration information required to build the project. You can change the PostgreSQL dependency version, depending on the PostgreSQL JDBC driver you want to use.
+    ```sh
+    $ mvn archetype:generate \
+        -DgroupId=com.yugabyte \
+        -DartifactId=MySample \
+        -DarchetypeArtifactId=maven-archetype-quickstart \
+        -DinteractiveMode=false
 
-```mvn
-<?xml version="1.0"?>
-<project
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
-  xmlns="http://maven.apache.org/POM/4.0.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <modelVersion>4.0.0</modelVersion>
+    $ cd MySample
+    ```
 
-  <groupId>com.yugabyte.sample.apps</groupId>
-  <artifactId>hello-world</artifactId>
-  <version>1.0</version>
-  <packaging>jar</packaging>
+1. Replace the contents of the `pom.xml` file with the following:
 
-  <dependencies>
-    <dependency>
-      <groupId>org.postgresql</groupId>
-      <artifactId>postgresql</artifactId>
-      <version>42.2.14</version>
-    </dependency>
-  </dependencies>
+    ```xml
+    <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+      <modelVersion>4.0.0</modelVersion>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>MySample</artifactId>
+      <packaging>jar</packaging>
+      <version>1.0-SNAPSHOT</version>
+      <name>MySample</name>
+      <url>http://maven.apache.org</url>
+      <properties>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+      </properties>
+      <dependencies>
+        <dependency>
+          <groupId>junit</groupId>
+          <artifactId>junit</artifactId>
+          <version>3.8.1</version>
+          <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.2.14</version>
+        </dependency>
+      </dependencies>
+    </project>
+    ```
 
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.7.0</version>
-        <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-dependency-plugin</artifactId>
-        <version>2.1</version>
-        <executions>
-          <execution>
-            <id>copy-dependencies</id>
-            <phase>prepare-package</phase>
-            <goals>
-              <goal>copy-dependencies</goal>
-            </goals>
-            <configuration>
-              <outputDirectory>${project.build.directory}/lib</outputDirectory>
-              <overWriteReleases>true</overWriteReleases>
-              <overWriteSnapshots>true</overWriteSnapshots>
-              <overWriteIfNewer>true</overWriteIfNewer>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-    </plugins>
-  </build>
-</project>
-```
+1. Install the added dependency.
 
-### Write the sample Java application
+    ```sh
+    $ mvn install
+    ```
 
-Create the appropriate directory structure as expected by Maven.
+1. Make a new directory for your app.
 
-```sh
-$ mkdir -p src/main/java/com/yugabyte/sample/apps
-```
+    ```sh
+    $ mkdir -p src/main/java/com/yugabyte
+    ```
 
-Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBSqlHelloWorld.java`.
+1. Copy the following Java code to a new file named `src/main/java/com/yugabyte/HelloSqlApp.java`:
 
-```java
-package com.yugabyte.sample.apps;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+    ```java
+    package com.yugabyte;
 
-public class YBSqlHelloWorld {
+    import java.sql.Connection;
+    import java.sql.DriverManager;
+    import java.sql.ResultSet;
+    import java.sql.SQLException;
+    import java.sql.Statement;
 
-    public static void main(String[] args) throws ClassNotFoundException, SQLException {
+    public class HelloSqlApp {
+      public static void main(String[] args) throws ClassNotFoundException, SQLException {
         Class.forName("org.postgresql.Driver");
-        try (Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte", "yugabyte", "yugabyte");
-            Statement stmt = conn.createStatement();) {
+        Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte",
+                                                      "yugabyte", "yugabyte");
+        Statement stmt = conn.createStatement();
+        try {
             System.out.println("Connected to the PostgreSQL server successfully.");
-
-            String createTableQuery = "CREATE TABLE IF NOT EXISTS employee(id int primary key, name varchar, age int, language text) ";
-            stmt.executeUpdate(createTableQuery);
+            stmt.execute("DROP TABLE IF EXISTS employee");
+            stmt.execute("CREATE TABLE IF NOT EXISTS employee" +
+                        "  (id int primary key, name varchar, age int, language text)");
             System.out.println("Created table employee");
 
-            String insertQuery = "INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');";
-            stmt.executeUpdate(insertQuery);
-            System.out.println("Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');");
+            String insertStr = "INSERT INTO employee VALUES (1, 'John', 35, 'Java')";
+            stmt.execute(insertStr);
+            System.out.println("EXEC: " + insertStr);
 
             ResultSet rs = stmt.executeQuery("select * from employee");
-            while (rs.next())
-                System.out.println("Query returned: "+ "name=" + rs.getString(2) + ", age=" + rs.getString(3) + ", language=" + rs.getString(4));
+            while (rs.next()) {
+              System.out.println(String.format("Query returned: name = %s, age = %s, language = %s",
+                                              rs.getString(2), rs.getString(3), rs.getString(4)));
+            }
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
-
+          System.err.println(e.getMessage());
         }
+      }
     }
-}
+    ```
 
-```
+1. Run your new program.
 
-### Build the project
+    ```sh
+    $ mvn install exec:java -Dexec.mainClass=com.yugabyte.HelloSqlApp
+    ```
 
-To build the project, run the following `mvn package` command.
+    You should see the following as the output:
 
-```sh
-$ mvn package
-```
-
-You should see a `BUILD SUCCESS` message.
-
-### Run the application
-
-To run the application , run the following command.
-
-```sh
-$ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBSqlHelloWorld
-```
-
-You should see the following as the output.
-
-```
-Created table employee
-Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
-Query returned: name=John, age=35, language: Java
-```
+    ```output
+    Created table employee
+    Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
+    Query returned: name=John, age=35, language: Java
+    ```
