@@ -484,17 +484,16 @@ class PostgresBuilder(YbBuildToolBase):
                 'CMakeLists.txt'
             ]
             git_hash = subprocess.check_output(
-                ['git', '--no-pager', 'log', '-n', '1', '--pretty=%H'] + code_subset
+                ['git', 'show', '--no-patch', '--format=%H'] + code_subset
             ).decode('utf-8').strip()
-            git_diff = subprocess.check_output(['git', 'diff'] + code_subset).decode('utf-8')
-            git_diff_cached = subprocess.check_output(
-                ['git', 'diff', '--cached'] + code_subset).decode('utf-8')
+            git_diff = subprocess.check_output(
+                ['git', 'diff', 'HEAD'] + code_subset
+            ).decode('utf-8')
 
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
         build_stamp = "\n".join([
             "git_commit_sha1=%s" % git_hash,
             "git_diff_sha256=%s" % sha256(git_diff),
-            "git_diff_cached_sha256=%s" % sha256(git_diff_cached)
             ])
 
         if include_env_vars:
