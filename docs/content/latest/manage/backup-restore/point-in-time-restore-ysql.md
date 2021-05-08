@@ -7,7 +7,7 @@ beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
 menu:
   latest:
-    identifier: point-in-time-restore
+    identifier: point-in-time-restore-2-ysql
     parent: backup-restore
     weight: 704
 isTocNested: true
@@ -16,15 +16,15 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/point-in-time-restore-ysql" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
     <a href="/latest/manage/backup-restore/point-in-time-restore-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/manage/backup-restore/point-in-time-restore-ysql" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
     </a>
   </li>
 </ul>
