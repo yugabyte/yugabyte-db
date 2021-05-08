@@ -358,7 +358,7 @@ class PostgresBuilder(YbBuildToolBase):
         thirdparty_installed_common_bin_path = os.path.join(
             self.thirdparty_dir, 'installed', 'common', 'bin')
         new_path_str = ':'.join([thirdparty_installed_common_bin_path] + self.original_path)
-        self.set_env_var('PATH', new_path_str)
+        os.environ['PATH'] = new_path_str
 
     def sync_postgres_source(self):
         logging.info("Syncing postgres source code")
