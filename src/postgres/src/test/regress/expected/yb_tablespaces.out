@@ -164,6 +164,32 @@ Indexes:
 Tablespace: "regress_tblspace"
 
 SET default_tablespace TO '';
+-- Verify that USING INDEX TABLESPACE is not supported for primary keys.
+CREATE TABLE testschema.using_index1 (a int PRIMARY KEY USING INDEX TABLESPACE regress_tblspace);
+ERROR:  Cannot set TABLESPACE for PRIMARY KEY INDEX.
+DETAIL:  The tablespace of the indexed table will be used.
+CREATE TABLE testschema.using_index1 (a int, PRIMARY KEY(a) USING INDEX TABLESPACE regress_tblspace);
+ERROR:  Cannot set TABLESPACE for PRIMARY KEY INDEX.
+DETAIL:  The tablespace of the indexed table will be used.
+-- Verify that USING INDEX TABLESPACE is supported for other constraints.
+CREATE TABLE testschema.using_index2 (a int UNIQUE USING INDEX TABLESPACE regress_tblspace);
+CREATE TABLE testschema.using_index3 (a int, UNIQUE(a) USING INDEX TABLESPACE regress_tblspace);
+\d testschema.using_index2;
+          Table "testschema.using_index2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+Indexes:
+    "using_index2_a_key" UNIQUE CONSTRAINT, lsm (a HASH), tablespace "regress_tblspace"
+
+\d testschema.using_index3;
+          Table "testschema.using_index3"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+Indexes:
+    "using_index3_a_key" UNIQUE CONSTRAINT, lsm (a HASH), tablespace "regress_tblspace"
+
 -- index
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
@@ -405,7 +431,7 @@ DROP TABLESPACE regress_tblspace;
 DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;
 /*
-Testing to make sure that an index on a "near" tablespace whose placements are 
+Testing to make sure that an index on a "near" tablespace whose placements are
 all on the current cloud/region/zone is preferred over "far" indexes.
 */
 CREATE TABLESPACE near WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
@@ -418,7 +444,7 @@ CREATE UNIQUE INDEX regionlocal_ind ON foo(x) INCLUDE (y) TABLESPACE regionlocal
 CREATE UNIQUE INDEX cloudlocal_ind ON foo(x) INCLUDE (y) TABLESPACE cloudlocal;
 CREATE UNIQUE INDEX bad ON foo(x) INCLUDE (y) TABLESPACE far;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-            QUERY PLAN             
+            QUERY PLAN
 -----------------------------------
  Index Only Scan using good on foo
    Index Cond: (x = 5)
@@ -426,7 +452,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 SET yb_enable_geolocation_costing = off;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-            QUERY PLAN 
+            QUERY PLAN
 ----------------------------------
  Index Only Scan using bad on foo
    Index Cond: (x = 5)
@@ -435,7 +461,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 SET yb_enable_geolocation_costing = on;
 DROP INDEX good;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                  QUERY PLAN                  
+                  QUERY PLAN
 ----------------------------------------------
  Index Only Scan using regionlocal_ind on foo
    Index Cond: (x = 5)
@@ -443,7 +469,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 DROP INDEX regionlocal_ind;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-            QUERY PLAN                  
+            QUERY PLAN
 ----------------------------------
  Index Only Scan using bad on foo
    Index Cond: (x = 5)
@@ -454,7 +480,7 @@ CREATE TABLE foo(id int primary key, val int);
 CREATE UNIQUE INDEX bad ON foo(id) INCLUDE (val) TABLESPACE far;
 CREATE UNIQUE INDEX good ON foo(id) INCLUDE (val) TABLESPACE near;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE id = 5;
-            QUERY PLAN             
+            QUERY PLAN
 -----------------------------------
  Index Only Scan using good on foo
    Index Cond: (id = 5)
