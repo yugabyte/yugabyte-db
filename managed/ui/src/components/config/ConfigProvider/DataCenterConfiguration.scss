@@ -2,7 +2,7 @@
 
 @import '../../../_style/colors.scss';
 
-#config-tab-panel .tab-content {
+#config-tab-panel .config-tabs .tab-content {
   min-height: 400px;
   padding-top: 20px;
 
@@ -326,22 +326,82 @@
 }
 
 .config-tabs .nav-tabs {
+  @media screen and (max-width: 1620px) {
+    > li {
+      width: calc(100%/7);
+
+      > a  {
+        margin-right: 0px;
+      }
+    }
+  }
+
+  @media screen and (min-width: 768px) {
+    > li > a  {
+      min-width: unset;
+    }
+  }
+  
+  li:not(.active) {
+    img, svg {
+      filter: grayscale(1) brightness(1.2);        
+    }
+    :before {
+      filter: sepia(.6);
+    }
+  }
+
   > li > a {
-    min-width: 180px;
-    min-height: 72px;
-    padding-bottom: 0;
+    height: 52px;
+    padding: 0 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    .title {
+      justify-content: left;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+
+      @media screen and (max-width: 980px) {
+        > span {
+          display: none;
+        }
+      }
+    }
+    
 
     img {
-      height: 50px;
+      height: 28px;
+      margin-right: 5px;
 
       &.aws-logo {
-        height: 42px;
-        margin-top: 5px;
+        width: 32px;
+      }
+      &.gcp-logo {
+        width: 30px;
       }
       &.azure-logo {
-        height: 30px;
-        margin-top: 8px;
+        height: 24px;
+        object-fit: cover;
+        width: 33px;
+        object-position: left;
       }
+      &.s3-logo {
+        width: 28px;
+        object-fit: cover;
+        object-position: left;
+      }
+      &.encryption-transit-icon {
+        height: 24px;
+      }
+    }
+
+    .tab-logo {
+      font-size: x-large;
+      vertical-align: middle;
+      margin-right: 5px;
     }
 
     h3 {
@@ -355,22 +415,6 @@
       }
     }
 
-    .on-premise {
-      display: inline-block;
-      padding-top: 10px;
-      font-size: 16px;
-      font-weight: 500;
-      text-align: left;
-      line-height: 1;
-
-      i {
-        float: left;
-        font-size: 36px;
-        padding-right: 8px;
-        color: #679;
-      }
-    }
-
     .custom-tab {
       display: flex;
       align-items: center;
@@ -380,10 +424,6 @@
       text-align: left;
       line-height: 1;
     }
-  }
-
-  > li.active > a {
-    min-height: 72px;
   }
 
   .kubernetes-logo {
@@ -402,8 +442,8 @@
   content: 'BETA';
   position: absolute;
   padding: 2px 6px;
-  top: 0;
-  right: 0;
+  top: -10px;
+  right: 5px;
   background-color: $YB_ORANGE;
   border-radius: 4px;
   color: $YB_BACKGROUND;

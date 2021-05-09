@@ -12,15 +12,72 @@ import {
 import { Tab, Row, Col } from 'react-bootstrap';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../../panels';
 import awsLogo from './images/aws.svg';
-import azureLogo from './images/azure.png';
+import azureLogo from './images/azure.svg';
 import k8sLogo from './images/k8s.png';
 import openshiftLogo from './images/redhat.png';
 import tanzuLogo from './images/tanzu.png';
-import gcpLogo from './images/gcp.png';
+import gcpLogo from './images/gcp.svg';
 import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 import './DataCenterConfiguration.scss';
 
 class DataCenterConfiguration extends Component {
+
+  getTabTitle = (type) => {
+    switch(type) {
+      case 'AWS':
+        return (
+          <div className="title">
+            <img src={awsLogo} alt="AWS" className="aws-logo" />
+            <span>Amazon Web Services</span>
+          </div>
+        );
+      case 'GCP':
+        return (
+          <div className="title">
+            <img src={gcpLogo} alt="GCP" className="gcp-logo" />
+            <span>Google Cloud Platform</span>
+          </div>
+        );
+      case 'Azure':
+        return (
+          <div className="title">
+            <img src={azureLogo} alt="Azure" className="azure-logo" />
+            <span>Microsoft Azure</span>
+          </div>
+        );
+      case 'Tanzu':
+        return (
+          <div className="title">
+            <img src={tanzuLogo} alt="VMware Tanzu" />
+            <span>VMware Tanzu</span>
+          </div>
+        );
+      case 'Openshift':
+        return (
+          <div className="title">
+            <img src={openshiftLogo} alt="Red Hat OpenShift" />
+            <span>Red Hat OpenShift</span>
+          </div>
+        );
+      case 'K8s':
+        return (
+          <div className="title">
+            <img src={k8sLogo} alt="Managed Kubernetes" />
+            <span>Managed Kubernetes Service</span>
+          </div>
+        );
+      case 'Onprem':
+        return (
+          <div className="title">
+            <i className="fa fa-server tab-logo" />
+            <span>On-Premises Datacenters</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }
+
   render() {
     const {
       customer: { currentCustomer },
@@ -28,47 +85,11 @@ class DataCenterConfiguration extends Component {
       params
     } = this.props;
     showOrRedirect(currentCustomer.data.features, 'menu.config');
-
-    const onPremiseTabContent = (
-      <div className="on-premise">
-        <i className="fa fa-server" />
-        On-Premises
-        <br />
-        Datacenters
-      </div>
-    );
-
-    const openshiftTabContent = (
-      <Row className="custom-tab">
-        <Col md={4}>
-          <img src={openshiftLogo} alt="Red Hat OpenShift" />
-        </Col>
-        <Col md={8}>Red Hat OpenShift</Col>
-      </Row>
-    );
-
-    const k8sTabContent = (
-      <Row className="custom-tab">
-        <Col md={4}>
-          <img src={k8sLogo} alt="Managed Kubernetes" />
-        </Col>
-        <Col md={8}>Managed Kubernetes Service</Col>
-      </Row>
-    );
-
-    const tanzuTabContent = (
-      <Row className="custom-tab">
-        <Col md={4}>
-          <img src={tanzuLogo} alt="VMware Tanzu" />
-        </Col>
-        <Col md={8}>VMware Tanzu</Col>
-      </Row>
-    );
-
     const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
       ? 'cloud'
       : 'backup';
     const activeTab = tab || defaultTab;
+
     return (
       <div>
         <h2 className="content-title">Cloud Provider Configuration</h2>
@@ -90,7 +111,7 @@ class DataCenterConfiguration extends Component {
               >
                 <Tab
                   eventKey="aws"
-                  title={<img src={awsLogo} alt="AWS" className="aws-logo" />}
+                  title={this.getTabTitle('AWS')}
                   key="aws-tab"
                   unmountOnExit={true}
                 >
@@ -98,7 +119,7 @@ class DataCenterConfiguration extends Component {
                 </Tab>
                 <Tab
                   eventKey="gcp"
-                  title={<img src={gcpLogo} alt="GCP" className="gcp-logo" />}
+                  title={this.getTabTitle('GCP')}
                   key="gcp-tab"
                   unmountOnExit={true}
                 >
@@ -106,29 +127,39 @@ class DataCenterConfiguration extends Component {
                 </Tab>
                 <Tab
                   eventKey="azure"
-                  title={<img src={azureLogo} alt="Azure" className="azure-logo" />}
+                  title={this.getTabTitle('Azure')}
                   key="azure-tab"
                   unmountOnExit={true}
                 >
                   <ProviderConfigurationContainer providerType="azu" />
                 </Tab>
-                <Tab eventKey="tanzu" title={tanzuTabContent} key="tanzu-tab" unmountOnExit={true}>
+                <Tab
+                  eventKey="tanzu"
+                  title={this.getTabTitle('Tanzu')}
+                  key="tanzu-tab"
+                  unmountOnExit={true}
+                >
                   <KubernetesProviderConfigurationContainer type="tanzu" params={params} />
                 </Tab>
                 <Tab
                   eventKey="openshift"
-                  title={openshiftTabContent}
+                  title={this.getTabTitle('Openshift')}
                   key="openshift-tab"
                   unmountOnExit={true}
                 >
                   <KubernetesProviderConfigurationContainer type="openshift" params={params} />
                 </Tab>
-                <Tab eventKey="k8s" title={k8sTabContent} key="k8s-tab" unmountOnExit={true}>
+                <Tab
+                  eventKey="k8s"
+                  title={this.getTabTitle('K8s')}
+                  key="k8s-tab"
+                  unmountOnExit={true}
+                >
                   <KubernetesProviderConfigurationContainer type="k8s" params={params} />
                 </Tab>
                 <Tab
                   eventKey="onprem"
-                  title={onPremiseTabContent}
+                  title={this.getTabTitle('Onprem')}
                   key="onprem-tab"
                   unmountOnExit={true}
                 >

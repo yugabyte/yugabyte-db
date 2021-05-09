@@ -15,6 +15,8 @@ import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
+import gcsLogo from './images/gcs-logo.png';
+import nfsIcon from './images/nfs.svg';
 import {
   isNonEmptyObject,
   isEmptyObject,
@@ -67,20 +69,20 @@ const storageConfigTypes = {
 const getTabTitle = (configName) => {
   switch (configName) {
     case 'S3':
-      return <img src={awss3Logo} alt="AWS S3" className="aws-logo" />;
+      return <span><img src={awss3Logo} alt="AWS S3" className="s3-logo" /> Amazon S3</span>;
     case 'GCS':
       return (
-        <h3>
-          <i className="fa fa-database"></i>GCS
-        </h3>
+        <span>
+          <img src={gcsLogo} alt="Google Cloud Storage" className="gcs-logo"/> Google Cloud Storage
+        </span>
       );
     case 'AZ':
-      return <img src={azureLogo} alt="Azure" className="azure-logo" />;
+      return <span><img src={azureLogo} alt="Azure" className="azure-logo" /> Azure Storage</span>;
     default:
       return (
-        <h3>
-          <i className="fa fa-database"></i>NFS
-        </h3>
+        <span>
+          <img src={nfsIcon} alt="NFS" className="nfs-icon" /> Network File System
+        </span>
       );
   }
 };
