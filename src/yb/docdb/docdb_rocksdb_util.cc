@@ -402,7 +402,7 @@ rocksdb::Options TEST_AutoInitFromRocksDBFlags() {
 
 int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
   if (FLAGS_rocksdb_disable_compactions) {
-    return FLAGS_priority_thread_pool_size;
+    return 1;
   }
 
   auto priority_thread_pool_size = FLAGS_priority_thread_pool_size;

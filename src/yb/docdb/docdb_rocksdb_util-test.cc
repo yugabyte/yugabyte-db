@@ -109,7 +109,7 @@ TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeTakesMaxBackgroundCompaction)
 
 TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeCompactionDisabled) {
   FLAGS_rocksdb_disable_compactions = true;
-  CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), FLAGS_priority_thread_pool_size);
+  CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), 1);
 }
 
 }  // namespace docdb
