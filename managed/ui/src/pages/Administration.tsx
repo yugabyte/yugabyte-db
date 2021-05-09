@@ -3,7 +3,7 @@ import { Tab } from 'react-bootstrap';
 import { browserHistory } from 'react-router';
 import { Selector, useSelector } from 'react-redux';
 import { RouteComponentProps } from 'react-router-dom';
-import { YBTabsPanel } from '../components/panels';
+import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
 import { showOrRedirect } from '../utils/LayoutUtils';
 import { HAInstances, HAReplication } from '../components/ha';
 import './Administration.scss';
@@ -49,13 +49,14 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   }, [currentCustomer, params.tab, params.section]);
 
   return (
-    <div className="dashboard-container">
+    <div>
       <h2 className="content-title">Platform Configuration</h2>
-      <YBTabsPanel
+      <YBTabsWithLinksPanel
         defaultTab={AdministrationTabs.HA}
         activeTab={params.tab}
         routePrefix="/admin/"
         id="administration-main-tabs"
+        className="universe-detail data-center-config-tab"
       >
         <Tab eventKey={AdministrationTabs.HA} title="High Availability">
           <YBTabsPanel
@@ -63,24 +64,25 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
             activeTab={params.section}
             routePrefix={`/admin/${AdministrationTabs.HA}/`}
             id="administration-ha-subtab"
+            className="config-tabs"
           >
             <Tab
               eventKey={HighAvailabilityTabs.Replication}
-              title="Replication Configuration"
+              title={<span><i className="fa fa-clone tab-logo" aria-hidden="true"></i> Replication Configuration</span>}
               unmountOnExit
             >
               <HAReplication />
             </Tab>
             <Tab
               eventKey={HighAvailabilityTabs.Instances}
-              title="Instance Configuration"
+              title={<span><i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance Configuration</span>}
               unmountOnExit
             >
               <HAInstances />
             </Tab>
           </YBTabsPanel>
         </Tab>
-      </YBTabsPanel>
+      </YBTabsWithLinksPanel>
     </div>
   );
 };
