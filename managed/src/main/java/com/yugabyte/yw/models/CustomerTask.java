@@ -302,6 +302,7 @@ public class CustomerTask extends Model {
       .idEq(id).findOne();
   }
 
+  @Deprecated
   public static CustomerTask get(UUID customerUUID, UUID taskUUID) {
     return CustomerTask.find.query().where()
     .eq("customer_uuid", customerUUID)

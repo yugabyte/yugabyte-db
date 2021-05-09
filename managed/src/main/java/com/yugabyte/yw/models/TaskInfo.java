@@ -187,6 +187,7 @@ public class TaskInfo extends Model {
   public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {
   };
 
+  @Deprecated
   public static TaskInfo get(UUID taskUUID) {
     // Return the instance details object.
     return find.byId(taskUUID);
