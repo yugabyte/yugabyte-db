@@ -5,17 +5,19 @@ import { Tab } from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
 import KeyManagementConfigurationContainer from './KeyManagementConfigurationContainer';
 import { CertificatesContainer } from './certificates';
+import encryptionTransitIcon from './images/encryption-transit-icon.png';
+import encryptionRestIcon from './images/encryption-rest-icon.png';
 
 const EncryptionAtRestTabHeader = (
-  <div className="on-premise">
-    <i className="fa fa-lock" />Encryption <br /> At Rest
-  </div>
+  <span>
+    <img src={encryptionRestIcon} alt="Encryption at Rest" className="encryption-rest-icon"/> Encryption At Rest
+  </span>
 );
 
 const CertificatesTabHeader = (
-  <div className="on-premise">
-    <i className="fa fa-chain"/>Encryption <br /> In Transit
-  </div>
+  <span>
+    <img src={encryptionTransitIcon} alt="Encryption in Transit"  className="encryption-transit-icon"/> Encryption In Transit
+  </span>
 );
 
 const TAB_AT_REST = 'encryption-at-rest';
