@@ -164,9 +164,17 @@ std::string TSDescriptor::placement_id() const {
   return placement_id_;
 }
 
-void TSDescriptor::UpdateHeartbeatTime() {
+void TSDescriptor::UpdateHeartbeat(const TSHeartbeatRequestPB* req) {
   std::lock_guard<decltype(lock_)> l(lock_);
   last_heartbeat_ = MonoTime::Now();
+
+  DCHECK_GE(req->num_live_tablets(), 0);
+  DCHECK_GE(req->leader_count(), 0);
+  num_live_replicas_ = req->num_live_tablets();
+  leader_count_ = req->leader_count();
+  physical_time_ = req->ts_physical_time();
+  hybrid_time_ = HybridTime::FromPB(req->ts_hybrid_time());
+  heartbeat_rtt_ = MonoDelta::FromMicroseconds(req->rtt_us());
 }
 
 MonoDelta TSDescriptor::TimeSinceHeartbeat() const {

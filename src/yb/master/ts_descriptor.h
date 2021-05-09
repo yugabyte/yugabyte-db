@@ -98,7 +98,7 @@ class TSDescriptor {
   virtual ~TSDescriptor();
 
   // Set the last-heartbeat time to now.
-  void UpdateHeartbeatTime();
+  void UpdateHeartbeat(const TSHeartbeatRequestPB* req);
 
   // Return the amount of time since the last heartbeat received
   // from this TS.
@@ -185,11 +185,6 @@ class TSDescriptor {
     return leader_count_;
   }
 
-  void set_physical_time(MicrosTime physical_time) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    physical_time_ = physical_time;
-  }
-
   MicrosTime physical_time() const {
     SharedLock<decltype(lock_)> l(lock_);
     return physical_time_;
@@ -203,11 +198,6 @@ class TSDescriptor {
   HybridTime hybrid_time() const {
     SharedLock<decltype(lock_)> l(lock_);
     return hybrid_time_;
-  }
-
-  void set_heartbeat_rtt(MonoDelta heartbeat_rtt) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    heartbeat_rtt_ = heartbeat_rtt;
   }
 
   MonoDelta heartbeat_rtt() const {
