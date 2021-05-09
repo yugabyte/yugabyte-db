@@ -2,12 +2,12 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -89,7 +89,7 @@ public class CustomerTaskController extends AuthenticatedController {
           taskList.add(taskData);
           taskListMap.put(task.getTargetUUID(), taskList);
         }
-      } catch (RuntimeException e) {
+      } catch (YWServiceException e) {
         LOG.error("Error fetching Task Progress for " + task.getTaskUUID() +
           ", TaskInfo with that taskUUID not found");
       }
@@ -98,23 +98,14 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   public Result list(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-
-    if (customer == null) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("error", "Invalid Customer UUID: " + customerUUID);
-      return badRequest(responseJson);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
     Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
     return ApiResponse.success(taskList);
   }
 
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID,
       universe.universeUUID);
@@ -122,41 +113,16 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   public Result status(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
+    CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
 
-    CustomerTask customerTask = CustomerTask.find.query().where()
-      .eq("customer_uuid", customer.uuid)
-      .eq("task_uuid", taskUUID)
-      .findOne();
-
-    if (customerTask == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
-    }
-
-    try {
-      ObjectNode responseJson = commissioner.getStatus(taskUUID);
-      return ok(responseJson);
-    } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, e.getMessage());
-    }
+    ObjectNode responseJson = commissioner.getStatus(taskUUID);
+    return ok(responseJson);
   }
 
   public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-
-    CustomerTask customerTask = CustomerTask.find.query().where()
-      .eq("customer_uuid", customer.uuid)
-      .eq("task_uuid", taskUUID)
-      .findOne();
-    if (customerTask == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
 
     List<SubTaskFormData> failedSubTasks = fetchFailedSubTasks(taskUUID);
     ObjectNode responseJson = Json.newObject();
@@ -165,22 +131,11 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   public Result retryTask(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    CustomerTask.getOrBadRequest(customer.uuid, taskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
 
-    CustomerTask customerTask = CustomerTask.get(customer.uuid, taskUUID);
-
-    if (customerTask == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
-    }
-
-    TaskInfo taskInfo = TaskInfo.get(taskUUID);
-
-    if (taskInfo == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
-    } else if (taskInfo.getTaskType() != TaskType.CreateUniverse) {
+    if (taskInfo.getTaskType() != TaskType.CreateUniverse) {
       String errMsg = String.format(
         "Invalid task type: %s. Only 'Create Universe' task retries are supported.",
         taskInfo.getTaskType().toString());

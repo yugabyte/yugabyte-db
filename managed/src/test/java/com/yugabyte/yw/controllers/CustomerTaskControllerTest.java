@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 
@@ -318,9 +319,9 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskStatusWithInvalidTaskUUID() {
     String authToken = user.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
-
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
-        customer.uuid + "/tasks/" + taskUUID, authToken);
+    Result result = assertThrows(YWServiceException.class,
+        () -> FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
+        customer.uuid + "/tasks/" + taskUUID, authToken)).getResult();
 
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));

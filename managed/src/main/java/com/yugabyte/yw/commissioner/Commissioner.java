@@ -28,7 +28,7 @@ import com.google.inject.Singleton;
 
 import play.libs.Json;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.*;
 
 @Singleton
 public class Commissioner {
@@ -129,7 +129,7 @@ public class Commissioner {
 
     // We are not able to find the task. Report an error.
     LOG.error("Not able to find task " + taskUUID);
-    throw new RuntimeException("Not able to find task " + taskUUID);
+    throw new YWServiceException(BAD_REQUEST, "Not able to find task " + taskUUID);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
