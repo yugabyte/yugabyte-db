@@ -215,29 +215,9 @@ class TSDescriptor {
     return heartbeat_rtt_;
   }
 
-  void set_total_memory_usage(uint64_t total_memory_usage) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.total_memory_usage = total_memory_usage;
-  }
-
   uint64_t total_memory_usage() {
     SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.total_memory_usage;
-  }
-
-  void set_total_sst_file_size (uint64_t total_sst_file_size) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.total_sst_file_size = total_sst_file_size;
-  }
-
-  void set_uncompressed_sst_file_size (uint64_t uncompressed_sst_file_size) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.uncompressed_sst_file_size = uncompressed_sst_file_size;
-  }
-
-  void set_num_sst_files (uint64_t num_sst_files) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.num_sst_files = num_sst_files;
   }
 
   uint64_t total_sst_file_size() {
@@ -255,19 +235,9 @@ class TSDescriptor {
     return ts_metrics_.num_sst_files;
   }
 
-  void set_read_ops_per_sec(double read_ops_per_sec) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.read_ops_per_sec = read_ops_per_sec;
-  }
-
   double read_ops_per_sec() {
     SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.read_ops_per_sec;
-  }
-
-  void set_write_ops_per_sec(double write_ops_per_sec) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.write_ops_per_sec = write_ops_per_sec;
   }
 
   double write_ops_per_sec() {
