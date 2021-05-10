@@ -69,21 +69,23 @@
     limit_item: nofile
     value: 1048576
 
+- name: Creating {{ nproc_override_file }}
+  become: yes
+  become_method: sudo
+  file:
+    path: "{{ nproc_override_file }}"
+    state: touch
+
 - name: Increase limit on max number of processes
   become: yes
   become_method: sudo
   pam_limits:
+    dest: "{{ nproc_override_file }}"
     domain: "*"
     limit_type: "-"
     limit_item: nproc
     value: 12000
 
-- name: Remove file /etc/security/limits.d/20-nproc.conf if present
-  become: yes
-  become_method: sudo
-  file:
-    path: /etc/security/limits.d/20-nproc.conf
-    state: absent
 - block:
   - name: Update package cache on RedHat platforms
     command: yum makecache fast -y

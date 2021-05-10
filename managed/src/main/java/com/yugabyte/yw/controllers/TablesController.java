@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.*;
@@ -116,13 +117,13 @@ public class TablesController extends AuthenticatedController {
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);
-      return ApiResponse.success(errMsg);
+      // TODO: This should be temporary unavailable error and not a success!!
+      return YWSuccess.asResult(errMsg);
     }
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
           tableUUID.toString().replace("-", ""));
       ybService.closeClient(client, masterAddresses);
@@ -206,11 +207,10 @@ public class TablesController extends AuthenticatedController {
       );
     }
 
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
@@ -259,13 +259,12 @@ public class TablesController extends AuthenticatedController {
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
     try {
-      String certificate = universe.getCertificateNodeToNode();
-      String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+      String certificate = universe.getCertificate();
       if (masterAddresses.isEmpty()) {
         LOG.warn("Expected error. Masters are not currently queryable.");
         return ok("Expected error. Masters are not currently queryable.");
       }
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse response = client.getTableSchemaByUUID(
         tableUUID.toString().replace("-", ""));
 
@@ -440,9 +439,19 @@ public class TablesController extends AuthenticatedController {
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
-      Provider provider = Provider.get(customerUUID, cloudType);
+
+      Provider provider = null;
+      try {
+        provider = Provider.get(customerUUID,
+          UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+      } catch(IllegalArgumentException ex) {
+        String errMsg = "Could not find AWS provider for customer UUID: " + customerUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
       if (provider == null) {
-        String errMsg = "Could not find Provider aws for customer UUID: " + customerUUID;
+        String errMsg = "Could not find AWS provider for customer UUID: " + customerUUID;
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
@@ -494,12 +503,11 @@ public class TablesController extends AuthenticatedController {
       LOG.warn(errMsg);
       return false;
     }
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
 
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       // Match if the table is an index or ysql table.

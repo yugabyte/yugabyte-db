@@ -77,21 +77,6 @@ public class CertificateInfo extends Model {
   @Enumerated(EnumType.STRING)
   public CertificateInfo.Type certType;
 
-  // For mTLS, each certificate will also be requiring a corresponding certificate
-  // and key file for connections to the DB nodes.
-  @Column(nullable = true)
-  public String platformCert;
-  public void setPlatformCert(String certPath) {
-    this.platformCert = certPath;
-    this.save();
-  }
-  @Column(nullable = true)
-  public String platformKey;
-  public void setPlatformKey(String keyPath) {
-    this.platformKey = keyPath;
-    this.save();
-  }
-
   @Column(nullable = true)
   public String checksum;
   public void setChecksum() throws IOException, NoSuchAlgorithmException {
@@ -117,38 +102,28 @@ public class CertificateInfo extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
 
-  // Create function for self-signed certs.
   public static CertificateInfo create(
-      UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
-      String certificate, String privateKey, String platformCert, String platformKey)
-      throws IOException, NoSuchAlgorithmException {
-    CertificateInfo cert = create(uuid, customerUUID, label, startDate, expiryDate, certificate,
-        platformCert, platformKey);
-    cert.certType = CertificateInfo.Type.SelfSigned;
+    UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
+    String privateKey, String certificate, CertificateInfo.Type certType)
+    throws IOException, NoSuchAlgorithmException {
+    CertificateInfo cert = new CertificateInfo();
+    cert.uuid = uuid;
+    cert.customerUUID = customerUUID;
+    cert.label = label;
+    cert.startDate = startDate;
+    cert.expiryDate = expiryDate;
     cert.privateKey = privateKey;
+    cert.certificate = certificate;
+    cert.certType = certType;
+    cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
     return cert;
   }
 
-  // Create function for custom certs.
   public static CertificateInfo create(
-      UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
-      String certificate, CertificateParams.CustomCertInfo customCertInfo,
-      String platformCert, String platformKey)
-      throws IOException, NoSuchAlgorithmException {
-    CertificateInfo cert = create(uuid, customerUUID, label, startDate, expiryDate, certificate,
-        platformCert, platformKey);
-    cert.certType = Type.CustomCertHostPath;
-    cert.customCertInfo = Json.toJson(customCertInfo);
-    cert.save();
-    return cert;
-  }
-
-  // Create function for setting the common values.
-  public static CertificateInfo create(
-      UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
-      String certificate, String platformCert, String platformKey)
-      throws IOException, NoSuchAlgorithmException {
+    UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
+    String certificate, CertificateParams.CustomCertInfo customCertInfo)
+    throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
     cert.uuid = uuid;
     cert.customerUUID = customerUUID;
@@ -156,9 +131,10 @@ public class CertificateInfo extends Model {
     cert.startDate = startDate;
     cert.expiryDate = expiryDate;
     cert.certificate = certificate;
-    cert.platformCert = platformCert;
-    cert.platformKey = platformKey;
+    cert.certType = Type.CustomCertHostPath;
+    cert.customCertInfo = Json.toJson(customCertInfo);
     cert.checksum = Util.getFileChecksum(certificate);
+    cert.save();
     return cert;
   }
 

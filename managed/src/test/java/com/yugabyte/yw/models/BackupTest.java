@@ -7,6 +7,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
+import io.ebean.Ebean;
+import io.ebean.SqlUpdate;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -264,4 +266,33 @@ public class BackupTest extends FakeDBApplication {
     // assert to 3 as we are deleting backups even if the universe does not exist.
     assertEquals(String.valueOf(expiredBackups), 3, expiredBackups.get(defaultCustomer).size());
   }
+
+
+  @Test
+  public void testDeserializationJson() {
+    String jsonWithUnknownFields = "{\"errorString\":null,\"deviceInfo\":null," +
+      "\"universeUUID\":\"2ca2d8aa-2879-41b5-8267-4dccc789e841\",\"expectedUniverseVersion\":0," +
+      "\"enableEncryptionAtRest\":false,\"disableEncryptionAtRest\":false,\"cmkArn\":n"
+      + "ull,\"encryptionAtRestConfig\":null,\"nodeDetailsSet\":null," +
+      "\"keyspace\":\"system_redis\",\"tableName\":\"redis\"," +
+      "\"tableUUID\":\"33268a1e-33e0-4606-90c6-ff9fb7e8c896\",\"sse\":false," +
+      "\"storageConfigUUID\":\"c0432198-df18-40cb-a012-83c89ca63573\"," +
+      "\"storageLocation\":\"s3://backups.yugabyte.com/por"
+      + "tal/univ-2ca2d8aa-2879-41b5-8267-4dccc789e841/backup-2019-11-19T04:21:48-391451651/table" +
+      "-system_redis.redis-33268a1e33e0460690c6ff9fb7e8c896\",\"actionType\":\"CREATE\"," +
+      "\"schedulingFrequency\":30000,\"timeBeforeDelete\":0,\"enableVerboseLogs\":false}";
+    UUID universeUUID = UUID.randomUUID();
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+      universeUUID, s3StorageConfig.configUUID);
+    assertNotNull(b);
+
+    SqlUpdate sqlUpdate = Ebean.createSqlUpdate("update public.backup set backup_info = '" +
+      jsonWithUnknownFields
+      + "'  where backup_uuid::text = '"+ b.backupUUID +"';");
+    sqlUpdate.execute();
+
+    b = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    assertNotNull(b);
+  }
+
 }

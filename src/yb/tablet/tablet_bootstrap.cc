@@ -1376,16 +1376,12 @@ class TabletBootstrap {
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
     WriteOperationState operation_state(nullptr, write, nullptr);
-    operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
+    operation_state.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
     operation_state.set_hybrid_time(hybrid_time);
 
-    tablet_->mvcc_manager()->AddPending(&hybrid_time);
-
-    tablet_->StartOperation(&operation_state);
-
-    // Use committed OpId for mem store anchoring.
-    operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
+    auto op_id = operation_state.op_id();
+    tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
 
     if (test_hooks_ &&
         replicate_msg->has_write_request() &&
@@ -1393,7 +1389,7 @@ class TabletBootstrap {
         replicate_msg->write_request().write_batch().has_transaction() &&
         test_hooks_->ShouldSkipWritingIntents()) {
       // Used in unit tests to avoid instantiating the entire transactional subsystem.
-      tablet_->mvcc_manager()->Replicated(hybrid_time);
+      tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
       return Status::OK();
     }
 
@@ -1403,7 +1399,7 @@ class TabletBootstrap {
     // replicating its intents.
     LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
 
-    tablet_->mvcc_manager()->Replicated(hybrid_time);
+    tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
     return Status::OK();
   }
 
@@ -1494,13 +1490,14 @@ class TabletBootstrap {
 
     UpdateTxnOperationState operation_state(
         /* tablet */ nullptr, replicate_msg->mutable_transaction_state());
-    operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
+    operation_state.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
     operation_state.set_hybrid_time(hybrid_time);
 
-    tablet_->mvcc_manager()->AddPending(&hybrid_time);
-    auto scope_exit = ScopeExit([this, hybrid_time] {
-      tablet_->mvcc_manager()->Replicated(hybrid_time);
+    auto op_id = OpId::FromPB(replicate_msg->id());
+    tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
+    auto scope_exit = ScopeExit([this, hybrid_time, op_id] {
+      tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
     });
 
     if (test_hooks_ && test_hooks_->ShouldSkipTransactionUpdates()) {

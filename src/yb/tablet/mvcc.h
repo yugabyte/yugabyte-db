@@ -39,11 +39,14 @@
 #include <vector>
 #include <iostream>
 
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/server/clock.h"
+
+#include "yb/util/compare_util.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/opid.h"
 #include "yb/util/enums.h"
-#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 namespace tablet {
@@ -91,36 +94,34 @@ class MvccManager {
 
   // Set special RF==1 mode flag to handle safe time requests correctly in case
   // there are no heartbeats to update internal propagated_safe_time_ correctly.
-  void SetLeaderOnlyMode(bool leader_only);
+  void SetLeaderOnlyMode(bool leader_only) EXCLUDES(mutex_);
 
   // Sets time of last replicated operation, used after bootstrap.
-  void SetLastReplicated(HybridTime ht);
+  void SetLastReplicated(HybridTime ht) EXCLUDES(mutex_);
 
   // Sets safe time that was sent to us by the leader. Should be called on followers.
-  void SetPropagatedSafeTimeOnFollower(HybridTime ht);
+  void SetPropagatedSafeTimeOnFollower(HybridTime ht) EXCLUDES(mutex_);
 
   // Updates the propagated_safe_time field to the current safe time. This should be called in the
   // majority-replicated watermark callback from Raft. If we have some read requests that were
   // initiated when this server was a follower and are waiting for the safe time to advance past
   // a certain point, they can also get unblocked by this update of propagated_safe_time.
-  void UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& ht_lease);
+  void UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& ht_lease) EXCLUDES(mutex_);
 
-  // Adds time of new tracked operation.
-  // `ht` is in-out parameter.
-  // In case of replica `ht` is already assigned, in case of leader we should assign ht by
-  // by ourselves.
-  // We pass ht as pointer here, because clock should be accessed with locked mutex, otherwise
-  // SafeTime could return time greater than added.
-  //
+  // Adds time of new tracked follower operation.
   // OpId is being passed for the ease of debugging.
-  void AddPending(HybridTime* ht);
+  void AddFollowerPending(HybridTime ht, const OpId& op_id) EXCLUDES(mutex_);
+
+  // Adds leader operation and returns its time.
+  // OpId is being passed for the ease of debugging.
+  HybridTime AddLeaderPending(const OpId& op_id) EXCLUDES(mutex_);
 
   // Notifies that operation with appropriate time was replicated.
   // It should be first operation in queue.
-  void Replicated(HybridTime ht);
+  void Replicated(HybridTime ht, const OpId& op_id) EXCLUDES(mutex_);
 
   // Notifies that operation with appropriate time was aborted.
-  void Aborted(HybridTime ht);
+  void Aborted(HybridTime ht, const OpId& op_id) EXCLUDES(mutex_);
 
   // Returns maximum allowed timestamp to read at. No operations that are initiated after this call
   // will receive hybrid time less than what's returned, provided that `ht_lease` is set to the
@@ -138,50 +139,77 @@ class MvccManager {
   // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
   // because of timeout.
   HybridTime SafeTime(
-      HybridTime min_allowed, CoarseTimePoint deadline, const FixedHybridTimeLease& ht_lease) const;
+      HybridTime min_allowed, CoarseTimePoint deadline, const FixedHybridTimeLease& ht_lease) const
+      EXCLUDES(mutex_);
 
-  HybridTime SafeTime(const FixedHybridTimeLease& ht_lease) const {
+  HybridTime SafeTime(const FixedHybridTimeLease& ht_lease) const EXCLUDES(mutex_) {
     return SafeTime(HybridTime::kMin /* min_allowed */, CoarseTimePoint::max() /* deadline */,
                     ht_lease);
   }
 
-  HybridTime SafeTimeForFollower(HybridTime min_allowed, CoarseTimePoint deadline) const;
+  HybridTime SafeTimeForFollower(HybridTime min_allowed, CoarseTimePoint deadline) const
+      EXCLUDES(mutex_);
 
   // Returns time of last replicated operation.
-  HybridTime LastReplicatedHybridTime() const;
+  HybridTime LastReplicatedHybridTime() const EXCLUDES(mutex_);
 
   class MvccOpTrace;
 
   void TEST_DumpTrace(std::ostream* out);
 
-
  private:
   HybridTime DoGetSafeTime(HybridTime min_allowed,
                            CoarseTimePoint deadline,
                            const FixedHybridTimeLease& ht_lease,
-                           std::unique_lock<std::mutex>* lock) const;
+                           std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
 
   const std::string& LogPrefix() const { return prefix_; }
 
   struct InvariantViolationLoggingHelper;
-  InvariantViolationLoggingHelper InvariantViolationLogPrefix() const;
+  InvariantViolationLoggingHelper InvariantViolationLogPrefix() const REQUIRES(mutex_);
 
   friend std::ostream& operator<<(
       std::ostream& out, const InvariantViolationLoggingHelper& helper);
 
-  void PopFront(std::lock_guard<std::mutex>* lock);
+  void PopFront() REQUIRES(mutex_);
+  void AddPending(HybridTime ht, const OpId& op_id, bool is_follower_side) REQUIRES(mutex_);
 
   std::string prefix_;
   server::ClockPtr clock_;
   mutable std::mutex mutex_;
   mutable std::condition_variable cond_;
 
+  struct QueueItem {
+    HybridTime hybrid_time;
+    OpId op_id;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(hybrid_time, op_id);
+    }
+
+    friend bool operator==(const QueueItem& lhs, const QueueItem& rhs) {
+      return YB_STRUCT_EQUALS(hybrid_time, op_id);
+    }
+
+    friend bool operator<(const QueueItem& lhs, const QueueItem& rhs) {
+      return lhs.hybrid_time < rhs.hybrid_time ||
+             (lhs.hybrid_time == rhs.hybrid_time && lhs.op_id < rhs.op_id);
+    }
+
+    friend bool operator>(const QueueItem& lhs, const QueueItem& rhs) {
+      return rhs < lhs;
+    }
+
+    friend std::ostream& operator<<(std::ostream& out, const QueueItem& item) {
+      return out << item.ToString();
+    }
+  };
   // An ordered queue of times of tracked operations.
-  std::deque<HybridTime> queue_;
+  std::deque<QueueItem> queue_;
 
   // Priority queue (min-heap, hence std::greater<> as the "less" comparator) of aborted operations.
   // Required because we could abort operations from the middle of the queue.
-  std::priority_queue<HybridTime, std::vector<HybridTime>, std::greater<>> aborted_;
+  std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<>> aborted_;
 
   HybridTime last_replicated_ = HybridTime::kMin;
 

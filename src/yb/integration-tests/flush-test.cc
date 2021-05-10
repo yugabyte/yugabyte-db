@@ -26,6 +26,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 using namespace std::literals;
@@ -70,7 +71,7 @@ Result<TabletId> GetTabletIdFromSstFilename(const std::string& filename) {
   }
 }
 
-class TabletManagerListener : public tserver::TsTabletManagerListener {
+class TabletManagerListener : public tserver::TabletMemoryManagerListenerIf {
  public:
   void StartedFlush(const TabletId& tablet_id) override {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -126,7 +127,8 @@ class FlushITest : public YBTest {
   }
 
   void SetupCluster() {
-    cluster_->GetTabletManager(0)->TEST_listeners.push_back(tablet_manager_listener_);
+    cluster_->GetTabletManager(0)->tablet_memory_manager()->TEST_listeners.push_back(
+        tablet_manager_listener_);
   }
 
   void SetupWorkload(
