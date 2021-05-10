@@ -171,14 +171,22 @@ Create an instance to run the Yugabyte Platform server. To do this, navigate to 
 If you are planning to use an IAM role while deploying the universe in your AWS account, you need to attach the IAM role to the Yugabyte Platform VM before launching the instance, as follows:
 
 1. Navigate to **EC2 > New Instance > Confirm Instance Details > Attach the IAM role**.
-2. Set the **IAM role** field to ec2-admin-access.
+2. Set the **IAM role** field to your IAM role (for example, ec2-admin-access).
 3. Set the **Metadata accessible** field to Enabled.
 4. Set the **Metadata version** field to V1 and V2 (token optional).
 5. Set the **Metadata token response hop limit** field to 3, as per the following illustration:
 
   ![AIM for AWS](/images/ee/aws-setup/iam-for-aws.png)
 
-If you are configuring an existing instance of Yugabyte Platform, execute the following command (replace `NNNNNNN` with the instance ID):
+If you are configuring an existing instance of Yugabyte Platform, start by attaching the IAM role as follows:
+
+1. Navigate to **EC2 > Instances**.
+2. Select the instance.
+3. Navigate to **Actions > Security > Modify IAM role**.
+4. Add the IAM role.
+5. Click **Save**.
+
+Then execute the following command to change metadata options (replace `NNNNNNN` with the instance ID and `us-west-2` with the region in which this EC2 VM is deployed):
 
 ```shell
 aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-response-hop-limit 3 --http-endpoint enabled --region us-west-2
