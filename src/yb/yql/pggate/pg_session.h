@@ -26,6 +26,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/master.pb.h"
+
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
@@ -210,6 +212,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
+
+  Result<master::AnalyzeTableResponsePB> AnalyzeTable(const PgObjectId& table_id);
 
   // Start operation buffering. Buffering must not be in progress.
   void StartOperationsBuffering();

@@ -104,6 +104,8 @@ using consensus::RaftPeerPB;
 using master::GetLeaderMasterRpc;
 using master::MasterServiceProxy;
 using master::MasterErrorPB;
+using master::AnalyzeTableRequestPB;
+using master::AnalyzeTableResponsePB;
 using rpc::Rpc;
 using rpc::RpcController;
 
@@ -581,6 +583,16 @@ Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
                 table_name, table_id, _1, _2));
+}
+
+Result<AnalyzeTableResponsePB> YBClient::Data::AnalyzeTable(
+    YBClient* client, const AnalyzeTableRequestPB& req, CoarseTimePoint deadline) {
+  AnalyzeTableResponsePB resp;
+  const auto s = SyncLeaderMasterRpc<AnalyzeTableRequestPB, AnalyzeTableResponsePB>(
+      deadline, req, &resp, nullptr /* attempts */, "AnalyzeTable",
+      &MasterServiceProxy::AnalyzeTable);
+  RETURN_NOT_OK(s);
+  return resp;
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,

@@ -63,6 +63,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                          IsCreateTableDoneResponsePB* resp,
                          rpc::RpcContext rpc) override;
+  void AnalyzeTable(const AnalyzeTableRequestPB* req,
+                    AnalyzeTableResponsePB* resp,
+                    rpc::RpcContext rpc) override;
   void TruncateTable(const TruncateTableRequestPB* req,
                      TruncateTableResponsePB* resp,
                      rpc::RpcContext rpc) override;

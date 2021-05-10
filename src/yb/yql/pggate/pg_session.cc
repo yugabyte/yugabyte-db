@@ -909,6 +909,10 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
   return s;
 }
 
+Result<master::AnalyzeTableResponsePB> PgSession::AnalyzeTable(const PgObjectId& table_id) {
+  return client_->AnalyzeTable(table_id.GetYBTableId());
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_id) {

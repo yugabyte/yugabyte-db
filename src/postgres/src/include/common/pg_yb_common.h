@@ -83,4 +83,9 @@ extern int YBUnsupportedFeatureSignalLevel();
  */
 extern bool YBIsNonTxnCopyEnabled();
 
+/**
+ * Returns whether running the ANALYZE command is enabled.
+ */
+extern bool YBIsAnalyzeCmdEnabled();
+
 #endif /* PG_YB_COMMON_H */

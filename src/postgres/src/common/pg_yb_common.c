@@ -133,3 +133,14 @@ YBIsNonTxnCopyEnabled()
 	}
 	return cached_value;
 }
+
+bool
+YBIsAnalyzeCmdEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("FLAGS_ysql_allow_analyze_cmd");
+	}
+	return cached_value;
+}
