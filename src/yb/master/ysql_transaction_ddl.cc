@@ -74,7 +74,8 @@ void YsqlTransactionDdl::VerifyTransaction(TransactionMetadata transaction,
 void YsqlTransactionDdl::TransactionReceived(TransactionMetadata transaction,
     std::function<Status(bool)> complete_callback,
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
-  LOG(INFO) << "TransactionReceived: " << txn_status.ToString() << " : " << resp.DebugString();
+  YB_LOG_EVERY_N_SECS(INFO, 1) << "TransactionReceived: " << txn_status.ToString()
+                               << " : " << resp.DebugString();
 
   if (!txn_status.ok()) {
     LOG(WARNING) << "Transaction Status attempt (" << transaction.ToString()
@@ -94,7 +95,8 @@ void YsqlTransactionDdl::TransactionReceived(TransactionMetadata transaction,
     }), "Failed to enqueue callback");
     // #5981: Maybe have the same heuristic as above?
   } else {
-    LOG(INFO) << "Got Response for " << transaction.ToString() << ": " << resp.DebugString();
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Got Response for " << transaction.ToString()
+                                 << ": " << resp.DebugString();
     bool is_pending = (resp.status_size() == 0);
     for (int i = 0; i < resp.status_size() && !is_pending; ++i) {
       // NOTE: COMMITTED state is also "pending" because we need APPLIED.

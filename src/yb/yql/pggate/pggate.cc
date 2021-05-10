@@ -729,6 +729,9 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
   auto stmt = std::make_unique<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
       is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
