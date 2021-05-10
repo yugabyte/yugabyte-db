@@ -484,7 +484,7 @@ class PostgresBuilder(YbBuildToolBase):
                 'CMakeLists.txt'
             ]
             git_hash = subprocess.check_output(
-                ['git', 'show', '--no-patch', '--format=%H'] + code_subset
+                ['git', 'show', '-s', '--format=%H'] + code_subset
             ).decode('utf-8').strip()
             git_diff = subprocess.check_output(
                 ['git', 'diff', 'HEAD'] + code_subset
