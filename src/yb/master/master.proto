@@ -1026,6 +1026,17 @@ message CreateTableResponsePB {
   optional bytes table_id = 2;
 }
 
+message AnalyzeTableRequestPB {
+  required TableIdentifierPB table = 1;
+}
+
+message AnalyzeTableResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  optional uint32 rows = 2;
+}
+
 message IsCreateTableDoneRequestPB {
   required TableIdentifierPB table = 1;
 }
@@ -2063,6 +2074,8 @@ service MasterService {
 
   rpc CreateTable(CreateTableRequestPB) returns (CreateTableResponsePB);
   rpc IsCreateTableDone(IsCreateTableDoneRequestPB) returns (IsCreateTableDoneResponsePB);
+
+  rpc AnalyzeTable(AnalyzeTableRequestPB) returns (AnalyzeTableResponsePB);
 
   rpc TruncateTable(TruncateTableRequestPB) returns (TruncateTableResponsePB);
   rpc IsTruncateTableDone(IsTruncateTableDoneRequestPB) returns (IsTruncateTableDoneResponsePB);
