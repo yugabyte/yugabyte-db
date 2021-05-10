@@ -68,7 +68,28 @@ This tutorial assumes that:
     $ cd MySample
     ```
 
-1. Replace the contents of the `pom.xml` file with the following:
+1. Open the `pom.xml` file in a text editor.
+
+1. Add the following below the `<url>` element.
+
+    ```xml
+    <properties>
+      <maven.compiler.source>1.8</maven.compiler.source>
+      <maven.compiler.target>1.8</maven.compiler.target>
+    </properties>
+    ```
+
+1. Add the following within the `<dependencies>` element.
+
+    ```xml
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>42.2.14</version>
+    </dependency>
+    ```
+
+    Your `pom.xml` file should now be similar to the following:
 
     ```xml
     <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -92,24 +113,20 @@ This tutorial assumes that:
           <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>42.2.14</version>
+          <groupId>org.postgresql</groupId>
+          <artifactId>postgresql</artifactId>
+          <version>42.2.14</version>
         </dependency>
       </dependencies>
     </project>
     ```
 
+1. Save and close `pom.xml`.
+
 1. Install the added dependency.
 
     ```sh
     $ mvn install
-    ```
-
-1. Make a new directory for your app.
-
-    ```sh
-    $ mkdir -p src/main/java/com/yugabyte
     ```
 
 1. Copy the following Java code to a new file named `src/main/java/com/yugabyte/HelloSqlApp.java`:
@@ -155,12 +172,13 @@ This tutorial assumes that:
 1. Run your new program.
 
     ```sh
-    $ mvn install exec:java -Dexec.mainClass=com.yugabyte.HelloSqlApp
+    $ mvn -q exec:java -Dexec.mainClass=com.yugabyte.HelloSqlApp
     ```
 
     You should see the following as the output:
 
     ```output
+    Connected to the PostgreSQL server successfully.
     Created table employee
     Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
     Query returned: name=John, age=35, language: Java
