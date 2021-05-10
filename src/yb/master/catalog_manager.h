@@ -195,6 +195,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                              CreateTableResponsePB* resp,
                              rpc::RpcContext* rpc);
 
+  // Analyze a table and provide estimates of pertinent statistics needed by a postgres ANALYZE
+  // command.
+  CHECKED_STATUS AnalyzeTable(const AnalyzeTableRequestPB* req,
+                              AnalyzeTableResponsePB* resp,
+                              rpc::RpcContext* rpc);
+
   // Create the transaction status table if needed (i.e. if it does not exist already).
   //
   // This is called at the end of CreateTable if the table has transactions enabled.
