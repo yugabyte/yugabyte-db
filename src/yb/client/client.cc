@@ -510,6 +510,13 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
+Result<master::AnalyzeTableResponsePB> YBClient::AnalyzeTable(const std::string& table_id) {
+  master::AnalyzeTableRequestPB req;
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  req.mutable_table()->set_table_id(table_id);
+  return data_->AnalyzeTable(this, req, deadline);
+}
+
 Status YBClient::BackfillIndex(const TableId& table_id, bool wait) {
   auto deadline = (CoarseMonoClock::Now()
                    + MonoDelta::FromMilliseconds(FLAGS_backfill_index_client_rpc_timeout_ms));

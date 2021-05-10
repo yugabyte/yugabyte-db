@@ -93,7 +93,7 @@ class PgDocResult {
 // Classes
 // - PgDocOp: Shared functionalities among all ops, mostly just RPC calls to tablet servers.
 // - PgDocReadOp: Definition for data & method members to be used in READ operation.
-// - PgDocWriteOp: Definition for data & method members to be used in READ operation.
+// - PgDocWriteOp: Definition for data & method members to be used in WRITE operation.
 // - PgDocResult: Definition data holder before they are passed to Postgres layer.
 //
 // Processing Steps
