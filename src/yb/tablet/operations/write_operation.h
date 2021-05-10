@@ -108,16 +108,10 @@ class WriteOperationState : public OperationState {
     return response_;
   }
 
-  // Commits the Mvcc transaction and releases the component lock. After
-  // this method is called all the inserts and mutations will become
-  // visible to other transactions.
+  // Releases the doc db locks and reset rpc fields.
   //
   // Note: request_ and response_ are set to nullptr after this method returns.
-  void Commit();
-
-  // Aborts the mvcc transaction and releases the component lock.
-  // Only one of Commit() or Abort() should be called.
-  void Abort();
+  void Release() override;
 
   // The QL write operations that return rowblocks that need to be returned as RPC sidecars
   // after the transaction completes.
@@ -161,6 +155,10 @@ class WriteOperationState : public OperationState {
   }
 
   void SetTablet(Tablet* tablet) override;
+
+  bool use_mvcc() const override {
+    return true;
+  }
 
  private:
   // Reset the response, and row_ops_ (which refers to data
@@ -280,7 +278,6 @@ class WriteOperation : public Operation {
   friend class DelayedApplyOperation;
 
   // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
-  void DoStart() override;
   void DoStartSynchronization(const Status& status);
 
   // Executes an Apply for a write transaction.

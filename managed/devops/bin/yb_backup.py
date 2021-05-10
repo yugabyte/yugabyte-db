@@ -1015,11 +1015,11 @@ class YBBackup:
             # 0436035d-c4c5-40c6-b45b-19538849b0d9  COMPLETE
             #   {"type":"NAMESPACE","id":"e4c5591446db417f83a52c679de03118","data":{"name":"a",...}}
             #   {"type":"TABLE","id":"d9603c2cab0b48ec807936496ac0e70e","data":{"name":"t2",...}}
-            #   {"type":"NAMESPACE","id":"e4c5591446db417f83a52c679de03118","data":{"name":"a",...}}
             #   {"type":"TABLE","id":"28b5cebe9b0c4cdaa70ce9ceab31b1e5","data":{\
             #       "name":"t2idx","indexed_table_id":"d9603c2cab0b48ec807936496ac0e70e",...}}
             # c1ad61bf-a42b-4bbb-94f9-28516985c2c5  COMPLETE
             #   ...
+            keyspaces = {}
             for line in output.splitlines():
                 if not snapshot_done:
                     if line.find(snapshot_id) == 0:
@@ -1033,11 +1033,14 @@ class YBBackup:
                         break
                     loaded_json = json.loads(line)
                     object_type = loaded_json['type']
+                    object_id = loaded_json['id']
                     data = loaded_json['data']
-                    if object_type == 'TABLE':
-                        keyspace_prefix = 'ysql.' if data['table_type'] == 'PGSQL_TABLE_TYPE' \
-                                              else ''
-                        snapshot_keyspaces.append(keyspace_prefix + data['namespace_name'])
+                    if object_type == 'NAMESPACE' and object_id not in keyspaces:
+                        keyspace_prefix = 'ysql.' \
+                            if data['database_type'] == 'YQL_DATABASE_PGSQL' else ''
+                        keyspaces[object_id] = keyspace_prefix + data['name']
+                    elif object_type == 'TABLE':
+                        snapshot_keyspaces.append(keyspaces[data['namespace_id']])
                         snapshot_tables.append(data['name'])
 
             if not snapshot_done:

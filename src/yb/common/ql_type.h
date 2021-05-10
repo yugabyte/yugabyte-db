@@ -281,6 +281,27 @@ class QLType {
     }
   }
 
+  // Check whether the type id exists among type ids of all UDTs referenced by this UDT.
+  static bool DoesUserDefinedTypeIdExist(const QLTypePB& type_pb,
+                                    const bool transitive,
+                                    const std::string& udt_id) {
+    if (type_pb.main() == USER_DEFINED_TYPE) {
+      if (type_pb.udtype_info().id() == udt_id) {
+        return true;
+      }
+      if (!transitive) {
+        return false; // Do not check params of the UDT if only looking for direct dependencies.
+      }
+    }
+
+    for (const auto& param : type_pb.params()) {
+      if (DoesUserDefinedTypeIdExist(param, transitive, udt_id)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // Get the type ids of all UDTs referenced by this UDT.
   static void GetUserDefinedTypeIds(const QLTypePB& type_pb,
                                     const bool transitive,

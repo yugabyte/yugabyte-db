@@ -98,7 +98,7 @@ template<class C>
 std::pair<std::string, std::string> AssertMetadataEqualsHelper(C* ti_a, C* ti_b) {
   auto l_a = ti_a->LockForRead();
   auto l_b = ti_b->LockForRead();
-  return std::make_pair(l_a->data().pb.DebugString(), l_b->data().pb.DebugString());
+  return std::make_pair(l_a->pb.DebugString(), l_b->pb.DebugString());
 }
 
 // Similar to ASSERT_EQ but compares string representations of protobufs stored in two system

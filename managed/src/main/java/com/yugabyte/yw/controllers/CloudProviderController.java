@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData.ZoneData;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
@@ -127,7 +128,7 @@ public class CloudProviderController extends AuthenticatedController {
       InstanceType.deleteInstanceTypesForProvider(provider, config);
       provider.delete();
       Audit.createAuditEntry(ctx(), request());
-      return ApiResponse.success("Deleted provider: " + providerUUID);
+      return YWSuccess.asResult("Deleted provider: " + providerUUID);
     } catch (RuntimeException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);
@@ -146,12 +147,6 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     Common.CloudType providerCode = formData.get().code;
-    if (!providerCode.equals(Common.CloudType.kubernetes)) {
-      Provider provider = Provider.get(customerUUID, providerCode);
-      if (provider != null) {
-        return ApiResponse.error(BAD_REQUEST, "Duplicate provider code: " + providerCode);
-      }
-    }
 
     // Since the Map<String, String> doesn't get parsed, so for now we would just
     // parse it from the requestBody
@@ -427,9 +422,10 @@ public class CloudProviderController extends AuthenticatedController {
     if (customer == null) {
       ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
     }
-    Provider provider = Provider.get(customerUUID, Common.CloudType.docker);
-    if (provider != null) {
-      return ApiResponse.success(provider);
+
+    List<Provider> providerList = Provider.get(customerUUID, Common.CloudType.docker);
+    if (!providerList.isEmpty()) {
+      return ApiResponse.success(providerList.get(0));
     }
 
     try {

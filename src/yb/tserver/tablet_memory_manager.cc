@@ -1,0 +1,347 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#include "yb/tserver/tablet_memory_manager.h"
+
+#include "yb/consensus/log_cache.h"
+#include "yb/consensus/raft_consensus.h"
+
+#include "yb/gutil/strings/human_readable.h"
+
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/memory_monitor.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/util/background_task.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/mem_tracker.h"
+
+using namespace std::literals;
+using namespace std::placeholders;
+
+DEFINE_bool(enable_log_cache_gc, true,
+            "Set to true to enable log cache garbage collector.");
+
+DEFINE_bool(log_cache_gc_evict_only_over_allocated, true,
+            "If set to true, log cache garbage collection would evict only memory that was "
+            "allocated over limit for log cache. Otherwise it will try to evict requested number "
+            "of bytes.");
+DEFINE_int64(global_memstore_size_percentage, 10,
+             "Percentage of total available memory to use for the global memstore. "
+             "Default is 10. See also memstore_size_mb and "
+             "global_memstore_size_mb_max.");
+DEFINE_int64(global_memstore_size_mb_max, 2048,
+             "Global memstore size is determined as a percentage of the available "
+             "memory. However, this flag limits it in absolute size. Value of 0 "
+             "means no limit on the value obtained by the percentage. Default is 2048.");
+DEFINE_int32(flush_background_task_interval_msec, 0,
+             "The tick interval time for the flush background task. "
+             "This defaults to 0, which means disable the background task "
+             "And only use callbacks on memstore allocations. ");
+
+namespace {
+  constexpr int kDbCacheSizeUsePercentage = -1;
+  constexpr int kDbCacheSizeCacheDisabled = -2;
+  constexpr int kDbCacheSizeUseDefault = -3;
+}
+
+DEFINE_bool(enable_block_based_table_cache_gc, false,
+            "Set to true to enable block based table garbage collector.");
+
+DEFINE_int64(db_block_cache_size_bytes, kDbCacheSizeUsePercentage,
+             "Size of RocksDB block cache (in bytes). "
+             "This defaults to -1 for system auto-generated default, which would use "
+             "FLAGS_db_block_cache_size_percentage to select a percentage of the total "
+             "memory as the default size for the shared block cache. Value of -2 disables "
+             "block cache.");
+
+DEFINE_int32(db_block_cache_size_percentage, kDbCacheSizeUseDefault,
+             "Default percentage of total available memory to use as block cache size, if not "
+             "asking for a raw number, through FLAGS_db_block_cache_size_bytes. "
+             "Defaults to -3 (use default percentage as defined by master or tserver).");
+
+DEFINE_int32(db_block_cache_num_shard_bits, 4,
+             "Number of bits to use for sharding the block cache (defaults to 4 bits)");
+TAG_FLAG(db_block_cache_num_shard_bits, advanced);
+
+DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
+                  "Always pretend memory has been exceeded to enforce background flush.");
+
+namespace yb {
+namespace tserver {
+
+using strings::Substitute;
+
+namespace {
+
+class FunctorGC : public GarbageCollector {
+ public:
+  explicit FunctorGC(std::function<void(size_t)> impl) : impl_(std::move(impl)) {}
+
+  void CollectGarbage(size_t required) {
+    impl_(required);
+  }
+
+  virtual ~FunctorGC() = default;
+
+ private:
+  std::function<void(size_t)> impl_;
+};
+
+class LRUCacheGC : public GarbageCollector {
+ public:
+  explicit LRUCacheGC(std::shared_ptr<rocksdb::Cache> cache) : cache_(std::move(cache)) {}
+
+  void CollectGarbage(size_t required) {
+    if (!FLAGS_enable_block_based_table_cache_gc) {
+      return;
+    }
+
+    auto evicted = cache_->Evict(required);
+    LOG(INFO) << "Evicted from table cache: " << HumanReadableNumBytes::ToString(evicted)
+              << ", new usage: " << HumanReadableNumBytes::ToString(cache_->GetUsage())
+              << ", required: " << HumanReadableNumBytes::ToString(required);
+  }
+
+  virtual ~LRUCacheGC() = default;
+
+ private:
+  std::shared_ptr<rocksdb::Cache> cache_;
+};
+
+// Evaluates the target block cache size based on the db_block_cache_size_percentage and
+// db_block_cache_size_bytes flags, as well as the passed default_block_cache_size_percentage.
+int64_t GetTargetBlockCacheSize(const int32_t default_block_cache_size_percentage) {
+  int32_t target_block_cache_size_percentage =
+      (FLAGS_db_block_cache_size_percentage == kDbCacheSizeUseDefault) ?
+      default_block_cache_size_percentage : FLAGS_db_block_cache_size_percentage;
+
+  // If we aren't assigning block cache sized based on percentage, then the size is determined by
+  // db_block_cache_size_bytes.
+  int64_t target_block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
+  // Auto-compute size of block cache based on percentage of memory available if asked to.
+  if (target_block_cache_size_bytes == kDbCacheSizeUsePercentage) {
+    // Check some bounds.
+    CHECK(target_block_cache_size_percentage > 0 && target_block_cache_size_percentage <= 100)
+        << Substitute(
+               "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
+               "$0",
+               target_block_cache_size_percentage);
+
+    const int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
+    target_block_cache_size_bytes = total_ram_avail * target_block_cache_size_percentage / 100;
+  }
+  return target_block_cache_size_bytes;
+}
+
+size_t GetLogCacheSize(tablet::TabletPeer* peer) {
+  return down_cast<consensus::RaftConsensus*>(peer->consensus())->LogCacheSize();
+}
+
+}  // namespace
+
+TabletMemoryManager::TabletMemoryManager(
+    tablet::TabletOptions* options,
+    const std::shared_ptr<MemTracker>& mem_tracker,
+    const int32_t default_block_cache_size_percentage,
+    const scoped_refptr<MetricEntity>& metrics,
+    const std::function<std::vector<tablet::TabletPeerPtr>()>& peers_fn) {
+  server_mem_tracker_ = mem_tracker;
+  peers_fn_ = peers_fn;
+
+  InitBlockCache(metrics, default_block_cache_size_percentage, options);
+  InitLogCacheGC();
+  // Assign background_task_ if necessary.
+  ConfigureBackgroundTask(options);
+}
+
+CHECKED_STATUS TabletMemoryManager::Init() {
+  if (background_task_) {
+    RETURN_NOT_OK(background_task_->Init());
+  }
+  return Status::OK();
+}
+
+void TabletMemoryManager::Shutdown() {
+  if (background_task_) {
+    background_task_->Shutdown();
+  }
+}
+
+std::shared_ptr<MemTracker> TabletMemoryManager::block_based_table_mem_tracker() {
+  return block_based_table_mem_tracker_;
+}
+
+void TabletMemoryManager::InitBlockCache(
+    const scoped_refptr<MetricEntity>& metrics,
+    const int32_t default_block_cache_size_percentage,
+    tablet::TabletOptions* options) {
+  int64_t block_cache_size_bytes = GetTargetBlockCacheSize(default_block_cache_size_percentage);
+
+  block_based_table_mem_tracker_ = MemTracker::FindOrCreateTracker(
+      block_cache_size_bytes,
+      "BlockBasedTable",
+      server_mem_tracker_);
+
+  if (block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
+    options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
+                                                FLAGS_db_block_cache_num_shard_bits);
+    options->block_cache->SetMetrics(metrics);
+    block_based_table_gc_ = std::make_shared<LRUCacheGC>(options->block_cache);
+    block_based_table_mem_tracker_->AddGarbageCollector(block_based_table_gc_);
+  }
+}
+
+void TabletMemoryManager::InitLogCacheGC() {
+  auto log_cache_mem_tracker = consensus::LogCache::GetServerMemTracker(server_mem_tracker_);
+  log_cache_gc_ = std::make_shared<FunctorGC>(
+      std::bind(&TabletMemoryManager::LogCacheGC, this, log_cache_mem_tracker.get(), _1));
+  log_cache_mem_tracker->AddGarbageCollector(log_cache_gc_);
+}
+
+void TabletMemoryManager::ConfigureBackgroundTask(tablet::TabletOptions* options) {
+  // Calculate memstore_size_bytes based on total RAM available and global percentage.
+  bool should_count_memory = FLAGS_global_memstore_size_percentage > 0;
+  CHECK(FLAGS_global_memstore_size_percentage > 0 && FLAGS_global_memstore_size_percentage <= 100)
+    << Substitute(
+        "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
+        "$0",
+        FLAGS_global_memstore_size_percentage);
+  int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
+  size_t memstore_size_bytes = total_ram_avail * FLAGS_global_memstore_size_percentage / 100;
+
+  if (FLAGS_global_memstore_size_mb_max != 0) {
+    memstore_size_bytes = std::min(memstore_size_bytes,
+                                   static_cast<size_t>(FLAGS_global_memstore_size_mb_max << 20));
+  }
+
+  // Add memory monitor and background thread for flushing.
+  // TODO(zhaoalex): replace task with Poller
+  if (should_count_memory) {
+    background_task_.reset(new BackgroundTask(
+      std::function<void()>([this]() { FlushTabletIfLimitExceeded(); }),
+      "tablet manager",
+      "flush scheduler bgtask",
+      std::chrono::milliseconds(FLAGS_flush_background_task_interval_msec)));
+    options->memory_monitor = std::make_shared<rocksdb::MemoryMonitor>(
+        memstore_size_bytes,
+        std::function<void()>([this](){
+                                YB_WARN_NOT_OK(background_task_->Wake(), "Wakeup error"); }));
+  }
+  // Must assign memory_monitor_ after configuring the background task.
+  memory_monitor_ = options->memory_monitor;
+}
+
+void TabletMemoryManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t bytes_to_evict) {
+  if (!FLAGS_enable_log_cache_gc) {
+    return;
+  }
+
+  if (FLAGS_log_cache_gc_evict_only_over_allocated) {
+    if (!log_cache_mem_tracker->has_limit()) {
+      return;
+    }
+    auto limit = log_cache_mem_tracker->limit();
+    auto consumption = log_cache_mem_tracker->consumption();
+    if (consumption <= limit) {
+      return;
+    }
+    bytes_to_evict = std::min<size_t>(bytes_to_evict, consumption - limit);
+  }
+
+  auto peers = peers_fn_();
+  // Sort by inverse log size.
+  std::sort(peers.begin(), peers.end(), [](const auto& lhs, const auto& rhs) {
+    return GetLogCacheSize(lhs.get()) > GetLogCacheSize(rhs.get());
+  });
+
+  size_t total_evicted = 0;
+  for (const auto& peer : peers) {
+    if (GetLogCacheSize(peer.get()) <= 0) {
+      continue;
+    }
+    size_t evicted = down_cast<consensus::RaftConsensus*>(
+        peer->consensus())->EvictLogCache(bytes_to_evict - total_evicted);
+    total_evicted += evicted;
+    if (total_evicted >= bytes_to_evict) {
+      break;
+    }
+  }
+
+
+  LOG(INFO) << "Evicted from log cache: " << HumanReadableNumBytes::ToString(total_evicted)
+            << ", required: " << HumanReadableNumBytes::ToString(bytes_to_evict);
+}
+
+void TabletMemoryManager::FlushTabletIfLimitExceeded() {
+  int iteration = 0;
+  while (memory_monitor_->Exceeded() ||
+         (iteration++ == 0 && FLAGS_TEST_pretend_memory_exceeded_enforce_flush)) {
+    YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
+                                           "tablet to flush", memory_monitor_->limit());
+    auto flush_tick = rocksdb::FlushTick();
+    tablet::TabletPeerPtr tablet_to_flush = TabletToFlush();
+    // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
+    // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
+    // will not happen often, but should be fixed.
+    if (tablet_to_flush) {
+      LOG(INFO)
+          << LogPrefix(tablet_to_flush)
+          << "Flushing tablet with oldest memstore write at "
+          << tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime();
+      WARN_NOT_OK(
+          tablet_to_flush->tablet()->Flush(
+              tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
+          Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
+      for (auto listener : TEST_listeners) {
+        listener->StartedFlush(tablet_to_flush->tablet_id());
+      }
+    }
+  }
+}
+
+// Return the tablet with the oldest write in memstore, or nullptr if all tablet memstores are
+// empty or about to flush.
+tablet::TabletPeerPtr TabletMemoryManager::TabletToFlush() {
+  HybridTime oldest_write_in_memstores = HybridTime::kMax;
+  tablet::TabletPeerPtr tablet_to_flush;
+  for (const tablet::TabletPeerPtr& peer : peers_fn_()) {
+    const auto tablet = peer->shared_tablet();
+    if (tablet) {
+      const auto ht = tablet->OldestMutableMemtableWriteHybridTime();
+      if (ht.ok()) {
+        if (*ht < oldest_write_in_memstores) {
+          oldest_write_in_memstores = *ht;
+          tablet_to_flush = peer;
+        }
+      } else {
+        YB_LOG_EVERY_N_SECS(WARNING, 5) << Format(
+            "Failed to get oldest mutable memtable write ht for tablet $0: $1",
+            tablet->tablet_id(), ht.status());
+      }
+    }
+  }
+  return tablet_to_flush;
+}
+
+std::string TabletMemoryManager::LogPrefix(const tablet::TabletPeerPtr& peer) const {
+  return Substitute("T $0 P $1 : ",
+      peer->tablet_id(),
+      peer->permanent_uuid());
+}
+
+}  // namespace tserver
+}  // namespace yb

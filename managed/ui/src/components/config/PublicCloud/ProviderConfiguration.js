@@ -23,16 +23,50 @@ class ProviderConfiguration extends Component {
     this.state = {
       currentView: '',
       currentTaskUUID: '',
-      refreshSucceeded: false
+      refreshSucceeded: false,
+      currentProviderIndex: 0,
+      currentCloudProviders: []
     };
   }
 
+  handleOnBack = () => {
+    this.setState({ currentView: 'result' });
+  };
+
   getInitView = () => {
+    const { handleOnBack } = this;
+    const { currentCloudProviders } = this.state;
     switch (this.props.providerType) {
-      case 'aws': return <AWSProviderInitView {...this.props} />;
-      case 'gcp': return <GCPProviderInitView {...this.props} />;
-      case 'azu': return <AzureProviderInitView createAzureProvider={this.props.createAzureProvider} />;
-      default: return <div>Unknown provider type <strong>{this.props.providerType}</strong></div>;
+      case 'aws':
+        return (
+          <AWSProviderInitView
+            isBack={currentCloudProviders.length !== 0}
+            onBack={handleOnBack}
+            {...this.props}
+          />
+        );
+      case 'gcp':
+        return (
+          <GCPProviderInitView
+            isBack={currentCloudProviders.length !== 0}
+            onBack={handleOnBack}
+            {...this.props}
+          />
+        );
+      case 'azu':
+        return (
+          <AzureProviderInitView
+            isBack={currentCloudProviders.length !== 0}
+            onBack={handleOnBack}
+            createAzureProvider={this.props.createAzureProvider}
+          />
+        );
+      default:
+        return (
+          <div>
+            Unknown provider type <strong>{this.props.providerType}</strong>
+          </div>
+        );
     }
   };
 
@@ -48,6 +82,12 @@ class ProviderConfiguration extends Component {
     const currentProvider = configuredProviders.data.find(
       (provider) => provider.code === providerType
     );
+
+    const currentCloudProviders = configuredProviders.data.filter(
+      (provider) => provider.code === providerType
+    );
+
+    this.setState({ currentCloudProviders });
 
     fetchHostInfo();
     fetchCustomerTasksList();
@@ -144,6 +184,31 @@ class ProviderConfiguration extends Component {
     }
   }
 
+  selectProvider = (providerUUID) => {
+    const { configuredProviders, providerType } = this.props;
+    const currentCloudProviders = configuredProviders.data.filter(
+      (provider) => provider.code === providerType
+    );
+    this.setState({
+      currentProviderIndex: currentCloudProviders.findIndex(
+        (provider) => provider.uuid === providerUUID
+      )
+    });
+  };
+
+  handleDeleteProviderConfig = (providerUUID) => {
+    const { deleteProviderConfig } = this.props;
+    const { currentCloudProviders } = this.state;
+    this.setState({
+      currentProviderIndex: 0,
+      currentCloudProviders: currentCloudProviders.filter(
+        (provider) => provider.uuid === providerUUID
+      ),
+      currentView: 'init'
+    });
+    deleteProviderConfig(providerUUID);
+  };
+
   getResultView = () => {
     const {
       configuredProviders,
@@ -154,12 +219,16 @@ class ProviderConfiguration extends Component {
       hideDeleteProviderModal,
       initializeProvider,
       showDeleteProviderModal,
-      deleteProviderConfig,
       providerType,
-      hostInfo
+      hostInfo,
+      featureFlags
     } = this.props;
-    const currentProvider =
-      configuredProviders.data.find((provider) => provider.code === providerType) || {};
+    const { handleDeleteProviderConfig, selectProvider, setCurrentViewCreateConfig } = this;
+    const { currentProviderIndex } = this.state;
+    const currentCloudProviders = configuredProviders.data.filter(
+      (provider) => provider.code === providerType
+    );
+    const currentProvider = currentCloudProviders[currentProviderIndex] || {};
     let keyPairName = 'Not Configured';
     if (isDefinedNotNull(accessKeys) && isNonEmptyArray(accessKeys.data)) {
       const currentAccessKey = accessKeys.data.find(
@@ -252,15 +321,24 @@ class ProviderConfiguration extends Component {
           initializeMetadata={initializeProvider}
           showDeleteProviderModal={showDeleteProviderModal}
           visibleModal={visibleModal}
-          deleteProviderConfig={deleteProviderConfig}
+          handleDeleteProviderConfig={handleDeleteProviderConfig}
           hideDeleteProviderModal={hideDeleteProviderModal}
           currentModal={currentModal}
           providerType={providerType}
           deleteButtonDisabled={deleteButtonDisabled}
           refreshSucceeded={this.state.refreshSucceeded}
+          currentCloudProviders={currentCloudProviders}
+          configuredProviders={configuredProviders}
+          selectProvider={selectProvider}
+          setCurrentViewCreateConfig={setCurrentViewCreateConfig}
+          featureFlags={featureFlags}
         />
       );
     }
+  };
+
+  setCurrentViewCreateConfig = () => {
+    this.setState({ currentView: 'init' });
   };
 
   getBootstrapView = () => {
@@ -271,9 +349,9 @@ class ProviderConfiguration extends Component {
       providerType,
       showDeleteProviderModal,
       modal: { visibleModal },
-      deleteProviderConfig,
       hideDeleteProviderModal
     } = this.props;
+    const { deleteProviderConfig } = this;
     let currentModal = '';
     switch (providerType) {
       case 'aws':
@@ -325,7 +403,7 @@ class ProviderConfiguration extends Component {
     } else if (this.state.currentView === 'result') {
       currentProviderView = this.getResultView();
     }
-    return <div className="provider-config-container">{currentProviderView}</div>;
+    return currentProviderView;
   }
 }
 
