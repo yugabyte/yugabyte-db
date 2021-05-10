@@ -395,6 +395,5 @@ This is a BETA feature, and is in active development. Currently, you can **resto
 
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
-* Automatic configuration
 * Support for undoing YSQL metadata operations, such as CREATE, ALTER, TRUNCATE, or DROP TABLE
 * Options to restore with different granularities, such as a single YSQL database or the whole YCQL dataset.

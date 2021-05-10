@@ -188,7 +188,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     }
     ```
 
-1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
+1. Next, verify the restoration is in `RESTORED` state (you'll observe more snapshots in the list, as well):
 
     ```sh
     $ bin/yb-admin list_snapshots
@@ -331,9 +331,9 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Now restore back to a time before this table was created, as in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to see the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
 
-1. Check to see that table t2 is gone.
+1. Check that table t2 is gone.
 
     ```sh
     ./bin/ycqlsh -e 'use pitr; describe tables;'
@@ -367,9 +367,9 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Now restore back to a time before this table was altered, as in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to see the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
 
-1. Check to see that the v2 column is gone.
+1. Check that the v2 column is gone.
 
     ```sql
     ycqlsh:pitr> select * from employees;
@@ -408,9 +408,9 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Now restore back to a time before this table was altered, as in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to see the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
 
-1. Check to see that the salary column is back.
+1. Verify that the salary column is back.
 
     ```sql
     ycqlsh:pitr> select * from employees;
@@ -444,14 +444,16 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Now restore back to a time before this index was created.
 
-    **Note**: Due to a ycqlsh caching issue, to see the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+
+1. Verify that the index is gone.
 
     ```sh
-    ./bin/ycqlsh -e 'use pitr; describe table pitr.t1_index;'
+    ./bin/ycqlsh -e 'describe index pitr.t1_index;'
     ```
 
     ```output
-    <stdin>:1:Column family u't1_index' not found
+    <stdin>:1:Index u't1_index' not found
     ```
 
 ### Undo table and index deletion
@@ -463,6 +465,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       oops integer PRIMARY KEY,
       mistake text
     ) with transactions = { 'enabled' : true };
+
+    describe tables;
+    ```
+
+    ```output
+    employees  dont_deleteme
     ```
 
 1. Create an index on the table from the previous examples.
@@ -478,19 +486,30 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     WITH transactions = {'enabled': 'true'};
     ```
 
-1. Get a timestamp using one of the methods in [Restore from an absolute time](#restore-from-an-absolute-time).
-
-1. Delete the new table and index.
+1. Wait a minute or two, then delete the new table and index.
 
     ```sql
     drop table dont_deleteme;
     drop index t1_index;
     ```
 
-1. Restore to the timestamp.
+1. Restore back to a time before you deleted the table and index, as in [Restore from a relative time](#restore-from-a-relative-time).
+
+1. Verify that the index and table are restored.
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418801439626
+    ./bin/ycqlsh -e 'describe table pitr.dont_deleteme; describe index pitr.t1_index;'
+    ```
+
+    ```output
+    CREATE TABLE pitr.dont_deleteme (
+        oops int PRIMARY KEY,
+        mistake text
+    ) WITH default_time_to_live = 0
+        AND transactions = {'enabled': 'true'};
+
+    CREATE INDEX t1_index ON pitr.employees (employee_no)
+        WITH transactions = {'enabled': 'true'};
     ```
 
 ## Limitations
@@ -504,5 +523,5 @@ This is a BETA feature, and is in active development. Currently, you can recover
 
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
-* Automatic configuration
-* Options to restore with different granularities, such as a single YSQL database or the whole YCQL dataset.
+* Recovery from a TRUNCATE TABLE
+* Roles and permissions
