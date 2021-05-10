@@ -119,3 +119,7 @@ DEFINE_bool(ysql_sleep_before_retry_on_txn_conflict, true,
 //   PortalRun(). The "ybRunContext" is used for values that are private to one batch.
 // - Use boolean experimental flag just in case introducing "ybRunContext" is a wrong idea.
 DEFINE_bool(ysql_disable_portal_run_context, false, "Whether to use portal ybRunContext.");
+
+DEFINE_bool(ysql_allow_analyze_cmd, false,
+            "Whether to allow ANALYZE cmd to run basic row count estimation.");
+TAG_FLAG(ysql_allow_analyze_cmd, hidden);
