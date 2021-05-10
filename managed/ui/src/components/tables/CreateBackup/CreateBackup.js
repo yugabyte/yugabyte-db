@@ -91,15 +91,11 @@ export default class CreateBackup extends Component {
         backupType = YEDIS_TABLE_TYPE;
       }
 
-      if (!isEmptyString(values.schedulingFrequency)) {
-        if (values?.schedulingFrequencyUnit?.value === 'Hours') {
-          frequency =
-            values?.schedulingFrequency % 1
-              ? (values?.schedulingFrequency % 1) * 3600 * 1000 +
-                Math.floor(values?.schedulingFrequency) * 3600 * 1000
-              : values?.schedulingFrequency * 3600 * 1000;
-        } else if (values?.schedulingFrequencyUnit?.value === 'Minutes') {
-          frequency = values?.schedulingFrequency * 60 * 1000;
+      if (!isEmptyString(values.schedulingFrequency) && !isEmptyString(values.schedulingFrequencyUnit.value)) {
+        if (values.schedulingFrequencyUnit.value === 'Hours') {
+          frequency = values.schedulingFrequency * 3600 * 1000;
+        } else if (values.schedulingFrequencyUnit.value === 'Minutes') {
+          frequency = values.schedulingFrequency * 60 * 1000;
         }
         frequency = Math.round(frequency);
       }
@@ -163,7 +159,7 @@ export default class CreateBackup extends Component {
       errors.schedulingFrequency = 'Frequency must be a number';
     }
     if (!values.schedulingFrequencyUnit) {
-      errors.schedulingFrequencyUnit = 'Please select a valid frequency unit'
+      errors.schedulingFrequencyUnit = 'Please select a valid frequency unit';
     }
     if (values.cronExpression && !cron.isValidCron(values.cronExpression)) {
       errors.cronExpression = 'Does not looks like a valid cron expression';
@@ -437,14 +433,14 @@ export default class CreateBackup extends Component {
                           readOnly={isSchedulingFrequencyReadOnly}
                           type={'number'}
                           label={'Backup frequency'}
-                          placeholder='Interval'
+                          placeholder="Interval"
                         />
                       </Col>
                       <Col xs={6}>
                         <Field
-                          name='schedulingFrequencyUnit'
+                          name="schedulingFrequencyUnit"
                           component={YBFormSelect}
-                          label='Frequency Unit'
+                          label="Frequency Unit"
                           options={schedulingFrequencyUnitOptions}
                         />
                       </Col>
