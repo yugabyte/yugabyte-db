@@ -386,12 +386,29 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Nonconcurrent)) {
   ASSERT_EQ(info->schema.version(), 1);
 }
 
+class PgIndexBackfillTestSimultaneously : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_pg_conf_csv=yb_index_state_flags_update_delay=$0",
+               kIndexStateFlagsUpdateDelay.ToMilliseconds()));
+  }
+ protected:
+#ifdef NDEBUG // release build; see issue #6238
+  const MonoDelta kIndexStateFlagsUpdateDelay = 5s;
+#else // NDEBUG
+  const MonoDelta kIndexStateFlagsUpdateDelay = 1s;
+#endif // NDEBUG
+};
+
 // Test simultaneous CREATE INDEX.
-// TODO(jason): update this when closing issue #6269.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) {
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously),
+          PgIndexBackfillTestSimultaneously) {
   const std::string query = Format("SELECT * FROM $0 WHERE i = $1", kTableName, 7);
   constexpr int kNumRows = 10;
   constexpr int kNumThreads = 5;
+  int expected_schema_version = 0;
   TestThreadHolder thread_holder;
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -405,7 +422,9 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     thread_holder.AddThreadFunctor([i, this, &statuses] {
       LOG(INFO) << "Begin thread " << i;
       PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-      statuses[i] = MoveStatus(create_conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
+      statuses[i] = MoveStatus(create_conn.ExecuteFormat(
+          "CREATE INDEX $0 ON $1 (i)",
+          kIndexName, kTableName));
     });
   }
   thread_holder.JoinAll();
@@ -417,15 +436,25 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     if (status.ok()) {
       num_ok++;
       LOG(INFO) << "got ok status";
+      // Success index creations do two schema changes:
+      // - add index with INDEX_PERM_WRITE_AND_DELETE
+      // - transition to success INDEX_PERM_READ_WRITE_AND_DELETE
+      // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
+      // schema version.
+      expected_schema_version += 2;
     } else {
       ASSERT_TRUE(status.IsNetworkError()) << status;
       const std::string msg = status.message().ToBuffer();
+      const std::string relation_already_exists_msg = Format(
+          "relation \"$0\" already exists", kIndexName);
       const std::vector<std::string> allowed_msgs{
         "Catalog Version Mismatch",
         "Conflicts with higher priority transaction",
+        "Restart read required",
         "Transaction aborted",
         "Transaction metadata missing",
         "Unknown transaction, could be recently aborted",
+        relation_already_exists_msg,
       };
       ASSERT_TRUE(std::find_if(
           std::begin(allowed_msgs),
@@ -434,7 +463,16 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
             return msg.find(allowed_msg) != std::string::npos;
           }) != std::end(allowed_msgs))
         << status;
-      LOG(WARNING) << "ignoring conflict error: " << status.message().ToBuffer();
+      LOG(INFO) << "ignoring conflict error: " << status.message().ToBuffer();
+      if (msg.find("Restart read required") == std::string::npos
+          && msg.find(relation_already_exists_msg) == std::string::npos) {
+        // Failed index creations do two schema changes:
+        // - add index with INDEX_PERM_WRITE_AND_DELETE
+        // - remove index because of DDL transaction rollback ("Table transaction failed, deleting")
+        expected_schema_version += 2;
+      } else {
+        // If the DocDB index was never created in the first place, it incurs no schema changes.
+      }
     }
   }
   ASSERT_EQ(num_ok, 1) << "only one CREATE INDEX should succeed";
@@ -446,8 +484,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
         "SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName));
     ASSERT_EQ(PQntuples(res.get()), 1);
     const std::string actual = ASSERT_RESULT(GetString(res.get(), 0, 0));
-    const std::string expected = Format("$0_i_idx", kTableName);
-    ASSERT_EQ(actual, expected);
+    ASSERT_EQ(actual, kIndexName);
 
     // Check whether index is public using index scan.
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
@@ -463,19 +500,17 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
     ASSERT_OK(sync.Wait());
 
-    // Check schema version.
-    //   kNumThreads (INDEX_PERM_WRITE_AND_DELETE)
-    // + 1 (INDEX_PERM_READ_WRITE_AND_DELETE)
-    // = kNumThreads + 1
-    // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
-    // schema version.
-    ASSERT_EQ(table_info->schema.version(), kNumThreads + 1)
-        << "got indexed table schema version " << table_info->schema.version()
-        << ": expected " << kNumThreads + 1;
-
-    // Check number of DocDB indexes.
-    ASSERT_EQ(table_info->index_map.size(), kNumThreads)
-        << "found " << table_info->index_map.size() << " DocDB indexes: expected " << kNumThreads;
+    // Check number of DocDB indexes.  Normally, failed indexes should be cleaned up ("Table
+    // transaction failed, deleting"), but in the event of an unexpected issue, they may not be.
+    // (Not necessarily a fatal issue because the postgres schema is good.)
+    int num_docdb_indexes = table_info->index_map.size();
+    if (num_docdb_indexes > 1) {
+      LOG(INFO) << "found " << num_docdb_indexes << " DocDB indexes";
+      // These failed indexes not getting rolled back mean one less schema change each.  Therefore,
+      // adjust the expected schema version.
+      int num_failed_docdb_indexes = num_docdb_indexes - 1;
+      expected_schema_version -= num_failed_docdb_indexes;
+    }
 
     // Check index permissions.  Also collect orphaned DocDB indexes.
     int num_rwd = 0;
@@ -491,15 +526,14 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     }
     ASSERT_EQ(num_rwd, 1)
         << "found " << num_rwd << " fully created (readable) DocDB indexes: expected " << 1;
-  }
 
-  LOG(INFO) << "Removing orphaned DocDB indexes";
-  {
-    auto client = ASSERT_RESULT(cluster_->CreateClient());
-    for (const TableId& index_id : orphaned_docdb_index_ids) {
-      client::YBTableName indexed_table_name;
-      ASSERT_OK(client->DeleteIndexTable(index_id, &indexed_table_name));
-    }
+    // Check schema version.
+    ASSERT_EQ(table_info->schema.version(), expected_schema_version)
+        << "got indexed table schema version " << table_info->schema.version()
+        << ": expected " << expected_schema_version;
+    // At least one index must have tried to create but gotten aborted, resulting in +1 or +2
+    // catalog version bump.  The 2 below is for the successfully created index.
+    ASSERT_GT(expected_schema_version, 2);
   }
 
   LOG(INFO) << "Checking if index still works";
