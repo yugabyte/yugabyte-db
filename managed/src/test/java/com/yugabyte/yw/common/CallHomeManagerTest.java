@@ -55,6 +55,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
   }
 
+  // Will fix after expectedUniverseVersion change is reviewed
   private JsonNode callHomePayload(Universe universe){
     ObjectNode expectedPayload = Json.newObject();
     expectedPayload.put("customer_uuid", defaultCustomer.uuid.toString());
@@ -99,9 +100,9 @@ public class CallHomeManagerTest extends FakeDBApplication {
 
     ArgumentCaptor<String> url = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<JsonNode> params = ArgumentCaptor.forClass(JsonNode.class);
-    ArgumentCaptor<Map> headers = ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<Map<String, String>> headers = ArgumentCaptor.forClass(Map.class);
 
-    verify(apiHelper).postRequest(url.capture(), params.capture(), (Map<String, String>) headers.capture());
+    verify(apiHelper).postRequest(url.capture(), params.capture(), headers.capture());
     ObjectNode expectedPayload = (ObjectNode) callHomePayload(null);
     assertEquals(expectedPayload, params.getValue());
 
@@ -118,6 +119,10 @@ public class CallHomeManagerTest extends FakeDBApplication {
                                   "version", "0.0.1"));
     when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    u.getUniverseDetails().expectedUniverseVersion = 1;
+    u.update();
+    u = Universe.getOrBadRequest(u.universeUUID);
+
     defaultCustomer.addUniverseUUID(u.universeUUID);
     // Need to save customer with the new universe or else Customer.getUniverses() won't find any.
     defaultCustomer.save();

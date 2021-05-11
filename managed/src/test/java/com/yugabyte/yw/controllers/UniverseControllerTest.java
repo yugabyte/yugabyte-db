@@ -2022,7 +2022,7 @@ public class UniverseControllerTest extends WithApplication {
     // Rotate the universe key
     EncryptionAtRestKeyParams taskParams = new EncryptionAtRestKeyParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
-    bodyJson.put("kmsConfigUUID", kmsConfig.configUUID.toString());
+    bodyJson.put("configUUID", kmsConfig.configUUID.toString());
     bodyJson.put("algorithm", "AES");
     bodyJson.put("key_size", "256");
     bodyJson.put("key_op", "ENABLE");

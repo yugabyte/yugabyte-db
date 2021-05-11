@@ -6,9 +6,11 @@ import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
 
+@JsonDeserialize(converter = UpgradeParams.Converter.class)
 public class UpgradeParams extends UniverseDefinitionTaskParams {
   // Rolling Restart task type
   @Constraints.Required()
@@ -46,4 +48,7 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
 
+  public static class Converter
+    extends BaseConverter<UpgradeParams> {
+  }
 }

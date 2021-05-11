@@ -16,17 +16,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
-import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
@@ -38,86 +36,20 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 public class UniverseControllerRequestBinder {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseControllerRequestBinder.class);
 
-  static UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData,
-                                                               UUID customerUUID) {
-    return bindFormDataToTaskParams(formData, false);
-  }
-
-  static UniverseDefinitionTaskParams bindFormDataToTaskParams(
-    ObjectNode formData, boolean isUpgrade) {
-    return bindFormDataToTaskParams(formData, isUpgrade, false);
-  }
-
-  static UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData,
-                                                               boolean isUpgrade,
-                                                               boolean isDisk) {
-    ObjectMapper mapper = new ObjectMapper();
-    ArrayNode nodeSetArray = null;
-    UniverseTaskParams.EncryptionAtRestConfig encryptionConfig =
-      new UniverseTaskParams.EncryptionAtRestConfig();
-    UniverseTaskParams.CommunicationPorts communicationPorts =
-      new UniverseTaskParams.CommunicationPorts();
-    int expectedUniverseVersion = -1;
-    if (formData.get("nodeDetailsSet") != null && formData.get("nodeDetailsSet").size() > 0) {
-      nodeSetArray = (ArrayNode) formData.get("nodeDetailsSet");
-      formData.remove("nodeDetailsSet");
-    }
-    if (formData.get("expectedUniverseVersion") != null) {
-      expectedUniverseVersion = formData.get("expectedUniverseVersion").asInt();
-    }
-
-    JsonNode config = formData.get("encryptionAtRestConfig");
-    if (config != null) {
-      formData.remove("encryptionAtRestConfig");
-
-      if (config.get("configUUID") != null) {
-        encryptionConfig.kmsConfigUUID = UUID.fromString(config.get("configUUID").asText());
-
-        if (config.get("type") != null) {
-          encryptionConfig.type = Enum.valueOf(AwsEARServiceUtil.KeyType.class,
-            config.get("type").asText());
-        }
-
-        if (config.get("key_op") != null) {
-          encryptionConfig.opType =
-            Enum.valueOf(UniverseTaskParams.EncryptionAtRestConfig.OpType.class, config.get(
-              "key_op").asText());
-        }
-      }
-    }
-
+  static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
+    ObjectNode formData, Class<T> paramType) {
+    ObjectMapper mapper = Json.mapper();
+    // Notes about code deleted from here:
+    // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
+    //    We also changed the expectedUniverseVersion to non-primitive so that this logic can be
+    //    pushed to post deserialization.
+    // 2. encryptionAtRestConfig - See @JsonAlias annotations on the EncryptionAtRestConfig props
+    // 3. cluster.userIntent gflags list to maps - TODO
     try {
-      JsonNode communicationPortsJson = formData.get("communicationPorts");
-
-      if (communicationPortsJson != null) {
-        formData.remove("communicationPorts");
-        communicationPorts = mapper.treeToValue(communicationPortsJson,
-          UniverseTaskParams.CommunicationPorts.class);
-      }
-
-      UniverseDefinitionTaskParams taskParams;
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData);
-      if (isUpgrade) {
-        taskParams = mapper.treeToValue(formData, UpgradeParams.class);
-      } else if (isDisk) {
-        taskParams = mapper.treeToValue(formData, DiskIncreaseFormData.class);
-      } else {
-        taskParams = mapper.treeToValue(formData, UniverseDefinitionTaskParams.class);
-      }
-      taskParams.clusters = clusters;
-      if (nodeSetArray != null) {
-        taskParams.nodeDetailsSet = new HashSet<>();
-        for (JsonNode nodeItem : nodeSetArray) {
-          NodeDetails nodeDetail = mapper.treeToValue(nodeItem, NodeDetails.class);
-          UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
-            communicationPorts, nodeDetail);
+      T taskParams = Json.mapper().treeToValue(formData, paramType);
 
-          taskParams.nodeDetailsSet.add(nodeDetail);
-        }
-      }
-      taskParams.expectedUniverseVersion = expectedUniverseVersion;
-      taskParams.encryptionAtRestConfig = encryptionConfig;
-      taskParams.communicationPorts = communicationPorts;
+      taskParams.clusters = clusters;
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new YWServiceException(BAD_REQUEST,
@@ -143,9 +75,6 @@ public class UniverseControllerRequestBinder {
     List<UniverseDefinitionTaskParams.Cluster> clusters = new ArrayList<>();
     for (int i = 0; i < clustersJsonArray.size(); ++i) {
       ObjectNode clusterJson = (ObjectNode) clustersJsonArray.get(i);
-      if (clusterJson.has("regions")) {
-        clusterJson.remove("regions");
-      }
       ObjectNode userIntent = (ObjectNode) clusterJson.get("userIntent");
       if (userIntent == null) {
         throw new YWServiceException(BAD_REQUEST, "userIntent: This field is required");
