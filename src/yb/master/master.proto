@@ -285,6 +285,8 @@ message SysRowEntries {
 // The on-disk entry in the sys.catalog table ("metadata" column) for
 // tablets entries.
 message SysTabletsEntryPB {
+  reserved 15;
+
   enum State {
     UNKNOWN = 999;
     PREPARING = 0;
@@ -333,7 +335,12 @@ message SysTabletsEntryPB {
   // Tablet IDs for this tablet split if they have been registered in master.
   repeated bytes split_tablet_ids = 14;
 
-  optional bool hidden = 15;
+  // Time when tablet was hidden.
+  optional fixed64 hide_hybrid_time = 16;
+
+  // If tablet was hidden instead of deleting, here we keep list of schedule ids that prevented
+  // actual deletion.
+  repeated bytes retained_by_snapshot_schedules = 17;
 }
 
 message BackfillJobPB {
