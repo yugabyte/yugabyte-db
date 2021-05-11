@@ -290,4 +290,63 @@ TEST(PriorityThreadPoolTest, ChangePriority) {
   ASSERT_EQ(running, std::vector<int>({2, 5, 6}));
 }
 
+TEST(PriorityThreadPoolTest, FailureToCreateThread) {
+  const int kMaxRunningTasks = 3;
+  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  Share share;
+  std::vector<int> running;
+
+  auto se = ScopeExit([&share, &thread_pool] {
+    LOG(INFO) << "Final state of the pool: " << thread_pool.StateToString();
+    thread_pool.StartShutdown();
+    share.StopAll();
+    thread_pool.CompleteShutdown();
+  });
+
+  SubmitTask(5, &share, &thread_pool);
+  SubmitTask(6, &share, &thread_pool);
+
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({5, 6}));
+
+  LOG(INFO) << "DISABLING CREATION OF NEW THREADS";
+
+  // We fail to launch a new thread and just add the task to the list of waiting tasks.
+  thread_pool.TEST_SetThreadCreationFailureProbability(1);
+
+  // We cannot launch new threads now so we just add tasks as "not started" and the same two tasks
+  // keep running.
+  //
+  // Prior to the #8348 fix, these failures also incorrectly increause the paused_workers_ counter
+  // each time, which then causes an underflow in PickWorker and we would not be able to start
+  // any new tasks at all.
+  SubmitTask(7, &share, &thread_pool);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({5, 6}));
+
+  SubmitTask(8, &share, &thread_pool);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({5, 6}));
+
+  SubmitTask(9, &share, &thread_pool);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({5, 6}));
+
+  LOG(INFO) << "ALLOWING CREATION OF NEW THREADS";
+
+  // Now allow adding new threads and launch more tasks. Tasks 5 and 6 should immediately get
+  // paused and replaced with 8 and 9, but because we pause and launch exactly one task, 7 does
+  // not actually get started, even though we have enough threads and enough quota for it.
+  // We might consider changing this in the future.
+  thread_pool.TEST_SetThreadCreationFailureProbability(0);
+  std::this_thread::sleep_for(kWaitTime);
+
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({8, 9}));
+
+  SubmitTask(10, &share, &thread_pool);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({8, 9, 10}));
+}
+
 } // namespace yb

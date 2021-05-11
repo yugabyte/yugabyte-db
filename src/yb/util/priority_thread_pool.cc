@@ -29,8 +29,10 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/priority_queue.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
+#include "yb/util/unique_lock.h"
 
 using namespace std::placeholders;
 
@@ -51,21 +53,29 @@ YB_STRONGLY_TYPED_BOOL(PickTask);
 
 YB_DEFINE_ENUM(PriorityThreadPoolTaskState, (kPaused)(kNotStarted)(kRunning));
 
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolInternalTask
+// ------------------------------------------------------------------------------------------------
+
 class PriorityThreadPoolInternalTask {
  public:
-  PriorityThreadPoolInternalTask(int priority, TaskPtr task, PriorityThreadPoolWorker* worker)
+  PriorityThreadPoolInternalTask(
+      int priority, TaskPtr task, PriorityThreadPoolWorker* worker, std::mutex* thread_pool_mutex)
       : priority_(priority),
         serial_no_(task->SerialNo()),
         state_(worker != nullptr ? PriorityThreadPoolTaskState::kRunning
                                  : PriorityThreadPoolTaskState::kNotStarted),
         task_(std::move(task)),
-        worker_(worker) {}
+        worker_(worker),
+        thread_pool_mutex_(*thread_pool_mutex) {}
 
   std::unique_ptr<PriorityThreadPoolTask>& task() const {
     return task_;
   }
 
-  PriorityThreadPoolWorker* worker() const {
+  // This is called get_worker_unsafe because in order to call this function, the caller needs
+  // to turn off thread safety analysis, so we only do it inside the GetWorker wrapper function.
+  PriorityThreadPoolWorker* get_worker_unsafe() const REQUIRES(thread_pool_mutex_) {
     return worker_;
   }
 
@@ -85,11 +95,11 @@ class PriorityThreadPoolInternalTask {
     return state_.load(std::memory_order_relaxed);
   }
 
-  void SetWorker(PriorityThreadPoolWorker* worker) {
+  void SetWorker(PriorityThreadPoolWorker* worker) REQUIRES(thread_pool_mutex_) {
     // Task state could be only changed when thread pool lock is held.
     // So it is safe to avoid state caching for logging.
     LOG_IF(DFATAL, state() != PriorityThreadPoolTaskState::kNotStarted)
-        << "Set worker in wrong state: " << state();
+        << "Wrong task state " << state() << " in " << __PRETTY_FUNCTION__;
     worker_ = worker;
     SetState(PriorityThreadPoolTaskState::kRunning);
   }
@@ -123,12 +133,19 @@ class PriorityThreadPoolInternalTask {
   const size_t serial_no_;
   std::atomic<PriorityThreadPoolTaskState> state_{PriorityThreadPoolTaskState::kNotStarted};
   mutable TaskPtr task_;
-  mutable PriorityThreadPoolWorker* worker_;
+
+  mutable PriorityThreadPoolWorker* worker_ GUARDED_BY(thread_pool_mutex_);
 
   mutable std::atomic<bool> task_to_string_ready_{false};
   mutable simple_spinlock task_to_string_mutex_;
-  mutable std::string task_to_string_;
+  mutable std::string task_to_string_ GUARDED_BY(task_to_string_mutex_);
+
+  std::mutex& thread_pool_mutex_;
 };
+
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolWorkerContext
+// ------------------------------------------------------------------------------------------------
 
 class PriorityThreadPoolWorkerContext {
  public:
@@ -137,6 +154,10 @@ class PriorityThreadPoolWorkerContext {
   virtual void TaskAborted(const PriorityThreadPoolInternalTask* task) = 0;
   virtual ~PriorityThreadPoolWorkerContext() {}
 };
+
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolWorker
+// ------------------------------------------------------------------------------------------------
 
 class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
  public:
@@ -153,7 +174,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
   void Perform(const PriorityThreadPoolInternalTask* task) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      DCHECK(!task_);
+      LOG_IF(DFATAL, task_) << "Task is already set in call to " << __PRETTY_FUNCTION__;
       if (!stopped_) {
         std::swap(task_, task);
       }
@@ -166,21 +187,25 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
   }
 
   // It is invoked from WorkerFinished to directly assign a new task.
-  void SetTask(const PriorityThreadPoolInternalTask* task) {
+  void SetTask(const PriorityThreadPoolInternalTask* task) EXCLUDES(mutex_) {
     task_ = task;
   }
 
   void Run() {
-    std::unique_lock<std::mutex> lock(mutex_);
+    UNIQUE_LOCK(lock, mutex_);
     while (!stopped_) {
       if (!task_) {
-        cond_.wait(lock);
+        WaitOnConditionVariable(&cond_, &lock);
         continue;
       }
       running_task_ = true;
-      auto se = ScopeExit([this] {
+
+      // The thread safety analysis in Clang 11 does not understand that we are holding the lock
+      // on all exit paths from this scope, so we use NO_THREAD_SAFETY_ANALYSIS here.
+      auto se = ScopeExit([this]() NO_THREAD_SAFETY_ANALYSIS {
         running_task_ = false;
       });
+
       {
         yb::ReverseLock<decltype(lock)> rlock(lock);
         for (;;) {
@@ -191,7 +216,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
         }
       }
     }
-    DCHECK(!task_);
+    LOG_IF(DFATAL, task_) << "task_ is still set when exiting Run().";
   }
 
   void Stop() {
@@ -224,27 +249,37 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
     return task_;
   }
 
-  void WaitResume(std::unique_lock<std::mutex>* lock) {
-    cond_.wait(*lock, [this]() {
+  // We need to pass the mutex here and check that it is the same mutex that has been locked by
+  // the lock, because thread safety analysis in Clang 11 would not understand
+  // REQUIRES(*lock->mutex()) -- it would not know that we've locked that mutex.
+  void WaitResume(UniqueLock<std::mutex>* lock, std::mutex* mutex) REQUIRES(*mutex) {
+    CHECK_EQ(lock->mutex(), mutex);
+    WaitOnConditionVariable(&cond_, lock, [this]() {
       return task_->state() != PriorityThreadPoolTaskState::kPaused;
     });
   }
 
   std::string ToString() const {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     return Format("{ worker: $0 }", static_cast<const void*>(this));
   }
 
  private:
   PriorityThreadPoolWorkerContext* const context_;
   yb::ThreadPtr thread_;
-  // Cannot use thread safety annotations, because std::unique_lock is used with this mutex.
   mutable std::mutex mutex_;
   std::condition_variable cond_;
-  bool stopped_ = false;
-  bool running_task_ = false;
+  bool stopped_ GUARDED_BY(mutex_) = false;
+
+  bool running_task_ GUARDED_BY(mutex_) = false;
+
+  // TODO(mbautin): clarify locking semantics for this field.
   const PriorityThreadPoolInternalTask* task_ = nullptr;
 };
+
+// ------------------------------------------------------------------------------------------------
+// PriorityTaskComparator
+// ------------------------------------------------------------------------------------------------
 
 class PriorityTaskComparator {
  public:
@@ -259,10 +294,33 @@ class PriorityTaskComparator {
   }
 };
 
-// The order is the following:
+// ------------------------------------------------------------------------------------------------
+// StateAndPriorityTaskComparator
+// ------------------------------------------------------------------------------------------------
+//
 // Not running tasks (i.e. paused or not started) go first, ordered by priority, state and serial.
 // After them running tasks, ordered by priority, state and serial.
 // I.e. paused tasks goes before not started tasks with the same priority.
+//
+// For example, if we have the following tasks with two different priorities (ignoring serial
+// numbers, which are only used for breaking ties):
+//
+// T1 {P1, kPaused}
+// T2 {P1, kNotStarted}
+// T3 {P1, kRunning}
+// T4 {P2, kPaused}
+// T5 {P2, kNotStarted}
+// T6 {P2, kRunning}
+//
+// Then the order will be as follows:
+//
+// T4 {P2, kPaused}      /--- Non-running tasks
+// T5 {P2, kNotStarted}  |
+// T1 {P1, kPaused}      |
+// T2 {P1, kNotStarted}  `---------------------
+// T6 {P2, kRunning}     /--- Running tasks ---
+// T3 {P1, kRunning}     `----------------------
+
 class StateAndPriorityTaskComparator {
  public:
   bool operator()(const PriorityThreadPoolInternalTask& lhs,
@@ -271,20 +329,26 @@ class StateAndPriorityTaskComparator {
     auto rhs_state = rhs.state();
     auto lhs_running = lhs_state == PriorityThreadPoolTaskState::kRunning;
     if (lhs_running != (rhs_state == PriorityThreadPoolTaskState::kRunning)) {
+      // If lhs is not running and rhs is running, lhs goes first.
       return !lhs_running;
     }
     auto lhs_priority = lhs.priority();
     auto rhs_priority = rhs.priority();
+
     if (lhs_priority > rhs_priority) {
       return true;
-    } else if (lhs_priority < rhs_priority) {
+    }
+    if (lhs_priority < rhs_priority) {
       return false;
     }
+
     if (lhs_state < rhs_state) {
       return true;
-    } else if (lhs_state > rhs_state) {
+    }
+    if (lhs_state > rhs_state) {
       return false;
     }
+
     return lhs.serial_no() < rhs.serial_no();
   }
 };
@@ -315,13 +379,15 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     StartShutdown();
     CompleteShutdown();
 
-#ifndef NDEBUG
     std::lock_guard<std::mutex> lock(mutex_);
-    DCHECK(tasks_.empty());
-#endif
+    LOG_IF(DFATAL, !tasks_.empty()) << "Shutting down a non-empty priority thread pool: "
+                                    << StateToStringUnlocked();
   }
 
   CHECKED_STATUS Submit(int priority, TaskPtr* task) {
+    if (!*task) {
+      return STATUS(InvalidArgument, "Task is null");
+    }
     PriorityThreadPoolWorker* worker = nullptr;
     const PriorityThreadPoolInternalTask* internal_task = nullptr;
     {
@@ -415,6 +481,14 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     }
   }
 
+  // We use NO_THREAD_SAFETY_ANALYSIS here because thread safety analysis does not understand that
+  // the mutex required by PriorityThreadPoolInternalTask::get_worker_unsafe() is the same mutex we
+  // are already holding here.
+  PriorityThreadPoolWorker* GetWorker(const PriorityThreadPoolInternalTask& task)
+      REQUIRES(mutex_) NO_THREAD_SAFETY_ANALYSIS {
+    return task.get_worker_unsafe();
+  }
+
   void PauseIfNecessary(PriorityThreadPoolWorker* worker) override {
     auto worker_task_priority = worker->task()->priority();
     if (max_priority_to_defer_.load(std::memory_order_acquire) < worker_task_priority) {
@@ -425,7 +499,10 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     const PriorityThreadPoolInternalTask* task;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (max_priority_to_defer_.load(std::memory_order_acquire) < worker_task_priority ||
+
+      // Read max_priority_to_defer_ now that we are holding the lock (double-checked locking).
+      auto max_priority_to_defer = max_priority_to_defer_.load(std::memory_order_acquire);
+      if (max_priority_to_defer < worker_task_priority ||
           stopping_.load(std::memory_order_acquire)) {
         return;
       }
@@ -437,13 +514,17 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       }
 
       LOG(INFO) << "Pausing " << worker->task()->ToString()
-                << " in favor of " << it->ToString() << ", max to defer: "
-                << max_priority_to_defer_.load(std::memory_order_acquire);
+                << " in favor of " << it->ToString() << ", max priority of a task to defer: "
+                << max_priority_to_defer;
 
+      // We need to increment the number of paused workers here even though we may decrease it very
+      // soon as we un-pause a different worker, because there is logic inside PickWorker() that
+      // takes paused_workers_ into account in order to allow a worker to run.
       ++paused_workers_;
+
       switch (it->state()) {
         case PriorityThreadPoolTaskState::kPaused:
-          VLOG(4) << "Resuming " << it->worker();
+          VLOG(4) << "Resuming " << GetWorker(*it);
           ResumeWorker(tasks_.project<PriorityTag>(it));
           break;
         case PriorityThreadPoolTaskState::kNotStarted:
@@ -451,10 +532,20 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
           if (!higher_pri_worker) {
             LOG(WARNING) << Format(
                 "Unable to pick a worker for a higher priority task when trying to pause a lower "
-                    "priority task, workers: $0, paused: $1, free: $2, max: $3",
+                "priority task. We will resume the original task now. "
+                "Number of workers: $0, "
+                "paused workers: $1, "
+                "free workers: $2, "
+                "max running tasks: $3.",
                 workers_.size(), paused_workers_, free_workers_.size(), max_running_tasks_);
+            // We cannot use ResumeWorker here because we have not finished pausing this worker, so
+            // we have to manually do part of what ResumeWorker does.
             --paused_workers_;
+
+            // TODO: why is this needed here? This function is already supposed to be running on
+            // the worker's thread.
             worker->Resumed();
+
             return;
           }
           task = &*it;
@@ -462,23 +553,27 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
           break;
         case PriorityThreadPoolTaskState::kRunning:
           --paused_workers_;
+          // TODO: if we call worker->Resumed() above, why not call it here?
           LOG(DFATAL) << "Pausing in favor of already running task: " << it->ToString()
-                      << ", state: " << DoStateToString();
+                      << ", state: " << StateToStringUnlocked();
           return;
       }
 
       auto worker_task_it = tasks_.iterator_to(*worker->task());
       ModifyState(worker_task_it, PriorityThreadPoolTaskState::kPaused);
     }
+    // Released the mutex.
 
     if (higher_pri_worker) {
       VLOG(4) << "Passing " << task->ToString() << " to " << higher_pri_worker;
       higher_pri_worker->Perform(task);
     }
+
+    // This will block until this worker's task is resumed.
     {
-      std::unique_lock<std::mutex> lock(mutex_);
-      worker->WaitResume(&lock);
-      LOG(INFO) << "Resumed " << worker << " with " << worker->task()->ToString();
+      UniqueLock<std::mutex> lock(mutex_);
+      worker->WaitResume(&lock, &mutex_);
+      LOG(INFO) << "Resumed worker " << worker << " with " << worker->task()->ToString();
     }
   }
 
@@ -500,13 +595,17 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     return true;
   }
 
-  std::string StateToString() {
+  std::string StateToString() EXCLUDES(mutex_) {
     std::lock_guard<std::mutex> lock(mutex_);
-    return DoStateToString();
+    return StateToStringUnlocked();
+  }
+
+  void TEST_SetThreadCreationFailureProbability(double probability) {
+    thread_creation_failure_probability_ = probability;
   }
 
  private:
-  std::string DoStateToString() REQUIRES(mutex_) {
+  std::string StateToStringUnlocked() REQUIRES(mutex_) {
     return Format(
         "{ max_running_tasks: $0 tasks: $1 workers: $2 paused_workers: $3 free_workers: $4 "
             "stopping: $5 max_priority_to_defer: $6 }",
@@ -520,7 +619,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     }
   }
 
-  bool WorkerFinished(PriorityThreadPoolWorker* worker) override {
+  bool WorkerFinished(PriorityThreadPoolWorker* worker) EXCLUDES(mutex_) override {
     std::lock_guard<std::mutex> lock(mutex_);
     TaskFinished(worker->task());
     if (!DoWorkerFinished(worker)) {
@@ -573,11 +672,12 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 
   template <class It>
   void ResumeWorker(It it) REQUIRES(mutex_) {
-    LOG_IF(DFATAL, it->state() != PriorityThreadPoolTaskState::kPaused)
-        << "Resuming not paused worker";
+    auto task_state = it->state();
+    LOG_IF(DFATAL, task_state != PriorityThreadPoolTaskState::kPaused)
+        << "Resuming not paused worker, state: " << task_state;
     --paused_workers_;
     ModifyState(it, PriorityThreadPoolTaskState::kRunning);
-    it->worker()->Resumed();
+    GetWorker(*it)->Resumed();
   }
 
   PriorityThreadPoolWorker* PickWorker() REQUIRES(mutex_) {
@@ -588,6 +688,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
               << " workers running, we could not run a new worker.";
       return nullptr;
     }
+
     if (!free_workers_.empty()) {
       auto worker = free_workers_.back();
       free_workers_.pop_back();
@@ -595,25 +696,32 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       return worker;
     }
     workers_.emplace_back(this);
+
+    bool inject_failure = RandomActWithProbability(thread_creation_failure_probability_);
+
     auto worker = &workers_.back();
-    auto thread = yb::Thread::Make(
-        "priority_thread_pool", "priority-worker",
-        std::bind(&PriorityThreadPoolWorker::Run, worker));
+    auto thread = inject_failure ?
+        STATUS(RuntimeError, "TEST: pretending we could not create a thread") :
+        yb::Thread::Make(
+            "priority_thread_pool", "priority-worker",
+            std::bind(&PriorityThreadPoolWorker::Run, worker));
+
     if (!thread.ok()) {
       LOG(WARNING) << "Failed to launch new worker: " << thread.status();
       workers_.pop_back();
       return nullptr;
-    } else {
-      worker->SetThread(*thread);
-      threads_.push_back(std::move(*thread));
-      VLOG(3) << "Created new worker: " << worker;
     }
+
+    worker->SetThread(*thread);
+    threads_.push_back(std::move(*thread));
+    VLOG(3) << "Created new worker: " << worker;
+
     return worker;
   }
 
   const PriorityThreadPoolInternalTask* AddTask(
       int priority, TaskPtr task, PriorityThreadPoolWorker* worker) REQUIRES(mutex_) {
-    auto it = tasks_.emplace(priority, std::move(task), worker).first;
+    auto it = tasks_.emplace(priority, std::move(task), worker, &mutex_).first;
     UpdateMaxPriorityToDefer();
     VLOG(4) << "New task added " << task->ToString() << ", max to defer: "
             << max_priority_to_defer_.load(std::memory_order_acquire);
@@ -639,7 +747,9 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 
   template <class It>
   void SetWorker(It it, PriorityThreadPoolWorker* worker) REQUIRES(mutex_) {
-    tasks_.modify(it, [worker](PriorityThreadPoolInternalTask& task) {
+    // Thread safety analysis does not understand that the mutex that SetWorker requires is the
+    // global thread pool worker we are already holding, so use NO_THREAD_SAFETY_ANALYSIS.
+    tasks_.modify(it, [worker](PriorityThreadPoolInternalTask& task) NO_THREAD_SAFETY_ANALYSIS {
       task.SetWorker(worker);
     });
   }
@@ -690,7 +800,13 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       >
     >
   > tasks_ GUARDED_BY(mutex_);
+
+  double thread_creation_failure_probability_ = 0;
 };
+
+// ------------------------------------------------------------------------------------------------
+// Forwarding method calls for the "pointer to impl" idiom
+// ------------------------------------------------------------------------------------------------
 
 PriorityThreadPool::PriorityThreadPool(int64_t max_running_tasks)
     : impl_(new Impl(max_running_tasks)) {
@@ -721,6 +837,10 @@ std::string PriorityThreadPool::StateToString() {
 
 bool PriorityThreadPool::ChangeTaskPriority(size_t serial_no, int priority) {
   return impl_->ChangeTaskPriority(serial_no, priority);
+}
+
+void PriorityThreadPool::TEST_SetThreadCreationFailureProbability(double probability) {
+  return impl_->TEST_SetThreadCreationFailureProbability(probability);
 }
 
 } // namespace yb

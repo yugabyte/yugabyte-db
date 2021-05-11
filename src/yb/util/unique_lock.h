@@ -21,6 +21,10 @@ namespace yb {
 
 #if THREAD_ANNOTATIONS_ENABLED
 
+// ------------------------------------------------------------------------------------------------
+// Thread annotations enabled, using a UniqueLock wrapper class around std::unique_lock.
+// ------------------------------------------------------------------------------------------------
+
 #define UNIQUE_LOCK(lock_name, mutex) ::yb::UniqueLock<decltype(mutex)> lock_name(mutex);
 
 // A wrapper unique_lock that supports thread annotations.
@@ -35,16 +39,48 @@ class SCOPED_CAPABILITY UniqueLock {
 
   void unlock() RELEASE() { unique_lock_.unlock(); }
   void lock() ACQUIRE() { unique_lock_.lock(); }
+
+  std::unique_lock<Mutex>& internal_unique_lock() { return unique_lock_; }
+
+  Mutex* mutex() RETURN_CAPABILITY(unique_lock_.mutex()) { return unique_lock_.mutex(); }
+
  private:
   std::unique_lock<Mutex> unique_lock_;
 };
 
+template<typename Mutex>
+void WaitOnConditionVariable(std::condition_variable* cond_var, UniqueLock<Mutex>* lock)
+    REQUIRES(*lock) {
+  cond_var->wait(lock->internal_unique_lock());
+}
+
+template<typename Mutex, typename Functor>
+void WaitOnConditionVariable(
+    std::condition_variable* cond_var, UniqueLock<Mutex>* lock, Functor f) {
+  cond_var->wait(lock->internal_unique_lock(), f);
+}
+
 #else
+
+// ------------------------------------------------------------------------------------------------
+// Thread annotations disabled, no wrapper class needed.
+// ------------------------------------------------------------------------------------------------
 
 template<class Mutex>
 using UniqueLock = std::unique_lock<Mutex>;
 
 #define UNIQUE_LOCK(lock_name, mutex) std::unique_lock<decltype(mutex)> lock_name(mutex);
+
+template<typename Mutex>
+void WaitOnConditionVariable(std::condition_variable* cond_var, UniqueLock<Mutex>* lock) {
+  cond_var->wait(*lock);
+}
+
+template<typename Mutex, typename Functor>
+void WaitOnConditionVariable(
+    std::condition_variable* cond_var, UniqueLock<Mutex>* lock, Functor f) {
+  cond_var->wait(*lock, f);
+}
 
 #endif
 
