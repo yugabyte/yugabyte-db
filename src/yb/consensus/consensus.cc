@@ -134,6 +134,8 @@ Result<yb::OpId> Consensus::GetLastOpId(OpIdType type) {
       return GetLastReceivedOpId();
     case OpIdType::COMMITTED_OPID:
       return GetLastCommittedOpId();
+    case OpIdType::SPLIT_OPID:
+      return GetSplitOpId();
     case OpIdType::UNKNOWN_OPID_TYPE:
       break;
   }
