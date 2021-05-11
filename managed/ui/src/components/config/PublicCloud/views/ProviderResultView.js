@@ -129,7 +129,9 @@ class ProviderResultView extends Component {
               <YBConfirmModal
                 name="deleteProvider"
                 title={'Confirm Delete'}
-                onConfirm={handleSubmit((() => { handleDeleteProviderConfig(currentProvider.uuid) }))}
+                onConfirm={handleSubmit(() => {
+                  handleDeleteProviderConfig(currentProvider.uuid);
+                })}
                 currentModal={currentModal}
                 visibleModal={this.props.visibleModal}
                 hideConfirmModal={this.props.hideDeleteProviderModal}
