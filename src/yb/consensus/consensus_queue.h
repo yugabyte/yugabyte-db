@@ -110,8 +110,6 @@ struct FollowerWatermark {
 // This also takes care of pushing requests to peers as new operations are added, and notifying
 // RaftConsensus when the commit index advances.
 //
-// This class is used only on the LEADER side.
-//
 // TODO Currently this class is able to track one outstanding operation per peer. If we want to have
 // more than one outstanding RPC we need to modify it.
 class PeerMessageQueue {
