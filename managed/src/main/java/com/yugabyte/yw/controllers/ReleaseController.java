@@ -77,7 +77,7 @@ public class ReleaseController extends AuthenticatedController {
     } else {
       throw new YWServiceException(BAD_REQUEST, "Missing Required param: State");
     }
-    Audit.createAuditEntry(ctx(), request(), formData);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
     return ApiResponse.success(m);
   }
 
