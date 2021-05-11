@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -40,6 +41,9 @@ import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
+import static org.junit.Assert.assertThrows;
+import static play.test.Helpers.*;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class ReleaseControllerTest extends FakeDBApplication {
 
@@ -143,7 +147,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testCreateReleaseWithInvalidData() {
     ObjectNode body = Json.newObject();
-    Result result = createRelease(customer.uuid, body);
+    Result result = assertThrows(YWServiceException.class,
+      () -> createRelease(customer.uuid, body)).getResult();
     assertBadRequest(result, "{\"version\":[\"This field is required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
@@ -164,8 +169,10 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testCreateReleaseWithReleaseManagerException() {
     ObjectNode body = Json.newObject();
     body.put("version", "0.0.1");
-    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).addRelease("0.0.1");
-    Result result = createRelease(customer.uuid, body);
+    doThrow(new YWServiceException(BAD_REQUEST, "Some Error")).when(mockReleaseManager)
+        .addRelease("0.0.1");
+    Result result = assertThrows(YWServiceException.class,
+      () -> createRelease(customer.uuid, body)).getResult();
     verify(mockReleaseManager, times(1)).addRelease("0.0.1");
     assertInternalServerError(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
@@ -185,9 +192,11 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetReleaseWithGetReleaseMetadataException() {
-    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).getReleaseMetadata();
-    Result result = getReleases(customer.uuid);
-    assertInternalServerError(result, "Some Error");
+    doThrow(new YWServiceException(BAD_REQUEST,"Some Error")).when(mockReleaseManager)
+        .getReleaseMetadata();
+    Result result = assertThrows(YWServiceException.class,
+      () -> getReleases(customer.uuid)).getResult();
+    assertBadRequest(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -278,7 +287,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testUpdateReleaseWithInvalidVersion() {
     ObjectNode body = Json.newObject();
     body.put("state", "DISABLED");
-    Result result = updateRelease(customer.uuid, "0.0.2", body);
+    Result result = assertThrows(YWServiceException.class,
+      () -> updateRelease(customer.uuid, "0.0.2", body)).getResult();
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
     assertBadRequest(result, "Invalid Release version: 0.0.2");
     assertAuditEntry(0, customer.uuid);
@@ -287,12 +297,14 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUpdateReleaseWithReleaseManagerException() {
-    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).getReleaseByVersion("0.0.2");
+    doThrow(new YWServiceException(BAD_REQUEST, "Some Error")).when(mockReleaseManager)
+        .getReleaseByVersion("0.0.2");
     ObjectNode body = Json.newObject();
     body.put("state", "DISABLED");
-    Result result = updateRelease(customer.uuid, "0.0.2", body);
+    Result result = assertThrows(YWServiceException.class,
+      () -> updateRelease(customer.uuid, "0.0.2", body)).getResult();
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
-    assertInternalServerError(result, "Some Error");
+    assertBadRequest(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -301,7 +313,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
     ObjectNode body = Json.newObject();
-    Result result = updateRelease(customer.uuid, "0.0.1", body);
+    Result result = assertThrows(YWServiceException.class,
+      () -> updateRelease(customer.uuid, "0.0.1", body)).getResult();
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.1");
     assertBadRequest(result, "Missing Required param: State");
     assertAuditEntry(0, customer.uuid);
@@ -329,7 +342,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testRefreshReleaseReleaseManagerException() {
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).importLocalReleases();
-    Result result = refreshReleases(customer.uuid);
+    Result result = assertThrows(YWServiceException.class,
+      () -> refreshReleases(customer.uuid)).getResult();
     assertInternalServerError(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }
