@@ -10,6 +10,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -86,6 +87,9 @@ public class CloudProviderController extends AuthenticatedController {
   @Inject
   private play.Environment environment;
 
+  @Inject
+  CloudAPI.Factory cloudAPIFactory;
+
   /**
    * GET endpoint for listing providers
    * @return JSON response with provider's
@@ -159,6 +163,11 @@ public class CloudProviderController extends AuthenticatedController {
         String hostedZoneId = provider.getHostedZoneId();
         switch (provider.code) {
           case "aws":
+            CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
+            if (cloudAPI != null && !cloudAPI.isValidCreds(config, formData.get().region)) {
+              provider.delete();
+              return ApiResponse.error(BAD_REQUEST, "Invalid AWS Credentials.");
+            }
             if (hostedZoneId != null && hostedZoneId.length() != 0) {
               return validateHostedZoneUpdate(provider, hostedZoneId);
             }
