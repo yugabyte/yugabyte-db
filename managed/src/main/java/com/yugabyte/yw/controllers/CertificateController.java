@@ -116,7 +116,7 @@ public class CertificateController extends AuthenticatedController {
     CertificateInfo.delete(reqCertUUID, customerUUID);
 
     Audit.createAuditEntry(ctx(), request());
-    return ApiResponse.success();
+    return ApiResponse.success("Successfully deleted the certificate:" + reqCertUUID);
   }
 
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {

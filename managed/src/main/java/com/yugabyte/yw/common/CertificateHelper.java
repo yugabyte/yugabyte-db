@@ -258,19 +258,19 @@ public class CertificateHelper {
     CertificateParams.CustomCertInfo customCertInfo) {
     try {
       if (certContent == null) {
-        throw new RuntimeException("Certfile can't be null");
+        throw new YWServiceException(BAD_REQUEST, "Certfile can't be null");
       }
       UUID rootCA_UUID = UUID.randomUUID();
       String keyPath = null;
       X509Certificate x509Certificate = getX509CertificateCertObject(certContent);
       if (certType == CertificateInfo.Type.SelfSigned) {
         if (!verifySignature(x509Certificate, keyContent))
-          throw new RuntimeException("Invalid certificate.");
+          throw new YWServiceException(BAD_REQUEST, "Invalid certificate.");
         keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
           customerUUID.toString(), rootCA_UUID.toString());
       } else {
         if (!isValidCACert(x509Certificate))
-          throw new RuntimeException("Invalid CA certificate.");
+          throw new YWServiceException(BAD_REQUEST, "Invalid CA certificate.");
       }
       String certPath = String.format("%s/certs/%s/%s/ca.%s", storagePath,
         customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
