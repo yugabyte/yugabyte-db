@@ -344,8 +344,20 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::shared_ptr<consensus::ConsensusServiceProxy> GetLeaderConsensusProxy();
 
   // Get the given master's consensus proxy.
-  std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(
-      scoped_refptr<ExternalMaster> master);
+  std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(ExternalDaemon* daemon);
+
+  template <class T>
+  std::shared_ptr<T> GetProxy(ExternalDaemon* daemon);
+
+  template <class T>
+  std::shared_ptr<T> GetTServerProxy(int i) {
+    return GetProxy<T>(tablet_server(i));
+  }
+
+  template <class T>
+  std::shared_ptr<T> GetMasterProxy(int i) {
+    return GetProxy<T>(master(i));
+  }
 
   // If the cluster is configured for a single non-distributed master, return a proxy to that
   // master. Requires that the single master is running.
@@ -802,6 +814,11 @@ struct MasterComparator {
  private:
   const ExternalMaster* master_;
 };
+
+template <class T>
+std::shared_ptr<T> ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
+  return std::make_shared<T>(proxy_cache_.get(), daemon->bound_rpc_addr());
+}
 
 }  // namespace yb
 #endif  // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_

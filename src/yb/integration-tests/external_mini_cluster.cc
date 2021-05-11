@@ -551,16 +551,12 @@ Status ExternalMiniCluster::RemoveMaster(ExternalMaster* master) {
 }
 
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetLeaderConsensusProxy() {
-  auto leader_master_sock = GetLeaderMaster()->bound_rpc_addr();
-
-  return std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), leader_master_sock);
+  return GetConsensusProxy(GetLeaderMaster());
 }
 
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetConsensusProxy(
-    scoped_refptr<ExternalMaster> master) {
-  auto master_sock = master->bound_rpc_addr();
-
-  return std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), master_sock);
+    ExternalDaemon* external_deamon) {
+  return GetProxy<ConsensusServiceProxy>(external_deamon);
 }
 
 Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* error_code) {
@@ -997,7 +993,7 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
     opid_req.set_dest_uuid(master->uuid());
     opid_req.set_opid_type(opid_type);
     RETURN_NOT_OK_PREPEND(
-        GetConsensusProxy(master)->GetLastOpId(opid_req, &opid_resp, &controller),
+        GetConsensusProxy(master.get())->GetLastOpId(opid_req, &opid_resp, &controller),
         Substitute("Failed to fetch last op id from $0", master->bound_rpc_hostport().port()));
     op_ids->push_back(opid_resp.opid());
     controller.Reset();

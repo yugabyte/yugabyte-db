@@ -112,11 +112,11 @@ Status SnapshotState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
 }
 
 Status SnapshotState::TryStartDelete() {
-  if (AllInState(SysSnapshotEntryPB::DELETED)) {
-    return STATUS(NotFound, "The snapshot was deleted", id_.ToString(),
-                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
-  }
-  if (delete_started_ || HasInState(SysSnapshotEntryPB::DELETING)) {
+  if (initial_state() == SysSnapshotEntryPB::DELETING || delete_started_) {
+    if (AllInState(SysSnapshotEntryPB::DELETED)) {
+      return STATUS(NotFound, "The snapshot was deleted", id_.ToString(),
+                    MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
+    }
     return STATUS(NotFound, "The snapshot is being deleted", id_.ToString(),
                   MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
