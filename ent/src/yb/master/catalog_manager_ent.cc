@@ -1497,10 +1497,72 @@ Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& 
   }
   for (const auto& id_and_type : objects_to_restore) {
     return STATUS_FORMAT(
-        IllegalState, "Expected to restore $0/$1, but it does not present after restoration",
+        IllegalState, "Expected to restore $0/$1, but it is not present after restoration",
         SysRowEntry::Type_Name(id_and_type.second), id_and_type.first);
   }
   return Status::OK();
+}
+
+void CatalogManager::CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(schedule_min_restore_time);
+
+  std::vector<TabletInfoPtr> hidden_tablets;
+  {
+    SharedLock<LockType> l(lock_);
+    if (hidden_tablets_.empty()) {
+      return;
+    }
+    hidden_tablets = hidden_tablets_;
+  }
+  std::vector<TabletInfoPtr> tablets_to_delete;
+  std::vector<TabletInfoPtr> tablets_to_remove_from_hidden;
+
+  for (const auto& tablet : hidden_tablets) {
+    auto lock = tablet->LockForRead();
+    if (!lock->ListedAsHidden()) {
+      tablets_to_remove_from_hidden.push_back(tablet);
+      continue;
+    }
+    auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
+    bool cleanup = true;
+    for (const auto& schedule_id_str : lock->pb.retained_by_snapshot_schedules()) {
+      auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+      auto it = schedule_min_restore_time.find(schedule_id);
+      // If schedule is not present in schedule_min_restore_time then it means that schedule
+      // was deleted, so it should not retain the tablet.
+      if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
+        VLOG_WITH_PREFIX(1)
+            << "Retaining tablet: " << tablet->tablet_id() << ", hide hybrid time: "
+            << hide_hybrid_time << ", because of schedule: " << schedule_id
+            << ", min restore time: " << it->second;
+        cleanup = false;
+        break;
+      }
+    }
+    if (cleanup) {
+      tablets_to_delete.push_back(tablet);
+    }
+  }
+  if (!tablets_to_delete.empty()) {
+    LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
+    WARN_NOT_OK(DeleteTabletListAndSendRequests(tablets_to_delete, "Cleanup hidden tablets", {}),
+                "Failed to cleanup hidden tablets");
+  }
+  if (!tablets_to_remove_from_hidden.empty()) {
+    auto it = tablets_to_remove_from_hidden.begin();
+    std::lock_guard<LockType> l(lock_);
+    // Order of tablets in tablets_to_remove_from_hidden matches order in hidden_tablets_,
+    // so we could avoid searching in tablets_to_remove_from_hidden.
+    auto filter = [&it, end = tablets_to_remove_from_hidden.end()](const TabletInfoPtr& tablet) {
+      if (it != end && tablet.get() == it->get()) {
+        ++it;
+        return true;
+      }
+      return false;
+    };
+    hidden_tablets_.erase(std::remove_if(hidden_tablets_.begin(), hidden_tablets_.end(), filter),
+                          hidden_tablets_.end());
+  }
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
