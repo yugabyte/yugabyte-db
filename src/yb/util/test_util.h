@@ -193,8 +193,16 @@ constexpr int kDefaultMaxWaitDelayMs = 2000;
 
 // Waits for the given condition to be true or until the provided deadline happens.
 CHECKED_STATUS Wait(
-    std::function<Result<bool>()> condition,
+    const std::function<Result<bool>()>& condition,
     MonoTime deadline,
+    const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
+
+CHECKED_STATUS Wait(
+    const std::function<Result<bool>()>& condition,
+    CoarseTimePoint deadline,
     const std::string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
@@ -202,7 +210,7 @@ CHECKED_STATUS Wait(
 
 // Waits for the given condition to be true or until the provided timeout has expired.
 CHECKED_STATUS WaitFor(
-    std::function<Result<bool>()> condition,
+    const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const std::string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
@@ -210,7 +218,7 @@ CHECKED_STATUS WaitFor(
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
 void AssertLoggedWaitFor(
-    std::function<Result<bool>()> condition,
+    const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
@@ -218,7 +226,7 @@ void AssertLoggedWaitFor(
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
 CHECKED_STATUS LoggedWaitFor(
-    std::function<Result<bool>()> condition,
+    const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),

@@ -116,6 +116,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   // Setup the tablet info.
   std::vector<TableId> table_ids;
   bool tablet_deleted;
+  bool listed_as_hidden;
   TabletInfo* tablet = new TabletInfo(first_table, tablet_id);
   {
     auto l = tablet->LockForWrite();
@@ -148,6 +149,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     }
 
     tablet_deleted = l.mutable_data()->is_deleted();
+    listed_as_hidden = l.mutable_data()->ListedAsHidden();
 
     // Assume we need to delete this tablet until we find an active table using this tablet.
     bool should_delete_tablet = !tablet_deleted;
@@ -235,6 +237,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
             << " (first table " << first_table->ToString() << ")";
 
   VLOG(1) << "Metadata for tablet " << tablet_id << ": " << metadata.ShortDebugString();
+
+  if (listed_as_hidden) {
+    catalog_manager_->hidden_tablets_.push_back(tablet);
+  }
 
   return Status::OK();
 }

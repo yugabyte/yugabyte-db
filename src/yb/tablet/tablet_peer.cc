@@ -673,6 +673,10 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
   status_pb_out->set_state(state_);
   status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
+  auto tablet = tablet_;
+  if (tablet) {
+    status_pb_out->set_table_type(tablet->table_type());
+  }
   disk_size_info.ToPB(status_pb_out);
 }
 
@@ -1190,7 +1194,7 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 
-TableType TabletPeer::table_type() {
+TableType TabletPeer::table_type() EXCLUDES(lock_) {
   // TODO: what if tablet is not set?
   return DCHECK_NOTNULL(tablet())->table_type();
 }

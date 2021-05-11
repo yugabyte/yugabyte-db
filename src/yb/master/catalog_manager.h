@@ -74,6 +74,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
@@ -1103,12 +1104,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
-  CHECKED_STATUS DeleteTabletsAndSendRequests(const TableInfoPtr& table, HideOnly hide_only);
+  CHECKED_STATUS DeleteTabletsAndSendRequests(
+      const TableInfoPtr& table, const RepeatedBytes& retained_by_snapshot_schedules);
 
   // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
   CHECKED_STATUS DeleteTabletListAndSendRequests(
       const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-      HideOnly hide_only);
+      const RepeatedBytes& retained_by_snapshot_schedules);
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
@@ -1286,6 +1288,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Tablet maps: tablet-id -> TabletInfo
   VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(lock_);
+
+  // Tablets that was hidden instead of deleting, used to cleanup such tablets when time comes.
+  std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(lock_);
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
   NamespaceInfoMap namespace_ids_map_ GUARDED_BY(lock_);

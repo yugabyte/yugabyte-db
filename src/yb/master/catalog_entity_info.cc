@@ -415,7 +415,7 @@ bool TableInfo::AreAllTabletsDeleted() const {
   shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     auto tablet_lock = e.second->LockForRead();
-    if (!tablet_lock->is_deleted() && !tablet_lock->pb.hidden()) {
+    if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
       return false;
     }
   }

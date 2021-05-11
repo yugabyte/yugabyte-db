@@ -643,11 +643,13 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPee
       return ListTabletPeers(cluster, [](const auto& peer) { return true; });
     case ListPeersFilter::kLeaders:
       return ListTabletPeers(cluster, [](const auto& peer) {
-        return peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+        auto consensus = peer->shared_consensus();
+        return consensus && consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
       });
     case ListPeersFilter::kNonLeaders:
       return ListTabletPeers(cluster, [](const auto& peer) {
-        return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+        auto consensus = peer->shared_consensus();
+        return consensus && consensus->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
       });
   }
 

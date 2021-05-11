@@ -47,12 +47,17 @@
 
 namespace google {
 namespace protobuf {
+
 class FileDescriptor;
 class FileDescriptorSet;
 class MessageLite;
 class Message;
-}
-}
+
+template <class T>
+class RepeatedPtrField;
+
+} // namespace protobuf
+} // namespace google
 
 namespace yb {
 
@@ -336,5 +341,9 @@ bool ArePBsEqual(const google::protobuf::Message& prev_pb,
                  std::string* diff_str);
 
 } // namespace pb_util
+
+using RepeatedBytes = google::protobuf::RepeatedPtrField<std::string>;
+
 } // namespace yb
+
 #endif // YB_UTIL_PB_UTIL_H

@@ -39,6 +39,9 @@ namespace master {
 using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
 
+using ScheduleMinRestoreTime =
+    std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>;
+
 YB_STRONGLY_TYPED_BOOL(SendMetadata);
 
 // Context class for MasterSnapshotCoordinator.
@@ -69,6 +72,8 @@ class SnapshotCoordinatorContext {
   virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
   virtual CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) = 0;
   virtual CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) = 0;
+
+  virtual void CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
 
   virtual const Schema& schema() = 0;
 
