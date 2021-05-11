@@ -2,16 +2,14 @@
 
 package com.yugabyte.yw.forms;
 
-import com.google.common.collect.ImmutableSet;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.annotation.EnumValue;
 
-import java.util.HashSet;
-import java.util.UUID;
 import java.util.Set;
-
-import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
+import java.util.UUID;
 
 public class UniverseTaskParams extends AbstractTaskParams {
   public static class EncryptionAtRestConfig {
@@ -28,12 +26,15 @@ public class UniverseTaskParams extends AbstractTaskParams {
     public boolean encryptionAtRestEnabled;
 
     // The KMS Configuration associated with the encryption keys being used on this universe
+    @JsonAlias({"configUUID"})
     public UUID kmsConfigUUID;
 
     // Whether to enable/disable/rotate universe key/encryption at rest
+    @JsonAlias({"key_op"})
     public OpType opType;
 
     // Whether to generate a data key or just retrieve the CMK arn
+    @JsonAlias({"key_type"})
     public KeyType type;
 
     public EncryptionAtRestConfig() {
@@ -132,7 +133,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
   // Expected version of the universe for operation execution. Set to -1 if an operation should
   // not verify expected version of the universe.
-  public int expectedUniverseVersion;
+  public Integer expectedUniverseVersion;
 
   // If an AWS backed universe has chosen EBS volume encryption, this will be set to the
   // Amazon Resource Name (ARN) of the CMK to be used to generate data keys for volume encryption

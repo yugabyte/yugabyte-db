@@ -58,7 +58,6 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.*;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.empty;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
 
-
 public class UniverseController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
 
@@ -304,7 +303,8 @@ public class UniverseController extends AuthenticatedController {
     UniverseDefinitionTaskParams.ClusterOperationType clusterOpType =
       UniverseDefinitionTaskParams.ClusterOperationType.valueOf(clustOp.asText());
     UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData, customerUUID);
+      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
+        UniverseDefinitionTaskParams.class);
 
     taskParams.currentClusterType = currentClusterType;
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
@@ -334,7 +334,8 @@ public class UniverseController extends AuthenticatedController {
   public Result getUniverseResources(UUID customerUUID) {
     ObjectNode formData = (ObjectNode) request().body().asJson();
     UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData, customerUUID);
+      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
+        UniverseDefinitionTaskParams.class);
 
     Set<NodeDetails> nodesInCluster;
 
@@ -363,7 +364,8 @@ public class UniverseController extends AuthenticatedController {
     // Get the user submitted form data.
     ObjectNode formData = (ObjectNode) request().body().asJson();
     UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData, customerUUID);
+      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
+        UniverseDefinitionTaskParams.class);
 
     if (taskParams.getPrimaryCluster() != null &&
       !Util.isValidUniverseNameFormat(taskParams.getPrimaryCluster().userIntent.universeName)) {
@@ -542,12 +544,12 @@ public class UniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    EncryptionAtRestKeyParams taskParams;
-    ObjectNode formData;
     LOG.info("Updating universe key {} for {}.", universeUUID, customerUUID);
     // Get the user submitted form data.
-    formData = (ObjectNode) request().body().asJson();
-    taskParams = EncryptionAtRestKeyParams.bindFromFormData(universeUUID, formData);
+
+    ObjectNode formData = (ObjectNode) request().body().asJson();
+    EncryptionAtRestKeyParams taskParams =
+      EncryptionAtRestKeyParams.bindFromFormData(universeUUID, formData);
 
     try {
       TaskType taskType = TaskType.SetUniverseKey;
@@ -673,7 +675,8 @@ public class UniverseController extends AuthenticatedController {
 
     ObjectNode formData = (ObjectNode) request().body().asJson();
     UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData, customerUUID);
+      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
+        UniverseDefinitionTaskParams.class);
 
     if (!universe.getUniverseDetails().isUniverseEditable()) {
       String errMsg = "Universe UUID " + universeUUID + " cannot be edited.";
@@ -903,8 +906,10 @@ public class UniverseController extends AuthenticatedController {
 
     LOG.info("Paused universe " + universeUUID + " for customer [" + customer.name + "]");
 
+    ObjectNode response = Json.newObject();
+    response.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return ApiResponse.success(response);
   }
 
 
@@ -937,8 +942,10 @@ public class UniverseController extends AuthenticatedController {
 
     LOG.info("Resumed universe " + universeUUID + " for customer [" + customer.name + "]");
 
+    ObjectNode response = Json.newObject();
+    response.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return ApiResponse.success(response);
 
   }
 
@@ -992,8 +999,11 @@ public class UniverseController extends AuthenticatedController {
       universe.name);
 
     LOG.info("Destroyed universe " + universeUUID + " for customer [" + customer.name + "]");
+
+    ObjectNode response = Json.newObject();
+    response.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return ApiResponse.success(response);
   }
 
   /**
@@ -1009,7 +1019,8 @@ public class UniverseController extends AuthenticatedController {
     // Get the user submitted form data.
     ObjectNode formData = (ObjectNode) request().body().asJson();
     UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData, customerUUID);
+      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
+        UniverseDefinitionTaskParams.class);
 
     if (taskParams.clusters == null || taskParams.clusters.size() != 1) {
       throw new YWServiceException(BAD_REQUEST, "Invalid 'clusters' field/size: " +
@@ -1179,11 +1190,9 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     // Bind upgrade params
-    UpgradeParams taskParams;
-    ObjectNode formData;
-    formData = (ObjectNode) request().body().asJson();
-    taskParams =
-      (UpgradeParams) UniverseControllerRequestBinder.bindFormDataToTaskParams(formData, true);
+    ObjectNode formData = (ObjectNode) request().body().asJson();
+    UpgradeParams taskParams =
+      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData, UpgradeParams.class);
 
     if (taskParams.taskType == null) {
       throw new YWServiceException(BAD_REQUEST, "task type is required");
@@ -1307,8 +1316,10 @@ public class UniverseController extends AuthenticatedController {
       universe.name);
     LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
       universe.universeUUID, universe.name);
+    ObjectNode resultNode = Json.newObject();
+    resultNode.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return Results.status(OK, resultNode);
   }
 
   /**
@@ -1391,10 +1402,9 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     // Bind disk size increase data.
-    DiskIncreaseFormData taskParams;
     ObjectNode formData = (ObjectNode) request().body().asJson();
-    taskParams = (DiskIncreaseFormData) UniverseControllerRequestBinder.bindFormDataToTaskParams(
-      formData, false, true);
+    DiskIncreaseFormData taskParams = UniverseControllerRequestBinder
+      .bindFormDataToTaskParams(formData, DiskIncreaseFormData.class);
 
     if (taskParams.size == 0) {
       throw new YWServiceException(BAD_REQUEST, "Size cannot be 0.");
@@ -1439,8 +1449,10 @@ public class UniverseController extends AuthenticatedController {
       universe.name);
     LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
       universe.universeUUID, universe.name);
+    ObjectNode resultNode = Json.newObject();
+    resultNode.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return Results.status(OK, resultNode);
   }
 
   public Result getLiveQueries(UUID customerUUID, UUID universeUUID) {
@@ -1555,9 +1567,6 @@ public class UniverseController extends AuthenticatedController {
 
   /**
    * Returns the command to run the sample apps in the universe.
-   *
-   * @param universe
-   * @return
    */
   private String getManifest(Universe universe) {
     Set<NodeDetails> nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
@@ -1568,7 +1577,7 @@ public class UniverseController extends AuthenticatedController {
     boolean isKubernetesProvider = cluster
       .userIntent
       .providerType
-      .equals(CloudType.kubernetes) ? true : false;
+      .equals(CloudType.kubernetes);
     //Building --nodes param value of the command
     nodeDetailsSet.stream()
       .filter(nodeDetails ->
