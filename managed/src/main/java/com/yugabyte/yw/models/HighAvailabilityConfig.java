@@ -13,6 +13,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import play.data.validation.Constraints;
@@ -22,6 +23,7 @@ import javax.crypto.SecretKey;
 import javax.persistence.*;
 import java.util.*;
 import java.util.stream.Collectors;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 @JsonPropertyOrder({ "uuid", "cluster_key", "instances" })
@@ -125,8 +127,17 @@ public class HighAvailabilityConfig extends Model {
     config.update();
   }
 
+  @Deprecated
   public static Optional<HighAvailabilityConfig> get(UUID uuid) {
     return Optional.ofNullable(find.byId(uuid));
+  }
+
+  public static Optional<HighAvailabilityConfig> getOrBadRequest(UUID uuid) {
+    Optional<HighAvailabilityConfig> config = get(uuid);
+    if (!config.isPresent()) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid config UUID");
+    }
+    return config;
   }
 
   public static Optional<HighAvailabilityConfig> get() {
