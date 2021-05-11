@@ -37,26 +37,14 @@ public class AuditController extends AuthenticatedController {
    */
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
-    Audit entry = Audit.getFromTaskUUID(taskUUID);
-    if (entry.getCustomerUUID().equals(customerUUID)) {
-      return ApiResponse.success(entry);
-    }
-    else {
-      return ApiResponse.error(BAD_REQUEST,
-        String.format("Task %s does not belong to customer %s", taskUUID, customerUUID));
-    }
+    Audit entry = Audit.getOrBadRequest(customerUUID, taskUUID);
+    return ApiResponse.success(entry);
   }
 
   public Result getUserFromTask(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = Audit.getFromTaskUUID(taskUUID);
     Users user = Users.get(entry.getUserUUID());
-    if (entry.getCustomerUUID().equals(customerUUID)) {
-      return ApiResponse.success(user);
-    }
-    else {
-      return ApiResponse.error(BAD_REQUEST,
-        String.format("Task %s does not belong to customer %s", taskUUID, customerUUID));
-    }
+    return ApiResponse.success(user);
   }
 }
