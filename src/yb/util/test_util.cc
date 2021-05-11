@@ -256,13 +256,13 @@ void AssertEventually(const std::function<void(void)>& f,
   }
 }
 
-Status Wait(std::function<Result<bool>()> condition,
-            MonoTime deadline,
+Status Wait(const std::function<Result<bool>()>& condition,
+            CoarseTimePoint deadline,
             const std::string& description,
             MonoDelta initial_delay,
             double delay_multiplier,
             MonoDelta max_delay) {
-  auto start = MonoTime::Now();
+  auto start = CoarseMonoClock::Now();
   MonoDelta delay = initial_delay;
   for (;;) {
     const auto current = condition();
@@ -272,13 +272,13 @@ Status Wait(std::function<Result<bool>()> condition,
     if (current.get()) {
       break;
     }
-    const auto now = MonoTime::Now();
-    const auto left = deadline - now;
+    const auto now = CoarseMonoClock::Now();
+    const MonoDelta left(deadline - now);
     if (left <= MonoDelta::kZero) {
       return STATUS_FORMAT(TimedOut,
                            "Operation '$0' didn't complete within $1ms",
                            description,
-                           (now - start).ToMilliseconds());
+                           MonoDelta(now - start).ToMilliseconds());
     }
     delay = std::min(std::min(MonoDelta::FromSeconds(delay.ToSeconds() * delay_multiplier), left),
                      max_delay);
@@ -287,8 +287,19 @@ Status Wait(std::function<Result<bool>()> condition,
   return Status::OK();
 }
 
+Status Wait(const std::function<Result<bool>()>& condition,
+            MonoTime deadline,
+            const std::string& description,
+            MonoDelta initial_delay,
+            double delay_multiplier,
+            MonoDelta max_delay) {
+  auto left = deadline - MonoTime::Now();
+  return Wait(condition, CoarseMonoClock::Now() + left, description, initial_delay,
+              delay_multiplier, max_delay);
+}
+
 // Waits for the given condition to be true or until the provided timeout has expired.
-Status WaitFor(std::function<Result<bool>()> condition,
+Status WaitFor(const std::function<Result<bool>()>& condition,
                MonoDelta timeout,
                const string& description,
                MonoDelta initial_delay,
@@ -299,7 +310,7 @@ Status WaitFor(std::function<Result<bool>()> condition,
 }
 
 void AssertLoggedWaitFor(
-    std::function<Result<bool>()> condition,
+    const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const string& description,
     MonoDelta initial_delay,
@@ -311,7 +322,7 @@ void AssertLoggedWaitFor(
 }
 
 Status LoggedWaitFor(
-    std::function<Result<bool>()> condition,
+    const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const string& description,
     MonoDelta initial_delay,

@@ -313,6 +313,8 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS Delete(
       const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline) {
+    VLOG_WITH_FUNC(4) << snapshot_id << ", " << leader_term;
+
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
@@ -327,6 +329,8 @@ class MasterSnapshotCoordinator::Impl {
   CHECKED_STATUS DeleteReplicated(
       int64_t leader_term, const tablet::SnapshotOperationState& state) {
     auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(state.request()->snapshot_id()));
+    VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
+
     docdb::KeyValueWriteBatchPB write_batch;
     TabletSnapshotOperations operations;
     {
@@ -622,6 +626,7 @@ class MasterSnapshotCoordinator::Impl {
   struct PollSchedulesData {
     std::vector<TxnSnapshotId> delete_snapshots;
     SnapshotScheduleOperations schedule_operations;
+    ScheduleMinRestoreTime schedule_min_restore_time;
   };
 
   void Poll() {
@@ -656,17 +661,23 @@ class MasterSnapshotCoordinator::Impl {
     for (const auto& p : schedules_) {
       auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
       auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
-      if (first_snapshot && first_snapshot != last_snapshot) {
-        auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
-        if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
-          auto delete_status = first_snapshot->TryStartDelete();
-          if (delete_status.ok()) {
-            data->delete_snapshots.push_back(first_snapshot->id());
-          } else {
-            VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
-                    << delete_status;
+      if (first_snapshot) {
+        if (first_snapshot != last_snapshot) {
+          auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+          if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
+            auto delete_status = first_snapshot->TryStartDelete();
+            if (delete_status.ok()) {
+              VLOG(1) << "Cleanup snapshot: " << first_snapshot->id();
+              data->delete_snapshots.push_back(first_snapshot->id());
+            } else {
+              VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
+                      << delete_status << ", state: " << first_snapshot->ToString();
+            }
           }
         }
+        data->schedule_min_restore_time[p->id()] = first_snapshot->previous_snapshot_hybrid_time()
+                ? first_snapshot->previous_snapshot_hybrid_time()
+                : first_snapshot->snapshot_hybrid_time();
       }
       auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
                                               : HybridTime::kInvalid;
@@ -682,6 +693,7 @@ class MasterSnapshotCoordinator::Impl {
       WARN_NOT_OK(ExecuteScheduleOperation(operation, leader_term),
                   Format("Failed to execute operation on $0", operation.schedule_id));
     }
+    context_.CleanupHiddenTablets(data.schedule_min_restore_time);
   }
 
   SnapshotState* BoundingSnapshot(const SnapshotScheduleId& schedule_id, Bound bound)
@@ -709,6 +721,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   void DeleteSnapshot(int64_t leader_term, const TxnSnapshotId& snapshot_id) {
+    VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
+
     docdb::KeyValueWriteBatchPB write_batch;
 
     auto encoded_key = EncodedSnapshotKey(snapshot_id, &context_);

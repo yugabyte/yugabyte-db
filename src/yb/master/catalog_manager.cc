@@ -2178,7 +2178,7 @@ Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
   }
 
   return DeleteTabletListAndSendRequests(
-      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString(), HideOnly::kFalse);
+      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString(), {});
 }
 
 Status CatalogManager::DeleteTablet(
@@ -3985,16 +3985,16 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   for (const auto& table : tables) {
-    HideOnly hide_only = HideOnly::kFalse;
+    RepeatedBytes retained_by_snapshot_schedules;
     for (const auto& entry : schedules_to_tables_map) {
       if (std::binary_search(entry.second.begin(), entry.second.end(), table->id())) {
-        hide_only = HideOnly::kTrue;
-        break;
+        retained_by_snapshot_schedules.Add()->assign(
+            entry.first.AsSlice().cdata(), entry.first.size());
       }
     }
 
     // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, hide_only));
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, retained_by_snapshot_schedules));
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
     // TODO(pitr) handle YSQL colocated tables.
     if (IsColocatedUserTable(*table)) {
@@ -6408,7 +6408,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
     // TODO(pitr) undelete for YSQL tables
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, HideOnly::kFalse));
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, {}));
   }
 
   // Invoke any background tasks and return (notably, table cleanup).
@@ -7357,7 +7357,8 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<Tabl
   return Status::OK();
 }
 
-Status CatalogManager::DeleteTabletsAndSendRequests(const TableInfoPtr& table, HideOnly hide_only) {
+Status CatalogManager::DeleteTabletsAndSendRequests(
+    const TableInfoPtr& table, const RepeatedBytes& retained_by_snapshot_schedules) {
   // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
   if (!CheckIfForbiddenToDeleteTabletOf(table).ok()) {
     return Status::OK();
@@ -7371,7 +7372,8 @@ Status CatalogManager::DeleteTabletsAndSendRequests(const TableInfoPtr& table, H
   });
 
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
-  RETURN_NOT_OK(DeleteTabletListAndSendRequests(tablets, deletion_msg, hide_only));
+  RETURN_NOT_OK(DeleteTabletListAndSendRequests(
+      tablets, deletion_msg, retained_by_snapshot_schedules));
 
   if (IsColocatedParentTable(*table)) {
     SharedLock<LockType> catalog_lock(lock_);
@@ -7389,7 +7391,7 @@ Status CatalogManager::DeleteTabletsAndSendRequests(const TableInfoPtr& table, H
 
 Status CatalogManager::DeleteTabletListAndSendRequests(
     const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-    HideOnly hide_only) {
+    const google::protobuf::RepeatedPtrField<std::string>& retained_by_snapshot_schedules) {
   struct TabletAndLock {
     TabletInfoPtr tablet;
     TabletInfo::WriteLock lock;
@@ -7398,6 +7400,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
   tablets_and_locks.reserve(tablets.size());
   std::vector<TabletInfo*> tablet_infos;
   tablet_infos.reserve(tablets_and_locks.size());
+  std::vector<TabletInfoPtr> marked_as_hidden;
 
   // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
   for (const auto& tablet : tablets) {
@@ -7408,17 +7411,26 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     tablet_infos.emplace_back(tablet.get());
   }
 
+  HideOnly hide_only(!retained_by_snapshot_schedules.empty());
+  HybridTime hide_hybrid_time = hide_only ? master_->clock()->Now() : HybridTime();
+
   // Mark the tablets as deleted.
   for (auto& tablet_and_lock : tablets_and_locks) {
     auto& tablet = tablet_and_lock.tablet;
     auto& tablet_lock = tablet_and_lock.lock;
 
+    bool was_hidden = tablet_lock->ListedAsHidden();
     if (hide_only) {
       LOG(INFO) << "Hiding tablet " << tablet->tablet_id() << " ...";
-      tablet_lock.mutable_data()->pb.set_hidden(true);
+      tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
+      *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+          retained_by_snapshot_schedules;
     } else {
       LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
       tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+    }
+    if (tablet_lock->ListedAsHidden() && !was_hidden) {
+      marked_as_hidden.push_back(tablet);
     }
     DeleteTabletReplicas(tablet.get(), deletion_msg, hide_only);
   }
@@ -7434,6 +7446,12 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     tablet_lock.Commit();
     LOG(INFO) << (hide_only ? "Hid tablet " : "Deleted tablet ") << tablet->tablet_id();
   }
+
+  if (!marked_as_hidden.empty()) {
+    std::lock_guard<LockType> lock(lock_);
+    hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
+  }
+
   return Status::OK();
 }
 
@@ -8260,7 +8278,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
                                                TabletLocationsPB* locs_pb) {
   {
     auto l_tablet = tablet->LockForRead();
-    if (l_tablet->pb.hidden()) {
+    if (l_tablet->is_hidden()) {
       return STATUS_FORMAT(NotFound, "Tablet hidden", tablet->id());
     }
     locs_pb->set_table_id(l_tablet->pb.table_id());

@@ -157,6 +157,15 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
            pb.state() == SysTabletsEntryPB::DELETED;
   }
 
+  bool is_hidden() const {
+    return pb.hide_hybrid_time() != 0;
+  }
+
+  bool ListedAsHidden() const {
+    // Tablet was hidden, but not yet deleted (to avoid resending delete for it).
+    return is_hidden() && !is_deleted();
+  }
+
   bool is_colocated() const {
     return pb.colocated();
   }

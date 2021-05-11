@@ -234,7 +234,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
 
-  Tablet* tablet() const {
+  Tablet* tablet() const EXCLUDES(lock_) {
     std::lock_guard<simple_spinlock> lock(lock_);
     return tablet_.get();
   }
