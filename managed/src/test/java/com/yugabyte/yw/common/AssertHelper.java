@@ -110,9 +110,9 @@ public class AssertHelper {
     );
   }
 
-  public static void assertAuditEntry(int numEntries, UUID uuid) {
-    List<Audit> auditEntries = Audit.getAll(uuid);
-    assertEquals(auditEntries.size(), numEntries);
+  public static void assertAuditEntry(int expectedNumEntries, UUID uuid) {
+    int actual = Audit.getAll(uuid).size();
+    assertEquals(expectedNumEntries, actual);
   }
 
   public static void assertYWSuccess(Result result, String expectedMessage) {
