@@ -7,6 +7,7 @@ import { browserHistory } from 'react-router';
 import { YBModal, YBCheckBox, YBTextInput } from '../../common/forms/fields';
 import { isEmptyObject } from '../../../utils/ObjectUtils';
 import { getReadOnlyCluster } from '../../../utils/UniverseUtils';
+import './DeleteUniverse.scss';
 
 export default class DeleteUniverse extends Component {
   constructor(props) {
@@ -39,13 +40,29 @@ export default class DeleteUniverse extends Component {
       body,
       universe: {
         currentUniverse: {
-          data: { name }
+          data: {
+            name,
+            universeDetails
+          }
         }
       }
     } = this.props;
+    const universePaused = universeDetails?.universePaused;
+
     return (
-      <div>
-        {body}
+      <>
+        {universePaused ?
+          <>
+            Are you sure you want to delete the universe?
+            <br />
+            <br />
+            <span className='paused-note'>
+              <strong>Note: </strong>Terminating paused universes
+              won't delete backup objects. If you want to delete
+              old backup objects then click on Resume Universe and delete it.
+            </span>
+          </> : body
+        }
         <br />
         <br />
         <label>Enter universe name to confirm delete:</label>
@@ -54,7 +71,7 @@ export default class DeleteUniverse extends Component {
           placeHolder={name}
           input={{ onChange: this.onChangeUniverseName, onBlur: () => {} }}
         />
-      </div>
+      </>
     );
   };
 
@@ -95,10 +112,15 @@ export default class DeleteUniverse extends Component {
       onHide,
       universe: {
         currentUniverse: {
-          data: { name }
+          data: {
+            name,
+            universeDetails
+          }
         }
       }
     } = this.props;
+    const universePaused = universeDetails?.universePaused;
+
     return (
       <YBModal
         visible={visible}
@@ -120,6 +142,7 @@ export default class DeleteUniverse extends Component {
             <YBCheckBox
               label="Delete Backups"
               className="footer-accessory"
+              disabled={universePaused}
               input={{ checked: this.state.isDeleteBackups, onChange: this.toggleDeleteBackups }}
             />
           </div>
