@@ -99,6 +99,8 @@ class PriorityThreadPool {
   // Dumps state to string, useful for debugging.
   std::string StateToString();
 
+  void TEST_SetThreadCreationFailureProbability(double probability);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
