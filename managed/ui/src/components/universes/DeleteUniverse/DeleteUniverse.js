@@ -59,7 +59,7 @@ export default class DeleteUniverse extends Component {
             <span className='paused-note'>
               <strong>Note: </strong>Terminating paused universes
               won't delete backup objects. If you want to delete
-              old backup objects then click on Resume Universe and delete it.
+              backup objects then click on Resume Universe and delete it.
             </span>
           </> : body
         }
