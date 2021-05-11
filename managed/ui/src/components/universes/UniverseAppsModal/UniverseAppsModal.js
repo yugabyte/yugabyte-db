@@ -4,7 +4,7 @@ import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';
-import { YBCodeBlock } from '../../common/descriptors';
+import { YBCodeBlock, YBCopyButton } from '../../common/descriptors';
 import { isValidObject, isEmptyObject } from '../../../utils/ObjectUtils';
 import { Tab, Tabs } from 'react-bootstrap';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -60,7 +60,7 @@ export default class UniverseAppsModal extends Component {
 
   render() {
     const {
-      currentUniverse: { universeDetails },
+      currentUniverse: { universeDetails, sampleAppCommandTxt },
       button,
       closeModal,
       modal: { showModal, visibleModal }
@@ -140,14 +140,20 @@ export default class UniverseAppsModal extends Component {
       });
 
       const commandSyntax = isItKubernetesUniverse
-        ? 'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps --'
+        ? 'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps '
         : 'docker run -d yugabytedb/yb-sample-apps';
+
+       const command = (appType.title === 'YCQL'
+              ? sampleAppCommandTxt
+              : commandSyntax + ' --workload ' + appType.code + ' --nodes ' + hostPorts)
+
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>
           {betaFeature}
           <label className="app-description">{appType.description}</label>
           <YBCodeBlock label="Usage:">
-            {commandSyntax} --workload {appType.code} --nodes {hostPorts}
+            {command}
+            <YBCopyButton text={command} />
           </YBCodeBlock>
           <YBCodeBlock label="Other options (with default values):">{appOptions}</YBCodeBlock>
         </Tab>
