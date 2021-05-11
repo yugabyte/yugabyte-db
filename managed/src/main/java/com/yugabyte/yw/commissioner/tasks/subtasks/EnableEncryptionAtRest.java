@@ -60,12 +60,11 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
+      client = ybService.getClient(hostPorts, certificate);
       final byte[] universeKeyRef = keyManager.generateUniverseKey(
               taskParams().encryptionAtRestConfig.kmsConfigUUID,
               taskParams().universeUUID,

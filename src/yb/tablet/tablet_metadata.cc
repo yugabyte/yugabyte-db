@@ -534,6 +534,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
+    hidden_ = superblock.hidden();
   }
 
   return Status::OK();
@@ -618,6 +619,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_colocated(colocated_);
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   pb.set_is_under_twodc_replication(is_under_twodc_replication_);
+  pb.set_hidden(hidden_);
 
   superblock->Swap(&pb);
 }
@@ -786,7 +788,7 @@ int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
   return cdc_min_replicated_index_;
 }
 
-Status RaftGroupMetadata::set_is_under_twodc_replication(bool is_under_twodc_replication) {
+Status RaftGroupMetadata::SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication) {
   {
     std::lock_guard<MutexType> lock(data_mutex_);
     is_under_twodc_replication_ = is_under_twodc_replication;
@@ -797,6 +799,19 @@ Status RaftGroupMetadata::set_is_under_twodc_replication(bool is_under_twodc_rep
 bool RaftGroupMetadata::is_under_twodc_replication() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return is_under_twodc_replication_;
+}
+
+Status RaftGroupMetadata::SetHiddenAndFlush(bool value) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    hidden_ = value;
+  }
+  return Flush();
+}
+
+bool RaftGroupMetadata::hidden() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return hidden_;
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {

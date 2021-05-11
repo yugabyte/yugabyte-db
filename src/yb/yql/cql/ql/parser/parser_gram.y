@@ -413,13 +413,13 @@ using namespace yb::ql;
                           ExistingIndex OptTableSpace OptConsTableSpace opt_provider
                           security_label opt_existing_window_name property_name
 
-%type <PBool>             opt_if_not_exists xml_whitespace_option constraints_set_mode opt_varying
-                          opt_timezone opt_no_inherit opt_ordinality opt_instead opt_unique
-                          opt_concurrently opt_verbose opt_full opt_freeze opt_default opt_recheck
-                          copy_from opt_program all_or_distinct opt_trusted opt_restart_seqs
-                          opt_or_replace opt_grant_grant_option /* opt_grant_admin_option */
-                          opt_nowait opt_if_exists opt_with_data opt_allow_filtering
-                          TriggerForSpec TriggerForType
+%type <PBool>             opt_deferred opt_if_not_exists xml_whitespace_option constraints_set_mode
+                          opt_varying opt_timezone opt_no_inherit opt_ordinality opt_instead
+                          opt_unique opt_concurrently opt_verbose opt_full opt_freeze opt_default
+                          opt_recheck copy_from opt_program all_or_distinct opt_trusted
+                          opt_restart_seqs opt_or_replace opt_grant_grant_option
+                          /* opt_grant_admin_option */ opt_nowait opt_if_exists opt_with_data
+                          opt_allow_filtering TriggerForSpec TriggerForType
 
 %type <PInt64>            TableLikeOptionList TableLikeOption key_actions key_delete key_match
                           key_update key_action ConstraintAttributeSpec ConstraintAttributeElem
@@ -8010,24 +8010,29 @@ defacl_privilege_target:
  *****************************************************************************/
 
 IndexStmt:
-  CREATE opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
+  CREATE opt_deferred opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
   access_method_clause '(' index_params ')' opt_include_clause OptTableSpace opt_where_clause
   opt_index_options {
-    if ($14 && FLAGS_cql_raise_index_where_clause_error) {
+    if ($15 && FLAGS_cql_raise_index_where_clause_error) {
        // WHERE is not supported.
        PARSER_UNSUPPORTED(@1);
     }
-    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $5, $7, $10, false, $15, $12);
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $3, $6, $8, $11, false, $16, $13);
   }
-  | CREATE opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS opt_index_name ON qualified_name
-  access_method_clause '(' index_params ')' opt_include_clause OptTableSpace opt_where_clause
-  opt_index_options {
-    if ($17 && FLAGS_cql_raise_index_where_clause_error) {
+  | CREATE opt_deferred opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS opt_index_name ON
+  qualified_name access_method_clause '(' index_params ')' opt_include_clause OptTableSpace
+  opt_where_clause opt_index_options {
+    if ($18 && FLAGS_cql_raise_index_where_clause_error) {
        // WHERE is not supported.
        PARSER_UNSUPPORTED(@1);
     }
-    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $8, $10, $13, true, $18, $15);
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $3, $9, $11, $14, true, $19, $16);
   }
+;
+
+opt_deferred:
+  DEFERRED                          { $$ = true; }
+  | /*EMPTY*/                       { $$ = false; }
 ;
 
 opt_unique:

@@ -257,6 +257,15 @@ class CassandraSession {
     return ExecuteAndProcessOneRow(CassandraStatement(query), action);
   }
 
+  template <class T>
+  Result<T> FetchValue(const std::string& query) {
+    T result = T();
+    RETURN_NOT_OK(ExecuteAndProcessOneRow(query, [&result](const CassandraRow& row) {
+      result = row.Value(0).As<T>();
+    }));
+    return result;
+  }
+
   CHECKED_STATUS ExecuteBatch(const CassandraBatch& batch);
 
   CassandraFuture SubmitBatch(const CassandraBatch& batch);
