@@ -286,12 +286,12 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testTaskHistoryLimit2000() {
+  public void testTaskHistoryLimit() {
     String authToken = user.createAuthToken();
     Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
     when(config.getInt(CustomerTaskController.MAX_TASKS))
-      .thenReturn(2004);
-    IntStream.range(0, 3000).forEach(i -> createTaskWithStatus(
+      .thenReturn(25);
+    IntStream.range(0, 100).forEach(i -> createTaskWithStatus(
         universe.universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0));
     Result result = controller.list(customer.uuid);
     assertEquals(OK, result.status());
@@ -299,7 +299,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertTrue(json.isObject());
     JsonNode universeTasks = json.get(universe.universeUUID.toString());
     assertTrue(universeTasks.isArray());
-    assertEquals(2004, universeTasks.size());
+    assertEquals(25, universeTasks.size());
     assertAuditEntry(0, customer.uuid);
   }
 
