@@ -1,6 +1,6 @@
 -- ########## TIME DAILY TESTS ##########
 -- Other tests: 
-    -- Test using default template table. Initial child tables will have no indexes. New tables after template has indexes added should.
+    -- Test generated always columns
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true

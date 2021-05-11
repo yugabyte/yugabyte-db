@@ -1,3 +1,16 @@
+4.5.1
+NEW FEATURES
+============
+-- Allow relation options set on the template table to be inherited on the child table. As of PG13 and earlier, relation options set on the parent are not being set on the child tables. Unknown if PG14 will handle this yet or not (Github PR #348).
+
+BUG FIXES
+=========
+-- Fixed security issue that could allow arbitrary code execution using SECURITY DEFINER functions. Set explicit search_path to avoid this. Thanks to Github user @tapioaiven of Aiven Ltd for reporting the issue.
+
+-- Fixed several bugs in sub-partitioning when using a mixture of epoch and regular integer partitioning in the same partition set (Github Issue #357).
+
+
+
 4.5.0
 NEW FEATURES
 ============

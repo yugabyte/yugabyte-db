@@ -14,6 +14,7 @@ v_inherit_fk            boolean;
 v_parent_index_list     record;
 v_parent_oid            oid;
 v_parent_table          text;
+v_relopt                record;
 v_sql                   text;
 v_template_oid          oid;
 v_template_schemaname   text;
@@ -119,14 +120,14 @@ IF current_setting('server_version_num')::int >= 100000 THEN
 
                 IF v_parent_index_list.indisprimary AND v_index_list.indisprimary THEN
                     IF v_parent_index_list.indkey_names = v_index_list.indkey_names THEN
-                        RAISE DEBUG 'Ignoring duplicate primary key on template table: % ', v_index_list.indkey_names;
+                        RAISE DEBUG 'inherit_template_properties: Ignoring duplicate primary key on template table: % ', v_index_list.indkey_names;
                         v_dupe_found := true;
                         CONTINUE; -- only continue within this nested loop
                     END IF;
                 END IF;
 
                 IF v_parent_index_list.statement = v_index_list.statement THEN
-                    RAISE DEBUG 'Ignoring duplicate index on template table: %', v_index_list.statement;
+                    RAISE DEBUG 'inherit_template_properties: Ignoring duplicate index on template table: %', v_index_list.statement;
                     v_dupe_found := true;
                     CONTINUE; -- only continue within this nested loop
                 END IF;
@@ -147,7 +148,7 @@ IF current_setting('server_version_num')::int >= 100000 THEN
             IF v_index_list.tablespace_name IS NOT NULL THEN
                 v_sql := v_sql || format(' USING INDEX TABLESPACE %I', v_index_list.tablespace_name);
             END IF;
-            RAISE DEBUG 'Create pk: %', v_sql;
+            RAISE DEBUG 'inherit_template_properties: Create pk: %', v_sql;
             EXECUTE v_sql;
         ELSE
             -- statement column should be just the portion of the index definition that defines what it actually is
@@ -156,7 +157,7 @@ IF current_setting('server_version_num')::int >= 100000 THEN
                 v_sql := v_sql || format(' TABLESPACE %I', v_index_list.tablespace_name);
             END IF;
 
-            RAISE DEBUG 'Create index: %', v_sql;
+            RAISE DEBUG 'inherit_template_properties: Create index: %', v_sql;
             EXECUTE v_sql;
 
         END IF;
@@ -176,7 +177,7 @@ IF current_setting('server_version_num')::int >= 100000 AND current_setting('ser
             AND contype = 'f'
         LOOP
             v_sql := format('ALTER TABLE %I.%I ADD %s', v_child_schema, v_child_tablename, v_fk_list.constraint_def);
-            RAISE DEBUG 'Create FK: %', v_sql;
+            RAISE DEBUG 'inherit_template_properties: Create FK: %', v_sql;
             EXECUTE v_sql;
         END LOOP;
     END IF;
@@ -186,7 +187,7 @@ END IF;
 -- Tablespace inheritance on PG11 and earlier
 IF current_setting('server_version_num')::int < 120000 AND v_template_tablespace IS NOT NULL THEN
     v_sql := format('ALTER TABLE %I.%I SET TABLESPACE %I', v_child_schema, v_child_tablename, v_template_tablespace);
-    RAISE DEBUG 'Alter tablespace: %', v_sql;
+    RAISE DEBUG 'inherit_template_properties: Alter tablespace: %', v_sql;
     EXECUTE v_sql;
 END IF;
 
@@ -206,14 +207,27 @@ AND c.relname = v_child_tablename::name;
 
 IF v_template_unlogged = 'u' AND v_child_unlogged = 'p'  THEN
     v_sql := format ('ALTER TABLE %I.%I SET UNLOGGED', v_child_schema, v_child_tablename);
-    RAISE DEBUG 'Alter UNLOGGED: %', v_sql;
+    RAISE DEBUG 'inherit_template_properties: Alter UNLOGGED: %', v_sql;
     EXECUTE v_sql;     
 ELSIF v_template_unlogged = 'p' AND v_child_unlogged = 'u'  THEN
     v_sql := format ('ALTER TABLE %I.%I SET LOGGED', v_child_schema, v_child_tablename);
-    RAISE DEBUG 'Alter UNLOGGED: %', v_sql;
+    RAISE DEBUG 'inherit_template_properties: Alter UNLOGGED: %', v_sql;
     EXECUTE v_sql;     
 END IF;
 
+-- Relation options are not being inherited for PG <= 13
+FOR v_relopt IN
+    SELECT unnest(reloptions) as value
+    FROM pg_catalog.pg_class
+    WHERE oid = v_template_oid
+LOOP
+    v_sql := format('ALTER TABLE %I.%I SET (%s)'
+                    , v_child_schema
+                    , v_child_tablename
+                    , v_relopt.value);
+    RAISE DEBUG 'inherit_template_properties: Set relopts: %', v_sql;
+    EXECUTE v_sql;
+END LOOP;
 RETURN true;
 
 END

@@ -176,7 +176,7 @@ LOOP
             RAISE EXCEPTION 'Due to conflicting data boundaries between ISO weeks and any larger interval of time, pg_partman cannot support a sub-partition interval of weekly';
         END IF;
 
-    ELSIF v_control_parent_type = 'id' AND v_control_sub_type = 'id' THEN
+    ELSIF v_control_parent_type = 'id' AND v_control_sub_type = 'id' AND v_parent_epoch = 'none' AND p_epoch = 'none' THEN
         IF p_interval::bigint >= v_parent_interval::bigint THEN
             EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
             RAISE EXCEPTION 'Sub-partition interval cannot be greater than or equal to the given parent interval';

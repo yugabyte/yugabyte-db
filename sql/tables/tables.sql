@@ -142,6 +142,7 @@ CHECK (@extschema@.check_automatic_maintenance_value(sub_automatic_maintenance))
  */
 CREATE FUNCTION @extschema@.check_epoch_type (p_type text) RETURNS boolean
     LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
+    SET search_path TO pg_catalog, pg_temp
     AS $$
 DECLARE
 v_result    boolean;
@@ -165,6 +166,7 @@ CHECK (@extschema@.check_epoch_type(sub_epoch));
  */
 CREATE OR REPLACE FUNCTION @extschema@.check_partition_type (p_type text) RETURNS boolean
     LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
+    SET search_path TO pg_catalog, pg_temp
     AS $$
 DECLARE
 v_result    boolean;
@@ -173,6 +175,7 @@ BEGIN
     RETURN v_result;
 END
 $$;
+
 
 ALTER TABLE @extschema@.part_config
 ADD CONSTRAINT part_config_type_check 
