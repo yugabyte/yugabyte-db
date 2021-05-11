@@ -645,7 +645,7 @@ Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimeP
 }
 
 void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
-  consensus_->GetLastCommittedOpId().ToPB(&data->op_id);
+  data->op_id = consensus_->GetLastCommittedOpId();
   data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
 }
 
@@ -1029,7 +1029,6 @@ Status TabletPeer::StartReplicaOperation(
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
-  auto operation_type = operation->operation_type();
   OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
   // Unretained is required to avoid a refcount cycle.
@@ -1038,11 +1037,6 @@ Status TabletPeer::StartReplicaOperation(
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
-  }
-
-  if (operation_type == OperationType::kWrite ||
-      operation_type == OperationType::kUpdateTransaction) {
-    tablet()->mvcc_manager()->AddPending(&ht);
   }
 
   driver->ExecuteAsync();
@@ -1139,8 +1133,9 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
         tablet_->GetCurrentVersionSstFilesUncompressedSize();
   }
 
-  if (log_) {
-    info.wal_files_disk_size = log_->OnDiskSize();
+  auto log = log_atomic_.load(std::memory_order_acquire);
+  if (log) {
+    info.wal_files_disk_size = log->OnDiskSize();
   }
 
   info.RecomputeTotalSize();
@@ -1148,7 +1143,8 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
 }
 
 int TabletPeer::GetNumLogSegments() const {
-  return (log_) ? log_->num_segments() : 0;
+  auto log = log_atomic_.load(std::memory_order_acquire);
+  return log ? log->num_segments() : 0;
 }
 
 std::string TabletPeer::LogPrefix() const {

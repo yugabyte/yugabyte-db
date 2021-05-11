@@ -122,12 +122,16 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteValidCustomerConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    Alert.create(defaultCustomer.uuid, configUUID, Alert.TargetType.CustomerConfigType,
+        "Error code", "", "");
+
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result = FakeApiHelper.doRequestWithAuthToken("DELETE", url,
         defaultUser.createAuthToken());
-    JsonNode node = Json.parse(contentAsString(result));
     assertOk(result);
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertEquals(0,
+        Alert.getActiveCustomerAlertsByTargetUuid(defaultCustomer.uuid, configUUID).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -202,7 +206,6 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     passwordPolicyFormData.setMinSpecialCharacters(minSpecialCharacters);
 
     ObjectNode bodyJson = Json.newObject();
-    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
     bodyJson.put("name", "password policy");
     bodyJson.set("data", Json.toJson(passwordPolicyFormData));
     bodyJson.put("type", "PASSWORD_POLICY");

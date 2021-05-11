@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.ReleaseFormData;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import org.slf4j.Logger;
@@ -36,10 +37,13 @@ public class ReleaseController extends AuthenticatedController {
 
     Form<ReleaseFormData> formData = formFactory.getFormDataOrBadRequest(ReleaseFormData.class);
     ReleaseFormData releaseFormData = formData.get();
-    releaseManager.addRelease(releaseFormData.version);
-
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success();
+    try {
+      releaseManager.addRelease(releaseFormData.version);
+    } catch (RuntimeException re) {
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
+    }
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return YWSuccess.asResult();
   }
 
 
@@ -85,6 +89,6 @@ public class ReleaseController extends AuthenticatedController {
     } catch (RuntimeException re) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
-    return ApiResponse.success();
+    return YWSuccess.asResult();
   }
 }

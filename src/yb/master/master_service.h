@@ -72,6 +72,12 @@ class MasterServiceImpl : public MasterServiceIf,
   void BackfillIndex(const BackfillIndexRequestPB* req,
                      BackfillIndexResponsePB* resp,
                      rpc::RpcContext rpc) override;
+  void GetBackfillJobs(const GetBackfillJobsRequestPB* req,
+                            GetBackfillJobsResponsePB* resp,
+                            rpc::RpcContext rpc) override;
+  void LaunchBackfillIndexForTable(const LaunchBackfillIndexForTableRequestPB* req,
+                                   LaunchBackfillIndexForTableResponsePB* resp,
+                                   rpc::RpcContext rpc) override;
   void DeleteTable(const DeleteTableRequestPB* req,
                    DeleteTableResponsePB* resp,
                    rpc::RpcContext rpc) override;

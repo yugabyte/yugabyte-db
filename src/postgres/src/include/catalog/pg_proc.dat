@@ -10273,4 +10273,40 @@
   proisstrict => 'f', prorettype => 'bool', proargtypes => 'oid int4 int4 any',
   proargmodes => '{i,i,i,v}', prosrc => 'satisfies_hash_partition' },
 
+# Yugabyte system calls use OIDS starting from YB_MIN_UNUSED_OID in "catalog.h".
+# Run `src/include/catalog/unused_oids` to seek available OID values.
+
+{ oid => '8013', descr => 'system call getrusage from the current session',
+  proname => 'yb_getrusage', provolatile => 'v',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8}',
+  proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{user_cpu,system_cpu,maxrss,ixrss,idrss,isrss,minflt,majflt,nswap,inblock,oublock,msgsnd,msgrcv,nsignals,nvcsw,nivcsw}',
+  prosrc => 'yb_getrusage' },
+
+{ oid => '8014', descr => 'get memory usage of the current session',
+  proname => 'yb_mem_usage', provolatile => 'v',
+  prorettype => 'text', proargtypes => '',
+  prosrc => 'yb_mem_usage' },
+
+{ oid => '8015', descr => 'get memory usage of the current session in kb',
+  proname => 'yb_mem_usage_kb', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_mem_usage_kb' },
+
+{ oid => '8016', descr => 'get memory usage in SQL layer of the current session',
+  proname => 'yb_mem_usage_sql', provolatile => 'v',
+  prorettype => 'text', proargtypes => '',
+  prosrc => 'yb_mem_usage_sql' },
+
+{ oid => '8017', descr => 'get memory usage in SQL layer of the current session in bytes',
+  proname => 'yb_mem_usage_sql_b', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_mem_usage_sql_b' },
+
+{ oid => '8018', descr => 'get memory usage by SQL layer of the current session in kb',
+  proname => 'yb_mem_usage_sql_kb', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_mem_usage_sql_kb' },
+
 ]

@@ -229,6 +229,12 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
       }
     }
 
+    safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+    if (rpc.GetClientDeadline() > safe_time_left && req->has_tablet_path_info()) {
+      server_->catalog_manager()->ProcessTabletPathInfo(
+            ts_desc.get()->permanent_uuid(), req->tablet_path_info());
+    }
+
     // Only set once. It may take multiple heartbeats to receive a full tablet report.
     if (!ts_desc->has_tablet_report()) {
       resp->set_needs_full_tablet_report(true);
@@ -307,7 +313,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     const auto table_info = server_->catalog_manager()->GetTableInfo(req->table_id());
     if (table_info) {
       const auto table_lock = table_info->LockForRead();
-      resp->set_partition_list_version(table_lock->data().pb.partition_list_version());
+      resp->set_partition_list_version(table_lock->pb.partition_list_version());
     }
   }
 
@@ -367,6 +373,8 @@ BOOST_PP_SEQ_FOR_EACH(
     (TruncateTable)
     (IsTruncateTableDone)
     (BackfillIndex)
+    (LaunchBackfillIndexForTable)
+    (GetBackfillJobs)
     (DeleteTable)
     (IsDeleteTableDone)
     (AlterTable)

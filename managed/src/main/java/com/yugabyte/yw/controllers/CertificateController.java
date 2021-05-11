@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -24,7 +25,6 @@ import play.libs.Json;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
@@ -71,7 +71,7 @@ public class CertificateController extends AuthenticatedController {
                         certContent, keyContent, certStart, certExpiry, certType,
                         customCertInfo
                       );
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(certUUID);
     } catch (Exception e) {
       LOG.error("Could not upload certs for customer {}", customerUUID, e);
@@ -95,8 +95,8 @@ public class CertificateController extends AuthenticatedController {
 
     try {
       JsonNode result = CertificateHelper.createClientCertificate(
-          rootCA, formData.get().username, certStart, certExpiry, false);
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+          rootCA, null, formData.get().username, certStart, certExpiry);
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(result);
     } catch (Exception e) {
       LOG.error(
@@ -119,7 +119,7 @@ public class CertificateController extends AuthenticatedController {
     }
     try {
       String certContents = CertificateHelper.getCertPEMFileContents(rootCA);
-      Audit.createAuditEntry(ctx(), request());
+      auditService().createAuditEntry(ctx(), request());
       ObjectNode result = Json.newObject();
       result.put(CertificateHelper.ROOT_CERT, certContents);
       return ApiResponse.success(result);
@@ -156,9 +156,9 @@ public class CertificateController extends AuthenticatedController {
     }
     if (!certificate.getInUse()) {
       if (certificate.delete()) {
-        Audit.createAuditEntry(ctx(), request());
+        auditService().createAuditEntry(ctx(), request());
         LOG.info("Successfully deleted the certificate:" + reqCertUUID);
-        return ApiResponse.success();
+        return YWSuccess.asResult();
       } else {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
       }

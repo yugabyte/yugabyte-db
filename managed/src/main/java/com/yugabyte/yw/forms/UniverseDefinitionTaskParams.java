@@ -251,6 +251,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Nice name for the universe.
     public String universeName;
 
+    // TODO: https://github.com/yugabyte/yugabyte-db/issues/8190
     // The cloud provider UUID.
     public String provider;
 
@@ -297,8 +298,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public boolean enableNodeToNodeEncrypt = false;
 
     public boolean enableClientToNodeEncrypt = false;
-
-    public boolean enableNodeToNodeClientVerification = false;
 
     public boolean enableVolumeEncryption = false;
 
@@ -360,13 +359,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
-      newUserIntent.enableNodeToNodeClientVerification = enableNodeToNodeClientVerification;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
-      newUserIntent.enableVolumeEncryption = enableVolumeEncryption;
-      newUserIntent.enableIPV6 = enableIPV6;
-      newUserIntent.enableExposingService = enableExposingService;
-      newUserIntent.awsArnString = awsArnString;
-      newUserIntent.useHostname = useHostname;
       return newUserIntent;
     }
 
