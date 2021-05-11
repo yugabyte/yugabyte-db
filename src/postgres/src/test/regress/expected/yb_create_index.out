@@ -1081,8 +1081,7 @@ SELECT * FROM test_index_with_oids ORDER BY v1;
 CREATE INDEX index_with_duplicate_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
 ERROR:  Oid 1111111 is in use.
 set yb_enable_create_with_table_oid=0;
--- Test creating index nonconcurrently (i.e. without index backfill, without
--- online schema migration)
+-- Test creating index nonconcurrently (i.e. without online schema migration)
 CREATE TABLE test_index_nonconcurrently (i INT, t TEXT);
 INSERT INTO test_index_nonconcurrently VALUES (generate_series(1, 10), 'a');
 CREATE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
@@ -1115,3 +1114,9 @@ INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
 CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
 ERROR:  duplicate key value violates unique constraint "test_index_nonconcurrently_i_idx"
 DROP TABLE test_index_nonconcurrently;
+-- Test creating temp index using lsm.
+CREATE TEMP TABLE test_temp_lsm (i int);
+CREATE INDEX ON test_temp_lsm USING lsm (i);
+ERROR:  access method "lsm" only supported for indexes using Yugabyte storage
+-- Cleanup.
+DISCARD TEMP;
