@@ -24,6 +24,7 @@
 #include "access/valid.h"
 #include "access/xact.h"
 #include "access/ybcam.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
@@ -1454,8 +1455,6 @@ SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc desc)
 	bucket = &cache->cc_bucket[hashIndex];
 	dlist_foreach(iter, bucket)
 	{
-		bool res = false;
-
 		ct = dlist_container(CatCTup, cache_elem, iter.cur);
 
 		if (ct->dead)
@@ -1467,8 +1466,7 @@ SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc desc)
 		/*
 		 * see if the cached tuple matches our key.
 		 */
-		HeapKeyTest(&ct->tuple, cache->cc_tupdesc, cache->cc_nkeys, key, res);
-		if (!res)
+		if (!CatalogCacheCompareTuple(cache, cache->cc_nkeys, ct->keys, arguments))
 			continue;
 
 		/*
@@ -1803,17 +1801,23 @@ SearchCatCacheMiss(CatCache *cache,
 			 * 2. pg_statistic (STATRELATTINH) and pg_statistic_ext
 			 *    (STATEXTNAMENSP and STATEXTOID) since we do not support
 			 *    statistics in DocDB/YSQL yet.
-			 * 3. pg_class (RELNAMENSP) but only for system tables since users
-			 *    cannot create system tables in YSQL.
+			 * 3. pg_class (RELNAMENSP), pg_type (TYPENAMENSP)
+			 *    but only for system tables since users cannot create system tables in YSQL.
+			 * 4. Caches within temporary namespaces as data in this namespaces can be changed by
+			 *    current session only
+			 * 5. pg_attribute as `ALTER TABLE` is used to add new columns and it increments
+			 *    catalog version
 			 */
+			Oid namespace_id = DatumGetObjectId(cur_skey[1].sk_argument);
 			bool allow_negative_entries = cache->id == CASTSOURCETARGET ||
 			                              cache->id == STATRELATTINH ||
 			                              cache->id == STATEXTNAMENSP ||
 			                              cache->id == STATEXTOID ||
-			                              (cache->id == RELNAMENSP &&
-			                               DatumGetObjectId(cur_skey[1].sk_argument) ==
-			                               PG_CATALOG_NAMESPACE &&
-			                               !YBIsPreparingTemplates());
+			                              cache->id == ATTNUM ||
+			                              ((cache->id == RELNAMENSP || cache->id == TYPENAMENSP) &&
+			                               namespace_id == PG_CATALOG_NAMESPACE &&
+			                               !YBIsPreparingTemplates()) ||
+			                              isTempOrTempToastNamespace(namespace_id);
 			if (!allow_negative_entries)
 			{
 				return NULL;
