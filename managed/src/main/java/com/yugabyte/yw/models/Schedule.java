@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
 
 import org.slf4j.Logger;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 @Entity
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
@@ -103,8 +105,20 @@ public class Schedule extends Model {
     return schedule;
   }
 
+   /**
+   * DEPRECATED: use {@link #getOrBadRequest()}
+   */
+  @Deprecated
   public static Schedule get(UUID scheduleUUID) {
     return find.query().where().idEq(scheduleUUID).findOne();
+  }
+
+  public static Schedule getOrBadRequest(UUID scheduleUUID) {
+    Schedule schedule = get(scheduleUUID);
+    if (schedule == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Schedule UUID: " + scheduleUUID);
+    }
+    return schedule;
   }
 
   public static List<Schedule> getAll() {

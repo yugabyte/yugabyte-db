@@ -19,33 +19,18 @@ public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 
   public Result list(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
     List<Schedule> schedules = Schedule.getAllActiveByCustomerUUID(customerUUID);
     return ApiResponse.success(schedules);
   }
 
   public Result delete(UUID customerUUID, UUID scheduleUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
-    Schedule schedule = Schedule.get(scheduleUUID);
-    if (schedule == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Schedule UUID: " + scheduleUUID);
-    }
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
 
-    try {
-      schedule.stopSchedule();
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Schedule UUID: " + scheduleUUID);
-    }
+    schedule.stopSchedule();
 
     ObjectNode responseJson = Json.newObject();
     responseJson.put("success", true);
