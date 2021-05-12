@@ -57,7 +57,11 @@ function mapStateToProps(state, ownProps) {
   const initialFormValues = {
     enableSSE: false,
     transactionalBackup: false,
-    parallelism: 8
+    parallelism: 8,
+    schedulingFrequencyUnit: {
+      value: 'Hours',
+      label: 'Hours'
+    }
   };
 
   if (isNonEmptyObject(ownProps.tableInfo)) {
