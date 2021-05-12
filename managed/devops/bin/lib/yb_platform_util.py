@@ -109,7 +109,7 @@ def __call_api(url, auth_uuid, data=None, is_delete=False):
             response = urllib.request.urlopen(request)
         return response
 
-
+@exception_handling
 def save_universe_details_to_file(base_url, customer_uuid, auth_uuid, universe_name, base_dir):
     """
     Get the universe details and store it in a json file after formatting the json.
@@ -124,17 +124,20 @@ def save_universe_details_to_file(base_url, customer_uuid, auth_uuid, universe_n
     universe = __get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name)
     if universe:
         configure_json = __create_universe_config(universe)
-        file_path = f'{base_dir}/{universe_name}.json'
+        file_path = '{0}/{1}.json'.format(base_dir, universe_name)
         with open(file_path, 'w') as file_obj:
             json.dump(configure_json, file_obj)
         
-        response = __generate_script_reponse(f'Detail of universe have been saved to {str(file_path)}')
+        response = __generate_script_reponse(
+            'Detail of universe have been saved to {0}'.format(str(file_path)))
         __handle_response(response)
     else:
-        response = __generate_script_reponse(f'Universe with {universe_name} is not found.', False)
+        response = __generate_script_reponse(
+            'Universe with {0} is not found.'.format(universe_name), False)
         __handle_response(response)
 
 
+@exception_handling
 def save_universe_details_to_file_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid, base_dir):
     """
     Get universe details from UUID and store it in json after formatting it.
@@ -150,16 +153,17 @@ def save_universe_details_to_file_by_uuid(base_url, customer_uuid, auth_uuid, un
     if universe:
         configure_json = __create_universe_config(universe)
         name = universe.get("name")
-        file_path = f'{base_dir}/{name}.json'
+        file_path = '{0}/{1}.json'.format(base_dir, name)
         with open(file_path, 'w') as file_obj:
             json.dump(configure_json, file_obj)
-        response = __generate_script_reponse(f'Detail of universe have been saved to {str(file_path)}')
+        response = __generate_script_reponse(
+            'Detail of universe have been saved to {0}'.format(str(file_path)))
         __handle_response(response)
     else:
         response = __generate_script_reponse('Universe details not found', False)
         __handle_response(response)
 
-@exception_handling
+
 def __create_universe_from_config(universe_config, base_url, customer_uuid, auth_uuid):
     """
     Create the universe from universe config data by calling universe POST API.
@@ -170,13 +174,14 @@ def __create_universe_from_config(universe_config, base_url, customer_uuid, auth
     :param auth_uuid: Authentication token for the customer.
     :return: None
     """
-    universe_create_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes'
+    universe_create_url = '{0}/api/v1/customers/{1}/universes'.format(base_url, customer_uuid)
     response = __call_api(universe_create_url, auth_uuid, universe_config)
     universe_json = __convert_unicode_json(json.loads(response.read()))
     task_id = universe_json['taskUUID']
     print(__generate_script_reponse(task_id))
 
 
+@exception_handling
 def create_universe(base_url, customer_uuid, auth_uuid, input_file, universe_name=''):
     """
     Create the universe using the json and provided universe name.
@@ -203,7 +208,8 @@ def create_universe(base_url, customer_uuid, auth_uuid, input_file, universe_nam
     if universe_config_json:
         __create_universe_from_config(universe_config_json, base_url, customer_uuid, auth_uuid)
     else:
-        data = __generate_script_reponse(f'Unable to Create Universe for Customer {customer_uuid}', False)
+        data = __generate_script_reponse(
+            'Unable to Create Universe for Customer {0}'.format(customer_uuid), False)
         __handle_response(data)
 
 @exception_handling
@@ -217,7 +223,7 @@ def get_task_details(task_id, base_url, customer_uuid, auth_uuid):
     :param auth_uuid: Authentication token for the customer.
     :return: None
     """
-    task_url = f'{base_url}/api/v1/customers/{customer_uuid}/tasks/{task_id}'
+    task_url = '{0}/api/v1/customers/{1}/tasks/{2}'.format(base_url, customer_uuid, task_id)
     response = __call_api(task_url, auth_uuid)
     task_json = __convert_unicode_json(json.loads(response.read()))
     if task_json.get('status') == 'Running':
@@ -226,7 +232,7 @@ def get_task_details(task_id, base_url, customer_uuid, auth_uuid):
         print(__generate_script_reponse(100))
     elif task_json.get('status') == 'Failure':
         content = {
-            'message': f'{task_json.get("title")} failed',
+            'message': '{0} failed'.format(task_json.get("title")),
             'details': task_json.get('details')
         }
         print(__generate_script_reponse(content))
@@ -313,7 +319,6 @@ def __modify_universe_config(file_name, universe_name=''):
     return data
 
 
-@exception_handling
 def __post_universe_config(configure_json, base_url, customer_uuid, auth_uuid):
     """
     Call the universe config URL with the updated data.
@@ -324,13 +329,13 @@ def __post_universe_config(configure_json, base_url, customer_uuid, auth_uuid):
     :param auth_uuid: Authentication token for the customer.
     :return: None
     """
-    universe_config_url = f'{base_url}/api/v1/customers/{customer_uuid}/universe_configure'
+    universe_config_url = '{0}/api/v1/customers/{1}/universe_configure'.format(
+        base_url, customer_uuid)
     response = __call_api(universe_config_url, auth_uuid, configure_json)
     universe_config_json = __convert_unicode_json(json.loads(response.read()))
     return universe_config_json
 
 
-@exception_handling
 def __get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     """
     Get universe data by name of the universe.
@@ -341,7 +346,7 @@ def __get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     :param universe_name: Universe name.
     :return: None
     """
-    universe_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes'
+    universe_url = '{0}/api/v1/customers/{1}/universes'.format(base_url, customer_uuid)
     response = __call_api(universe_url, auth_uuid)
     data = __convert_unicode_json(json.load(response))
     for universe in data:
@@ -350,7 +355,7 @@ def __get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
             return universe
     return None
 
-@exception_handling
+
 def __get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid):
     """
     Get universe details by UUID of the universe.
@@ -361,11 +366,13 @@ def __get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid):
     :param universe_uuid: UUID of the universe.
     :return: None
     """
-    universe_config_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes/{universe_uuid}'
+    universe_config_url = '{0}/api/v1/customers/{1}/universes/{2}'.format(
+        base_url, customer_uuid, universe_uuid)
     response = __call_api(universe_config_url, auth_uuid)
     return __convert_unicode_json(json.load(response))
 
 
+@exception_handling
 def get_universe_uuid_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     """
     Get the UUID of the universe.
@@ -380,7 +387,7 @@ def get_universe_uuid_by_name(base_url, customer_uuid, auth_uuid, universe_name)
     if universe and 'universeUUID' in universe:
         print(__generate_script_reponse(universe.get('universeUUID')))
     else:
-        message = f'Universe with {universe_name} not found'
+        message = 'Universe with {0} not found'.format(universe_name)
         sys.stderr.write(json.dumps(__generate_script_reponse(message, False)))
 
 
@@ -393,7 +400,7 @@ def get_single_customer_uuid(base_url, auth_uuid):
     :param auth_uuid: Authentication token for the customer.
     :return: None
     """
-    customer_url = f'{base_url}/api/v1/customers'
+    customer_url = '{0}/api/v1/customers'.format(base_url)
     response = __call_api(customer_url, auth_uuid)
     data = __convert_unicode_json(json.load(response))
     if (len(data) == 1):
@@ -414,7 +421,8 @@ def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid, for
     :param universe_uuid: UUID of the universe to be deleted.
     :return:
     """
-    universe_delete_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes/{universe_uuid}'
+    universe_delete_url = '{0}/api/v1/customers/{1}/universes/{2}'.format(
+        base_url, customer_uuid, universe_uuid)
 
     if force_delete:
         universe_delete_url += '?isForceDelete=true'
@@ -434,7 +442,7 @@ def get_provider_data(base_url, customer_uuid, auth_uuid):
     :param auth_uuid: Authentication token for the customer.
     :return: All available providers
     """
-    provider_url = f'{base_url}/api/v1/customers/{customer_uuid}/providers'
+    provider_url = '{0}/api/v1/customers/{1}/providers'.format(base_url, customer_uuid)
     response = __call_api(provider_url, auth_uuid)
     provider_data = __convert_unicode_json(json.loads(response.read()))
     providers = []
@@ -456,7 +464,7 @@ def get_regions_data(base_url, customer_uuid, auth_uuid):
     :param auth_uuid: Authentication token for the customer.
     :return: All available regions
     """
-    provider_url = f'{base_url}/api/v1/customers/{customer_uuid}/regions'
+    provider_url = '{0}/api/v1/customers/{1}/regions'.format(base_url, customer_uuid)
     response = __call_api(provider_url, auth_uuid)
     region_data = __convert_unicode_json(json.loads(response.read()))
     regions = []
@@ -486,7 +494,7 @@ def get_universe_list(base_url, customer_uuid, auth_uuid):
     :param auth_uuid: Authentication token for the customer.
     :return: List of universe name and UUID
     """
-    universe_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes'
+    universe_url = '{0}/api/v1/customers/{1}/universes'.format(base_url, customer_uuid)
     response = __call_api(universe_url, auth_uuid)
     universe_data = __convert_unicode_json(json.loads(response.read()))
     universes = []
