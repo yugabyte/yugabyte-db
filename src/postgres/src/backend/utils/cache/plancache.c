@@ -1259,8 +1259,6 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		plan->is_saved = true;
 	}
 
-	plan->usesPostgresRel = plansource->usesPostgresRel;
-
 	return plan;
 }
 

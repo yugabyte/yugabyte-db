@@ -142,7 +142,6 @@ typedef struct CachedPlan
 	int			generation;		/* parent's generation number for this plan */
 	int			refcount;		/* count of live references to this struct */
 	MemoryContext context;		/* context containing this CachedPlan */
-	bool 		usesPostgresRel; /* Does this plan use pg relations */
 } CachedPlan;
 
 

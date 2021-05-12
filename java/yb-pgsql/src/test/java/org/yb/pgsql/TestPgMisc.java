@@ -162,6 +162,21 @@ public class TestPgMisc extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testTemporaryTableTransactionInProcedure() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TEMP TABLE test_table(k int PRIMARY KEY)");
+      stmt.execute("CREATE PROCEDURE test_temp_table(k int) AS $$ " +
+        "BEGIN" +
+        "  INSERT INTO test_table VALUES(k);" +
+        "END; $$ LANGUAGE 'plpgsql';");
+      stmt.execute("CALL test_temp_table(1)");
+      stmt.execute("CALL test_temp_table(2)");
+      // Can insert explicitly prepared statement.
+      assertOneRow(stmt, "SELECT COUNT(*) FROM test_table", 2);
+    }
+  }
+
   private void executeQueryInTemplate(String query) throws Exception {
     try (Connection connection = getConnectionBuilder().withTServer(0).withDatabase("template1")
         .connect();

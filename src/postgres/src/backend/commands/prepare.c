@@ -218,6 +218,14 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 	if (!entry->plansource->fixed_result)
 		elog(ERROR, "EXECUTE does not support variable-result cached plans");
 
+	/*
+	 * If the planner found a pg relation in this plan, set the appropriate
+	 * flag for the execution txn.
+	 */
+	if (entry->plansource->usesPostgresRel) {
+		SetTxnWithPGRel();
+	}
+
 	/* Evaluate parameters, if any */
 	if (entry->plansource->num_params > 0)
 	{
@@ -245,14 +253,6 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 	/* Replan if needed, and increment plan refcount for portal */
 	cplan = GetCachedPlan(entry->plansource, paramLI, false, NULL);
 	plan_list = cplan->stmt_list;
-
-	/*
-	 * If the planner found a pg relation in this plan, set the appropriate
-	 * flag for the execution txn.
-	 */
-	if (cplan->usesPostgresRel) {
-		SetTxnWithPGRel();
-	}
 
 	/*
 	 * For CREATE TABLE ... AS EXECUTE, we must verify that the prepared
