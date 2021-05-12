@@ -310,8 +310,6 @@ def __modify_universe_config(file_name, universe_name=''):
     if universe_name:
         for each_cluster in clusters:
             each_cluster['userIntent']['universeName'] = universe_name
-        # with open(file_name, 'w') as file_obj:
-        #     json.dump(data, file_obj)
     return data
 
 
