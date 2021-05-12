@@ -200,37 +200,61 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS EnableCompactions(ScopedRWOperationPause* operation_pause);
 
-  Result<std::string> BackfillIndexesForYsql(
+  // Performs backfill for the key range beginning from the row immediately after
+  // <backfill_from>, until either it reaches the end of the tablet
+  //    or the current time is past deadline.
+  // <backfilled_until> will be set to the first row that was not backfilled, so that the
+  //    next API call can resume from where the backfill was left off.
+  //    Note that <backfilled_until> only applies to the non-failing indexes.
+  //
+  // TODO(#5326): For now YSQL does not support chunking, so backfill will always run to the
+  // end of the tablet and set backfilled_until as the empty string.
+  CHECKED_STATUS BackfillIndexesForYsql(
       const std::vector<IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
       const HostPort& pgsql_proxy_bind_address,
       const std::string& database_name,
-      const uint64_t postgres_auth_key);
-  Result<std::string> BackfillIndexes(const std::vector<IndexInfo>& indexes,
-                                      const std::string& backfill_from,
-                                      const CoarseTimePoint deadline,
-                                      const HybridTime read_time);
+      const uint64_t postgres_auth_key,
+      std::string* backfilled_until);
+
+  // Performs backfill for the key range beginning from the row <backfill_from>,
+  // until either it reaches the end of the tablet
+  //    or the current time is past deadline.
+  // <failed_indexes> will be updated with the collection of index-ids for which any errors
+  //    were encountered.
+  // <backfilled_until> will be set to the first row that was not backfilled, so that the
+  //    next API call can resume from where the backfill was left off.
+  //    Note that <backfilled_until> only applies to the non-failing indexes.
+  CHECKED_STATUS BackfillIndexes(
+      const std::vector<IndexInfo>& indexes,
+      const std::string& backfill_from,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      std::string* backfilled_until,
+      std::unordered_set<TableId>* failed_indexes);
 
   CHECKED_STATUS UpdateIndexInBatches(
       const QLTableRow& row,
       const std::vector<IndexInfo>& indexes,
       const HybridTime write_time,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      CoarseTimePoint* last_flushed_at);
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes);
 
   CHECKED_STATUS FlushIndexBatchIfRequired(
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       bool force_flush,
       const HybridTime write_time,
-      CoarseTimePoint* last_flushed_at);
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes);
 
-  CHECKED_STATUS
-  FlushWithRetries(
+  CHECKED_STATUS FlushWithRetries(
       std::shared_ptr<client::YBSession> session,
       const std::vector<std::shared_ptr<client::YBqlWriteOp>>& write_ops,
-      int num_retries);
+      int num_retries,
+      std::unordered_set<TableId>* failed_indexes);
 
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
@@ -408,6 +432,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   const std::string& tablet_id() const override { return metadata_->raft_group_id(); }
 
+  bool system() const override {
+    return false;
+  }
+
   // Return the metrics for this tablet.
   // May be nullptr in unit tests, etc.
   TabletMetrics* metrics() { return metrics_.get(); }
@@ -538,6 +566,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
+  std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
   void ListenNumSSTFilesChanged(std::function<void()> listener);
@@ -851,8 +880,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     CleanupIntentFiles();
   }
 
-  template <class Functor>
-  uint64_t GetRegularDbStat(const Functor& functor) const;
+  template <class Functor, class Value>
+  Value GetRegularDbStat(const Functor& functor, const Value& default_value) const;
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 

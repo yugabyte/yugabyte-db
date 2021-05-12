@@ -97,21 +97,11 @@ public class FakeDBApplication extends WithApplication {
 
   /**
    * If you want to quickly fix existing test that returns YWError json when exception
-   * gets thrown then use this function. Alternatively change the test to expect that
-   * YWException get thrown
+   * gets thrown then use this function instead of Helpers.route().
+   * Alternatively change the test to expect that YWException get thrown
    */
   public Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder)
     throws InterruptedException, ExecutionException, TimeoutException {
-    YWErrorHandler ywErrorHandler = getApp().injector().instanceOf(YWErrorHandler.class);
-    CompletableFuture<Result> future =
-      CompletableFuture.supplyAsync(() -> route(app, requestBuilder));
-    BiFunction<Result, Throwable, CompletionStage<Result>> f =
-      (result, throwable) -> {
-        if (throwable == null)
-          return CompletableFuture.supplyAsync(() -> result);
-        return ywErrorHandler.onServerError(null, throwable);
-      };
-
-    return future.handleAsync(f).thenCompose(x -> x).get(20000, TimeUnit.MILLISECONDS);
+    return FakeApiHelper.routeWithYWErrHandler(requestBuilder, getApp());
   }
 }
