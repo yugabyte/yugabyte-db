@@ -306,7 +306,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
     auto coordinator_safe_time = response.coordinator_safe_time().size() == 1
         ? HybridTime::FromPB(response.coordinator_safe_time(0)) : HybridTime();
     if (UpdateStatus(transaction_status, time_of_status, coordinator_safe_time)) {
-      context_.EnqueueRemoveUnlocked(id(), &min_running_notifier);
+      context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
     }
 
     time_of_status = last_known_status_hybrid_time_;
@@ -411,7 +411,7 @@ void RunningTransaction::AbortReceived(const Status& status,
     if (result.ok() && result->status_time != HybridTime::kMax) {
       auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
       if (UpdateStatus(result->status, result->status_time, coordinator_safe_time)) {
-        context_.EnqueueRemoveUnlocked(id(), &min_running_notifier);
+        context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
       }
     }
   }
@@ -456,7 +456,7 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
 
     MinRunningNotifier min_running_notifier(&context_.applier_);
     std::lock_guard<std::mutex> lock(context_.mutex_);
-    context_.RemoveUnlocked(id(), "applied large"s, &min_running_notifier);
+    context_.RemoveUnlocked(id(), RemoveReason::kLargeApplied, &min_running_notifier);
   }
 }
 

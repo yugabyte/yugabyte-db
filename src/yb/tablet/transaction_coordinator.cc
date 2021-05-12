@@ -38,6 +38,8 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/transaction_dump.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
@@ -692,6 +694,8 @@ class TransactionState {
       return status;
     }
 
+    YB_TRANSACTION_DUMP(Commit, id_, data.hybrid_time, data.state.tablets().size());
+
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
@@ -724,6 +728,9 @@ class TransactionState {
                         << ", leader: " << context_.leader();
     last_touch_ = data.hybrid_time;
     status_ = TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
+
+    YB_TRANSACTION_DUMP(Applied, id_, data.hybrid_time);
+
     return Status::OK();
   }
 
