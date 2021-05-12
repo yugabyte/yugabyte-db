@@ -174,6 +174,11 @@ Params:
          Example: 
                 bash yb_platform_util.sh task_status -t f33e3c9b-75ab-4c30-80ad-cba85646ea39
 
+--force 
+         Force delete universe
+         Example: 
+                bash yb_platform_util.sh create_universe -force test-universe.json
+
 -h | --help 
          Print help message
          Example: 
@@ -183,7 +188,7 @@ EOF
 
 USER_DIR=$(pwd)
 BASEDIR=$(dirname "$0")
-cd "$BASEDIR"
+cd "$BASEDIR/lib"
 
 if [[ -n "$1" ]]
 then
@@ -234,6 +239,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --no-wait)
             skip_wait="y"
+            shift # argument
+            ;;
+        --force)
+            force_delete="y"
             shift # argument
             ;;
         -t|--task)
@@ -288,7 +297,7 @@ auth_uuid="$YB_PLATFORM_API_TOKEN"
 if [[ -z "$customer_uuid" ]]
 then
     customer_response=$($python_command -c "import yb_platform_util;  \
-      yb_platform_util.get_customer_uuid('$base_url', '$auth_uuid')")
+      yb_platform_util.get_single_customer_uuid('$base_url', '$auth_uuid')")
     new_customer_response=$(echo $customer_response | sed "s/'/\"/g")
     customer_uuid_status=$($python_command -c "import yb_platform_util;  \
       yb_platform_util.get_key_value('$new_customer_response', 'status')")
@@ -397,7 +406,7 @@ case $operation in
 
             task_result=$($python_command -c "import yb_platform_util; \
               yb_platform_util.delete_universe_by_id('$base_url', '$customer_uuid', \
-              '$auth_uuid', '$universe_uuid')")
+              '$auth_uuid', '$universe_uuid', '$force_delete')")
             new_task_result=$(echo $task_result | sed "s/'/\"/g")
             task_result_status=$($python_command -c "import yb_platform_util; \
               yb_platform_util.get_key_value('$new_task_result', 'status')")
@@ -407,6 +416,10 @@ case $operation in
             then
                 echo $task_id
                 exit
+            fi
+            if [[ -n "$force_delete" ]]
+            then
+                echo "Note:- Universe deletion can fail due to errors, Use `--force` to ignore errors and force delete."
             fi
 
             if [[ -n "$skip_wait" ]]

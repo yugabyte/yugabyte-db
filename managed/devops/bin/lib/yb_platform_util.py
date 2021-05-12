@@ -23,6 +23,9 @@ else:
 SUCCESS = "success"
 FAIL = "failed"
 
+if __name__ == '__main__':
+  raise RuntimeError('This file is not intended to run directly, please use yb_platform_util.sh instead')
+
 def __generate_script_reponse(message, is_success=True, error_message=False):
     return {
         'data': message, 
@@ -39,11 +42,11 @@ def exception_handling(func):
             content = e.read().decode('utf-8')
             if 'html>' in content:
                 message = 'Invalid YB_PLATFORM_URL URL or params, Getting html page in response'
-                print(__generate_script_reponse(message, False))
+                sys.stderr.write(json.dumps(__generate_script_reponse(message, False)))
             else:
-                print(__generate_script_reponse(content, False))
+                sys.stderr.write(json.dumps(__generate_script_reponse(content, False)))
         except Exception as e:
-            print(__generate_script_reponse(str(e), False))
+            sys.stderr.write(json.dumps(__generate_script_reponse(str(e), False)))
     return inner_function
 
 
@@ -121,14 +124,13 @@ def save_universe_details_to_file(base_url, customer_uuid, auth_uuid, universe_n
     universe = __get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name)
     if universe:
         configure_json = __create_universe_config(universe)
-        file = f'{base_dir}/{universe.get("name")}.json'
-        with open(file, 'w') as file_obj:
+        file_path = f'{base_dir}/{universe_name}.json'
+        with open(file_path, 'w') as file_obj:
             json.dump(configure_json, file_obj)
         
-        response = __generate_script_reponse(f'Detail of universe have been saved to {str(file)}')
+        response = __generate_script_reponse(f'Detail of universe have been saved to {str(file_path)}')
         __handle_response(response)
     else:
-
         response = __generate_script_reponse(f'Universe with {universe_name} is not found.', False)
         __handle_response(response)
 
@@ -147,10 +149,11 @@ def save_universe_details_to_file_by_uuid(base_url, customer_uuid, auth_uuid, un
     universe = __get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid)
     if universe:
         configure_json = __create_universe_config(universe)
-        file = f'{base_dir}/{universe.get("name")}.json'
-        with open(file, 'w') as file_obj:
+        name = universe.get("name")
+        file_path = f'{base_dir}/{name}.json'
+        with open(file_path, 'w') as file_obj:
             json.dump(configure_json, file_obj)
-        response = __generate_script_reponse(f'Detail of universe have been saved to {str(file)}')
+        response = __generate_script_reponse(f'Detail of universe have been saved to {str(file_path)}')
         __handle_response(response)
     else:
         response = __generate_script_reponse('Universe details not found', False)
@@ -307,8 +310,8 @@ def __modify_universe_config(file_name, universe_name=''):
     if universe_name:
         for each_cluster in clusters:
             each_cluster['userIntent']['universeName'] = universe_name
-        with open(file_name, 'w') as file_obj:
-            json.dump(data, file_obj)
+        # with open(file_name, 'w') as file_obj:
+        #     json.dump(data, file_obj)
     return data
 
 
@@ -380,11 +383,11 @@ def get_universe_uuid_by_name(base_url, customer_uuid, auth_uuid, universe_name)
         print(__generate_script_reponse(universe.get('universeUUID')))
     else:
         message = f'Universe with {universe_name} not found'
-        print(__generate_script_reponse(message, False))
+        sys.stderr.write(json.dumps(__generate_script_reponse(message, False)))
 
 
 @exception_handling
-def get_customer_uuid(base_url, auth_uuid):
+def get_single_customer_uuid(base_url, auth_uuid):
     """
     Get customer UUID. Raise error in case multiple customer is present. 
 
@@ -399,11 +402,11 @@ def get_customer_uuid(base_url, auth_uuid):
         print(__generate_script_reponse(str(data[0])))
     else:
         response = __generate_script_reponse(data, False, 'Please provide customer UUID')
-        print(response)
+        sys.stderr.write(response)
 
 
 @exception_handling
-def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid):
+def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid, force_delete=None):
     """
     Delete the universe by providing UUID.
 
@@ -413,8 +416,10 @@ def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid):
     :param universe_uuid: UUID of the universe to be deleted.
     :return:
     """
-    universe_delete_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes/{universe_uuid}?isForceDelete=true'
+    universe_delete_url = f'{base_url}/api/v1/customers/{customer_uuid}/universes/{universe_uuid}'
 
+    if force_delete:
+        universe_delete_url += '?isForceDelete=true'
     response = __call_api(universe_delete_url, auth_uuid, is_delete=True)
     universe_json = __convert_unicode_json(json.loads(response.read()))
     task_id = universe_json['taskUUID']
@@ -523,4 +528,4 @@ def __handle_response(response_json):
     if response_json.get('status') == 'success':
         print(response_json.get('data'))
     else:
-        print(response_json.get('error'))
+        sys.stderr.write(response_json.get('error'))
