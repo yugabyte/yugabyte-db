@@ -1136,6 +1136,7 @@ Status TSTabletManager::DeleteTablet(
     const string& tablet_id,
     TabletDataState delete_type,
     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
+    bool hide_only,
     boost::optional<TabletServerErrorPB::Code>* error_code) {
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
@@ -1200,12 +1201,15 @@ Status TSTabletManager::DeleteTablet(
   }
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
+  if (hide_only) {
+    return meta->SetHiddenAndFlush(true);
+  }
   // No matter if the tablet was deleted (drop table), or tombstoned (potentially moved to a
   // different TS), we do not need to flush rocksdb anymore, as this data is irrelevant.
   //
   // Note: This might change for PITR.
   bool delete_data = delete_type == TABLET_DATA_DELETED || delete_type == TABLET_DATA_TOMBSTONED;
-  tablet_peer->Shutdown(tablet::IsDropTable(delete_data));
+  RETURN_NOT_OK(tablet_peer->Shutdown(tablet::IsDropTable(delete_data)));
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 

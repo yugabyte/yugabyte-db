@@ -55,6 +55,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+// See https://clang.llvm.org/docs/ThreadSafetyAnalysis.html for thread safety analysis annotations.
+
 #ifndef YB_GUTIL_THREAD_ANNOTATIONS_H
 #define YB_GUTIL_THREAD_ANNOTATIONS_H
 
@@ -119,6 +122,23 @@
 
 #define ASSERT_SHARED_CAPABILITY(x) \
   THREAD_ANNOTATION_ATTRIBUTE__(assert_shared_capability(x))
+
+// RETURN_CAPABILITY
+//
+// It looks like this can be used to annotate methods that return a mutex or a lock.
+// E.g. example given at https://clang.llvm.org/docs/ThreadSafetyAnalysis.html:
+//
+// class MyClass {
+// private:
+//   Mutex mu;
+//   int a GUARDED_BY(mu);
+//
+// public:
+//   Mutex* getMu() RETURN_CAPABILITY(mu) { return &mu; }
+//
+//   // analysis knows that getMu() == mu
+//   void clear() REQUIRES(getMu()) { a = 0; }
+// };
 
 #define RETURN_CAPABILITY(x) \
   THREAD_ANNOTATION_ATTRIBUTE__(lock_returned(x))

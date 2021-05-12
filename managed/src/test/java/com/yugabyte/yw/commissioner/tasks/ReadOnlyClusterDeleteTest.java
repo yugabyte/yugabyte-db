@@ -82,7 +82,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
     ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
@@ -158,6 +158,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams univUTP =
         Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.clusterUUID = readOnlyCluster.uuid;
@@ -169,6 +170,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     assertClusterDeleteSequence(subTasksByPosition, false);
     univUTP = Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
+    assertEquals(3, univUTP.nodeDetailsSet.size());
   }
 
   @Test
@@ -176,10 +178,12 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams univUTP =
       Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.clusterUUID = UUID.randomUUID();
     TaskInfo taskInfo = submitTask(taskParams,TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
   }
 }

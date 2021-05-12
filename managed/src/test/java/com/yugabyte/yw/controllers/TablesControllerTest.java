@@ -49,6 +49,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
@@ -96,6 +97,7 @@ public class TablesControllerTest extends FakeDBApplication {
   private YBClientService mockService;
   private TablesController tablesController;
   private YBClient mockClient;
+  private AuditService auditService;
   private ListTablesResponse mockListTablesResponse;
   private GetTableSchemaResponse mockSchemaResponse;
 
@@ -114,8 +116,11 @@ public class TablesControllerTest extends FakeDBApplication {
     mockService = mock(YBClientService.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
-    when(mockService.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+
+    auditService = new AuditService(app.config(), null);
     tablesController = new TablesController(mockService);
+    tablesController.setAuditService(auditService);
   }
 
   @Test
@@ -668,7 +673,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
-    Schedule schedule = Schedule.get(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getCronExpression(), "5 * * * *");
     assertAuditEntry(1, customer.uuid);
@@ -747,7 +752,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
-    Schedule schedule = Schedule.get(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getCronExpression(), "5 * * * *");
     assertAuditEntry(1, customer.uuid);
@@ -772,7 +777,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
-    Schedule schedule = Schedule.get(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getFrequency(), 6000);
     assertAuditEntry(1, customer.uuid);
@@ -879,9 +884,7 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
     Universe universe = mock(Universe.class);
     when(universe.getMasterAddresses(anyBoolean())).thenReturn("fake_address");
-    when(universe.getCertificateNodeToNode()).thenReturn("fake_certificate");
-    when(universe.getFilesForMutualTLS()).thenReturn(
-        new String[] {"fake_certificate", "fake_key"});
+    when(universe.getCertificate()).thenReturn("fake_certificate");
 
 
     // Disallow on Index Table.

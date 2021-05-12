@@ -360,6 +360,16 @@ DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "from pg catalog tables. A value of -1 disables the refresh task.");
 TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
 
+DEFINE_int32(ysql_default_analyze_num_rows, 1000,
+             "The default number of rows in a table to provide when responding to an ANALYZE "
+             "request");
+TAG_FLAG(ysql_default_analyze_num_rows, hidden);
+
+DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
+                 "When set, placement of the tablets of a newly created table will not honor "
+                 "its tablespace placement policy until the loadbalancer runs.");
+TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
+
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
                  "move.");
@@ -440,11 +450,14 @@ namespace {
   (tabpb.has_index_info() ? tabpb.index_info().is_unique() \
                           : tabpb.is_unique_index())
 
-#define PROTO_IS_INDEX(tabpb) \
-  (tabpb.has_index_info() || !tabpb.indexed_table_id().empty())
+template <class PB>
+bool IsIndex(const PB& pb) {
+  return pb.has_index_info() || !pb.indexed_table_id().empty();
+}
 
-#define PROTO_IS_TABLE(tabpb) \
-  (!tabpb.has_index_info() && tabpb.indexed_table_id().empty())
+bool IsTable(const SysTablesEntryPB& pb) {
+  return !IsIndex(pb);
+}
 
 #define PROTO_PTR_IS_INDEX(tabpb) \
   (tabpb->has_index_info() || !tabpb->indexed_table_id().empty())
@@ -1546,22 +1559,6 @@ void CatalogManager::CompleteShutdown() {
   }
 }
 
-Status CatalogManager::CheckOnline() const {
-  State state;
-  {
-    std::lock_guard<simple_spinlock> l(state_lock_);
-    state = state_;
-  }
-
-  if (PREDICT_FALSE(state == State::kClosing)) {
-    return STATUS(ShutdownInProgress, "CatalogManager is shutting down");
-  }
-  if (PREDICT_FALSE(state != State::kRunning)) {
-    return STATUS(ServiceUnavailable, "CatalogManager is not running");
-  }
-  return Status::OK();
-}
-
 Status CatalogManager::AbortTableCreation(TableInfo* table,
                                           const vector<TabletInfo*>& tablets,
                                           const Status& s,
@@ -2062,9 +2059,15 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
 
 }  // namespace
 
+CHECKED_STATUS CatalogManager::TEST_SplitTablet(
+    const TabletId& tablet_id, const std::string& split_encoded_key,
+    const std::string& split_partition_key) {
+  auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
+}
+
 Status CatalogManager::TEST_SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
-  RETURN_NOT_OK(CheckOnline());
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
@@ -2135,8 +2138,6 @@ Status CatalogManager::DoSplitTablet(
 }
 
 Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id) {
-  RETURN_NOT_OK(CheckOnline());
-
   std::lock_guard<LockType> l(lock_);
   TRACE("Acquired catalog manager lock");
 
@@ -2146,18 +2147,33 @@ Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& 
   return tablet_info;
 }
 
-Status CatalogManager::SplitTablet(
-    const TabletId& tablet_id, const std::string& split_encoded_key,
+void CatalogManager::SplitTabletWithKey(
+    const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
-  const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
+  // if it failed to submit that task. In other words, any failures here are not retriable, and
+  // success indicates that an async and automatically retrying task was submitted.
+  WARN_NOT_OK(
+    DoSplitTablet(tablet, split_encoded_key, split_partition_key),
+    Format("Failed to split tablet with GetSplitKey result for tablet: $0", tablet->tablet_id()));
+}
 
-  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
+Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
+  const auto tablet = VERIFY_RESULT(GetTabletInfo(tablet_id));
+
+  VLOG(2) << "Scheduling GetSplitKey request to leader tserver for source tablet ID: "
+          << tablet->tablet_id();
+  auto call = std::make_shared<AsyncGetTabletSplitKey>(
+      master_, AsyncTaskPool(), tablet,
+      [this, tablet](const std::string& split_encoded_key, const std::string& split_partition_key) {
+        SplitTabletWithKey(tablet, split_encoded_key, split_partition_key);
+      });
+  tablet->table()->AddTask(call);
+  return ScheduleTask(call);
 }
 
 Status CatalogManager::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
-
   const auto source_tablet_id = req->tablet_id();
   const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(source_tablet_id));
   const auto source_partition = source_tablet_info->LockForRead()->pb.partition();
@@ -2176,8 +2192,6 @@ Status CatalogManager::SplitTablet(
 }
 
 Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
-  RETURN_NOT_OK(CheckOnline());
-
   std::vector<TabletInfoPtr> tablet_infos;
   {
     std::lock_guard<LockType> lock(lock_);
@@ -2198,7 +2212,7 @@ Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
   }
 
   return DeleteTabletListAndSendRequests(
-      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString());
+      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString(), {});
 }
 
 Status CatalogManager::DeleteTablet(
@@ -2330,8 +2344,6 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
 Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                                         ReservePgsqlOidsResponsePB* resp,
                                         rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
-
   VLOG(1) << "ReservePgsqlOids request: " << req->ShortDebugString();
 
   // Lookup namespace
@@ -2385,7 +2397,6 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
 Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
                                             GetYsqlCatalogConfigResponsePB* resp,
                                             rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
   VLOG(1) << "GetYsqlCatalogConfig request: " << req->ShortDebugString();
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
   resp->set_version(l->pb.ysql_catalog_config().version());
@@ -2420,7 +2431,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
     table_req.set_is_pg_catalog_table(true);
     table_req.set_table_id(table_id);
 
-    if (PROTO_IS_INDEX(l->pb)) {
+    if (IsIndex(l->pb)) {
       const uint32_t indexed_table_oid =
         VERIFY_RESULT(GetPgsqlTableOid(PROTO_GET_INDEXED_TABLE_ID(l->pb)));
       const TableId indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
@@ -2458,7 +2469,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    CreateTableResponsePB* resp,
                                    rpc::RpcContext* rpc) {
   DVLOG(3) << __PRETTY_FUNCTION__ << " Begin. " << orig_req->DebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   const bool is_pg_table = orig_req->table_type() == PGSQL_TABLE_TYPE;
   const bool is_pg_catalog_table = is_pg_table && orig_req->is_pg_catalog_table();
@@ -2514,7 +2524,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
-  if (PROTO_IS_INDEX(req)) {
+  if (IsIndex(req)) {
     TRACE("Looking up indexed table");
     indexed_table = GetTableInfo(req.indexed_table_id());
     if (indexed_table == nullptr) {
@@ -2540,7 +2550,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // columns into range partition columns. This is because postgres does not know that this index
   // table is in a colocated database. When we get to the "tablespaces" step where we store this
   // into PG metadata, then PG will know if db/table is colocated and do the work there.
-  if ((colocated || req.has_tablegroup_id()) && PROTO_IS_INDEX(req)) {
+  if ((colocated || req.has_tablegroup_id()) && IsIndex(req)) {
     for (auto& col_pb : *req.mutable_schema()->mutable_columns()) {
       col_pb.set_is_hash_key(false);
     }
@@ -2689,7 +2699,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
-      // int colidx = 0;
       for (int colidx = 0; colidx < schema.num_columns(); colidx++) {
         index_info.mutable_columns(colidx)->set_column_id(schema.column_id(colidx));
       }
@@ -2976,6 +2985,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   return Status::OK();
 }
 
+Status CatalogManager::AnalyzeTable(
+    const AnalyzeTableRequestPB* req,
+    AnalyzeTableResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  // TODO -- implement this with some estimate other than flag-determined default.
+  resp->set_rows(FLAGS_ysql_default_analyze_num_rows);
+  return Status::OK();
+}
+
 Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool rpc_success) {
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
@@ -3250,8 +3268,6 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
 
 Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                          IsCreateTableDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   TRACE("Looking up table");
   // 1. Lookup the table and verify if it exists.
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -3272,7 +3288,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 
   // 4. If this is an index, we are not done until the index is in the indexed table's schema.  An
   // exception is YSQL system table indexes, which don't get added to their indexed tables' schemas.
-  if (resp->done() && PROTO_IS_INDEX(pb)) {
+  if (resp->done() && IsIndex(pb)) {
     auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
     // For user indexes (which add index info to indexed table's schema),
     // - if this index is created without backfill,
@@ -3665,8 +3681,6 @@ Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
   LOG(INFO) << "Servicing TruncateTable request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   for (int i = 0; i < req->table_ids_size(); i++) {
     RETURN_NOT_OK(TruncateTable(req->table_ids(i), resp, rpc));
   }
@@ -3707,7 +3721,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   // Truncate indexes also.
   // Note: PG table does not have references to indexes in the base table, so associated indexes
   //       must be truncated from the PG code separately.
-  const bool is_index = PROTO_IS_INDEX(l->pb);
+  const bool is_index = IsIndex(l->pb);
   DCHECK(!is_index || l->pb.indexes().empty()) << "indexes should be empty for index table";
   for (const auto& index_info : l->pb.indexes()) {
     RETURN_NOT_OK(TruncateTable(index_info.table_id(), resp, rpc));
@@ -3736,13 +3750,12 @@ void CatalogManager::SendTruncateTabletRequest(const scoped_refptr<TabletInfo>& 
 Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                                            IsTruncateTableDoneResponsePB* resp) {
   LOG(INFO) << "Servicing IsTruncateTableDone request for table id " << req->table_id();
-  RETURN_NOT_OK(CheckOnline());
 
   // Lookup the truncated table.
   TRACE("Looking up table $0", req->table_id());
   scoped_refptr<TableInfo> table;
   {
-    std::lock_guard<LockType> l_map(lock_);
+    SharedLock<LockType> cm_shared_lock(lock_);
     table = FindPtrOrNull(*table_ids_map_, req->table_id());
   }
 
@@ -3802,6 +3815,63 @@ Status CatalogManager::BackfillIndex(
 
   return MultiStageAlterTable::StartBackfillingData(
       this, indexed_table, {index_info_pb}, boost::none);
+}
+
+Status CatalogManager::GetBackfillJobs(
+    const GetBackfillJobsRequestPB* req,
+    GetBackfillJobsResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  TableIdentifierPB table_id = req->table_identifier();
+
+  scoped_refptr<TableInfo> indexed_table = VERIFY_RESULT(FindTable(table_id));
+  if (indexed_table == nullptr) {
+    Status s = STATUS(NotFound, "Requested table $0 does not exist", table_id.ShortDebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+
+  {
+    auto l = indexed_table->LockForRead();
+    resp->mutable_backfill_jobs()->CopyFrom(l->pb.backfill_jobs());
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::LaunchBackfillIndexForTable(
+    const LaunchBackfillIndexForTableRequestPB* req,
+    LaunchBackfillIndexForTableResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const TableIdentifierPB& table_id = req->table_identifier();
+
+  scoped_refptr<TableInfo> indexed_table = VERIFY_RESULT(FindTable(table_id));
+  if (indexed_table == nullptr) {
+    Status s = STATUS(NotFound, "Requested table $0 does not exist", table_id.ShortDebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  if (indexed_table->GetTableType() != YQL_TABLE_TYPE) {
+    // This request is only supported for YCQL for now.  YSQL has its own mechanism.
+    return STATUS(InvalidArgument, "Unexpected non-YCQL table $0", table_id.ShortDebugString());
+  }
+
+  uint32_t current_version;
+  {
+    auto l = indexed_table->LockForRead();
+    if (l->pb.state() != SysTablesEntryPB::RUNNING) {
+      Status s = STATUS(TryAgain,
+                        "The table is in state $0. An alter may already be in progress.",
+                        SysTablesEntryPB_State_Name(l->pb.state()));
+      VLOG(2) << "Table " << indexed_table->ToString() << " is not running returning " << s;
+      return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+    }
+    current_version = l->pb.version();
+  }
+
+  auto s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+      this, indexed_table, current_version, /* respect deferrals for backfill */ false);
+  if (!s.ok()) {
+    VLOG(3) << __func__ << " Done failed " << s;
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
@@ -3887,8 +3957,6 @@ Status CatalogManager::DeleteTable(
   LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   if (req->is_index_table()) {
     TRACE("Looking up index");
     scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -3936,8 +4004,11 @@ Status CatalogManager::DeleteTableInternal(
   vector<scoped_refptr<TableInfo>> tables;
   vector<TableInfo::WriteLock> table_locks;
 
+  auto schedules_to_tables_map = VERIFY_RESULT(
+      MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::TABLE));
+
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
-                                    true /* update_indexed_table */,
+                                    true /* update_indexed_table */, schedules_to_tables_map,
                                     &tables, &table_locks, resp, rpc));
 
   // Delete any CDC streams that are set up on this table.
@@ -3956,10 +4027,19 @@ Status CatalogManager::DeleteTableInternal(
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_inject_latency_in_delete_table_ms));
   }
 
-  for (const scoped_refptr<TableInfo> &table : tables) {
+  for (const auto& table : tables) {
+    RepeatedBytes retained_by_snapshot_schedules;
+    for (const auto& entry : schedules_to_tables_map) {
+      if (std::binary_search(entry.second.begin(), entry.second.end(), table->id())) {
+        retained_by_snapshot_schedules.Add()->assign(
+            entry.first.AsSlice().cdata(), entry.first.size());
+      }
+    }
+
     // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table));
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, retained_by_snapshot_schedules));
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
+    // TODO(pitr) handle YSQL colocated tables.
     if (IsColocatedUserTable(*table)) {
       auto call = std::make_shared<AsyncRemoveTableFromTablet>(
           master_, AsyncTaskPool(), table->GetColocatedTablet(), table);
@@ -3986,13 +4066,15 @@ Status CatalogManager::DeleteTableInternal(
   return Status::OK();
 }
 
-Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identifier,
-                                           const bool is_index_table,
-                                           const bool update_indexed_table,
-                                           vector<scoped_refptr<TableInfo>>* tables,
-                                           vector<TableInfo::WriteLock>* table_lcks,
-                                           DeleteTableResponsePB* resp,
-                                           rpc::RpcContext* rpc) {
+Status CatalogManager::DeleteTableInMemory(
+    const TableIdentifierPB& table_identifier,
+    const bool is_index_table,
+    const bool update_indexed_table,
+    const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
+    vector<scoped_refptr<TableInfo>>* tables,
+    vector<TableInfo::WriteLock>* table_lcks,
+    DeleteTableResponsePB* resp,
+    rpc::RpcContext* rpc) {
   // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
   const char* const object_type = is_index_table ? "index" : "table";
   const bool cascade_delete_index = is_index_table && !update_indexed_table;
@@ -4014,7 +4096,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   auto l = table->LockForWrite();
   resp->set_table_id(table->id());
 
-  if (is_index_table == PROTO_IS_TABLE(l.data().pb)) {
+  if (is_index_table == IsTable(l.data().pb)) {
     Status s = STATUS(NotFound, "The object does not exist");
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
@@ -4032,7 +4114,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   TRACE("Updating metadata on disk");
   // Update the metadata for the on-disk state.
   l.mutable_data()->set_state(SysTablesEntryPB::DELETING,
-                              Substitute("Started deleting at $0", LocalTimeAsString()));
+                               Substitute("Started deleting at $0", LocalTimeAsString()));
 
   // Update sys-catalog with the removed table state.
   Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term());
@@ -4067,8 +4149,8 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
     for (auto index : l->pb.indexes()) {
       index_identifier.set_table_id(index.table_id());
       RETURN_NOT_OK(DeleteTableInMemory(index_identifier, true /* is_index_table */,
-                                        false /* update_indexed_table */, tables,
-                                        table_lcks, resp, rpc));
+                                        false /* update_indexed_table */, schedules_to_tables_map,
+                                        tables, table_lcks, resp, rpc));
     }
   } else if (update_indexed_table) {
     s = MarkIndexInfoFromTableForDeletion(
@@ -4175,13 +4257,11 @@ void CatalogManager::CleanUpDeletedTables() {
 
 Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
                                          IsDeleteTableDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   // Lookup the deleted table.
   TRACE("Looking up table $0", req->table_id());
   scoped_refptr<TableInfo> table;
   {
-    std::lock_guard<LockType> l_map(lock_);
+    SharedLock<LockType> cm_shared_lock(lock_);
     table = FindPtrOrNull(*table_ids_map_, req->table_id());
   }
 
@@ -4325,8 +4405,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   LOG(INFO) << "Servicing AlterTable request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -4352,6 +4430,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
           "Namespace not running (State=$0).  Cannot create $1.$2",
           SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name() );
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
+    }
+  }
+  if (req->has_new_namespace() || req->has_new_table_name()) {
+
+    if (new_namespace_id.empty()) {
+      const Status s = STATUS(InvalidArgument, "No namespace used");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
     }
   }
 
@@ -4382,11 +4467,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Try to acquire the new table name.
   if (req->has_new_namespace() || req->has_new_table_name()) {
-
-    if (new_namespace_id.empty()) {
-      const Status s = STATUS(InvalidArgument, "No namespace used");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
-    }
 
     // Postgres handles name uniqueness constraints in it's own layer.
     if (l->table_type() != PGSQL_TABLE_TYPE) {
@@ -4526,8 +4606,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
 Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                                         IsAlterTableDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   // 1. Lookup the table and verify if it exists.
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -4603,8 +4681,6 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
                                       GetTableSchemaResponsePB* resp) {
   VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -4621,8 +4697,6 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
                                               GetTableSchemaResponsePB* resp,
                                               bool get_fully_applied_indexes) {
   VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
 
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
@@ -4710,7 +4784,6 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
                                                 GetColocatedTabletSchemaResponsePB* resp) {
   VLOG(1) << "Servicing GetColocatedTabletSchema request for " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   // Lookup the given parent colocated table and verify if it exists.
   TRACE("Looking up table");
@@ -4764,8 +4837,6 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
 
 Status CatalogManager::ListTables(const ListTablesRequestPB* req,
                                   ListTablesResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   NamespaceId namespace_id;
 
   // Validate namespace.
@@ -5051,8 +5122,7 @@ void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uu
     if (!lock.locked()) {
       return;
     }
-    vector<TableInfo*> tables_to_delete({table.get()});
-    Status s = sys_catalog_->UpdateItems(tables_to_delete, leader_ready_term());
+    Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term());
     if (!s.ok()) {
       LOG(WARNING) << "Error marking table as DELETED: " << s.ToString();
       return;
@@ -5668,8 +5738,6 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
 Status CatalogManager::ListTablegroups(const ListTablegroupsRequestPB* req,
                                        ListTablegroupsResponsePB* resp,
                                        rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
-
   SharedLock<LockType> l(lock_);
 
   if (!req->has_namespace_id()) {
@@ -5705,7 +5773,6 @@ bool CatalogManager::HasTablegroups() {
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
   Status return_status;
 
   // Copy the request, so we can fill in some defaults.
@@ -6038,8 +6105,6 @@ Status CatalogManager::VerifyNamespacePgLayer(
 // Get the information about an in-progress create operation.
 Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
                                              IsCreateNamespaceDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto ns_pb = req->namespace_();
 
   // 1. Lookup the namespace and verify it exists.
@@ -6102,8 +6167,6 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   LOG(INFO) << "Servicing DeleteNamespace request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up keyspace");
   auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
@@ -6149,18 +6212,14 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
       if (!ltm->started_deleting() && ltm->namespace_id() == ns->id()) {
         Status s = STATUS(InvalidArgument,
                           Substitute("Cannot delete keyspace which has $0: $1 [id=$2]",
-                                     PROTO_IS_TABLE(ltm->pb) ? "table" : "index",
+                                     IsTable(ltm->pb) ? "table" : "index",
                                      ltm->name(), entry.second->id()), req->DebugString());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
       }
     }
-  }
 
-  // Only empty namespace can be deleted.
-  TRACE("Looking for types in the keyspace");
-  {
-    SharedLock<LockType> catalog_lock(lock_);
-    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
+    // Only empty namespace can be deleted.
+    TRACE("Looking for types in the keyspace");
 
     for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
       auto ltm = entry.second->LockForRead();
@@ -6193,9 +6252,11 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Remove the namespace from all CatalogManager mappings.
   {
     std::lock_guard<LockType> l_map(lock_);
-    namespace_names_mapper_[ns->database_type()].erase(ns->name());
+    if (namespace_names_mapper_[ns->database_type()].erase(ns->name()) < 1) {
+      LOG(WARNING) << Format("Could not remove namespace from names map, id=$1", ns->id());
+    }
     if (namespace_ids_map_.erase(ns->id()) < 1) {
-      LOG(WARNING) << Format("Could not remove namespace from maps, id=$1", ns->id());
+      LOG(WARNING) << Format("Could not remove namespace from ids map, id=$1", ns->id());
     }
   }
 
@@ -6334,7 +6395,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
       // For regular (indexed) table, insert table info and lock in the front of the list. Else for
       // index table, append them to the end. We do so so that we will commit and delete the indexed
       // table first before its indexes.
-      if (PROTO_IS_TABLE(l->pb)) {
+      if (IsTable(l->pb)) {
         tables.insert(tables.begin(), {table, std::move(l)});
       } else {
         tables.push_back({table, std::move(l)});
@@ -6389,7 +6450,8 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table));
+    // TODO(pitr) undelete for YSQL tables
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, {}));
   }
 
   // Invoke any background tasks and return (notably, table cleanup).
@@ -6400,11 +6462,9 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 // Get the information about an in-progress delete operation.
 Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestPB* req,
                                              IsDeleteNamespaceDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto ns_pb = req->namespace_();
 
-  // 1. Lookup the namespace and verify it exists.
+  // Lookup the namespace and verify it exists.
   TRACE("Looking up keyspace");
   auto ns = FindNamespace(ns_pb);
   if (!ns.ok()) {
@@ -6425,7 +6485,7 @@ Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestP
     resp->set_done(false);
   } else {
     Status s = STATUS_SUBSTITUTE(IllegalState,
-        "Servicing IsDeleteTableDone request for $0: NOT deleted (state=$1)",
+        "Servicing IsDeleteNamespaceDone request for $0: NOT deleted (state=$1)",
         ns_pb.DebugString(), metadata.state());
     LOG(WARNING) << s.ToString();
     // Done != Successful.  We just want to let the user know the delete has finished processing.
@@ -6440,8 +6500,6 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
                                       rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing AlterNamespace request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
 
   auto database = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
 
@@ -6503,7 +6561,6 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 
 Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
                                       ListNamespacesResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
   NamespaceInfoMap namespace_ids_copy;
   {
     SharedLock<LockType> l(lock_);
@@ -6533,7 +6590,6 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
                                         GetNamespaceInfoResponsePB* resp,
                                         rpc::RpcContext* rpc) {
   LOG(INFO) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   // Look up the namespace and verify if it exists.
   TRACE("Looking up namespace");
@@ -6580,7 +6636,7 @@ Status CatalogManager::RedisConfigGet(
   DCHECK(req->has_keyword());
   resp->set_keyword(req->keyword());
   TRACE("Acquired catalog manager lock");
-  std::lock_guard<LockType> l_big(lock_);
+  SharedLock<LockType> l_big(lock_);
   scoped_refptr<RedisConfigInfo> cfg = FindPtrOrNull(redis_config_map_, req->keyword());
   if (cfg == nullptr) {
     Status s = STATUS_SUBSTITUTE(NotFound, "Redis config for $0 does not exists", req->keyword());
@@ -6597,7 +6653,6 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
   LOG(INFO) << "CreateUDType from " << RequestorString(rpc)
             << ": " << req->DebugString();
 
-  RETURN_NOT_OK(CheckOnline());
   Status s;
   scoped_refptr<UDTypeInfo> tp;
   scoped_refptr<NamespaceInfo> ns;
@@ -6688,7 +6743,6 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
   LOG(INFO) << "Servicing DeleteUDType request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
-      RETURN_NOT_OK(CheckOnline());
   scoped_refptr<UDTypeInfo> tp;
   scoped_refptr<NamespaceInfo> ns;
 
@@ -6742,14 +6796,11 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
       auto ltm = entry.second->LockForRead();
 
       for (int i = 0; i < ltm->field_types_size(); i++) {
-        std::vector<std::string> referenced_udts;
         // Only need to check direct (non-transitive) type dependencies here.
         // This also means we report more precise errors for in-use types.
-        QLType::GetUserDefinedTypeIds(ltm->field_types(i),
+        if (QLType::DoesUserDefinedTypeIdExist(ltm->field_types(i),
                                       false /* transitive */,
-                                      &referenced_udts);
-        auto it = std::find(referenced_udts.begin(), referenced_udts.end(), tp->id());
-        if (it != referenced_udts.end()) {
+                                      tp->id())) {
           Status s = STATUS(QLError,
               Substitute("Cannot delete type '$0.$1'. It is used in field $2 of type '$3'",
                   ns->name(), tp->name(), ltm->field_names(i), ltm->name()));
@@ -6797,7 +6848,6 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                      rpc::RpcContext* rpc) {
   LOG(INFO) << "GetUDTypeInfo from " << RequestorString(rpc)
             << ": " << req->DebugString();
-      RETURN_NOT_OK(CheckOnline());
   Status s;
   scoped_refptr<UDTypeInfo> tp;
   scoped_refptr<NamespaceInfo> ns;
@@ -6845,8 +6895,6 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
 
 Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
                                    ListUDTypesResponsePB* resp) {
-
-  RETURN_NOT_OK(CheckOnline());
 
   SharedLock<LockType> l(lock_);
 
@@ -6931,8 +6979,6 @@ Status CatalogManager::InitDbFinished(Status initdb_status, int64_t term) {
 CHECKED_STATUS CatalogManager::IsInitDbDone(
     const IsInitDbDoneRequestPB* req,
     IsInitDbDoneResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
   const auto& ysql_catalog_config = l->pb.ysql_catalog_config();
   resp->set_pg_proc_exists(pg_proc_exists_.load(std::memory_order_acquire));
@@ -6946,8 +6992,6 @@ CHECKED_STATUS CatalogManager::IsInitDbDone(
 
 Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
                                              uint64_t* last_breaking_version) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
   if (table_info != nullptr) {
     return sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
@@ -7333,13 +7377,14 @@ void CatalogManager::SendSplitTabletRequest(
       Format("Failed to send split tablet request for tablet $0", tablet->tablet_id()));
 }
 
-void CatalogManager::DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg) {
+void CatalogManager::DeleteTabletReplicas(
+    TabletInfo* tablet, const std::string& msg, bool hide_only) {
   auto locations = tablet->GetReplicaLocations();
   LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
   for (const TabletInfo::ReplicaMap::value_type& r : *locations) {
-    SendDeleteTabletRequest(tablet->tablet_id(), TABLET_DATA_DELETED,
-                            boost::none, tablet->table(), r.second.ts_desc, msg);
+    SendDeleteTabletRequest(tablet->tablet_id(), TABLET_DATA_DELETED, boost::none, tablet->table(),
+                            r.second.ts_desc, msg, hide_only);
   }
 }
 
@@ -7355,7 +7400,8 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<Tabl
   return Status::OK();
 }
 
-Status CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table) {
+Status CatalogManager::DeleteTabletsAndSendRequests(
+    const TableInfoPtr& table, const RepeatedBytes& retained_by_snapshot_schedules) {
   // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
   if (!CheckIfForbiddenToDeleteTabletOf(table).ok()) {
     return Status::OK();
@@ -7363,12 +7409,14 @@ Status CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInf
 
   vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
+
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
   });
 
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
-  RETURN_NOT_OK(DeleteTabletListAndSendRequests(tablets, deletion_msg));
+  RETURN_NOT_OK(DeleteTabletListAndSendRequests(
+      tablets, deletion_msg, retained_by_snapshot_schedules));
 
   if (IsColocatedParentTable(*table)) {
     SharedLock<LockType> catalog_lock(lock_);
@@ -7385,42 +7433,68 @@ Status CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInf
 }
 
 Status CatalogManager::DeleteTabletListAndSendRequests(
-    const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg) {
-  vector<pair<scoped_refptr<TabletInfo>, TabletInfo::WriteLock>> tablets_and_locks;
+    const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
+    const google::protobuf::RepeatedPtrField<std::string>& retained_by_snapshot_schedules) {
+  struct TabletAndLock {
+    TabletInfoPtr tablet;
+    TabletInfo::WriteLock lock;
+  };
+  std::vector<TabletAndLock> tablets_and_locks;
+  tablets_and_locks.reserve(tablets.size());
+  std::vector<TabletInfo*> tablet_infos;
+  tablet_infos.reserve(tablets_and_locks.size());
+  std::vector<TabletInfoPtr> marked_as_hidden;
 
   // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
   for (const auto& tablet : tablets) {
-    auto tablet_lock = tablet->LockForWrite();
-    tablets_and_locks.emplace_back(tablet, std::move(tablet_lock));
+    tablets_and_locks.push_back(TabletAndLock {
+      .tablet = tablet,
+      .lock = tablet->LockForWrite(),
+    });
+    tablet_infos.emplace_back(tablet.get());
   }
+
+  HideOnly hide_only(!retained_by_snapshot_schedules.empty());
+  HybridTime hide_hybrid_time = hide_only ? master_->clock()->Now() : HybridTime();
 
   // Mark the tablets as deleted.
   for (auto& tablet_and_lock : tablets_and_locks) {
-    auto& tablet = tablet_and_lock.first;
-    auto& tablet_lock = tablet_and_lock.second;
+    auto& tablet = tablet_and_lock.tablet;
+    auto& tablet_lock = tablet_and_lock.lock;
 
-    LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
-    DeleteTabletReplicas(tablet.get(), deletion_msg);
-
-    tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+    bool was_hidden = tablet_lock->ListedAsHidden();
+    if (hide_only) {
+      LOG(INFO) << "Hiding tablet " << tablet->tablet_id() << " ...";
+      tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
+      *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+          retained_by_snapshot_schedules;
+    } else {
+      LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
+      tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+    }
+    if (tablet_lock->ListedAsHidden() && !was_hidden) {
+      marked_as_hidden.push_back(tablet);
+    }
+    DeleteTabletReplicas(tablet.get(), deletion_msg, hide_only);
   }
 
   // Update all the tablet states in raft in bulk.
-  vector<TabletInfo*> tablet_infos;
-  tablet_infos.reserve(tablets_and_locks.size());
-  for (auto& tab : tablets_and_locks) {
-    tablet_infos.push_back(tab.first.get());
-  }
   RETURN_NOT_OK(sys_catalog_->UpdateItems(tablet_infos, leader_ready_term()));
 
   // Commit the change.
   for (auto& tablet_and_lock : tablets_and_locks) {
-    auto& tablet = tablet_and_lock.first;
-    auto& tablet_lock = tablet_and_lock.second;
+    auto& tablet = tablet_and_lock.tablet;
+    auto& tablet_lock = tablet_and_lock.lock;
 
     tablet_lock.Commit();
-    LOG(INFO) << "Deleted tablet " << tablet->tablet_id();
+    LOG(INFO) << (hide_only ? "Hid tablet " : "Deleted tablet ") << tablet->tablet_id();
   }
+
+  if (!marked_as_hidden.empty()) {
+    std::lock_guard<LockType> lock(lock_);
+    hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
+  }
+
   return Status::OK();
 }
 
@@ -7430,16 +7504,21 @@ void CatalogManager::SendDeleteTabletRequest(
     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
     const scoped_refptr<TableInfo>& table,
     TSDescriptor* ts_desc,
-    const string& reason) {
+    const string& reason,
+    bool hide_only) {
   if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_disable_tablet_deletion))) {
     return;
   }
-  LOG_WITH_PREFIX(INFO) << "Deleting tablet " << tablet_id << " on peer "
-                        << ts_desc->permanent_uuid() << " with delete type "
-                        << TabletDataState_Name(delete_type) << " (" << reason << ")";
+  LOG_WITH_PREFIX(INFO)
+      << (hide_only ? "Hiding" : "Deleting") << " tablet " << tablet_id << " on peer "
+      << ts_desc->permanent_uuid() << " with delete type "
+      << TabletDataState_Name(delete_type) << " (" << reason << ")";
   auto call = std::make_shared<AsyncDeleteReplica>(master_, AsyncTaskPool(),
       ts_desc->permanent_uuid(), table, tablet_id, delete_type,
       cas_config_opid_index_less_or_equal, reason);
+  if (hide_only) {
+    call->set_hide_only(hide_only);
+  }
   if (table != nullptr) {
     table->AddTask(call);
   }
@@ -7854,7 +7933,8 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
   // This is asynchronous / non-blocking.
   for (auto* tablet : deferred.tablets_to_update) {
     if (tablet->metadata().dirty().is_deleted()) {
-      DeleteTabletReplicas(tablet, tablet->metadata().dirty().pb.state_msg());
+      // Actual delete, because we delete tablet replica.
+      DeleteTabletReplicas(tablet, tablet->metadata().dirty().pb.state_msg(), HideOnly::kFalse);
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
@@ -7994,7 +8074,8 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
 }
 
 Status CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets) {
-  auto schedules_to_tablets_map = VERIFY_RESULT(MakeSnapshotSchedulesToTabletsMap());
+  auto schedules_to_tablets_map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(
+      SysRowEntry::TABLET));
   for (TabletInfo *tablet : tablets) {
     const consensus::RaftConfigPB& config =
         tablet->metadata().dirty().pb.committed_consensus_state().config();
@@ -8240,6 +8321,9 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
                                                TabletLocationsPB* locs_pb) {
   {
     auto l_tablet = tablet->LockForRead();
+    if (l_tablet->is_hidden()) {
+      return STATUS_FORMAT(NotFound, "Tablet hidden", tablet->id());
+    }
     locs_pb->set_table_id(l_tablet->pb.table_id());
     *locs_pb->mutable_table_ids() = l_tablet->pb.table_ids();
   }
@@ -8331,8 +8415,6 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 }
 
 Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const TabletId& id) {
-  RETURN_NOT_OK(CheckOnline());
-
   const auto iter = system_tablets_.find(id);
   if (iter == system_tablets_.end()) {
     return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid system tablet id", id);
@@ -8341,7 +8423,6 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const
 }
 
 Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocationsPB* locs_pb) {
-  RETURN_NOT_OK(CheckOnline());
   scoped_refptr<TabletInfo> tablet_info;
   {
     SharedLock<LockType> l(lock_);
@@ -8364,8 +8445,6 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
 
 Status CatalogManager::GetTabletLocations(
     scoped_refptr<TabletInfo> tablet_info, TabletLocationsPB* locs_pb) {
-  RETURN_NOT_OK(CheckOnline());
-
   DCHECK_EQ(locs_pb->replicas().size(), 0);
   locs_pb->mutable_replicas()->Clear();
   return BuildLocationsForTablet(tablet_info, locs_pb);
@@ -8374,7 +8453,6 @@ Status CatalogManager::GetTabletLocations(
 Status CatalogManager::GetTableLocations(
     const GetTableLocationsRequestPB* req,
     GetTableLocationsResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
   VLOG(4) << "GetTableLocations: " << req->ShortDebugString();
 
   // If start-key is > end-key report an error instead of swap the two
@@ -9201,6 +9279,29 @@ BlacklistSet CatalogManager::BlacklistSetFromPB() {
   }
 
   return blacklist_set;
+}
+
+void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
+                                             const TabletPathInfoPB& info) {
+  for (const auto& path : info.list_path()) {
+    for (const auto& tablet_info : path.tablet()) {
+      const string& tablet_id = tablet_info.tablet_id();
+      scoped_refptr<TabletInfo> tablet;
+      {
+        SharedLock<LockType> catalog_lock(lock_);
+        tablet = FindPtrOrNull(*tablet_map_, tablet_id);
+      }
+      if (!tablet) {
+        LOG(WARNING) << Format("Tablet $0 not found", tablet_id);
+        continue;
+      }
+      TabletReplicaDriveInfo drive_info{path.path_id(),
+                                        tablet_info.sst_file_size(),
+                                        tablet_info.wal_file_size(),
+                                        tablet_info.uncompressed_sst_file_size()};
+      tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
+    }
+  }
 }
 
 }  // namespace master

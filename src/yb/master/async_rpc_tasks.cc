@@ -618,14 +618,14 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
     if (table_) {
       LOG_WITH_PREFIX(INFO)
           << "TS " << permanent_uuid_ << ": tablet " << tablet_id_
-          << " (table " << table_->ToString() << ") successfully deleted";
+          << " (table " << table_->ToString() << ") successfully done";
     } else {
       LOG_WITH_PREFIX(WARNING)
           << "TS " << permanent_uuid_ << ": tablet " << tablet_id_
           << " did not belong to a known table, but was successfully deleted";
     }
     TransitionToCompleteState();
-    VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": delete complete on tablet " << tablet_id_;
+    VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id_;
   }
 }
 
@@ -635,6 +635,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
   req.set_tablet_id(tablet_id_);
   req.set_reason(reason_);
   req.set_delete_type(delete_type_);
+  if (hide_only_) {
+    req.set_hide_only(hide_only_);
+  }
   if (cas_config_opid_index_less_or_equal_) {
     req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
   }
@@ -1205,6 +1208,48 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1) << "Send RemoveTableFromTablet request (attempt " << attempt << "):\n"
                       << req_.DebugString();
   return true;
+}
+
+// ============================================================================
+//  Class AsyncGetTabletSplitKey.
+// ============================================================================
+AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
+    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    std::function<void(const std::string&, const std::string&)> result_cb)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
+  req_.set_tablet_id(tablet_id());
+}
+
+void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    const Status s = StatusFromPB(resp_.error().status());
+    const TabletServerErrorPB::Code code = resp_.error().code();
+    LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
+                             << ") failed for tablet " << tablet_id() << " with error code "
+                             << TabletServerErrorPB::Code_Name(code) << ": " << s;
+  } else {
+    VLOG_WITH_PREFIX(1)
+        << "TS " << permanent_uuid() << ": got split key for tablet " << tablet_id();
+    TransitionToCompleteState();
+  }
+
+  server::UpdateClock(resp_, master_->clock());
+}
+
+bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
+  req_.set_dest_uuid(permanent_uuid());
+  req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  ts_admin_proxy_->GetSplitKeyAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1)
+      << "Sent get split key request to " << permanent_uuid() << " (attempt " << attempt << "):\n"
+      << req_.DebugString();
+  return true;
+}
+
+void AsyncGetTabletSplitKey::Finished(const Status& status) {
+  if (status.ok()) {
+    result_cb_(resp_.split_encoded_key(), resp_.split_partition_key());
+  }
 }
 
 // ============================================================================

@@ -55,7 +55,7 @@ public class ScheduleTest extends FakeDBApplication {
     Schedule s = ModelFactory.createScheduleBackup(defaultCustomer.uuid,
                                                    u.universeUUID,
                                                    s3StorageConfig.configUUID);
-    Schedule schedule = Schedule.get(s.scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(s.scheduleUUID);
     assertNotNull(schedule);
   }
 

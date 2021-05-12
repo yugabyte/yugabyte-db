@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.AccessKeyFormData;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
@@ -121,7 +122,7 @@ public class AccessKeyController extends AuthenticatedController {
         formData.get().nodeExporterUser
       );
     }
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(accessKey);
   }
 
@@ -135,7 +136,7 @@ public class AccessKeyController extends AuthenticatedController {
     );
 
     accessKey.deleteOrThrow(); 
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success("Deleted KeyCode: " + keyCode);
   }
 }

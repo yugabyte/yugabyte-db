@@ -71,6 +71,7 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/oid_generator.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -3360,5 +3361,171 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
   }
 }
 
-    }  // namespace tserver
+// Checking that not yet committed split operation is correctly aborted after leader change and
+// then new split op id is successfully set on all replicas after retry.
+TEST_F(RaftConsensusITest, SplitOpId) {
+  ObjectIdGenerator oid_generator;
+  RpcController rpc;
+  const auto kTimeout = 60s * kTimeMultiplier;
+
+  FLAGS_num_tablet_servers = 3;
+  FLAGS_num_replicas = 3;
+  vector<string> ts_flags = {
+    "--enable_leader_failure_detection=false"s,
+  };
+  vector<string> master_flags = {
+    "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
+    "--use_create_table_leader_hint=false"s,
+  };
+  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
+
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
+  ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
+
+  // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
+  TServerDetails* initial_leader = tservers[0];
+  ASSERT_OK(StartElection(initial_leader, tablet_id_, kTimeout));
+  ASSERT_OK(WaitForServersToAgree(kTimeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, initial_leader, tablet_id_, kTimeout));
+
+  LOG(INFO) << "Initial leader: " << initial_leader->uuid();
+
+  auto pause_update_consensus = [&](ExternalTabletServer* tserver, bool value) {
+    return cluster_->SetFlag(
+        tserver, "TEST_follower_pause_update_consensus_requests", AsString(value));
+  };
+
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    if (tserver->uuid() != initial_leader->uuid()) {
+      ASSERT_OK(pause_update_consensus(tserver, true));
+    }
+  }
+
+  // Add SPLIT_OP to the leader.
+  tserver::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id_);
+  req.set_new_tablet1_id(oid_generator.Next());
+  req.set_new_tablet2_id(oid_generator.Next());
+  {
+    const auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
+    const auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
+    const auto split_hash_code = (max_hash_code - min_hash_code) / 2 + min_hash_code;
+    const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
+    docdb::KeyBytes encoded_doc_key;
+    docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
+        split_hash_code, std::vector<docdb::PrimitiveValue>());
+    req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
+    req.set_split_partition_key(partition_key);
+  }
+  req.set_dest_uuid(initial_leader->uuid());
+  tserver::SplitTabletResponsePB resp;
+
+  LOG(INFO) << "Sending Split RPC to the initial tablet leader";
+  CountDownLatch split_latch(1);
+  initial_leader->tserver_admin_proxy->SplitTabletAsync(req, &resp, &rpc, [&split_latch, &resp]() {
+    LOG(INFO) << "Split RPC response: " << AsString(resp);
+    split_latch.CountDown();
+  });
+
+  std::vector<OpIdPB> split_op_id_pbs;
+  std::vector<OpId> split_op_ids;
+  auto get_split_op_ids = [&]() -> Status {
+    RETURN_NOT_OK(GetLastOpIdForEachReplica(
+        tablet_id_, tservers, OpIdType::SPLIT_OPID, kTimeout, &split_op_id_pbs));
+    split_op_ids.clear();
+    for (const auto& split_op_id_pb : split_op_id_pbs) {
+      split_op_ids.push_back(OpId::FromPB(split_op_id_pb));
+    }
+    return Status::OK();
+  };
+
+  AssertLoggedWaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(get_split_op_ids());
+    return split_op_ids[0].term > 0;
+  }, kTimeout, "Waiting for the initial leader to add SPLIT_OP to Raft log");
+  LOG(INFO) << "split_op_ids: " << AsString(split_op_ids);
+  ASSERT_EQ(split_op_ids[1], OpId());
+  ASSERT_EQ(split_op_ids[2], OpId());
+  const auto split_op_id_first_try = split_op_ids[0];
+
+  LOG(INFO) << "Stepping down initial tablet leader";
+  ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, nullptr, kTimeout));
+
+  TServerDetails* new_leader;
+  ASSERT_OK(FindTabletLeader(tablet_servers_, tablet_id_, kTimeout, &new_leader));
+  LOG(INFO) << "New leader: " << new_leader->uuid();
+
+  AssertLoggedWaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(get_split_op_ids());
+        for (const auto& split_op_id : split_op_ids) {
+          if (split_op_id != OpId()) {
+            return false;
+          }
+        }
+        return true;
+      },
+      kTimeout, "Waiting for SPLIT_OP to be aborted and split_op_id to be reset on all replicas");
+  split_latch.Wait();
+
+  LOG(INFO) << "Pause update consensus on the old leader";
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    if (tserver->uuid() == initial_leader->uuid()) {
+      ASSERT_OK(pause_update_consensus(tserver, true));
+    }
+  }
+
+  LOG(INFO) << "Sending Split RPC to the new tablet leader";
+  rpc.Reset();
+  split_latch.Reset(1);
+  req.set_dest_uuid(new_leader->uuid());
+  new_leader->tserver_admin_proxy->SplitTabletAsync(req, &resp, &rpc, [&split_latch, &resp]() {
+    LOG(INFO) << "Split RPC response: " << AsString(resp);
+    split_latch.CountDown();
+  });
+
+  AssertLoggedWaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(get_split_op_ids());
+    for (int i = 0; i < tservers.size(); ++i) {
+      if (tservers[i]->uuid() == new_leader->uuid() && split_op_ids[i].index > 0) {
+        return true;
+      }
+    }
+    return false;
+  }, kTimeout, "Waiting for the new leader to add SPLIT_OP to Raft log");
+  LOG(INFO) << "split_op_ids: " << AsString(split_op_ids);
+
+  // Make sure followers have split_op_id not yet set.
+  for (int i = 0; i < tservers.size(); ++i) {
+    if (tservers[i]->uuid() != new_leader->uuid()) {
+      ASSERT_EQ(split_op_ids[i], OpId());
+    }
+  }
+
+  LOG(INFO) << "Resume update consensus on all replicas";
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    ASSERT_OK(pause_update_consensus(tserver, false));
+  }
+
+  AssertLoggedWaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(get_split_op_ids());
+    for (auto& split_op_id : split_op_ids) {
+      if (split_op_id == OpId()) {
+        return false;
+      }
+    }
+    return true;
+  }, kTimeout, "Waiting for all replicas to add SPLIT_OP to Raft log");
+  LOG(INFO) << "split_op_ids: " << AsString(split_op_ids);
+
+  for (auto& split_op_id : split_op_ids) {
+    ASSERT_EQ(split_op_id, split_op_ids[0]);
+  }
+  ASSERT_GT(split_op_ids[0].term, split_op_id_first_try.term);
+  ASSERT_GT(split_op_ids[0].index, split_op_id_first_try.index);
+
+  split_latch.Wait();
+}
+
+}  // namespace tserver
 }  // namespace yb

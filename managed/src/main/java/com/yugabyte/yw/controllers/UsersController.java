@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.UserRegisterFormData;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -17,7 +18,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Environment;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -102,11 +102,7 @@ public class UsersController extends AuthenticatedController {
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not create user");
     }
-    ObjectNode userInfo = Json.newObject()
-            .put("email", formData.getEmail())
-            .put("role", formData.getRole().name())
-            .put("customerUUID", customerUUID.toString());
-    Audit.createAuditEntry(ctx(), request(), userInfo);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
     return ApiResponse.success(user);
 
   }
@@ -137,7 +133,7 @@ public class UsersController extends AuthenticatedController {
     if (user.delete()) {
       ObjectNode responseJson = Json.newObject();
       responseJson.put("success", true);
-      Audit.createAuditEntry(ctx(), request());
+      auditService().createAuditEntry(ctx(), request());
       return ApiResponse.success(responseJson);
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
@@ -177,8 +173,8 @@ public class UsersController extends AuthenticatedController {
     } else {
       return ApiResponse.error(BAD_REQUEST, "Invalid Request");
     }
-    Audit.createAuditEntry(ctx(), request());
-    return ApiResponse.success();
+    auditService().createAuditEntry(ctx(), request());
+    return YWSuccess.asResult();
   }
 
   /**
@@ -213,7 +209,7 @@ public class UsersController extends AuthenticatedController {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
         user.save();
-        return ApiResponse.success();
+        return YWSuccess.asResult();
       }
     }
     return ApiResponse.error(BAD_REQUEST, "Invalid User Credentials.");

@@ -294,7 +294,6 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
                                       CreateSnapshotResponsePB* resp,
                                       RpcContext* rpc) {
   LOG(INFO) << "Servicing CreateSnapshot request: " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   if (FLAGS_enable_transaction_snapshots && req->transaction_aware()) {
     return CreateTransactionAwareSnapshot(*req, resp, rpc);
@@ -432,8 +431,6 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
 
 Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
                                      ListSnapshotsResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   {
     std::shared_lock<LockType> l(lock_);
@@ -476,8 +473,6 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
 
 Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
                                                 ListSnapshotRestorationsResponsePB* resp) {
-  RETURN_NOT_OK(CheckOnline());
-
   TxnSnapshotRestorationId restoration_id = TxnSnapshotRestorationId::Nil();
   if (!req->restoration_id().empty()) {
     restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(req->restoration_id()));
@@ -493,7 +488,6 @@ Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRe
 Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
                                        RestoreSnapshotResponsePB* resp) {
   LOG(INFO) << "Servicing RestoreSnapshot request: " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
@@ -633,7 +627,6 @@ Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
                                       DeleteSnapshotResponsePB* resp,
                                       RpcContext* rpc) {
   LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
@@ -856,7 +849,6 @@ void CatalogManager::DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
 Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
                                           ImportSnapshotMetaResponsePB* resp) {
   LOG(INFO) << "Servicing ImportSnapshotMeta request: " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   NamespaceMap namespace_map;
   ExternalTableSnapshotDataMap tables_data;
@@ -1400,9 +1392,7 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(
     call->SetSnapshotHybridTime(restore_at);
   }
   if (send_metadata) {
-    auto lock = tablet->table()->LockForRead();
-    const auto& pb = lock->pb;
-    call->SetMetadata(pb.version(), pb.schema(), pb.indexes());
+    call->SetMetadata(tablet->table()->LockForRead()->pb);
   }
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
@@ -1507,10 +1497,72 @@ Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& 
   }
   for (const auto& id_and_type : objects_to_restore) {
     return STATUS_FORMAT(
-        IllegalState, "Expected to restore $0/$1, but it does not present after restoration",
+        IllegalState, "Expected to restore $0/$1, but it is not present after restoration",
         SysRowEntry::Type_Name(id_and_type.second), id_and_type.first);
   }
   return Status::OK();
+}
+
+void CatalogManager::CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(schedule_min_restore_time);
+
+  std::vector<TabletInfoPtr> hidden_tablets;
+  {
+    SharedLock<LockType> l(lock_);
+    if (hidden_tablets_.empty()) {
+      return;
+    }
+    hidden_tablets = hidden_tablets_;
+  }
+  std::vector<TabletInfoPtr> tablets_to_delete;
+  std::vector<TabletInfoPtr> tablets_to_remove_from_hidden;
+
+  for (const auto& tablet : hidden_tablets) {
+    auto lock = tablet->LockForRead();
+    if (!lock->ListedAsHidden()) {
+      tablets_to_remove_from_hidden.push_back(tablet);
+      continue;
+    }
+    auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
+    bool cleanup = true;
+    for (const auto& schedule_id_str : lock->pb.retained_by_snapshot_schedules()) {
+      auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+      auto it = schedule_min_restore_time.find(schedule_id);
+      // If schedule is not present in schedule_min_restore_time then it means that schedule
+      // was deleted, so it should not retain the tablet.
+      if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
+        VLOG_WITH_PREFIX(1)
+            << "Retaining tablet: " << tablet->tablet_id() << ", hide hybrid time: "
+            << hide_hybrid_time << ", because of schedule: " << schedule_id
+            << ", min restore time: " << it->second;
+        cleanup = false;
+        break;
+      }
+    }
+    if (cleanup) {
+      tablets_to_delete.push_back(tablet);
+    }
+  }
+  if (!tablets_to_delete.empty()) {
+    LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
+    WARN_NOT_OK(DeleteTabletListAndSendRequests(tablets_to_delete, "Cleanup hidden tablets", {}),
+                "Failed to cleanup hidden tablets");
+  }
+  if (!tablets_to_remove_from_hidden.empty()) {
+    auto it = tablets_to_remove_from_hidden.begin();
+    std::lock_guard<LockType> l(lock_);
+    // Order of tablets in tablets_to_remove_from_hidden matches order in hidden_tablets_,
+    // so we could avoid searching in tablets_to_remove_from_hidden.
+    auto filter = [&it, end = tablets_to_remove_from_hidden.end()](const TabletInfoPtr& tablet) {
+      if (it != end && tablet.get() == it->get()) {
+        ++it;
+        return true;
+      }
+      return false;
+    };
+    hidden_tablets_.erase(std::remove_if(hidden_tablets_.begin(), hidden_tablets_.end(), filter),
+                          hidden_tablets_.end());
+  }
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
@@ -1766,8 +1818,6 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
 Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
                                               CreateSnapshotScheduleResponsePB* resp,
                                               rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
       *req, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());
@@ -1777,8 +1827,6 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
 Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestPB* req,
                                              ListSnapshotSchedulesResponsePB* resp,
                                              rpc::RpcContext* rpc) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
   return snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, resp);
@@ -2030,8 +2078,6 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
   LOG(INFO) << "CreateCDCStream from " << RequestorString(rpc)
             << ": " << req->DebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTableById(req->table_id()));
 
   {
@@ -2093,8 +2139,6 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
                                        rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing DeleteCDCStream request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
 
   if (req->stream_id_size() < 1) {
     return STATUS(InvalidArgument, "No CDC Stream ID given", req->ShortDebugString(),
@@ -2170,8 +2214,6 @@ Status CatalogManager::FindCDCStreamsMarkedAsDeleting(
 
 Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
-  RETURN_NOT_OK(CheckOnline());
-
   auto ybclient = master_->async_client_initializer().client();
 
   // First. For each deleted stream, delete the cdc state rows.
@@ -2287,8 +2329,6 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
                                     rpc::RpcContext* rpc) {
   LOG(INFO) << "GetCDCStream from " << RequestorString(rpc)
             << ": " << req->DebugString();
-  RETURN_NOT_OK(CheckOnline());
-
 
   if (!req->has_stream_id()) {
     return STATUS(InvalidArgument, "CDC Stream ID must be provided", req->ShortDebugString(),
@@ -2319,8 +2359,6 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
 
 Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
                                       ListCDCStreamsResponsePB* resp) {
-
-  RETURN_NOT_OK(CheckOnline());
 
   scoped_refptr<TableInfo> table;
   bool filter_table = req->has_table_id();
@@ -2368,8 +2406,6 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
             << ": " << req->DebugString();
 
   // Sanity checking section.
-  RETURN_NOT_OK(CheckOnline());
-
   if (!req->has_producer_id()) {
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -3018,8 +3054,6 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
   LOG(INFO) << "Servicing DeleteUniverseReplication request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
-  RETURN_NOT_OK(CheckOnline());
-
   if (!req->has_producer_id()) {
     return STATUS(InvalidArgument, "Producer universe ID required", req->ShortDebugString(),
                   MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -3109,8 +3143,6 @@ Status CatalogManager::SetUniverseReplicationEnabled(
             << ": " << req->ShortDebugString();
 
   // Sanity Checking Cluster State and Input.
-  RETURN_NOT_OK(CheckOnline());
-
   if (!req->has_producer_id()) {
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -3182,8 +3214,6 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
             << ": " << req->ShortDebugString();
 
   // Sanity Checking Cluster State and Input.
-  RETURN_NOT_OK(CheckOnline());
-
   if (!req->has_producer_id()) {
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -3409,7 +3439,6 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
                                               rpc::RpcContext* rpc) {
   LOG(INFO) << "GetUniverseReplication from " << RequestorString(rpc)
             << ": " << req->DebugString();
-  RETURN_NOT_OK(CheckOnline());
 
   if (!req->has_producer_id()) {
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
@@ -3435,8 +3464,9 @@ void CatalogManager::Started() {
   snapshot_coordinator_.Start();
 }
 
-Result<SnapshotSchedulesToTabletsMap> CatalogManager::MakeSnapshotSchedulesToTabletsMap() {
-  return snapshot_coordinator_.MakeSnapshotSchedulesToTabletsMap();
+Result<SnapshotSchedulesToObjectIdsMap> CatalogManager::MakeSnapshotSchedulesToObjectIdsMap(
+    SysRowEntry::Type type) {
+  return snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 
 void CatalogManager::SysCatalogLoaded(int64_t term) {

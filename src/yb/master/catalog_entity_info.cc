@@ -53,13 +53,14 @@ namespace master {
 // ================================================================================================
 
 string TabletReplica::ToString() const {
-  return Format("{ ts_desc: $0 state: $1 role: $2 member_type: $3 "
-                "should_disable_lb_move: $4 time since update: $5ms }",
+  return Format("{ ts_desc: $0, state: $1, role: $2, member_type: $3, "
+                "should_disable_lb_move: $4, total_space_used: $5, time since update: $6ms }",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
                 consensus::RaftPeerPB_Role_Name(role),
                 consensus::RaftPeerPB::MemberType_Name(member_type),
                 should_disable_lb_move,
+                drive_info.sst_files_size + drive_info.wal_files_size,
                 MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
 }
 
@@ -69,6 +70,10 @@ void TabletReplica::UpdateFrom(const TabletReplica& source) {
   member_type = source.member_type;
   should_disable_lb_move = source.should_disable_lb_move;
   time_updated = MonoTime::Now();
+}
+
+void TabletReplica::UpdateDriveInfo(const TabletReplicaDriveInfo& info) {
+  drive_info = info;
 }
 
 bool TabletReplica::IsStale() const {
@@ -177,6 +182,19 @@ void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
     return;
   }
   it->second.UpdateFrom(replica);
+}
+
+void TabletInfo::UpdateReplicaDriveInfo(const std::string& ts_uuid,
+                                        const TabletReplicaDriveInfo& drive_info) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
+  // clients that already have the old shared_ptr.
+  replica_locations_ = std::make_shared<TabletInfo::ReplicaMap>(*replica_locations_);
+  auto it = replica_locations_->find(ts_uuid);
+  if (it == replica_locations_->end()) {
+    return;
+  }
+  it->second.UpdateDriveInfo(drive_info);
 }
 
 void TabletInfo::set_last_update_time(const MonoTime& ts) {
@@ -396,7 +414,8 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
 bool TableInfo::AreAllTabletsDeleted() const {
   shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
-    if (!e.second->LockForRead()->is_deleted()) {
+    auto tablet_lock = e.second->LockForRead();
+    if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
       return false;
     }
   }

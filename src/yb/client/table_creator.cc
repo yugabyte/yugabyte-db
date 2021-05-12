@@ -169,6 +169,11 @@ YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::is_backfill_deferred(bool is_backfill_deferred) {
+  index_info_.set_is_backfill_deferred(is_backfill_deferred);
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::skip_index_backfill(const bool skip_index_backfill) {
   skip_index_backfill_ = skip_index_backfill;
   return *this;
@@ -297,6 +302,7 @@ Status YBTableCreator::Create() {
     req.set_is_local_index(index_info_.is_local());
     req.set_is_unique_index(index_info_.is_unique());
     req.set_skip_index_backfill(skip_index_backfill_);
+    req.set_is_backfill_deferred(index_info_.is_backfill_deferred());
   }
 
   auto deadline = CoarseMonoClock::Now() +

@@ -41,9 +41,10 @@ class YBTabsWithLinksPanel extends Component {
   };
 
   render() {
-    const { activeTab, defaultTab } = this.props;
+    const { activeTab, defaultTab, children } = this.props;
     const activeTabKey = activeTab || this.queryTabHandler() || defaultTab;
-    const links = this.props.children.map((item) => (
+    const childTabs = Array.isArray(children) ? children : [children];
+    const links = childTabs.map((item) => (
       <NavItem
         key={item.props.eventKey}
         eventKey={item.props.eventKey}
@@ -69,7 +70,7 @@ class YBTabsWithLinksPanel extends Component {
           <Nav bsStyle="tabs" className="nav nav-tabs">
             {links}
           </Nav>
-          <Tab.Content animation>{this.props.children}</Tab.Content>
+          <Tab.Content animation>{children}</Tab.Content>
         </div>
       </Tab.Container>
     );
