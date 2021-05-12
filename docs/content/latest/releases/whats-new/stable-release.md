@@ -64,6 +64,8 @@ docker pull yugabytedb/yugabyte:2.4.3.0-b6
 
 #### Core database
 
+* [[8150](https://github.com/yugabyte/yugabyte-db/issues/8150)] [[8196](https://github.com/yugabyte/yugabyte-db/issues/8196)] Fix preceding op id in case of empty ops sent to the follower
+
 * [[8348](https://github.com/yugabyte/yugabyte-db/issues/8348)] Correctly handling a failure to create a priority thread pool worker thread
 
 #### Yugabyte Platform
@@ -73,7 +75,6 @@ docker pull yugabytedb/yugabyte:2.4.3.0-b6
 ### DISCARD THESE?
 
 * [[8176](https://github.com/yugabyte/yugabyte-db/issues/8176)]Use a separate config to override settings in 20-nproc.conf
-* [[8150](https://github.com/yugabyte/yugabyte-db/issues/8150)] [[8196](https://github.com/yugabyte/yugabyte-db/issues/8196)] Fix preceding op id in case of empty ops sent to the follower
 * [[8173](https://github.com/yugabyte/yugabyte-db/issues/8173)] Remove the third-party submodule and add a text file with thirdparty SHA1
 * [[8041](https://github.com/yugabyte/yugabyte-db/issues/8041)] Preserve environment variables to ansible call
 
