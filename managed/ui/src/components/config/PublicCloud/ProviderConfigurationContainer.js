@@ -57,8 +57,8 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });
         } else {
-                  const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-                  toast.error(errorMessage);
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
         }
       });
     },

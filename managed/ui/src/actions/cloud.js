@@ -216,8 +216,8 @@ export function createProvider(type, name, config, regionFormVals = null) {
     config: config,
   };
   if (regionFormVals) {
-      const region = Object.keys(regionFormVals?.perRegionMetadata)[0] || '';
-      formValues['region'] = region;
+    const region = Object.keys(regionFormVals.perRegionMetadata)[0] || '';
+    formValues['region'] = region;
   }
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers`, formValues);
   return {
