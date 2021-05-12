@@ -19,7 +19,7 @@ import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData.ZoneData;
-import com.yugabyte.yw.forms.YWSuccess;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
@@ -128,7 +128,7 @@ public class CloudProviderController extends AuthenticatedController {
       InstanceType.deleteInstanceTypesForProvider(provider, config);
       provider.delete();
       auditService().createAuditEntry(ctx(), request());
-      return YWSuccess.asResult("Deleted provider: " + providerUUID);
+      return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
     } catch (RuntimeException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);
@@ -516,10 +516,8 @@ public class CloudProviderController extends AuthenticatedController {
       CustomerTask.TaskType.Create,
       provider.name);
 
-    ObjectNode resultNode = Json.newObject();
-    resultNode.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
-    return ApiResponse.success(resultNode);
+    return new YWResults.YWTask(taskUUID).asResult();
   }
 
   public Result cleanup(UUID customerUUID, UUID providerUUID) {
@@ -543,9 +541,7 @@ public class CloudProviderController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskType.CloudCleanup, taskParams);
 
     // TODO: add customer task
-    ObjectNode resultNode = Json.newObject();
-    resultNode.put("taskUUID", taskUUID.toString());
-    return ApiResponse.success(resultNode);
+    return new YWResults.YWTask(taskUUID).asResult();
     */
   }
 
