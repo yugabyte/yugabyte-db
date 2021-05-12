@@ -11,6 +11,8 @@ import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -24,7 +26,6 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -61,7 +62,7 @@ public class AlertControllerTest extends FakeDBApplication {
   private SettableRuntimeConfigFactory configFactory;
 
   @Mock
-  private FormFactory formFactory;
+  private ValidatingFormFactory formFactory;
 
   @InjectMocks
   private AlertController controller;
@@ -170,8 +171,7 @@ public class AlertControllerTest extends FakeDBApplication {
     data.isActive = true;
 
     Form<AlertDefinitionFormData> form = mock(Form.class);
-    when(formFactory.form(AlertDefinitionFormData.class)).thenReturn(form);
-    when(form.bindFromRequest()).thenReturn(form);
+    when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
     when(form.get()).thenReturn(data);
 
     Result result = controller.createDefinition(customer.uuid, universe.universeUUID);
@@ -184,14 +184,15 @@ public class AlertControllerTest extends FakeDBApplication {
   @Test
   public void testCreateDefinition_ErrorResult() {
     UUID customerUUID = UUID.randomUUID();
-    AssertHelper.assertBadRequest(controller.createDefinition(customerUUID, UUID.randomUUID()),
-        "Invalid Customer UUID: " + customerUUID);
+    Result result = assertThrows(YWServiceException.class,
+        () -> controller.createDefinition(customerUUID, UUID.randomUUID())).getResult();
+    AssertHelper.assertBadRequest(result,
+        "Invalid Customer UUID:" + customerUUID);
 
     Form<AlertDefinitionFormData> form = mock(Form.class);
-    when(formFactory.form(AlertDefinitionFormData.class)).thenReturn(form);
-    when(form.bindFromRequest()).thenReturn(form);
-    when(form.hasErrors()).thenReturn(true);
-    Result result = controller.createDefinition(customer.uuid, UUID.randomUUID());
+    when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
+    result = assertThrows(YWServiceException.class,
+        () -> controller.createDefinition(customer.uuid, UUID.randomUUID())).getResult();
     assertEquals(BAD_REQUEST, result.status());
   }
 
@@ -214,13 +215,14 @@ public class AlertControllerTest extends FakeDBApplication {
   @Test
   public void testGetAlertDefinition_ErrorResult() {
     UUID customerUUID = UUID.randomUUID();
+    Result result = assertThrows(YWServiceException.class,
+        () -> controller.getAlertDefinition(customerUUID, UUID.randomUUID(), ALERT_NAME)).getResult();
     AssertHelper.assertBadRequest(
-        controller.getAlertDefinition(customerUUID, UUID.randomUUID(), ALERT_NAME),
-        "Invalid Customer UUID: " + customerUUID);
-
+        result, "Invalid Customer UUID:" + customerUUID);
+    result = assertThrows(YWServiceException.class,
+        () -> controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_NAME)).getResult();
     AssertHelper.assertBadRequest(
-        controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_NAME),
-        "Could not find Alert Definition");
+        result, "Could not find Alert Definition");
   }
 
   @Test
@@ -235,8 +237,7 @@ public class AlertControllerTest extends FakeDBApplication {
     data.isActive = false;
 
     Form<AlertDefinitionFormData> form = mock(Form.class);
-    when(formFactory.form(AlertDefinitionFormData.class)).thenReturn(form);
-    when(form.bindFromRequest()).thenReturn(form);
+    when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
     when(form.get()).thenReturn(data);
 
     Result result = controller.updateAlertDefinition(customer.uuid, definition.uuid);
@@ -251,10 +252,12 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testUpdateAlertDefinition_ErrorResult() {
     UUID definitionUUID = UUID.randomUUID();
     UUID customerUUID = UUID.randomUUID();
-    AssertHelper.assertBadRequest(controller.updateAlertDefinition(customerUUID, definitionUUID),
-        "Invalid Customer UUID: " + customerUUID);
-
-    AssertHelper.assertBadRequest(controller.updateAlertDefinition(customer.uuid, definitionUUID),
-        "Invalid Alert Definition UUID: " + definitionUUID);
+    Result result = assertThrows(YWServiceException.class,
+        () -> controller.updateAlertDefinition(customerUUID, definitionUUID)).getResult();
+    AssertHelper.assertBadRequest(result, "Invalid Customer UUID:" + customerUUID);
+   
+    result = assertThrows(YWServiceException.class,
+        () -> controller.updateAlertDefinition(customer.uuid, definitionUUID)).getResult();
+    AssertHelper.assertBadRequest(result, "Invalid Alert Definition UUID: " + definitionUUID);
   }
 }

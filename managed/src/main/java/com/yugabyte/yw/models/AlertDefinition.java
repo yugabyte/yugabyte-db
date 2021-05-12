@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.common.YWServiceException;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import play.data.validation.Constraints;
@@ -17,6 +19,8 @@ import play.data.validation.Constraints;
 import javax.persistence.*;
 import java.util.Set;
 import java.util.UUID;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class AlertDefinition extends Model {
@@ -70,12 +74,29 @@ public class AlertDefinition extends Model {
     return find.query().where().idEq(alertDefinitionUUID).findOne();
   }
 
+  public static AlertDefinition getOrBadRequest(UUID alertDefinitionUUID) {
+    AlertDefinition alertDefinition = get(alertDefinitionUUID);
+    if (alertDefinition == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: "
+          + alertDefinitionUUID);
+    }
+    return alertDefinition;
+  }
+
   public static AlertDefinition get(UUID customerUUID, UUID universeUUID, String name) {
     return find.query().where()
       .eq("customer_uuid", customerUUID)
       .eq("universe_uuid", universeUUID)
       .eq("name", name)
       .findOne();
+  }
+
+  public static AlertDefinition getOrBadRequest(UUID customerUUID, UUID universeUUID, String name) {
+    AlertDefinition alertDefinition = get(customerUUID, universeUUID, name);
+    if (alertDefinition == null) {
+      throw new YWServiceException(BAD_REQUEST, "Could not find Alert Definition");
+    }
+    return alertDefinition;
   }
 
   public static AlertDefinition update(
