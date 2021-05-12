@@ -2,35 +2,20 @@
 
 package com.yugabyte.yw.common;
 
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Joiner;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
-import org.joda.time.DateTime;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -38,14 +23,23 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import org.joda.time.DateTime;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toCollection;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toCollection;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 
 public class PlacementInfoUtil {
@@ -1916,8 +1910,8 @@ public class PlacementInfoUtil {
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null &&
         !userIntent.regionList.contains(userIntent.preferredRegion)) {
-      throw new RuntimeException("Preferred region " + userIntent.preferredRegion +
-          " not in user region list.");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR,
+        "Preferred region " + userIntent.preferredRegion + " not in user region list.");
     }
 
     // Create the placement info object.
@@ -1963,7 +1957,8 @@ public class PlacementInfoUtil {
     }
 
     if (allAzsInRegions.isEmpty()) {
-      throw new RuntimeException("No AZ found across regions: " + userIntent.regionList);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR,
+        "No AZ found across regions: " + userIntent.regionList);
     }
 
     LOG.info("numRegions={}, numAzsInRegions={}, zonesIntended={}", userIntent.regionList.size(),
@@ -1987,7 +1982,7 @@ public class PlacementInfoUtil {
         }
       }
     } else {
-      throw new RuntimeException(String.format(
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, String.format(
         "Number of zones=%d greater than RF=%d is not allowed",
         num_zones,
         userIntent.replicationFactor
