@@ -273,7 +273,7 @@ public class TaskInfo extends Model {
       .eq("parent_uuid", getTaskUUID())
       .findCount();
     if (numSubtasks == 0) {
-      return 0.0;
+      return 100.0;
     }
     int numSubtasksCompleted = TaskInfo.find.query().where()
       .eq("parent_uuid", getTaskUUID())

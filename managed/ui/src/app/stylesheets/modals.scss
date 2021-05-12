@@ -69,8 +69,8 @@
   border-radius: 0 0 5px 5px;
   
   .btn {
-    min-width: 110px;
-    margin-left: 14px !important;
+    min-width: 100px;
+    margin-left: 10px !important;
   }
   .footer-accessory-wrapper {
     margin-top: 4px;
@@ -79,7 +79,7 @@
     display: inline-block;
     margin-right: 10px;
   }
-  }
+}
 
 .intro-message-container {
   display: flex;
@@ -93,6 +93,11 @@
   float: left;
   top: -2px;
   line-height: 40px;
+
+  .force-delete {
+    display: flex;
+    column-gap: 8px;
+  }
 
   label {
     margin-bottom: 0;
