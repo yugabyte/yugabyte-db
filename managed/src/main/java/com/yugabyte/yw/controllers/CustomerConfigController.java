@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.google.inject.Inject;
@@ -10,14 +11,17 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.UUID;
+
 
 public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
@@ -61,5 +65,32 @@ public class CustomerConfigController extends AuthenticatedController {
 
   public Result list(UUID customerUUID) {
     return ApiResponse.success(CustomerConfig.getAll(customerUUID));
+  }
+
+  public Result edit(UUID customerUUID, UUID configUUID) {
+    JsonNode formData =  request().body().asJson();
+    ObjectNode errorJson = configValidator.validateFormData(formData);
+    if (errorJson.size() > 0) {
+      return ApiResponse.error(BAD_REQUEST, errorJson);
+    }
+
+    errorJson = configValidator.validateDataContent(formData);
+    if (errorJson.size() > 0) {
+      return ApiResponse.error(BAD_REQUEST, errorJson);
+    }
+    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
+    if (customerConfig == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
+    }
+    CustomerConfig config = CustomerConfig.get(configUUID);
+    JsonNode data = Json.toJson(formData.get("data"));
+    if (data != null && data.get("BACKUP_LOCATION") != null) {
+      ((ObjectNode)data).put("BACKUP_LOCATION", config.data.get("BACKUP_LOCATION"));
+    }
+    JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
+    config.data = Json.toJson(updatedData);
+    config.update();
+    Audit.createAuditEntry(ctx(), request());
+    return ApiResponse.success(config);
   }
 }
