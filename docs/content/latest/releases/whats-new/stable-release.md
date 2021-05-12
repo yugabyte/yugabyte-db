@@ -21,6 +21,62 @@ Included here are the release notes for all releases in the v2.4 stable release 
 
 {{< /note >}}
 
+## v2.4.3.0 - May 12, 2021
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.3.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.3.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.4.3.0-b6
+```
+
+### Improvements
+
+#### Core database
+
+* [[8052](https://github.com/yugabyte/yugabyte-db/issues/8052)] Add ability to configure cipher list
+
+#### Yugabyte Platform
+
+* [[1342](https://github.com/yugabyte/yugabyte-db/issues/1342)] Fixing the error message when the get host info call to gcp fails
+
+* [[6758](https://github.com/yugabyte/yugabyte-db/issues/6758)] Unable to reuse On-premise instance incase previouse universe failed / deleted (#8263)
+
+* [[8165](https://github.com/yugabyte/yugabyte-db/issues/8165)]Yugaware creates zombie ssh process
+
+* [[8203](https://github.com/yugabyte/yugabyte-db/issues/8203)] Remove state from cloud initializers to avoid concurrency issues
+
+### Bug fixes
+
+#### Core database
+
+* [[8348](https://github.com/yugabyte/yugabyte-db/issues/8348)] Correctly handling a failure to create a priority thread pool worker thread
+
+#### Yugabyte Platform
+
+* [[8220](https://github.com/yugabyte/yugabyte-db/issues/8220)] Impersonate user from admin console
+
+### DISCARD THESE?
+
+* [[8176](https://github.com/yugabyte/yugabyte-db/issues/8176)]Use a separate config to override settings in 20-nproc.conf
+* [[8150](https://github.com/yugabyte/yugabyte-db/issues/8150)] [[8196](https://github.com/yugabyte/yugabyte-db/issues/8196)] Fix preceding op id in case of empty ops sent to the follower
+* [[8173](https://github.com/yugabyte/yugabyte-db/issues/8173)] Remove the third-party submodule and add a text file with thirdparty SHA1
+* [[8041](https://github.com/yugabyte/yugabyte-db/issues/8041)] Preserve environment variables to ansible call
+
 ## v2.4.2.0 - May 3, 2021
 
 ### Downloads
