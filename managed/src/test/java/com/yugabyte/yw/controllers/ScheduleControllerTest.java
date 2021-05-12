@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Schedule;
@@ -128,8 +129,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
     UUID invalidScheduleUUID = UUID.randomUUID();
     JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());
-    Result r = deleteSchedule(invalidScheduleUUID, defaultCustomer.uuid);
-    assertBadRequest(r, "Invalid Schedule UUID: " + invalidScheduleUUID);
+    Result result = assertThrows(YWServiceException.class,
+        () -> deleteSchedule(invalidScheduleUUID, defaultCustomer.uuid)).getResult();
+    assertBadRequest(result, "Invalid Schedule UUID: " + invalidScheduleUUID);
     resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());
     assertAuditEntry(0, defaultCustomer.uuid);
