@@ -78,7 +78,10 @@ export default class CreateBackup extends Component {
       createUniverseBackup,
       universeTables
     } = this.props;
-
+    const frequencyUnitConversion = {
+      Hours: 3600,
+      Minutes: 60
+    }
     if (isDefinedNotNull(values.storageConfigUUID)) {
       let backupType = null;
       let frequency = null;
@@ -92,11 +95,7 @@ export default class CreateBackup extends Component {
       }
 
       if (!isEmptyString(values.schedulingFrequency) && !isEmptyString(values.schedulingFrequencyUnit.value)) {
-        if (values.schedulingFrequencyUnit.value === 'Hours') {
-          frequency = values.schedulingFrequency * 3600 * 1000;
-        } else if (values.schedulingFrequencyUnit.value === 'Minutes') {
-          frequency = values.schedulingFrequency * 60 * 1000;
-        }
+        frequency = values.schedulingFrequency * frequencyUnitConversion[values.schedulingFrequencyUnit.value] * 1000;
         frequency = Math.round(frequency);
       }
       const payload = {
