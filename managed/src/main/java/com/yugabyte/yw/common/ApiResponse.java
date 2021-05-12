@@ -2,18 +2,15 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.OK;
-
-import com.yugabyte.yw.forms.YWSuccess;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
+
+import static play.mvc.Http.Status.OK;
 
 public class ApiResponse {
   public static final Logger LOG = LoggerFactory.getLogger(ApiResponse.class);
