@@ -997,6 +997,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+   public SubTaskGroup createDeleteBackupTasks(List<Backup> backups, UUID customerUUID) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteBackup", executor);
+    for (Backup backup : backups) {
+      DeleteBackup.Params params = new DeleteBackup.Params();
+      params.backupUUID = backup.backupUUID;
+      params.customerUUID = customerUUID;
+      DeleteBackup task = new DeleteBackup();
+      task.initialize(params);
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createEncryptedUniverseKeyBackupTask() {
     return createEncryptedUniverseKeyBackupTask((BackupTableParams) taskParams());
   }

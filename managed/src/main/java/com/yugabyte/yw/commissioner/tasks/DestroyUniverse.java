@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,9 +24,11 @@ import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup;
 
 import play.api.Play;
 
+import java.util.List;
 import java.util.UUID;
 
 public class DestroyUniverse extends UniverseTaskBase {
@@ -34,6 +37,7 @@ public class DestroyUniverse extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
     public Boolean isForceDelete;
+    public Boolean isDeleteBackups;
   }
 
   public Params params() {
@@ -53,6 +57,12 @@ public class DestroyUniverse extends UniverseTaskBase {
         universe = forceLockUniverseForUpdate(-1, true);
       } else {
         universe = lockUniverseForUpdate(-1 , true);
+      }
+
+      if (params().isDeleteBackups) {
+        List<Backup> backupList = Backup.fetchByUniverseUUID(params().customerUUID, universe.universeUUID);
+        createDeleteBackupTasks(backupList, params().customerUUID).setSubTaskGroupType(
+            SubTaskGroupType.DeletingBackup);
       }
 
       // Cleanup the kms_history table
