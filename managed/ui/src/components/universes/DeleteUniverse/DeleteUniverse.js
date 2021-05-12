@@ -59,7 +59,11 @@ export default class DeleteUniverse extends Component {
               delete backup objects. If you want to delete backup objects,
               resume this universe and then delete it.
             </Alert>
-          </> : body
+          </> :
+          <>
+            {body}
+            <br />
+          </>
         }
         <br />
         <label>Enter universe name to confirm delete:</label>
