@@ -116,6 +116,12 @@ double		cpu_operator_cost = DEFAULT_CPU_OPERATOR_COST;
 double		parallel_tuple_cost = DEFAULT_PARALLEL_TUPLE_COST;
 double		parallel_setup_cost = DEFAULT_PARALLEL_SETUP_COST;
 
+double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
+double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
+double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
+
+double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
+
 int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
 Cost		disable_cost = 1.0e10;
@@ -139,6 +145,7 @@ bool		enable_partitionwise_aggregate = false;
 bool		enable_parallel_append = true;
 bool		enable_parallel_hash = true;
 bool		enable_partition_pruning = true;
+bool		yb_enable_geolocation_costing = true;
 
 typedef struct
 {
@@ -565,9 +572,21 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	tuples_fetched = clamp_row_est(indexSelectivity * baserel->tuples);
 
 	/* fetch estimated page costs for tablespace containing table */
-	get_tablespace_page_costs(baserel->reltablespace,
+	if (indexonly && IsYugaByteEnabled()) 
+	{
+		/* 
+		 * We already accounted for these costs when we made per-tuple cost 
+		 * adjustments based on tablespace.
+		 */
+		spc_random_page_cost = 0;
+		spc_seq_page_cost = 0;
+	}
+	else
+	{
+		get_tablespace_page_costs(baserel->reltablespace,
 							  &spc_random_page_cost,
 							  &spc_seq_page_cost);
+	}
 
 	/*----------
 	 * Estimate number of main-table pages fetched, and compute I/O cost.
