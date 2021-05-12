@@ -139,4 +139,31 @@ Status Slice::consume_byte(char c) {
   return Status::OK();
 }
 
+std::string SliceParts::ToDebugHexString() const {
+  std::string result;
+  for (int i = 0; i != num_parts; ++i) {
+    result += parts[i].ToDebugHexString();
+  }
+  return result;
+}
+
+size_t SliceParts::SumSizes() const {
+  size_t result = 0;
+  for (int i = 0; i != num_parts; ++i) {
+    result += parts[i].size();
+  }
+  return result;
+}
+
+void SliceParts::CopyAllTo(void* out) const {
+  char* buf = static_cast<char*>(out);
+  for (int i = 0; i != num_parts; ++i) {
+    if (!parts[i].size()) {
+      continue;
+    }
+    memcpy(buf, parts[i].data(), parts[i].size());
+    buf += parts[i].size();
+  }
+}
+
 }  // namespace yb

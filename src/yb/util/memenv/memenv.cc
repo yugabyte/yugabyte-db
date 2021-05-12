@@ -104,9 +104,9 @@ class WritableFileImpl : public WritableFile {
 
   // This is a dummy implementation that simply serially appends all
   // slices using regular I/O.
-  Status AppendVector(const vector<Slice>& data_vector) override {
-    for (const Slice& data : data_vector) {
-      RETURN_NOT_OK(file_->Append(data));
+  Status AppendSlices(const Slice* slices, size_t num) override {
+    for (const auto* end = slices + num; slices != end; ++slices) {
+      RETURN_NOT_OK(file_->Append(*slices));
     }
     return Status::OK();
   }
