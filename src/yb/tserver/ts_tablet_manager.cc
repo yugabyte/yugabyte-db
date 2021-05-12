@@ -59,7 +59,6 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
-#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/human_readable.h"
@@ -86,12 +85,12 @@
 #include "yb/tablet/operations/split_operation.h"
 
 #include "yb/tserver/heartbeater.h"
+#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/tablet_server.h"
 
-#include "yb/util/background_task.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
@@ -125,14 +124,6 @@ DEFINE_int32(tablet_start_warn_threshold_ms, 500,
              "a warning with a trace.");
 TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 
-DEFINE_bool(enable_log_cache_gc, true,
-            "Set to true to enable log cache garbage collector.");
-
-DEFINE_bool(log_cache_gc_evict_only_over_allocated, true,
-            "If set to true, log cache garbage collection would evict only memory that was "
-            "allocated over limit for log cache. Otherwise it will try to evict requested number "
-            "of bytes.");
-
 DEFINE_int32(cleanup_split_tablets_interval_sec, 60,
              "Interval at which tablet manager tries to cleanup split tablets which are no longer "
              "needed. Setting this to 0 disables cleanup of split tablets.");
@@ -154,9 +145,6 @@ DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
                  "after fetching the files during a remote bootstrap but before "
                  "marking the superblock as TABLET_DATA_READY.")
 
-DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
-                 "Always pretend memory has been exceeded to enforce background flush.");
-
 DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_greater_than, 0,
                  "If greater than zero, this process will crash if we detect more than the "
                  "specified number of remote bootstrap sessions.");
@@ -176,20 +164,6 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
-
-DEFINE_int32(flush_background_task_interval_msec, 0,
-             "The tick interval time for the flush background task. "
-             "This defaults to 0, which means disable the background task "
-             "And only use callbacks on memstore allocations. ");
-
-DEFINE_int64(global_memstore_size_percentage, 10,
-             "Percentage of total available memory to use for the global memstore. "
-             "Default is 10. See also memstore_size_mb and "
-             "global_memstore_size_mb_max.");
-DEFINE_int64(global_memstore_size_mb_max, 2048,
-             "Global memstore size is determined as a percentage of the available "
-             "memory. However, this flag limits it in absolute size. Value of 0 "
-             "means no limit on the value obtained by the percentage. Default is 2048.");
 
 DEFINE_int32(read_pool_max_threads, 128,
              "The maximum number of threads allowed for read_pool_. This pool is used "
@@ -308,77 +282,6 @@ using tablet::TabletStatusPB;
 
 constexpr int32_t kDefaultTserverBlockCacheSizePercentage = 50;
 
-// Only called from the background task to ensure it's synchronized
-void TSTabletManager::MaybeFlushTablet() {
-  int iteration = 0;
-  while (memory_monitor()->Exceeded() ||
-         (iteration++ == 0 && FLAGS_TEST_pretend_memory_exceeded_enforce_flush)) {
-    YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
-                                           "tablet to flush", memory_monitor()->limit());
-    auto flush_tick = rocksdb::FlushTick();
-    TabletPeerPtr tablet_to_flush = TabletToFlush();
-    // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
-    // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
-    // will not happen often, but should be fixed.
-    if (tablet_to_flush) {
-      LOG(INFO)
-          << TabletLogPrefix(tablet_to_flush->tablet_id())
-          << "Flushing tablet with oldest memstore write at "
-          << tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime();
-      WARN_NOT_OK(
-          tablet_to_flush->tablet()->Flush(
-              tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
-          Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
-      for (auto listener : TEST_listeners) {
-        listener->StartedFlush(tablet_to_flush->tablet_id());
-      }
-    }
-  }
-}
-
-// Return the tablet with the oldest write in memstore, or nullptr if all tablet memstores are
-// empty or about to flush.
-TabletPeerPtr TSTabletManager::TabletToFlush() {
-  SharedLock<RWMutex> lock(mutex_); // For using the tablet map
-  HybridTime oldest_write_in_memstores = HybridTime::kMax;
-  TabletPeerPtr tablet_to_flush;
-  for (const TabletMap::value_type& entry : tablet_map_) {
-    const auto tablet = entry.second->shared_tablet();
-    if (tablet) {
-      const auto ht = tablet->OldestMutableMemtableWriteHybridTime();
-      if (ht.ok()) {
-        if (*ht < oldest_write_in_memstores) {
-          oldest_write_in_memstores = *ht;
-          tablet_to_flush = entry.second;
-        }
-      } else {
-        YB_LOG_EVERY_N_SECS(WARNING, 5) << Format(
-            "Failed to get oldest mutable memtable write ht for tablet $0: $1",
-            tablet->tablet_id(), ht.status());
-      }
-    }
-  }
-  return tablet_to_flush;
-}
-
-namespace {
-
-class FunctorGC : public GarbageCollector {
- public:
-  explicit FunctorGC(std::function<void(size_t)> impl) : impl_(std::move(impl)) {}
-
-  void CollectGarbage(size_t required) {
-    impl_(required);
-  }
-
-  virtual ~FunctorGC() = default;
-
- private:
-  std::function<void(size_t)> impl_;
-};
-
-} // namespace
-
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,
                                  MetricRegistry* metric_registry)
@@ -436,47 +339,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                   server_->metric_entity(), post_split_trigger_compaction_pool))
               .Build(&post_split_trigger_compaction_pool_));
 
-  block_based_table_mem_tracker_ = docdb::InitBlockCacheMemTracker(
+  mem_manager_ = std::make_shared<TabletMemoryManager>(
+      &tablet_options_,
+      server_->mem_tracker(),
       kDefaultTserverBlockCacheSizePercentage,
-      server_->mem_tracker());
-  block_based_table_gc_ = docdb::InitBlockCache(
       server_->metric_entity(),
-      kDefaultTserverBlockCacheSizePercentage,
-      block_based_table_mem_tracker_.get(),
-      &tablet_options_);
-
-  auto log_cache_mem_tracker = consensus::LogCache::GetServerMemTracker(server_->mem_tracker());
-  log_cache_gc_ = std::make_shared<FunctorGC>(
-      std::bind(&TSTabletManager::LogCacheGC, this, log_cache_mem_tracker.get(), _1));
-  log_cache_mem_tracker->AddGarbageCollector(log_cache_gc_);
-
-  // Calculate memstore_size_bytes
-  bool should_count_memory = FLAGS_global_memstore_size_percentage > 0;
-  CHECK(FLAGS_global_memstore_size_percentage > 0 && FLAGS_global_memstore_size_percentage <= 100)
-    << Substitute(
-        "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
-        "$0",
-        FLAGS_global_memstore_size_percentage);
-  int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
-  size_t memstore_size_bytes = total_ram_avail * FLAGS_global_memstore_size_percentage / 100;
-
-  if (FLAGS_global_memstore_size_mb_max != 0) {
-    memstore_size_bytes = std::min(memstore_size_bytes,
-                                   static_cast<size_t>(FLAGS_global_memstore_size_mb_max << 20));
-  }
-
-  // Add memory monitor and background thread for flushing
-  if (should_count_memory) {
-    background_task_.reset(new BackgroundTask(
-      std::function<void()>([this](){ MaybeFlushTablet(); }),
-      "tablet manager",
-      "flush scheduler bgtask",
-      std::chrono::milliseconds(FLAGS_flush_background_task_interval_msec)));
-    tablet_options_.memory_monitor = std::make_shared<rocksdb::MemoryMonitor>(
-        memstore_size_bytes,
-        std::function<void()>([this](){
-                                YB_WARN_NOT_OK(background_task_->Wake(), "Wakeup error"); }));
-  }
+      [this](){ return GetTabletPeers(); });
 }
 
 TSTabletManager::~TSTabletManager() {
@@ -582,9 +450,7 @@ Status TSTabletManager::Init() {
     state_ = MANAGER_RUNNING;
   }
 
-  if (background_task_) {
-    RETURN_NOT_OK(background_task_->Init());
-  }
+  RETURN_NOT_OK(mem_manager_->Init());
 
   tablets_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupSplitTablets, this));
@@ -1413,7 +1279,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .client_future = async_client_init_->get_client_future(),
       .clock = scoped_refptr<server::Clock>(server_->clock()),
       .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
-      .block_based_table_mem_tracker = block_based_table_mem_tracker_,
+      .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
       .metric_registry = metric_registry_,
       .log_anchor_registry = tablet_peer->log_anchor_registry(),
       .tablet_options = tablet_options_,
@@ -1526,9 +1392,7 @@ void TSTabletManager::StartShutdown() {
 
   async_client_init_->Shutdown();
 
-  if (background_task_) {
-    background_task_->Shutdown();
-  }
+  mem_manager_->Shutdown();
 
   // Wait for all RBS operations to finish.
   const MonoDelta kSingleWait = 10ms;
@@ -2320,56 +2184,6 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
                  << ", for tablets: " << tablets;
     }
   }
-}
-
-size_t GetLogCacheSize(TabletPeer* peer) {
-  return down_cast<consensus::RaftConsensus*>(peer->consensus())->LogCacheSize();
-}
-
-void TSTabletManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t bytes_to_evict) {
-  if (!FLAGS_enable_log_cache_gc) {
-    return;
-  }
-
-  if (FLAGS_log_cache_gc_evict_only_over_allocated) {
-    if (!log_cache_mem_tracker->has_limit()) {
-      return;
-    }
-    auto limit = log_cache_mem_tracker->limit();
-    auto consumption = log_cache_mem_tracker->consumption();
-    if (consumption <= limit) {
-      return;
-    }
-    bytes_to_evict = std::min<size_t>(bytes_to_evict, consumption - limit);
-  }
-
-  std::vector<TabletPeerPtr> peers;
-  {
-    SharedLock<RWMutex> shared_lock(mutex_);
-    peers.reserve(tablet_map_.size());
-    for (const auto& pair : tablet_map_) {
-      if (GetLogCacheSize(pair.second.get()) > 0) {
-        peers.push_back(pair.second);
-      }
-    }
-  }
-  std::sort(peers.begin(), peers.end(), [](const auto& lhs, const auto& rhs) {
-    // Note inverse order.
-    return GetLogCacheSize(lhs.get()) > GetLogCacheSize(rhs.get());
-  });
-
-  size_t total_evicted = 0;
-  for (const auto& peer : peers) {
-    size_t evicted = down_cast<consensus::RaftConsensus*>(
-        peer->consensus())->EvictLogCache(bytes_to_evict - total_evicted);
-    total_evicted += evicted;
-    if (total_evicted >= bytes_to_evict) {
-      break;
-    }
-  }
-
-  LOG(INFO) << "Evicted from log cache: " << HumanReadableNumBytes::ToString(total_evicted)
-            << ", required: " << HumanReadableNumBytes::ToString(bytes_to_evict);
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
