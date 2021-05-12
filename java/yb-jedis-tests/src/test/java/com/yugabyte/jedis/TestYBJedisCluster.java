@@ -12,19 +12,22 @@
 //
 package com.yugabyte.jedis;
 
-import com.google.common.net.HostAndPort;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.yb.YBParameterizedTestRunner;
 import org.yb.minicluster.MiniYBDaemon;
-import java.util.*;
-import redis.clients.jedis.JedisCommands;
 
-import static junit.framework.TestCase.assertEquals;
-import static junit.framework.TestCase.assertTrue;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 
 @RunWith(value=YBParameterizedTestRunner.class)
 public class TestYBJedisCluster extends BaseJedisTest {
@@ -36,7 +39,7 @@ public class TestYBJedisCluster extends BaseJedisTest {
 
   // Run each test with both Jedis and YBJedis clients.
   @Parameterized.Parameters
-  public static Collection jedisClients() {
+  public static List<JedisClientType> jedisClients() {
     return Arrays.asList(JedisClientType.JEDISCLUSTER);
   }
 
@@ -48,26 +51,21 @@ public class TestYBJedisCluster extends BaseJedisTest {
   public void testLocalOps() throws Exception {
     destroyMiniCluster();
 
-    // We don't want the tablets to move while we are testing because Jedis will be left with a
-    // stale key partition map since it won't receive a MOVED request which triggers the update.
-    List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
-
-    List<List<String>> tserverArgs = new ArrayList<List<String>>();
     // Give more memory to support 2 databases.
     final long MEMORY_LIMIT = 2 * 1024 * 1024 * 1024l;
-    tserverArgs.add(Arrays.asList("--TEST_assert_local_op=true",
-                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
-    tserverArgs.add(Arrays.asList("--TEST_assert_local_op=true",
-                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
-    tserverArgs.add(Arrays.asList("--TEST_assert_local_op=true",
-                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
-    createMiniCluster(3, masterArgs, tserverArgs);
+    createMiniCluster(3, 3,
+        // We don't want the tablets to move while we are testing because Jedis will be left with a
+        // stale key partition map since it won't receive a MOVED request which triggers the update.
+        ImmutableMap.of("enable_load_balancing", "false"),
+        ImmutableMap.of(
+            "TEST_assert_local_op", "true",
+            "memory_limit_hard_bytes", String.valueOf(MEMORY_LIMIT)));
 
     setUpJedis();
     final String secondDBName = "1";
     createRedisTableForDB(secondDBName);
 
-    Collection dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
+    List<String> dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
     // Do a few writes to test everything is working correctly.
     readAndWriteFromDBs(dbs, 1000);
   }
@@ -76,16 +74,13 @@ public class TestYBJedisCluster extends BaseJedisTest {
   public void testMovedReply() throws Exception {
     destroyMiniCluster();
 
-    List<List<String>> tserverArgs = new ArrayList<List<String>>();
     // Give more memory to support 2 databases.
     final long MEMORY_LIMIT = 2 * 1024 * 1024 * 1024l;
-    tserverArgs.add(Arrays.asList("--forward_redis_requests=false",
-                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
-    tserverArgs.add(Arrays.asList("--forward_redis_requests=false",
-                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
-    tserverArgs.add(Arrays.asList("--forward_redis_requests=false",
-                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
-    createMiniCluster(3, masterArgs, tserverArgs);
+    createMiniCluster(3, 3,
+        Collections.emptyMap(),
+        ImmutableMap.of(
+            "forward_redis_requests", "false",
+            "memory_limit_hard_bytes", String.valueOf(MEMORY_LIMIT)));
 
     waitForTServersAtMasterLeader();
 
@@ -95,15 +90,15 @@ public class TestYBJedisCluster extends BaseJedisTest {
     final String secondDBName = "1";
     createRedisTableForDB(secondDBName);
 
-    Collection dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
+    List<String> dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
     // Do a few writes to test everything is working correctly.
     readAndWriteFromDBs(dbs, 100);
 
     // Add a node and verify our commands succeed.
     LOG.info("Adding a new node ");
-    miniCluster.startTServer(
-        Arrays.asList("--forward_redis_requests=false",
-                      "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
+    miniCluster.startTServer(ImmutableMap.of(
+        "forward_redis_requests", "false",
+        "memory_limit_hard_bytes", String.valueOf(MEMORY_LIMIT)));
 
     // Test that everything works correctly after adding a node. The load balancer will assign
     // tablets to the new node.
@@ -111,7 +106,6 @@ public class TestYBJedisCluster extends BaseJedisTest {
 
     Map<HostAndPort, MiniYBDaemon> tabletServers = miniCluster.getTabletServers();
 
-    int counter = 0;
     // Remove a node and verify that our commands succeed.
     for (HostAndPort hostAndPort : tabletServers.keySet()) {
       LOG.info("Removing node " + hostAndPort);

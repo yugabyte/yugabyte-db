@@ -98,9 +98,9 @@ public class CertificateControllerTest extends FakeDBApplication {
   }
   
   private Result deleteCertificate(UUID customerUUID, UUID certUUID) {
-	    String uri = "/api/customers/" + customerUUID + "/certificates/" + certUUID.toString();
-	    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
-	  }
+    String uri = "/api/customers/" + customerUUID + "/certificates/" + certUUID.toString();
+    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
+  }
 
   private Result createClientCertificate(UUID customerUUID, UUID rootUUID,
                                          ObjectNode bodyJson) {
@@ -151,10 +151,10 @@ public class CertificateControllerTest extends FakeDBApplication {
   
   @Test
   public void testDeleteInvalidCertificate() {
-	UUID uuid=UUID.randomUUID();
-	Result result = deleteCertificate(customer.uuid, uuid);
-	JsonNode json = Json.parse(contentAsString(result));
-	assertEquals(BAD_REQUEST, result.status());
+  UUID uuid=UUID.randomUUID();
+  Result result = deleteCertificate(customer.uuid, uuid);
+  JsonNode json = Json.parse(contentAsString(result));
+  assertEquals(BAD_REQUEST, result.status());
   }
   
   @Test

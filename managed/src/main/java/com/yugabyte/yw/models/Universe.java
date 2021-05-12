@@ -5,16 +5,13 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -38,6 +35,8 @@ import javax.persistence.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"name", "customer_id"}))
 @Entity
 public class Universe extends Model {
@@ -45,6 +44,20 @@ public class Universe extends Model {
   public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
   public static final String TAKE_BACKUPS = "takeBackups";
   public static final String HELM2_LEGACY = "helm2Legacy";
+
+  private static void checkUniverseInCustomer(UUID universeUUID, Customer customer) {
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      throw new YWServiceException(BAD_REQUEST,
+        String.format("Universe UUID: %s doesn't belong " +
+          "to Customer UUID: %s", universeUUID, customer.uuid));
+    }
+  }
+
+  public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
+    Universe universe = getOrBadRequest(universeUUID);
+    checkUniverseInCustomer(universeUUID, customer);
+    return universe;
+  }
 
   public enum HelmLegacy {
     V3,
@@ -75,26 +88,25 @@ public class Universe extends Model {
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public JsonNode config;
+  private Map<String, String> config;
 
-  public void setConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = this.getConfig();
-    String currConfigStr = Joiner.on(" ").withKeyValueSeparator("=").join(currConfig);
-    LOG.info("Setting config {} on universe {} [ {} ]", currConfigStr, name, universeUUID);
-    for (String key : configMap.keySet()) {
-      currConfig.put(key, configMap.get(key));
-    }
-    this.config = Json.toJson(currConfig);
+  @JsonIgnore
+  public void setConfig(Map<String, String> newConfig) {
+    LOG.info("Setting config {} on universe {} [ {} ]",
+      Json.toJson(config), name, universeUUID);
+    this.config = newConfig;
     this.save();
+  }
+
+  public void updateConfig(Map<String, String> newConfig) {
+    Map<String, String> tmp = getConfig();
+    tmp.putAll(newConfig);
+    setConfig(tmp);
   }
 
   @JsonIgnore
   public Map<String, String> getConfig() {
-    if (this.config == null) {
-      return new HashMap<>();
-    } else {
-      return Json.fromJson(this.config, Map.class);
-    }
+    return config == null ? new HashMap<>() : config;
   }
 
   // The Json serialized version of universeDetails. This is used only in read from and writing to
@@ -124,72 +136,6 @@ public class Universe extends Model {
       return null;
     }
     return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
-  }
-
-  public JsonNode toJson() {
-    ObjectNode json =
-      Json.newObject()
-        .put("universeUUID", universeUUID.toString())
-        .put("name", name)
-        .put("creationDate", creationDate.getTime())
-        .put("version", version);
-    String dnsName = getDnsName();
-    if (dnsName != null) {
-      json.put("dnsName", dnsName);
-    }
-    UniverseDefinitionTaskParams params = getUniverseDetails();
-    Collection<NodeDetails> nodes = getNodes();
-    try {
-      json.set("resources", Json.toJson(UniverseResourceDetails.create(nodes, params)));
-    } catch (Exception e) {
-      json.set("resources", null);
-    }
-
-    ObjectNode universeDetailsJson = (ObjectNode) Json.toJson(params);
-    addNodesActions(universeDetailsJson, nodes);
-
-    ArrayNode clustersArrayJson = Json.newArray();
-    for (Cluster cluster : params.clusters) {
-      JsonNode clusterJson = cluster.toJson();
-      if (clusterJson != null) {
-        clustersArrayJson.add(clusterJson);
-      }
-    }
-    universeDetailsJson.set("clusters", clustersArrayJson);
-    json.set("universeDetails", universeDetailsJson);
-    json.set("universeConfig", this.config);
-    return json;
-  }
-
-  /**
-   * Adds arrays of allowed actions for nodes depending on the universe state. Actions are added
-   * directly into the json representation.
-   */
-  void addNodesActions(ObjectNode universeDetailsJson, Collection<NodeDetails> nodes) {
-    JsonNode nodeDetailsSet = universeDetailsJson.get("nodeDetailsSet");
-    if (nodeDetailsSet == null || nodeDetailsSet.isNull() || !nodeDetailsSet.isArray()) {
-      return;
-    }
-
-    try {
-      // Preparing a node name -> json node object.
-      Map<String, JsonNode> jsonNodes = new HashMap<>();
-      for (int i = 0; i < nodeDetailsSet.size(); i++) {
-        JsonNode jsonNode = nodeDetailsSet.get(i);
-        jsonNodes.put(jsonNode.get("nodeName").asText(), jsonNode);
-      }
-
-      for (NodeDetails node : nodes) {
-        ObjectNode jsonNode = (ObjectNode) jsonNodes.get(node.nodeName);
-        if (jsonNode == null) {
-          continue;
-        }
-        ArrayNode actions = (ArrayNode) Json.toJson(getNodeActions(node, nodes));
-        jsonNode.set("allowedActions", actions);
-      }
-    } catch (Exception e) {
-      LOG.info("Unable to add allowed actions: " + e);
-    }
   }
 
   @VisibleForTesting
@@ -298,14 +244,16 @@ public class Universe extends Model {
    * @param universeName String which contains the name which is to be checked
    * @return true if universe already exists, false otherwise
    */
+  @Deprecated
   public static boolean checkIfUniverseExists(String universeName) {
     return find.query().select("universeUUID").where().eq("name", universeName).findCount() > 0;
   }
 
   /**
-   * Get all the universe UUIDs for a given customer
+   * Fetch ONLY the universeUUID field for all universes.
+   * WARNING: Returns partially filled Universe objects!!
    *
-   * @return list of universe UUIDs.
+   * @return list of UUIDs of all universes
    */
   public static Set<UUID> getAllUUIDs(Customer customer) {
     return ImmutableSet.copyOf(
@@ -317,11 +265,18 @@ public class Universe extends Model {
    *
    * @return the universe object
    */
-  public static Universe get(UUID universeUUID) {
+  public static Universe getOrBadRequest(UUID universeUUID) {
+    return maybeGet(universeUUID)
+      .orElseThrow(
+        () -> new YWServiceException(BAD_REQUEST, "Cannot find universe " + universeUUID));
+  }
+
+  public static Optional<Universe> maybeGet(UUID universeUUID) {
     // Find the universe.
     Universe universe = find.byId(universeUUID);
     if (universe == null) {
-      throw new RuntimeException("Cannot find universe " + universeUUID);
+      LOG.info("Cannot find universe {}", universeUUID);
+      return Optional.empty();
     }
 
     JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
@@ -334,28 +289,29 @@ public class Universe extends Model {
       && !detailsJson.isNull()
       && (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0)) {
       UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
-      PlacementInfo placementInfo =
-        Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
+      PlacementInfo placementInfo = Json.fromJson(detailsJson.get("placementInfo"),
+        PlacementInfo.class);
       universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
     }
 
     // Return the universe object.
-    return universe;
+    return Optional.of(universe);
   }
 
-  public static Set<Universe> get(Set<UUID> universeUUIDs) {
-    Set<Universe> universes = new HashSet<>();
-    for (UUID universeUUID : universeUUIDs) {
-      universes.add(Universe.get(universeUUID));
-    }
-    return universes;
+  public static Set<Universe> getAllPresent(Set<UUID> universeUUIDs) {
+    return universeUUIDs.stream()
+      .map(Universe::maybeGet)
+      .filter(Optional::isPresent)
+      .map(Optional::get)
+      .collect(Collectors.toSet());
   }
 
   public static Universe getUniverseByName(String universeName) {
-    if (checkIfUniverseExists(universeName)) {
-      return find.query().where().eq("name", universeName).findOne();
-    }
-    return null;
+    return find.query().where().eq("name", universeName).findOne();
+  }
+
+  public static Optional<Universe> maybeGetUniverseByName(String universeName) {
+    return find.query().where().eq("name", universeName).findOneOrEmpty();
   }
 
   /**
@@ -366,11 +322,13 @@ public class Universe extends Model {
     void run(Universe universe);
   }
 
+  // TODO: Investigate why not use transactions for this
+  // TODO: synchronized in static scope - investigate what state it is protecting
   // Helper api to make an atomic read of universe version, and compare and swap the
   // updated version to disk.
   private static synchronized Universe readModifyWrite(
     UUID universeUUID, UniverseUpdater updater, boolean incrementVersion) {
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     // Update the universe object which is supplied as a lambda function.
     boolean updateSucceeded = false;
     try {
@@ -434,8 +392,9 @@ public class Universe extends Model {
    */
   public static void delete(UUID universeUUID) {
     // First get the universe.
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     // Make sure this universe has been locked.
+    // TODO: fixme. Useless check. java asserts are turned off by default in production code!!!
     assert !universe.universeDetails.updateInProgress;
     // Delete the universe.
     LOG.info("Deleting universe " + universe.name + ":" + universeUUID);
@@ -460,19 +419,29 @@ public class Universe extends Model {
     return getUniverseDetails().nodeDetailsSet.stream().anyMatch(NodeDetails::isInTransit);
   }
 
+  public NodeDetails getNodeOrBadRequest(String nodeName) {
+    return maybeGetNode(nodeName)
+      .orElseThrow(() -> new YWServiceException(BAD_REQUEST,
+        "Invalid Node " + nodeName + " for Universe"));
+  }
+
   /**
    * Returns details about a single node in the universe.
    *
    * @return details about a node, null if it does not exist.
    */
   public NodeDetails getNode(String nodeName) {
+    return maybeGetNode(nodeName).orElse(null);
+  }
+
+  public Optional<NodeDetails> maybeGetNode(String nodeName) {
     Collection<NodeDetails> nodes = getNodes();
     for (NodeDetails node : nodes) {
       if (node.nodeName != null && node.nodeName.equals(nodeName)) {
-        return node;
+        return Optional.of(node);
       }
     }
-    return null;
+    return Optional.empty();
   }
 
   /**
@@ -887,12 +856,20 @@ public class Universe extends Model {
 
   public static Set<Universe> universeDetailsIfCertsExists(UUID certUUID, UUID customerUUID) {
     return Customer.get(customerUUID).getUniverses().stream()
-        .filter(s -> s.getUniverseDetails().rootCA != null
+      .filter(s -> s.getUniverseDetails().rootCA != null
         && s.getUniverseDetails().rootCA.equals(certUUID))
-        .collect(Collectors.toSet());
+      .collect(Collectors.toSet());
   }
 
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
     return universeDetailsIfCertsExists(certUUID, customerUUID).size() != 0;
+  }
+
+  static boolean isUniversePaused(UUID uuid) {
+    Universe universe = maybeGet(uuid).orElse(null);
+    if (universe == null) {
+      return false;
+    }
+    return universe.getUniverseDetails().universePaused;
   }
 }

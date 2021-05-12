@@ -101,6 +101,8 @@ DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
+DECLARE_int32(ysql_transaction_abort_timeout_ms);
+
 namespace yb {
 namespace tablet {
 
@@ -527,12 +529,35 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-void TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  if (StartShutdown()) {
+Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
+  bool isShutdownInitiated = StartShutdown();
+
+  RETURN_NOT_OK(AbortSQLTransactions());
+
+  if (isShutdownInitiated) {
     CompleteShutdown(is_drop_table);
   } else {
     WaitUntilShutdown();
   }
+  return Status::OK();
+}
+
+Status TabletPeer::AbortSQLTransactions() {
+  // Once raft group state enters QUIESCING state,
+  // new queries cannot be processed from then onwards.
+  // Aborting any remaining active transactions in the tablet.
+  if (tablet_ && tablet_->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    if (tablet_->transaction_participant()) {
+      HybridTime maxCutoff = HybridTime::kMax;
+      LOG(INFO) << "Aborting transactions that started prior to " << maxCutoff
+                << " for tablet id " << tablet_->tablet_id();
+      CoarseTimePoint deadline = CoarseMonoClock::Now() +
+          MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
+      WARN_NOT_OK(tablet_->transaction_participant()->StopActiveTxnsPriorTo(maxCutoff, deadline),
+                  "Cannot abort transactions for tablet " + tablet_->tablet_id());
+    }
+  }
+  return Status::OK();
 }
 
 Status TabletPeer::CheckRunning() const {
@@ -645,7 +670,7 @@ Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimeP
 }
 
 void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
-  consensus_->GetLastCommittedOpId().ToPB(&data->op_id);
+  data->op_id = consensus_->GetLastCommittedOpId();
   data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
 }
 
@@ -673,6 +698,10 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
   status_pb_out->set_state(state_);
   status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
+  auto tablet = tablet_;
+  if (tablet) {
+    status_pb_out->set_table_type(tablet->table_type());
+  }
   disk_size_info.ToPB(status_pb_out);
 }
 
@@ -1029,7 +1058,6 @@ Status TabletPeer::StartReplicaOperation(
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
-  auto operation_type = operation->operation_type();
   OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
   // Unretained is required to avoid a refcount cycle.
@@ -1038,11 +1066,6 @@ Status TabletPeer::StartReplicaOperation(
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
-  }
-
-  if (operation_type == OperationType::kWrite ||
-      operation_type == OperationType::kUpdateTransaction) {
-    tablet()->mvcc_manager()->AddPending(&ht);
   }
 
   driver->ExecuteAsync();
@@ -1079,12 +1102,15 @@ shared_ptr<consensus::Consensus> TabletPeer::shared_consensus() const {
 
 Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
     std::unique_ptr<Operation>* operation, int64_t term) {
+  if (term == OpId::kUnknownTerm) {
+    return STATUS(InvalidArgument, "Leader operation driver for unknown term");
+  }
   return NewOperationDriver(operation, term);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewReplicaOperationDriver(
     std::unique_ptr<Operation>* operation) {
-  return NewOperationDriver(operation, yb::OpId::kUnknownTerm);
+  return NewOperationDriver(operation, OpId::kUnknownTerm);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewOperationDriver(std::unique_ptr<Operation>* operation,
@@ -1136,8 +1162,9 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
         tablet_->GetCurrentVersionSstFilesUncompressedSize();
   }
 
-  if (log_) {
-    info.wal_files_disk_size = log_->OnDiskSize();
+  auto log = log_atomic_.load(std::memory_order_acquire);
+  if (log) {
+    info.wal_files_disk_size = log->OnDiskSize();
   }
 
   info.RecomputeTotalSize();
@@ -1145,7 +1172,8 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
 }
 
 int TabletPeer::GetNumLogSegments() const {
-  return (log_) ? log_->num_segments() : 0;
+  auto log = log_atomic_.load(std::memory_order_acquire);
+  return log ? log->num_segments() : 0;
 }
 
 std::string TabletPeer::LogPrefix() const {
@@ -1191,7 +1219,7 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 
-TableType TabletPeer::table_type() {
+TableType TabletPeer::table_type() EXCLUDES(lock_) {
   // TODO: what if tablet is not set?
   return DCHECK_NOTNULL(tablet())->table_type();
 }

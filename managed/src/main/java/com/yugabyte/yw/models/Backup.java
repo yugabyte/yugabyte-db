@@ -12,7 +12,6 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -42,7 +41,11 @@ public class Backup extends Model {
     Deleted,
 
     @EnumValue("Skipped")
-    Skipped
+    Skipped,
+
+    // Complete or partial failure to delete
+    @EnumValue("FailedToDelete")
+    FailedToDelete,
   }
 
   @Id
@@ -56,7 +59,7 @@ public class Backup extends Model {
 
   @Column(columnDefinition = "TEXT", nullable = false)
   @DbJson
-  public JsonNode backupInfo;
+  private BackupTableParams backupInfo;
 
   @Column(unique = true)
   public UUID taskUUID;
@@ -71,11 +74,11 @@ public class Backup extends Model {
   public Date getExpiry() { return expiry; }
 
   public void setBackupInfo(BackupTableParams params) {
-    this.backupInfo = Json.toJson(params);
+    this.backupInfo = params;
   }
 
   public BackupTableParams getBackupInfo() {
-    return Json.fromJson(this.backupInfo, BackupTableParams.class);
+    return this.backupInfo;
   }
 
   @CreatedTimestamp
@@ -97,15 +100,15 @@ public class Backup extends Model {
     if (params.tableUUIDList != null) {
       params.storageLocation = String.format("univ-%s/backup-%s-%d/multi-table-%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
-        params.keyspace);
-    } else if (params.tableName == null && params.keyspace != null) {
+        params.getKeyspace());
+    } else if (params.getTableName() == null && params.getKeyspace() != null) {
       params.storageLocation = String.format("univ-%s/backup-%s-%d/keyspace-%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
-        params.keyspace);
+        params.getKeyspace());
     } else {
       params.storageLocation = String.format("univ-%s/backup-%s-%d/table-%s.%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
-        params.keyspace, params.tableName);
+        params.getKeyspace(), params.getTableName());
       if (params.tableUUID != null) {
         params.storageLocation = String.format("%s-%s",
           params.storageLocation,
@@ -208,11 +211,10 @@ public class Backup extends Model {
     Map<Customer, List<Backup>> ret = new HashMap<>();
     expiredBackupsByCustomerUUID.forEach((customerUUID, backups) -> {
       Customer customer = Customer.get(customerUUID);
-      Set<UUID> allUniverseUUIDs = Universe.getAllUUIDs(customer);
-      List<Backup> backupsWithValidUniv = backups.stream()
-        .filter(backup -> allUniverseUUIDs.contains(backup.getBackupInfo().universeUUID))
+      List<Backup> backupList = backups.stream()
+        .filter(backup -> !Universe.isUniversePaused(backup.getBackupInfo().universeUUID))
         .collect(Collectors.toList());
-      ret.put(customer, backupsWithValidUniv);
+      ret.put(customer, backupList);
     });
     return ret;
   }
@@ -222,11 +224,11 @@ public class Backup extends Model {
     // Or completed to deleted state.
     if ((this.state == BackupState.InProgress && this.state != newState) ||
         (this.state == BackupState.Completed && newState == BackupState.Deleted) ||
-        // This condition is for the case in which the delete fails and we need
-        // to reset the state.
-        (this.state == BackupState.Deleted && newState == BackupState.Completed)) {
+        (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)) {
       this.state = newState;
       save();
+    } else {
+      LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", state, newState);
     }
   }
 

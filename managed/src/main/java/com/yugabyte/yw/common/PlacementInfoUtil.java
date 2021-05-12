@@ -2,33 +2,20 @@
 
 package com.yugabyte.yw.common;
 
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.stream.Collectors;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Joiner;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
-import org.joda.time.DateTime;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -36,14 +23,23 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import org.joda.time.DateTime;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toCollection;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toCollection;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 
 public class PlacementInfoUtil {
@@ -360,7 +356,7 @@ public class PlacementInfoUtil {
       taskParams.universeUUID = UUID.randomUUID();
     } else {
       try {
-        universe = Universe.get(taskParams.universeUUID);
+        universe = Universe.getOrBadRequest(taskParams.universeUUID);
       } catch (Exception e) {
         LOG.info("Universe with UUID {} not found, configuring new universe.",
                  taskParams.universeUUID);
@@ -1136,6 +1132,23 @@ public class PlacementInfoUtil {
     }
   }
 
+  public static Map<UUID, PlacementAZ> getPlacementAZMap(PlacementInfo placementInfo) {
+    return getPlacementAZStream(placementInfo)
+      .collect(Collectors.toMap(az -> az.uuid, Function.identity()));
+  }
+
+  public static Map<UUID, PlacementAZ> getPlacementAZMap(Universe universe) {
+    return universe.getUniverseDetails().clusters.stream()
+      .flatMap(cluster -> getPlacementAZStream(cluster.placementInfo))
+      .collect(Collectors.toMap(az -> az.uuid, Function.identity()));
+  }
+
+  private static Stream<PlacementAZ> getPlacementAZStream(PlacementInfo placementInfo) {
+    return placementInfo.cloudList.stream()
+      .flatMap(cloud -> cloud.regionList.stream())
+      .flatMap(region -> region.azList.stream());
+  }
+
   /**
    * This method configures nodes for Edit case, with user specified placement info.
    * It supports the following combinations --
@@ -1154,7 +1167,7 @@ public class PlacementInfoUtil {
     Cluster currentCluster = taskParams.currentClusterType.equals(PRIMARY) ?
         taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
 
-    Universe universe = Universe.get(taskParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     Collection<NodeDetails> existingNodes = universe.getNodesInCluster(currentCluster.uuid);
 
     // If placementInfo is null then user has chosen to Reset AZ config
@@ -1897,8 +1910,8 @@ public class PlacementInfoUtil {
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null &&
         !userIntent.regionList.contains(userIntent.preferredRegion)) {
-      throw new RuntimeException("Preferred region " + userIntent.preferredRegion +
-          " not in user region list.");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR,
+        "Preferred region " + userIntent.preferredRegion + " not in user region list.");
     }
 
     // Create the placement info object.
@@ -1944,7 +1957,8 @@ public class PlacementInfoUtil {
     }
 
     if (allAzsInRegions.isEmpty()) {
-      throw new RuntimeException("No AZ found across regions: " + userIntent.regionList);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR,
+        "No AZ found across regions: " + userIntent.regionList);
     }
 
     LOG.info("numRegions={}, numAzsInRegions={}, zonesIntended={}", userIntent.regionList.size(),
@@ -1968,7 +1982,7 @@ public class PlacementInfoUtil {
         }
       }
     } else {
-      throw new RuntimeException(String.format(
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, String.format(
         "Number of zones=%d greater than RF=%d is not allowed",
         num_zones,
         userIntent.replicationFactor
@@ -1995,11 +2009,21 @@ public class PlacementInfoUtil {
     addPlacementZone(zone, placementInfo, 1 /* rf */, 1 /* numNodes */);
   }
 
-  private static void addPlacementZone(
+  public static void addPlacementZone(
     UUID zone,
     PlacementInfo placementInfo,
     int rf,
     int numNodes
+  ) {
+    addPlacementZone(zone, placementInfo, rf, numNodes, true);
+  }
+
+  public static void addPlacementZone(
+    UUID zone,
+    PlacementInfo placementInfo,
+    int rf,
+    int numNodes,
+    boolean isAffinitized
   ) {
     // Get the zone, region and cloud.
     AvailabilityZone az = AvailabilityZone.get(zone);
@@ -2043,7 +2067,7 @@ public class PlacementInfoUtil {
         newPlacementAZ.name = az.name;
         newPlacementAZ.replicationFactor = 0;
         newPlacementAZ.subnet = az.subnet;
-        newPlacementAZ.isAffinitized = true;
+        newPlacementAZ.isAffinitized = isAffinitized;
         placementRegion.azList.add(newPlacementAZ);
 
         return newPlacementAZ;

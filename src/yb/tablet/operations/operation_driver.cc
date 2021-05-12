@@ -101,8 +101,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
 
   if (term == OpId::kUnknownTerm) {
     if (operation_) {
-      op_id_copy_.store(yb::OpId::FromPB(operation_->state()->op_id()),
-                                         boost::memory_order_release);
+      op_id_copy_.store(operation_->state()->op_id(), boost::memory_order_release);
     }
     replication_state_ = REPLICATING;
   } else {
@@ -120,6 +119,13 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
   auto result = operation_tracker_->Add(this);
   if (!result.ok() && operation) {
     *operation = std::move(operation_);
+  }
+
+  if (term == OpId::kUnknownTerm && operation_) {
+    auto state = operation_->state();
+    if (state->use_mvcc()) {
+      state->tablet()->mvcc_manager()->AddFollowerPending(state->hybrid_time(), state->op_id());
+    }
   }
 
   return result;
@@ -182,13 +188,20 @@ void OperationDriver::ExecuteAsync() {
   }
 }
 
-void OperationDriver::HandleConsensusAppend(
-    const yb::OpId& op_id, const yb::OpId& committed_op_id) {
+void OperationDriver::HandleConsensusAppend(const OpId& op_id, const OpId& committed_op_id) {
   ADOPT_TRACE(trace());
+  auto* state = operation_->state();
+  if (state->use_mvcc()) {
+    state->set_hybrid_time(state->tablet()->mvcc_manager()->AddLeaderPending(op_id));
+  } else {
+    state->TrySetHybridTimeFromClock();
+  }
+  DCHECK(!GetOpId().valid());
+  op_id_copy_.store(op_id, boost::memory_order_release);
   if (!StartOperation()) {
     return;
   }
-  operation_->state()->LeaderInit(op_id, committed_op_id);
+  state->LeaderInit(op_id, committed_op_id);
 }
 
 void OperationDriver::PrepareAndStartTask() {
@@ -200,11 +213,6 @@ void OperationDriver::PrepareAndStartTask() {
 }
 
 bool OperationDriver::StartOperation() {
-  if (operation_) {
-    operation_->Start();
-    std::lock_guard<simple_spinlock> lock(lock_);
-    op_id_copy_.store(yb::OpId::FromPB(operation_->state()->op_id()), boost::memory_order_release);
-  }
   if (propagated_safe_time_) {
     mvcc_->SetPropagatedSafeTimeOnFollower(propagated_safe_time_);
   }
@@ -305,6 +313,14 @@ void OperationDriver::HandleFailure(Status status) {
     {
       VLOG_WITH_PREFIX(1) << "Operation " << ToString() << " failed prior to "
           "replication success: " << status;
+      auto state = operation_->state();
+      if (state->use_mvcc()) {
+        auto hybrid_time = state->hybrid_time_even_if_unset();
+        if (hybrid_time.is_valid()) {
+          state->tablet()->mvcc_manager()->Aborted(hybrid_time, GetOpId());
+        }
+      }
+
       operation_->Aborted(status);
       operation_tracker_->Release(this, nullptr /* applied_op_ids */);
       return;
@@ -321,14 +337,14 @@ void OperationDriver::HandleFailure(Status status) {
 
 void OperationDriver::ReplicationFinished(
     const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
-  auto op_id_local = DCHECK_NOTNULL(mutable_state()->consensus_round())->id();
-  DCHECK(!status.ok() || op_id_local.IsInitialized());
-  op_id_copy_.store(yb::OpId::FromPB(op_id_local), boost::memory_order_release);
+  auto op_id_local = OpId::FromPB(DCHECK_NOTNULL(mutable_state()->consensus_round())->id());
+  LOG_IF(DFATAL, status.ok() && op_id_local.empty()) << "Empty op id after replication";
+  LOG_IF(DFATAL, !GetOpId().valid()) << "Invalid op id replication";
 
   PrepareState prepare_state_copy;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    mutable_state()->mutable_op_id()->CopyFrom(op_id_local);
+    mutable_state()->set_op_id(op_id_local);
     CHECK_EQ(replication_state_, REPLICATING);
     if (status.ok()) {
       replication_state_ = REPLICATED;
@@ -389,8 +405,7 @@ void OperationDriver::Abort(const Status& status) {
   }
 }
 
-Status OperationDriver::ApplyOperation(
-    int64_t leader_term, OpIds* applied_op_ids) {
+Status OperationDriver::ApplyOperation(int64_t leader_term, OpIds* applied_op_ids) {
   {
     std::unique_lock<simple_spinlock> lock(lock_);
     DCHECK_EQ(prepare_state_, PREPARED);

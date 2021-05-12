@@ -272,13 +272,6 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
-YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid,
-    const YBCPgOid index_oid,
-    const uint32_t target_index_permissions,
-    uint32_t *actual_index_permissions);
-
 YBCStatus YBCPgAsyncUpdateIndexPermissions(
     const YBCPgOid database_oid,
     const YBCPgOid indexed_table_oid);
@@ -364,6 +357,12 @@ YBCStatus YBCPgStopOperationsBuffering();
 YBCStatus YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 void YBCPgDropBufferedOperations();
+
+YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
+                          const YBCPgOid table_oid,
+                          YBCPgStatement *handle);
+
+YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count);
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
@@ -519,6 +518,8 @@ void* YBCPgGetThreadLocalJumpBuffer();
 void YBCPgSetThreadLocalErrMsg(const void* new_msg);
 
 const void* YBCPgGetThreadLocalErrMsg();
+
+void YBCPgResetCatalogReadTime();
 
 #ifdef __cplusplus
 }  // extern "C"

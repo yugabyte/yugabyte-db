@@ -239,11 +239,13 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
  public:
   RemoteTablet(std::string tablet_id,
                Partition partition,
+               boost::optional<PartitionListVersion> partition_list_version,
                uint64 split_depth,
                const TabletId& split_parent_tablet_id)
       : tablet_id_(std::move(tablet_id)),
         log_prefix_(Format("T $0: ", tablet_id_)),
         partition_(std::move(partition)),
+        partition_list_version_(partition_list_version),
         split_depth_(split_depth),
         split_parent_tablet_id_(split_parent_tablet_id),
         stale_(false) {
@@ -269,6 +271,14 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   void MarkAsSplit();
 
   bool is_split() const;
+
+  // Returns table partition list version last known to the client for which this tablet was
+  // serving partition_ key range.
+  // This could be `none` for RemoteTablet instances requested by ID, because in that case we don't
+  // get table partition list version from master.
+  boost::optional<PartitionListVersion> partition_list_version() const {
+    return partition_list_version_;
+  }
 
   // Mark any replicas of this tablet hosted by 'ts' as failed. They will
   // not be returned in future cache lookups.
@@ -356,6 +366,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   const std::string tablet_id_;
   const std::string log_prefix_;
   const Partition partition_;
+  const boost::optional<PartitionListVersion> partition_list_version_;
   const uint64 split_depth_;
   const TabletId split_parent_tablet_id_;
 
@@ -481,29 +492,9 @@ class LookupCallbackVisitor : public boost::static_visitor<> {
   explicit LookupCallbackVisitor(const Status& error_status) : error_status_(error_status) {
   }
 
-  void operator() (const LookupTabletCallback& tablet_callback) const {
-    if (error_status_) {
-      tablet_callback(*error_status_);
-      return;
-    }
-    auto remote_tablet = boost::get<RemoteTabletPtr>(param_);
-    if (remote_tablet == nullptr) {
-      static const Status error_status =
-          STATUS(TryAgain, "Tablet for requested partition is not yet running");
-      tablet_callback(error_status);
-      return;
-    }
-    tablet_callback(remote_tablet);
-  }
+  void operator()(const LookupTabletCallback& tablet_callback) const;
+  void operator()(const LookupTabletRangeCallback& tablet_range_callback) const;
 
-  void operator() (const LookupTabletRangeCallback& tablet_range_callback) const {
-    if (error_status_) {
-      tablet_range_callback(*error_status_);
-      return;
-    }
-    auto result = boost::get<std::vector<RemoteTabletPtr>>(param_);
-    tablet_range_callback(result);
-  }
  private:
   const LookupCallbackParam param_;
   const boost::optional<Status> error_status_;

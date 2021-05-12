@@ -12,29 +12,28 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
-import java.text.SimpleDateFormat;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import play.libs.Json;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
@@ -46,7 +45,7 @@ public class Util {
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
   public static List<InetSocketAddress> getNodesAsInet(UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     List<InetSocketAddress> inetAddrs = new ArrayList<>();
     for (String address : universe.getYQLServerAddresses().split(",")) {
       String[] splitAddress = address.split(":");
@@ -341,5 +340,51 @@ public class Util {
       details.add(universePayload);
     }
     return details;
+  }
+
+  public static int compareYbVersions(String v1, String v2) {
+    Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
+    Matcher v1Matcher = versionPattern.matcher(v1);
+    Matcher v2Matcher = versionPattern.matcher(v2);
+
+    if (v1Matcher.find() && v2Matcher.find()) {
+      String[] v1Numbers = v1Matcher.group(1).split("\\.");
+      String[] v2Numbers = v2Matcher.group(1).split("\\.");
+      for (int i = 0; i < 4; i++) {
+        int a = Integer.parseInt(v1Numbers[i]);
+        int b = Integer.parseInt(v2Numbers[i]);
+        if (a != b) {
+          return a - b;
+        }
+      }
+
+      String v1BuildNumber = v1Matcher.group(4);
+      String v2BuildNumber = v2Matcher.group(4);
+      // If one of the build number is null (i.e local build) then consider
+      // versions as equal as we cannot compare between local builds
+      // e.g: 2.5.2.0-b15 and 2.5.2.0-custom are considered equal
+      // 2.5.2.0-custom1 and 2.5.2.0-custom2 are considered equal too
+      if (v1BuildNumber != null && v2BuildNumber != null) {
+        int a = Integer.parseInt(v1BuildNumber);
+        int b = Integer.parseInt(v2BuildNumber);
+        return a - b;
+      }
+
+      return 0;
+    }
+
+    throw new RuntimeException("Unable to parse YB version strings");
+  }
+
+  public static String escapeSingleQuotesOnly(String src) {
+    return src.replaceAll("'", "''");
+  }
+
+  @VisibleForTesting
+  public static String removeEnclosingDoubleQuotes(String src) {
+    if (src != null && src.startsWith("\"") && src.endsWith("\"")) {
+      return src.substring(1, src.length() - 1);
+    }
+    return src;
   }
 }

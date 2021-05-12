@@ -163,8 +163,11 @@ public class NodeManagerTest extends FakeDBApplication {
     params.deviceInfo.numVolumes = 2;
     if (testData.cloudType.equals(Common.CloudType.aws)) {
       params.deviceInfo.storageType = testData.storageType;
-      if (testData.storageType != null && testData.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
+      if (testData.storageType != null && testData.storageType.isIopsProvisioning()) {
         params.deviceInfo.diskIops = 240;
+      }
+      if (testData.storageType != null && testData.storageType.isThroughputProvisioning()) {
+        params.deviceInfo.throughput = 250;
       }
     }
   }
@@ -312,7 +315,6 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("/yb/release.tar.gz");
         }
 
-
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeUniverse.UpgradeTaskSubType taskSubType =
               UpgradeUniverse.UpgradeTaskSubType.valueOf(configureParams.getProperty("taskSubType"));
@@ -354,7 +356,7 @@ public class NodeManagerTest extends FakeDBApplication {
           if (configureParams.enableYSQL) {
             gflags.put("enable_ysql", "true");
             gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", configureParams.nodeName,
-              Universe.get(configureParams.universeUUID)
+              Universe.getOrBadRequest(configureParams.universeUUID)
                 .getNode(configureParams.nodeName).ysqlServerRpcPort));
           } else {
             gflags.put("enable_ysql", "false");
@@ -364,6 +366,10 @@ public class NodeManagerTest extends FakeDBApplication {
             if (configureParams.callhomeLevel.toString() == "NONE") {
               gflags.put("callhome_enabled", "false");
             }
+          }
+          if (configureParams.currentClusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+              && configureParams.setTxnTableWaitCountFlag) {
+            gflags.put("txn_table_wait_min_ts_count", Integer.toString(userIntent.numNodes));
           }
           if (configureParams.enableNodeToNodeEncrypt || configureParams.enableClientToNodeEncrypt) {
             CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
@@ -414,7 +420,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(processType.toLowerCase());
 
           if (configureParams.updateMasterAddrsOnly) {
-            String masterAddresses = Universe.get(configureParams.universeUUID)
+            String masterAddresses = Universe.getOrBadRequest(configureParams.universeUUID)
                 .getMasterAddresses(false);
             if (configureParams.isMasterInShellMode) {
               masterAddresses = "";
@@ -484,9 +490,13 @@ public class NodeManagerTest extends FakeDBApplication {
       if (type == NodeManager.NodeCommandType.Provision && deviceInfo.storageType != null) {
         expectedCommand.add("--volume_type");
         expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
-        if (deviceInfo.storageType == PublicCloudConstants.StorageType.IO1 && deviceInfo.diskIops != null) {
+        if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
           expectedCommand.add("--disk_iops");
           expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+        }
+        if (deviceInfo.storageType.isThroughputProvisioning() && deviceInfo.throughput != null) {
+          expectedCommand.add("--disk_throughput");
+          expectedCommand.add(Integer.toString(deviceInfo.throughput));
         }
       }
 
@@ -840,6 +850,34 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  public void testConfigureNodeCommandWithSetTxnTableWaitCountFlag() {
+    for (TestData t : testData) {
+      // Set up TaskParams
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.ybSoftwareVersion = "0.0.1";
+      params.setTxnTableWaitCountFlag = true;
+
+      // Set up UserIntent
+      UserIntent userIntent = new UserIntent();
+      userIntent.numNodes = 3;
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 

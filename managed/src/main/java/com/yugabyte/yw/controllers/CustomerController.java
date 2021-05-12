@@ -45,13 +45,16 @@ public class CustomerController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
 
   @Inject
-  ValidatingFormFactory formFactory;
+  private ValidatingFormFactory formFactory;
 
   @Inject
-  MetricQueryHelper metricQueryHelper;
+  private MetricQueryHelper metricQueryHelper;
 
   @Inject
-  CloudQueryHelper cloudQueryHelper;
+  private CloudQueryHelper cloudQueryHelper;
+
+  @Inject
+  private AlertManager alertManager;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
@@ -109,31 +112,34 @@ public class CustomerController extends AuthenticatedController {
 
     JsonNode request = request().body().asJson();
     Form<AlertingFormData> formData = formFactory.getFormDataOrBadRequest(AlertingFormData.class);
+    AlertingFormData alertingFormData = formData.get();
 
-    if (formData.get().name != null) {
-      customer.name = formData.get().name;
+    if (alertingFormData.name != null) {
+      customer.name = alertingFormData.name;
       customer.save();
     }
 
     if (request.has("alertingData") || request.has("smtpData")) {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
-      if (config == null && formData.get().alertingData != null) {
-        CustomerConfig.createAlertConfig(customerUUID, Json.toJson(formData.get().alertingData));
-      } else if (config != null && formData.get().alertingData != null) {
-        config.setData(Json.toJson(formData.get().alertingData));
+      if (config == null && alertingFormData.alertingData != null) {
+        CustomerConfig.createAlertConfig(customerUUID, Json.toJson(alertingFormData.alertingData));
+      } else if (config != null && alertingFormData.alertingData != null) {
+        config.setData(Json.toJson(alertingFormData.alertingData));
         config.update();
       }
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
-      if (smtpConfig == null && formData.get().smtpData != null) {
-        CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(formData.get().smtpData));
-      } else if (smtpConfig != null && formData.get().smtpData != null) {
-        smtpConfig.setData(Json.toJson(formData.get().smtpData));
+      if (smtpConfig == null && alertingFormData.smtpData != null) {
+        alertManager.resolveAlerts(customer.uuid, EmailHelper.DEFAULT_CONFIG_UUID, "%");
+        CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData));
+      } else if (smtpConfig != null && alertingFormData.smtpData != null) {
+        smtpConfig.setData(Json.toJson(alertingFormData.smtpData));
         smtpConfig.update();
       } // In case we want to reset the smtpData and use the default mailing server.
-      else if (request.has("smtpData") && formData.get().smtpData == null) {
+      else if (request.has("smtpData") && alertingFormData.smtpData == null) {
         if (smtpConfig != null) {
+          alertManager.resolveAlerts(customer.uuid, smtpConfig.configUUID, "%");
           smtpConfig.delete();
         }
       }
@@ -145,7 +151,7 @@ public class CustomerController extends AuthenticatedController {
       customer.upsertFeatures(requestBody.get("features"));
     }
 
-    CustomerConfig.upsertCallhomeConfig(customerUUID, formData.get().callhomeLevel);
+    CustomerConfig.upsertCallhomeConfig(customerUUID, alertingFormData.callhomeLevel);
 
     return ok(Json.toJson(customer));
   }
@@ -160,7 +166,7 @@ public class CustomerController extends AuthenticatedController {
 
     if (customer.delete()) {
       ObjectNode responseJson = Json.newObject();
-      Audit.createAuditEntry(ctx(), request());
+      auditService().createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     }
@@ -182,7 +188,7 @@ public class CustomerController extends AuthenticatedController {
 
     customer.upsertFeatures(formData.features);
 
-    Audit.createAuditEntry(ctx(), request(), requestBody);
+    auditService().createAuditEntry(ctx(), request(), requestBody);
     return ok(customer.getFeatures());
   }
 
@@ -198,7 +204,7 @@ public class CustomerController extends AuthenticatedController {
     // container or not, and use pod_name vs exported_instance accordingly.
     // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
     boolean hasContainerMetric =
-      formData.get().metrics.stream().anyMatch(s -> s.startsWith("container"));
+      formData.get().getMetrics().stream().anyMatch(s -> s.startsWith("container"));
     String universeFilterLabel = hasContainerMetric ? "namespace" : "node_prefix";
     String nodeFilterLabel = hasContainerMetric ? "pod_name" : "exported_instance";
     String containerLabel = "container_name";
@@ -249,7 +255,8 @@ public class CustomerController extends AuthenticatedController {
       filterJson.put("table_name", params.remove("tableName"));
     }
     params.put("filters", Json.stringify(filterJson));
-    JsonNode response = metricQueryHelper.query(formData.get().metrics, params, filterOverrides);
+    JsonNode response = metricQueryHelper.query(
+      formData.get().getMetrics(), params, filterOverrides);
     if (response.has("error")) {
       throw new YWServiceException(BAD_REQUEST, response.get("error"));
     }
@@ -316,7 +323,7 @@ public class CustomerController extends AuthenticatedController {
     HashMap<String, HashMap<String, String>> filterOverrides = new HashMap<>();
     // For a disk usage metric query, the mount point has to be modified to match the actual
     // mount point for an onprem universe.
-    if (mqParams.metrics.contains("disk_usage")) {
+    if (mqParams.getMetrics().contains("disk_usage")) {
       List<Universe> universes =
         customer.getUniverses().stream()
           .filter(

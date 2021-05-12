@@ -21,6 +21,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
 
+#include "yb/yql/pggate/pg_analyze.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -778,16 +779,6 @@ Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
   return Status::OK();
 }
 
-Result<IndexPermissions> PgApiImpl::WaitUntilIndexPermissionsAtLeast(
-    const PgObjectId& table_id,
-    const PgObjectId& index_id,
-    const IndexPermissions& target_index_permissions) {
-  return pg_session_->WaitUntilIndexPermissionsAtLeast(
-      table_id,
-      index_id,
-      target_index_permissions);
-}
-
 Status PgApiImpl::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
   return pg_session_->AsyncUpdateIndexPermissions(indexed_table_id);
 }
@@ -1052,6 +1043,24 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
   return down_cast<PgDelete*>(handle)->Exec();
 }
 
+Status PgApiImpl::NewAnalyze(const PgObjectId& table_id, PgStatement **handle) {
+  *handle = nullptr;
+  auto analyze = std::make_unique<PgAnalyze>(pg_session_, table_id);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(analyze), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecAnalyze(PgStatement *handle, int32_t* rows) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ANALYZE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  auto analyze = down_cast<PgAnalyze*>(handle);
+  RETURN_NOT_OK(analyze->Exec());
+  *rows = VERIFY_RESULT(analyze->GetNumRows());
+  return Status::OK();
+}
+
 Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DELETE)) {
     // Invalid handle.
@@ -1299,7 +1308,17 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
     pg_session_->DropBufferedOperations();
   }
 
-  return pg_txn_manager_->ExitSeparateDdlTxnMode(success);
+  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(success));
+  ReadHybridTime read_time;
+  if (success) {
+    // Next reads from catalog tables have to see changes made by the DDL transaction.
+    ResetCatalogReadTime();
+  }
+  return Status::OK();
+}
+
+void PgApiImpl::ResetCatalogReadTime() {
+  pg_session_->ResetCatalogReadPoint();
 }
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(

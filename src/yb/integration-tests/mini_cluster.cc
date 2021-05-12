@@ -643,11 +643,13 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPee
       return ListTabletPeers(cluster, [](const auto& peer) { return true; });
     case ListPeersFilter::kLeaders:
       return ListTabletPeers(cluster, [](const auto& peer) {
-        return peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+        auto consensus = peer->shared_consensus();
+        return consensus && consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
       });
     case ListPeersFilter::kNonLeaders:
       return ListTabletPeers(cluster, [](const auto& peer) {
-        return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+        auto consensus = peer->shared_consensus();
+        return consensus && consensus->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
       });
   }
 
@@ -851,11 +853,9 @@ int NumRunningFlushes(MiniCluster* cluster) {
 Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name) {
   auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
-  scoped_refptr<master::TableInfo> table_info;
   master::TableIdentifierPB identifier;
   table_name.SetIntoTableIdentifierPB(&identifier);
-  RETURN_NOT_OK(catalog_manager->FindTable(identifier, &table_info));
-  return table_info;
+  return catalog_manager->FindTable(identifier);
 }
 
 Status WaitForInitDb(MiniCluster* cluster) {

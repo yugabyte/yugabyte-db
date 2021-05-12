@@ -7,23 +7,30 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
+import io.ebean.Ebean;
+import io.ebean.SqlUpdate;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import play.libs.Json;
 
-import java.util.*;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.yugabyte.yw.models.Backup.BackupState.Completed;
-import static com.yugabyte.yw.models.Backup.BackupState.Deleted;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
 import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
 import static org.junit.Assert.*;
 
 
+@RunWith(JUnitParamsRunner.class)
 public class BackupTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private CustomerConfig s3StorageConfig;
@@ -53,8 +60,8 @@ public class BackupTest extends FakeDBApplication {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = s3StorageConfig.configUUID;
     params.universeUUID = universeUUID;
-    params.keyspace = "foo";
-    params.tableName = "bar";
+    params.setKeyspace("foo");
+    params.setTableName("bar");
     Backup b = Backup.create(defaultCustomer.uuid, params);
     String storageRegex = "s3://foo/univ-" + universeUUID +
         "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
@@ -71,8 +78,8 @@ public class BackupTest extends FakeDBApplication {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = customerConfig.configUUID;
     params.universeUUID = universeUUID;
-    params.keyspace = "foo";
-    params.tableName = "bar";
+    params.setKeyspace("foo");
+    params.setTableName("bar");
     Backup b = Backup.create(defaultCustomer.uuid, params);
     String storageRegex = "univ-" + universeUUID +
         "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
@@ -161,33 +168,34 @@ public class BackupTest extends FakeDBApplication {
 
 
   @Test
-  public void testTransitionStateValid() throws InterruptedException {
+  @Parameters({
+    "InProgress, Completed",
+    "Completed, Deleted",
+    "Completed, FailedToDelete"})
+  public void testTransitionStateValid(Backup.BackupState from, Backup.BackupState to) {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
         u.universeUUID, s3StorageConfig.configUUID);
-    Date beforeUpdateTime  = b.getUpdateTime();
-    assertNotNull(beforeUpdateTime);
-    Thread.sleep(1);
-    b.transitionState(Backup.BackupState.Completed);
-    assertEquals(Completed, b.state);
-    assertNotNull(b.getUpdateTime());
-    assertNotEquals(beforeUpdateTime, b.getUpdateTime());
-    b.transitionState(Deleted);
-    assertEquals(Deleted, b.state);
+    b.transitionState(from);
+    assertEquals(from, b.state);
+    b.transitionState(to);
+    assertEquals(to, b.state);
   }
 
   @Test
-  public void testTransitionStateInvalid() throws InterruptedException {
+  @Parameters({"Completed, Failed"})
+  public void testTransitionStateInvalid(
+    Backup.BackupState from, Backup.BackupState to) throws InterruptedException {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
         u.universeUUID, s3StorageConfig.configUUID);
     Date beforeUpdateTime  = b.getUpdateTime();
     assertNotNull(b.getUpdateTime());
     Thread.sleep(1);
-    b.transitionState(Backup.BackupState.Completed);
+    b.transitionState(from);
     assertNotNull(b.getUpdateTime());
     assertNotEquals(beforeUpdateTime, b.getUpdateTime());
-    b.transitionState(Failed);
+    b.transitionState(to);
     assertNotEquals(Failed, b.state);
   }
 
@@ -255,7 +263,36 @@ public class BackupTest extends FakeDBApplication {
     backup3.transitionState(Backup.BackupState.Completed);
 
     Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
-    // assert to 2 as backup3's universe is not found.
-    assertEquals(String.valueOf(expiredBackups), 2, expiredBackups.get(defaultCustomer).size());
+    // assert to 3 as we are deleting backups even if the universe does not exist.
+    assertEquals(String.valueOf(expiredBackups), 3, expiredBackups.get(defaultCustomer).size());
   }
+
+
+  @Test
+  public void testDeserializationJson() {
+    String jsonWithUnknownFields = "{\"errorString\":null,\"deviceInfo\":null," +
+      "\"universeUUID\":\"2ca2d8aa-2879-41b5-8267-4dccc789e841\",\"expectedUniverseVersion\":0," +
+      "\"enableEncryptionAtRest\":false,\"disableEncryptionAtRest\":false,\"cmkArn\":n"
+      + "ull,\"encryptionAtRestConfig\":null,\"nodeDetailsSet\":null," +
+      "\"keyspace\":\"system_redis\",\"tableName\":\"redis\"," +
+      "\"tableUUID\":\"33268a1e-33e0-4606-90c6-ff9fb7e8c896\",\"sse\":false," +
+      "\"storageConfigUUID\":\"c0432198-df18-40cb-a012-83c89ca63573\"," +
+      "\"storageLocation\":\"s3://backups.yugabyte.com/por"
+      + "tal/univ-2ca2d8aa-2879-41b5-8267-4dccc789e841/backup-2019-11-19T04:21:48-391451651/table" +
+      "-system_redis.redis-33268a1e33e0460690c6ff9fb7e8c896\",\"actionType\":\"CREATE\"," +
+      "\"schedulingFrequency\":30000,\"timeBeforeDelete\":0,\"enableVerboseLogs\":false}";
+    UUID universeUUID = UUID.randomUUID();
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+      universeUUID, s3StorageConfig.configUUID);
+    assertNotNull(b);
+
+    SqlUpdate sqlUpdate = Ebean.createSqlUpdate("update public.backup set backup_info = '" +
+      jsonWithUnknownFields
+      + "'  where backup_uuid::text = '"+ b.backupUUID +"';");
+    sqlUpdate.execute();
+
+    b = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    assertNotNull(b);
+  }
+
 }

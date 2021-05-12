@@ -89,4 +89,6 @@ extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
 extern bool YBCIsTableColocated(Oid dboid, Oid relationId);
 
+extern int32_t YBCAnalyzeTable(Relation rel);
+
 #endif

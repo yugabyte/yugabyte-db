@@ -9,27 +9,24 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-import static org.mockito.Mockito.mock;
+import static org.junit.Assert.*;
 import static org.mockito.Mockito.doReturn;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.mockito.Mockito.mock;
 
 @RunWith(JUnitParamsRunner.class)
 public class UtilTest extends FakeDBApplication {
@@ -259,4 +256,45 @@ public class UtilTest extends FakeDBApplication {
     }
 
     // TODO: Add tests for other functions
+
+  @Test
+  public void testCompareYbVersions() {
+    assertEquals(0, Util.compareYbVersions("2.5.2.0", "2.5.2.0"));
+    assertEquals(0, Util.compareYbVersions("2.5.2.0-b5", "2.5.2.0-b5"));
+
+    assertTrue(Util.compareYbVersions("2.5.2.1", "2.5.2.0") > 0);
+    assertTrue(Util.compareYbVersions("3.5.2.0", "2.5.2.0") > 0);
+    assertTrue(Util.compareYbVersions("2.5.2.1-b10", "2.5.2.0-b5") > 0);
+    assertTrue(Util.compareYbVersions("2.5.2.0-b10", "2.5.2.0-b5") > 0);
+
+    assertTrue(Util.compareYbVersions("2.5.2.0", "2.5.2.1") < 0);
+    assertTrue(Util.compareYbVersions("2.5.2.0", "3.5.2.0") < 0);
+    assertTrue(Util.compareYbVersions("2.5.2.0-b5", "2.5.2.1-b10") < 0);
+    assertTrue(Util.compareYbVersions("2.5.2.0-b5", "2.5.2.0-b10") < 0);
+
+    assertEquals(0, Util.compareYbVersions("2.5.2.0-b5", "2.5.2.0-custom"));
+    assertEquals(0, Util.compareYbVersions("2.5.2.0-custom1", "2.5.2.0-custom2"));
+
+    Exception exception =
+        assertThrows(RuntimeException.class, () -> Util.compareYbVersions("2.2-b5", "2.6.50"));
+    assertEquals("Unable to parse YB version strings", exception.getMessage());
+  }
+
+  @Test
+  public void testRemoveEnclosingDoubleQuotes() {
+    // Removes, happy path.
+    assertEquals("baz", Util.removeEnclosingDoubleQuotes("\"baz\""));
+    // Doesn't remove single internal quotes
+    assertEquals("ba\"z", Util.removeEnclosingDoubleQuotes("\"ba\"z\""));
+    // Doesn't remove pair of internal quotes.
+    assertEquals("a\"ba\"z", Util.removeEnclosingDoubleQuotes("a\"ba\"z"));
+    // Doesn't remove only starting quotes.
+    assertEquals("\"baz", Util.removeEnclosingDoubleQuotes("\"baz"));
+    // Doesn't remove only ending quotes.
+    assertEquals("baz\"", Util.removeEnclosingDoubleQuotes("baz\""));
+    // Empty string
+    assertEquals("", Util.removeEnclosingDoubleQuotes(""));
+    // Null string
+    assertNull(Util.removeEnclosingDoubleQuotes(null));
+  }
 }

@@ -110,8 +110,6 @@ struct FollowerWatermark {
 // This also takes care of pushing requests to peers as new operations are added, and notifying
 // RaftConsensus when the commit index advances.
 //
-// This class is used only on the LEADER side.
-//
 // TODO Currently this class is able to track one outstanding operation per peer. If we want to have
 // more than one outstanding RPC we need to modify it.
 class PeerMessageQueue {
@@ -372,8 +370,6 @@ class PeerMessageQueue {
   size_t EvictLogCache(size_t bytes_to_evict);
 
   CHECKED_STATUS FlushLogIndex();
-
-  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
 
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);

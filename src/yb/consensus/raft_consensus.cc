@@ -119,6 +119,9 @@ TAG_FLAG(evict_failed_followers, advanced);
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
+DEFINE_test_flag(bool, follower_pause_update_consensus_requests, false,
+                 "Whether a follower will pause all UpdateConsensus() requests.");
+
 DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "Whether a follower will return an error for all UpdateConsensus() requests for "
                  "the first TEST_follower_reject_update_consensus_requests_seconds seconds after "
@@ -1356,6 +1359,7 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
     return STATUS(IllegalState, "Rejected: --TEST_follower_reject_update_consensus_requests "
                                 "is set to true.");
   }
+  TEST_PAUSE_IF_FLAG(TEST_follower_pause_update_consensus_requests);
 
   auto reject_mode = reject_mode_.load(std::memory_order_acquire);
   if (reject_mode != RejectMode::kNone) {

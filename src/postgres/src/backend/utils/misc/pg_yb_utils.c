@@ -934,6 +934,13 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreatedbStmt:
+		case T_ViewStmt: // CREATE VIEW
+		case T_CompositeTypeStmt: // CREATE TYPE
+		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
+		case T_CommentStmt: // COMMENT (create new comment)
+		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
+		case T_RuleStmt: // CREATE RULE
+		case T_TruncateStmt: // TRUNCATE changes system catalog in case of non-YB (i.e. TEMP) tables
 		{
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
@@ -1035,11 +1042,14 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropOwnedStmt:
 		case T_DropReplicationSlotCmd:
 		case T_DropRoleStmt:
-		case T_DropStmt:
 		case T_DropSubscriptionStmt:
 		case T_DropTableGroupStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
+			return true;
+
+		case T_DropStmt:
+			*is_breaking_catalog_change = false;
 			return true;
 
 		case T_DropdbStmt:

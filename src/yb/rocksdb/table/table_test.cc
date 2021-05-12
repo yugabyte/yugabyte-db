@@ -1638,7 +1638,7 @@ class BlockCachePropertiesSnapshot {
 TEST_F(BlockBasedTableTest, BlockCacheDisabledTest) {
   Options options;
   options.create_if_missing = true;
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
   BlockBasedTableOptions table_options;
   table_options.block_cache = NewLRUCache(1024);
   table_options.filter_policy.reset(NewBloomFilterPolicy(10));
@@ -1685,7 +1685,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   // -- Table construction
   Options options;
   options.create_if_missing = true;
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
 
   // Enable the cache for index/filter blocks
   BlockBasedTableOptions table_options;
@@ -1771,7 +1771,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   // In this test, no block will ever get hit since the block cache is
   // too small to fit even one entry.
   table_options.block_cache = NewLRUCache(1);
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
   options.table_factory.reset(new BlockBasedTableFactory(table_options));
   const ImmutableCFOptions ioptions2(options);
   ASSERT_OK(c.Reopen(ioptions2));
@@ -1825,7 +1825,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   // Open table with filter policy
   table_options.filter_policy.reset(NewBloomFilterPolicy(1));
   options.table_factory.reset(new BlockBasedTableFactory(table_options));
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
   ImmutableCFOptions ioptions4(options);
   ASSERT_OK(c3.Reopen(ioptions4));
   reader = dynamic_cast<BlockBasedTable*>(c3.GetTableReader());

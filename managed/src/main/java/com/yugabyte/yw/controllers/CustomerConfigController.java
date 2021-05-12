@@ -5,8 +5,9 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.google.inject.Inject;
-
+import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.forms.YWSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
@@ -24,6 +25,9 @@ public class CustomerConfigController extends AuthenticatedController {
   @Inject
   private CustomerConfigValidator configValidator;
 
+  @Inject
+  private AlertManager alertManager;
+
   public Result create(UUID customerUUID) {
     ObjectNode formData = (ObjectNode) request().body().asJson();
     ObjectNode errorJson = configValidator.validateFormData(formData);
@@ -37,7 +41,7 @@ public class CustomerConfigController extends AuthenticatedController {
     }
 
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
-    Audit.createAuditEntry(ctx(), request(), formData);
+    auditService().createAuditEntry(ctx(), request(), formData);
     return ApiResponse.success(customerConfig);
   }
 
@@ -50,8 +54,9 @@ public class CustomerConfigController extends AuthenticatedController {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,
           "Customer Configuration could not be deleted.");
     }
-    Audit.createAuditEntry(ctx(), request());
-    return ApiResponse.success("configUUID deleted");
+    alertManager.resolveAlerts(customerUUID, configUUID, "%");
+    auditService().createAuditEntry(ctx(), request());
+    return YWSuccess.asResult("configUUID deleted");
   }
 
   public Result list(UUID customerUUID) {

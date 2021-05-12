@@ -3,12 +3,13 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -22,6 +23,7 @@ import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class Provider extends Model {
@@ -61,11 +63,11 @@ public class Provider extends Model {
   @JsonBackReference(value="regions")
   public Set<Region> regions;
 
-  @JsonManagedReference
+  @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
   public Set<InstanceType> instanceTypes;
 
-  @JsonManagedReference
+  @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
   public Set<PriceComponent> priceComponents;
 
@@ -90,7 +92,7 @@ public class Provider extends Model {
   @JsonIgnore
   public Map<String, String> getConfig() {
     if (this.config == null) {
-      return new HashMap();
+      return new HashMap<>();
     } else {
       return Json.fromJson(this.config, Map.class);
     }
@@ -118,7 +120,7 @@ public class Provider extends Model {
    * @return instance of cloud provider
    */
   public static Provider create(UUID customerUUID, Common.CloudType code, String name) {
-    return create(customerUUID, code, name, new HashMap<String, String>());
+    return create(customerUUID, code, name, new HashMap<>());
   }
 
   /**
@@ -155,6 +157,14 @@ public class Provider extends Model {
     return find.query().where().eq("customer_uuid", customerUUID).idEq(providerUUID).findOne();
   }
 
+  public static Provider getOrBadRequest(UUID customerUUID, UUID providerUUID) {
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    if (provider == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+    return provider;
+  }
+
   /**
    * Get all the providers for a given customer uuid
    * @param customerUUID, customer uuid
@@ -171,21 +181,22 @@ public class Provider extends Model {
    * @param code
    * @return
    */
-  public static Provider get(UUID customerUUID, Common.CloudType code) {
-    List<Provider> providerList = find.query().where().eq("customer_uuid", customerUUID)
+  public static List<Provider> get(UUID customerUUID, Common.CloudType code) {
+    return find.query().where().eq("customer_uuid", customerUUID)
             .eq("code", code.toString()).findList();
-    int size = providerList.size();
-
-    if (size == 0) {
-      return null;
-    } else if (size > 1) {
-        throw new RuntimeException("Found " + size + " providers with code: " + code);
-    }
-    return providerList.get(0);
   }
 
+  // Use get Or bad request
+  @Deprecated
   public static Provider get(UUID providerUuid) {
     return find.byId(providerUuid);
+  }
+
+  public static Provider getOrBadRequest(UUID providerUuid) {
+    Provider provider = find.byId(providerUuid);
+    if (provider == null)
+      throw new YWServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
+    return provider;
   }
 
   public String getHostedZoneId() {
@@ -219,7 +230,7 @@ public class Provider extends Model {
   // not be included for GCP because they're generated from devops).
   public CloudBootstrap.Params getCloudParams() {
     CloudBootstrap.Params newParams = new CloudBootstrap.Params();
-    newParams.perRegionMetadata = new HashMap();
+    newParams.perRegionMetadata = new HashMap<>();
     if (!this.code.equals(Common.CloudType.gcp.toString())) {
       return newParams;
     }

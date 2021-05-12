@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -157,8 +156,9 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
   @Ignore("createPlacementInfoTask fails sometimes")
   public void testClusterDeleteSuccess() {
     UniverseDefinitionTaskParams univUTP =
-        Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+        Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.clusterUUID = readOnlyCluster.uuid;
@@ -168,19 +168,22 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     assertClusterDeleteSequence(subTasksByPosition, false);
-    univUTP = Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+    univUTP = Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
+    assertEquals(3, univUTP.nodeDetailsSet.size());
   }
 
   @Test
   public void testClusterDeleteFailure() {
     UniverseDefinitionTaskParams univUTP =
-      Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+      Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.clusterUUID = UUID.randomUUID();
     TaskInfo taskInfo = submitTask(taskParams,TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
   }
 }

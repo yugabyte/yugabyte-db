@@ -63,6 +63,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_splitter.h"
 #include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/locks.h"
@@ -88,11 +89,6 @@ class RaftConfigPB;
 
 namespace tserver {
 class TabletServer;
-class TsTabletManagerListener {
- public:
-  virtual ~TsTabletManagerListener() {}
-  virtual void StartedFlush(const TabletId& tablet_id) {}
-};
 
 using rocksdb::MemoryMonitor;
 
@@ -183,10 +179,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // raft config change op has an opid_index equal to or less than the specified
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
-  CHECKED_STATUS DeleteTablet(const TabletId& tablet_id,
-                      tablet::TabletDataState delete_type,
-                      const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-                      boost::optional<TabletServerErrorPB::Code>* error_code);
+  // If `hide_only` is true, then just hide tablet instead of deleting it.
+  CHECKED_STATUS DeleteTablet(
+      const TabletId& tablet_id,
+      tablet::TabletDataState delete_type,
+      const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
+      bool hide_only,
+      boost::optional<TabletServerErrorPB::Code>* error_code);
 
   // Lookup the given tablet peer by its ID.
   // Returns true if the tablet is found successfully.
@@ -318,8 +317,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
 
-  // Flush some tablet if the memstore memory limit is exceeded
-  void MaybeFlushTablet();
+  TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
   CHECKED_STATUS UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info);
 
@@ -330,7 +328,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
-  std::vector<std::shared_ptr<TsTabletManagerListener>> TEST_listeners;
+  // Trigger asynchronous compactions concurrently on the provided tablets.
+  CHECKED_STATUS TriggerCompactionAndWait(const TabletPtrs& tablets);
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
@@ -456,9 +455,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const tablet::RaftGroupMetadataPtr& meta,
       const scoped_refptr<TransitionInProgressDeleter>& deleter);
 
-  // Return the tablet with oldest write still in its memstore
-  std::shared_ptr<tablet::TabletPeer> TabletToFlush();
-
   TSTabletManagerStatePB state() const {
     SharedLock<RWMutex> lock(mutex_);
     return state_;
@@ -565,10 +561,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for manually triggering compactions for tablets created from a split.
   std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
 
-  std::unique_ptr<rpc::Poller> tablets_cleaner_;
+  // Thread pool for admin triggered compactions for tablets.
+  std::unique_ptr<ThreadPool> admin_triggered_compaction_pool_;
 
-  // Used for scheduling flushes
-  std::unique_ptr<BackgroundTask> background_task_;
+  std::unique_ptr<rpc::Poller> tablets_cleaner_;
 
   // Used for verifying tablet data integrity.
   std::unique_ptr<rpc::Poller> verify_tablet_data_poller_;
@@ -580,10 +576,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletPeers shutting_down_peers_;
 
-  std::shared_ptr<GarbageCollector> block_based_table_gc_;
-  std::shared_ptr<GarbageCollector> log_cache_gc_;
+  std::shared_ptr<TabletMemoryManager> mem_manager_;
 
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
   std::unordered_set<std::string> bootstrap_source_addresses_;
 
   std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};

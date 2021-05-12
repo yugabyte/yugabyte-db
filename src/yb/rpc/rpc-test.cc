@@ -1037,7 +1037,7 @@ class TestRpcSecure : public RpcTestBase {
   void SetUp() override {
     RpcTestBase::SetUp();
     secure_context_ = std::make_unique<SecureContext>();
-    EXPECT_OK(secure_context_->TEST_GenerateKeys(512, "127.0.0.1"));
+    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1"));
   }
 
  protected:

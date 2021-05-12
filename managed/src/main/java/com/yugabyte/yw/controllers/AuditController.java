@@ -34,7 +34,7 @@ public class AuditController extends AuthenticatedController {
     }
 
     try {
-      List<Audit> auditList = Audit.getAllUserEntries(user.uuid);
+      List<Audit> auditList = auditService().getAllUserEntries(user.uuid);
       return ApiResponse.success(auditList);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to fetch audit history.");
@@ -51,7 +51,7 @@ public class AuditController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     try {
-      Audit entry = Audit.getFromTaskUUID(taskUUID);
+      Audit entry = auditService().getFromTaskUUID(taskUUID);
       if (entry.getCustomerUUID().equals(customerUUID)) {
         return ApiResponse.success(entry);
       }
@@ -70,7 +70,7 @@ public class AuditController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     try {
-      Audit entry = Audit.getFromTaskUUID(taskUUID);
+      Audit entry = auditService().getFromTaskUUID(taskUUID);
       Users user = Users.get(entry.getUserUUID());
       if (entry.getCustomerUUID().equals(customerUUID)) {
         return ApiResponse.success(user);

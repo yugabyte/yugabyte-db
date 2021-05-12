@@ -3699,6 +3699,7 @@ static void YBRefreshCache()
 		ereport(LOG,(errmsg("Refreshing catalog cache.")));
 	}
 
+	YBCPgResetCatalogReadTime();
 	/* Get the latest syscatalog version from the master */
 	uint64_t catalog_master_version = 0;
 	YBCGetMasterCatalogVersion(&catalog_master_version);
@@ -3761,6 +3762,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 * Get the latest syscatalog version from the master to check if we need
 	 * to refresh the cache.
 	 */
+	YBCPgResetCatalogReadTime();
 	uint64_t catalog_master_version = 0;
 	YBCGetMasterCatalogVersion(&catalog_master_version);
 	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
@@ -3837,9 +3839,9 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 			if (need_global_cache_refresh)
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Catalog Version Mismatch: A DDL occurred "
-								"while processing this query. Try again."),
-						 errdetail("Internal error: %s", edata->message)));
+						 errmsg("%s", edata->message),
+						 errdetail("Internal error: %s", "Catalog Version Mismatch: A DDL occurred "
+								   "while processing this query. Try again.")));
 			else
 			{
 				Assert(need_table_cache_refresh);
@@ -4922,6 +4924,7 @@ PostgresMain(int argc, char *argv[],
 			continue;
 
 		if (IsYugaByteEnabled()) {
+			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
 		}
 

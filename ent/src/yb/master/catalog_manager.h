@@ -169,7 +169,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
  private:
   friend class SnapshotLoader;
-  friend class ClusterLoadBalancer;
+  friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
   friend class UniverseReplicationLoader;
 
@@ -241,15 +241,21 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
-      bool add_indexes,
-      bool include_parent_colocated_table,
-      bool succeed_if_create_in_progress) override;
+      CollectFlags flags);
+
+  Result<SysRowEntries> CollectEntriesForSnapshot(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override {
+    return CollectEntries(
+        tables,
+        CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
+                     CollectFlag::kSucceedIfCreateInProgress});
+  }
 
   server::Clock* Clock() override;
 
   const Schema& schema() override;
 
-  void Submit(std::unique_ptr<tablet::Operation> operation) override;
+  void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id,
@@ -269,15 +275,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
 
-  CHECKED_STATUS RestoreSysCatalog(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at, const OpId& op_id,
-      HybridTime write_time, const SnapshotScheduleFilterPB& filter) override;
+  CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) override;
+  CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
+
+  void CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
 
   rpc::Scheduler& Scheduler() override;
 
-  bool IsLeader() override;
+  int64_t LeaderTerm() override;
 
-  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() override;
+  Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
+      SysRowEntry::Type type) override;
 
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);

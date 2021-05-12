@@ -32,7 +32,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -775,7 +774,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param node the node to add/remove master process on
    * @param isAdd whether Master is being added or removed.
    * @param subTask subtask type
-   * @param useHostPort indicate to server to use host/port instead of uuid.
    */
   public void createChangeConfigTask(NodeDetails node,
                                      boolean isAdd,
@@ -1023,23 +1021,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+
   /**
    * Creates a task list to manipulate the DNS record available for this universe.
    * @param eventType   the type of manipulation to do on the DNS records.
    * @param isForceDelete if this is a delete operation, set this to true to ignore errors
-   * @param providerType provider type, to check that we allow only on AWS.
-   * @param provider the provider uuid (stored as a string).
-   * @param universeName the universe name used for domain info.
+   * @param intent universe information.
    * @return subtask group
    */
-  public SubTaskGroup createDnsManipulationTask(
-      DnsManager.DnsCommandType eventType, boolean isForceDelete, CloudType providerType,
-      String provider, String universeName) {
+  public SubTaskGroup createDnsManipulationTask(DnsManager.DnsCommandType eventType,
+                                                boolean isForceDelete,
+                                                UniverseDefinitionTaskParams.UserIntent intent) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateDnsEntry", executor);
-    if (!Provider.HostedZoneEnabledProviders.contains(providerType.toString())) {
+    if (!Provider.HostedZoneEnabledProviders.contains(intent.providerType.toString())) {
       return subTaskGroup;
     }
-    Provider p = Provider.get(UUID.fromString(provider));
+    Provider p = Provider.get(UUID.fromString(intent.provider));
     // TODO: shared constant with javascript land?
     String hostedZoneId = p.getHostedZoneId();
     if (hostedZoneId == null || hostedZoneId.isEmpty()) {
@@ -1048,10 +1045,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
     params.universeUUID = taskParams().universeUUID;
     params.type = eventType;
-    params.providerUUID = UUID.fromString(provider);
+    params.providerUUID = UUID.fromString(intent.provider);
     params.hostedZoneId = hostedZoneId;
     params.domainNamePrefix =
-        String.format("%s.%s", universeName, Customer.get(p.customerUUID).code);
+        String.format("%s.%s", intent.universeName, Customer.get(p.customerUUID).code);
     params.isForceDelete = isForceDelete;
     // Create the task to update DNS entries.
     ManipulateDnsRecordTask task = new ManipulateDnsRecordTask();
@@ -1255,7 +1252,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
 
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String certificate = universe.getCertificate();
     YBClient client = ybService.getClient(masterAddrs, certificate);
 
@@ -1343,8 +1340,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         task.getType().equals(CustomerTask.TaskType.Resume)));
   }
 
-  private synchronized static int getClusterConfigVersion(UUID universeUUID) {
-    final Universe universe = Universe.get(universeUUID);
+  // TODO: Use of synchronized in static scope! Looks suspicious.
+  //  Use of transactions may be better.
+  private synchronized static int getClusterConfigVersion(Universe universe) {
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     final String certificate = universe.getCertificate();
@@ -1364,9 +1362,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return version;
   }
 
+  // TODO: Use of synchronized in static scope! Looks suspicious.
+  //  Use of transactions may be better.
   private static synchronized boolean versionsMatch(UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
-    final int clusterConfigVersion = UniverseTaskBase.getClusterConfigVersion(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    final int clusterConfigVersion = UniverseTaskBase.getClusterConfigVersion(universe);
 
     // For backwards compatibility (see V56__Alter_Universe_Version.sql)
     if (universe.version == -1) {
@@ -1377,6 +1377,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return universe.version == clusterConfigVersion;
   }
 
+  // TODO: Use of synchronized in static scope! Looks suspicious.
+  //  Use of transactions may be better.
   private static void checkUniverseVersion(UUID universeUUID) {
     if (!versionsMatch(universeUUID)) {
       throw new RuntimeException("Universe version does not match cluster config version");
@@ -1391,7 +1393,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Increment the cluster config version
    */
   static synchronized private void incrementClusterConfigVersion(UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();

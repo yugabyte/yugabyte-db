@@ -368,7 +368,12 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Delete Tablet"; }
 
   std::string description() const override {
-    return "Delete Tablet RPC for " + tablet_id_ + " on TS=" + permanent_uuid_;
+    return Format("$0 Tablet RPC for $1 on TS=$2",
+                  hide_only_ ? "Hide" : "Delete", tablet_id_, permanent_uuid_);
+  }
+
+  void set_hide_only(bool value) {
+    hide_only_ = value;
   }
 
  protected:
@@ -383,6 +388,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   const boost::optional<int64_t> cas_config_opid_index_less_or_equal_;
   const std::string reason_;
   tserver::DeleteTabletResponsePB resp_;
+  bool hide_only_ = false;
 };
 
 // Send the "Alter Table" with the latest table schema to the leader replica
@@ -660,6 +666,26 @@ class AsyncRemoveTableFromTablet : public RetryingTSRpcTask {
   const TabletId tablet_id_;
   tserver::RemoveTableFromTabletRequestPB req_;
   tserver::RemoveTableFromTabletResponsePB resp_;
+};
+
+class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
+ public:
+  AsyncGetTabletSplitKey(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      std::function<void(const std::string&, const std::string&)> result_cb);
+
+  Type type() const override { return ASYNC_GET_TABLET_SPLIT_KEY; }
+
+  std::string type_name() const override { return "Get Tablet Split Key"; }
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
+
+  tserver::GetSplitKeyRequestPB req_;
+  tserver::GetSplitKeyResponsePB resp_;
+  std::function<void(const std::string&, const std::string&)> result_cb_;
 };
 
 // Sends SplitTabletRequest with provided arguments to the service interface of the leader of the

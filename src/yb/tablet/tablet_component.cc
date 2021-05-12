@@ -65,8 +65,11 @@ rocksdb::Env& TabletComponent::rocksdb_env() const {
   return tablet_.rocksdb_env();
 }
 
-void TabletComponent::ResetYBMetaDataCache() {
+void TabletComponent::RefreshYBMetaDataCache() {
   tablet_.ResetYBMetaDataCache();
+  if (!metadata().index_map()->empty()) {
+    tablet_.CreateNewYBMetaDataCache();
+  }
 }
 
 } // namespace tablet

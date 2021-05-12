@@ -83,8 +83,8 @@ K8S_DATA_DIRS = ["/mnt/disk0", "/mnt/disk1"]
 DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
 DEFAULT_REMOTE_YSQL_DUMP_PATH = os.path.join(YB_HOME_DIR, 'master/postgres/bin/ysql_dump')
 DEFAULT_REMOTE_YSQL_SHELL_PATH = os.path.join(YB_HOME_DIR, 'master/bin/ysqlsh')
-
 DEFAULT_YB_USER = 'yugabyte'
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
 class BackupException(Exception):
@@ -759,12 +759,12 @@ class YBBackup:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + metadata[0] + '\n' +
                                      'secret_key = ' + metadata[1] + '\n' +
-                                     'security_token = ' + metadata[2] + '\n')
+                                     'access_token = ' + metadata[2] + '\n')
                     else:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + '\n' +
                                      'secret_key = ' + '\n' +
-                                     'security_token = ' + '\n')
+                                     'access_token = ' + '\n')
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 host_base = os.getenv('AWS_HOST_BASE')
                 if host_base:
@@ -1015,11 +1015,11 @@ class YBBackup:
             # 0436035d-c4c5-40c6-b45b-19538849b0d9  COMPLETE
             #   {"type":"NAMESPACE","id":"e4c5591446db417f83a52c679de03118","data":{"name":"a",...}}
             #   {"type":"TABLE","id":"d9603c2cab0b48ec807936496ac0e70e","data":{"name":"t2",...}}
-            #   {"type":"NAMESPACE","id":"e4c5591446db417f83a52c679de03118","data":{"name":"a",...}}
             #   {"type":"TABLE","id":"28b5cebe9b0c4cdaa70ce9ceab31b1e5","data":{\
             #       "name":"t2idx","indexed_table_id":"d9603c2cab0b48ec807936496ac0e70e",...}}
             # c1ad61bf-a42b-4bbb-94f9-28516985c2c5  COMPLETE
             #   ...
+            keyspaces = {}
             for line in output.splitlines():
                 if not snapshot_done:
                     if line.find(snapshot_id) == 0:
@@ -1029,18 +1029,19 @@ class YBBackup:
                             if not update_table_list:
                                 break
                 elif update_table_list:
-                    if line[0] == ' ':
-                        loaded_json = json.loads(line)
-                        object_type = loaded_json['type']
-                        if object_type == 'NAMESPACE':
-                            if loaded_json['data']['database_type'] == 'YQL_DATABASE_PGSQL':
-                                snapshot_keyspaces.append('ysql.' + loaded_json['data']['name'])
-                            else:
-                                snapshot_keyspaces.append(loaded_json['data']['name'])
-                        elif object_type == 'TABLE':
-                            snapshot_tables.append(loaded_json['data']['name'])
-                    else:
-                        break  # Break search on the next snapshot id/state line.
+                    if line[0] != ' ':
+                        break
+                    loaded_json = json.loads(line)
+                    object_type = loaded_json['type']
+                    object_id = loaded_json['id']
+                    data = loaded_json['data']
+                    if object_type == 'NAMESPACE' and object_id not in keyspaces:
+                        keyspace_prefix = 'ysql.' \
+                            if data['database_type'] == 'YQL_DATABASE_PGSQL' else ''
+                        keyspaces[object_id] = keyspace_prefix + data['name']
+                    elif object_type == 'TABLE':
+                        snapshot_keyspaces.append(keyspaces[data['namespace_id']])
+                        snapshot_tables.append(data['name'])
 
             if not snapshot_done:
                 logging.info('Waiting for snapshot %s to complete...' % (op))
@@ -1102,8 +1103,6 @@ class YBBackup:
                 logging.info(
                     "Uploading {} to server {}".format(self.cloud_cfg_file_path, server_ip))
 
-            this_script_dir = os.path.dirname(os.path.realpath(__file__))
-
             output = self.create_remote_tmp_dir(server_ip)
             if self.is_k8s():
                 k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
@@ -1120,7 +1119,7 @@ class YBBackup:
                 if self.needs_change_user():
                     # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
                     # not args.remote_user.
-                    ssh_wrapper_path = os.path.join(this_script_dir, 'ssh_wrapper_with_sudo.sh')
+                    ssh_wrapper_path = os.path.join(SCRIPT_DIR, 'ssh_wrapper_with_sudo.sh')
                     output += self.run_program(
                         ['scp',
                          '-S', ssh_wrapper_path,

@@ -3,12 +3,13 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -19,17 +20,20 @@ import org.mockito.ArgumentCaptor;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.UUID;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.forms.BackupTableParams.ActionType.RESTORE;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
+import static org.junit.Assert.assertThrows;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.*;
 
 public class BackupsControllerTest extends FakeDBApplication {
 
@@ -101,10 +105,12 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     JsonNode bodyJson = Json.newObject();
 
-    Result result = restoreBackup(universeUUID, bodyJson, null);
+    Result result = assertThrows(YWServiceException.class,
+      () -> restoreBackup(universeUUID, bodyJson, null))
+      .getResult();
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", "Invalid Universe UUID: " + universeUUID);
+    assertValue(resultJson, "error", "Cannot find universe " + universeUUID);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -115,7 +121,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("actionType", "RESTORE");
-    Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
+    Result result = assertThrows(YWServiceException.class,
+      () -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null)).getResult();
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
@@ -133,7 +140,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
-    Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
+    Result result = assertThrows(YWServiceException.class,
+      () -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null)).getResult();
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "error", "Storage Location is required");
@@ -151,7 +159,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", b.getBackupInfo().storageLocation);
-    Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
+    Result result = assertThrows(YWServiceException.class,
+      () -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null)).getResult();
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "error", "Invalid StorageConfig UUID: " + bp.storageConfigUUID);
@@ -218,8 +227,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
     assertNotEquals(b.backupUUID, backup.backupUUID);
     assertNotNull(backup);
-    assertValue(backup.backupInfo, "actionType", "RESTORE");
-    assertValue(backup.backupInfo, "storageLocation", "s3://foo/bar");
+    assertEquals(backup.getBackupInfo().actionType, RESTORE);
+    assertEquals(backup.getBackupInfo().storageLocation, "s3://foo/bar");
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 

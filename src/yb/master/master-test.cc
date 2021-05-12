@@ -57,6 +57,7 @@
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
@@ -76,6 +77,9 @@ DECLARE_bool(TEST_simulate_crash_after_table_marked_deleting);
 DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
 DECLARE_bool(TEST_tablegroup_master_only);
 DECLARE_bool(TEST_simulate_port_conflict_error);
+
+METRIC_DECLARE_counter(block_cache_misses);
+METRIC_DECLARE_counter(block_cache_hits);
 
 namespace yb {
 namespace master {
@@ -554,6 +558,37 @@ TEST_F(MasterTest, TestCatalog) {
   }
 }
 
+TEST_F(MasterTest, TestCatalogHasBlockCache) {
+  // Restart mini_master
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  // Check prometheus metrics via webserver to verify block_cache metrics exist
+  string addr = AsString(mini_master_->bound_http_addr());
+  string url = strings::Substitute("http://$0/prometheus-metrics", AsString(addr));
+  EasyCurl curl;
+  faststring buf;
+
+  ASSERT_OK(curl.FetchURL(url, &buf));
+  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_misses");
+  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_hits");
+
+  // Check block cache metrics directly and verify
+  // that the counters are greater than 0
+  const unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
+    mini_master_->master()->metric_entity()->UnsafeMetricsMapForTests();
+
+  scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(
+      FindOrDie(metric_map,
+                &METRIC_block_cache_misses).get());
+  scoped_refptr<Counter> cache_hits_counter = down_cast<Counter *>(
+      FindOrDie(metric_map,
+                &METRIC_block_cache_hits).get());
+
+  ASSERT_GT(cache_misses_counter->value(), 0);
+  ASSERT_GT(cache_hits_counter->value(), 0);
+}
+
 TEST_F(MasterTest, TestTablegroups) {
   // Tablegroup ID must be 32 characters in length
   const char *kTablegroupId = "test_tablegroup00000000000000000";
@@ -674,7 +709,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
       auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
       ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
       auto l = iter->second->LockForRead();
-      ASSERT_EQ(l->data().pb.state(), SysTabletsEntryPB::DELETED);
+      ASSERT_EQ(l->pb.state(), SysTabletsEntryPB::DELETED);
     }
   }
 }
@@ -1737,8 +1772,8 @@ TEST_F(MasterTest, TestFullTableName) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "The object does not exist");
+    auto status = StatusFromPB(resp.error().status());
+    ASSERT_EQ(MasterError(status), MasterErrorPB::OBJECT_NOT_FOUND);
   }
 
   // Delete the table.

@@ -286,6 +286,8 @@ class YBClient {
   CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
   CHECKED_STATUS TruncateTables(const std::vector<std::string>& table_ids, bool wait = true);
 
+  Result<master::AnalyzeTableResponsePB> AnalyzeTable(const std::string& table_id);
+
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   CHECKED_STATUS BackfillIndex(const TableId& table_id, bool wait = true);
 

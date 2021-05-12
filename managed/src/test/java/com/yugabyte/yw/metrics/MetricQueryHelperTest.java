@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.forms.YWError;
 import com.yugabyte.yw.models.MetricConfig;
 import org.hamcrest.core.IsInstanceOf;
 import org.joda.time.DateTime;
@@ -59,8 +60,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     } catch (YWServiceException re) {
       assertEquals(BAD_REQUEST, re.getResult().status());
       assertEquals(
-        ApiResponse.errorJSON("Empty metricKeys data provided."),
-        Json.parse(contentAsString(re.getResult())));
+        "Empty metricKeys data provided.",
+        Json.parse(contentAsString(re.getResult())).get("error").asText());
     }
   }
 
@@ -75,8 +76,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     } catch (YWServiceException re) {
       assertEquals(BAD_REQUEST, re.getResult().status());
       assertEquals(
-        ApiResponse.errorJSON("Invalid filter params provided, it should be a hash."),
-        Json.parse(contentAsString(re.getResult())));
+        "Invalid filter params provided, it should be a hash.",
+        Json.parse(contentAsString(re.getResult())).get("error").asText());
     }
   }
 
