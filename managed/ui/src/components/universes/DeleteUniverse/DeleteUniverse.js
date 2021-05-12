@@ -4,10 +4,10 @@ import React, { Component } from 'react';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { browserHistory } from 'react-router';
+import { Alert } from 'react-bootstrap';
 import { YBModal, YBCheckBox, YBTextInput } from '../../common/forms/fields';
 import { isEmptyObject } from '../../../utils/ObjectUtils';
 import { getReadOnlyCluster } from '../../../utils/UniverseUtils';
-import './DeleteUniverse.scss';
 
 export default class DeleteUniverse extends Component {
   constructor(props) {
@@ -54,16 +54,13 @@ export default class DeleteUniverse extends Component {
         {universePaused ?
           <>
             Are you sure you want to delete the universe?
-            <br />
-            <br />
-            <span className='paused-note'>
-              <strong>Note: </strong>Terminating paused universes
-              won't delete backup objects. If you want to delete
-              backup objects then click on Resume Universe and delete it.
-            </span>
+            <Alert bsStyle="danger">
+              <strong>Note: </strong>Terminating paused universes won't
+              delete backup objects. If you want to delete backup objects,
+              resume this universe and then delete it.
+            </Alert>
           </> : body
         }
-        <br />
         <br />
         <label>Enter universe name to confirm delete:</label>
         <YBTextInput
