@@ -196,7 +196,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     YBTable mockTable = mock(YBTable.class);
     when(mockTable.getName()).thenReturn("redis");
     when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);

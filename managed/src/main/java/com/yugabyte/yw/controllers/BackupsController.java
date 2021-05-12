@@ -9,6 +9,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeleteBackup;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -28,7 +30,7 @@ public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
 
   @Inject
-  FormFactory formFactory;
+  ValidatingFormFactory formFactory;
 
   @Inject
   Commissioner commissioner;
@@ -65,25 +67,17 @@ public class BackupsController extends AuthenticatedController {
   }
 
   public Result restore(UUID customerUUID, UUID universeUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class)
-        .bindFromRequest();
+    Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
 
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
     BackupTableParams taskParams = formData.get();
     // Since we hit the restore endpoint, lets default the action type to RESTORE
     taskParams.actionType = BackupTableParams.ActionType.RESTORE;
     if (taskParams.storageLocation == null && taskParams.backupList == null) {
       String errMsg = "Storage Location is required";
-      return ApiResponse.error(BAD_REQUEST, errMsg);
+      throw new YWServiceException(BAD_REQUEST, errMsg);
     }
 
     taskParams.universeUUID = universeUUID;
@@ -103,14 +97,12 @@ public class BackupsController extends AuthenticatedController {
         subParams.parallelism = taskParams.parallelism;
       }
     }
-    CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);
-    if (storageConfig == null) {
-      String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    CustomerConfig storageConfig = CustomerConfig.getOrBadRequest(
+        customerUUID,
+        taskParams.storageConfigUUID
+    );
     if (taskParams.getTableName() != null && taskParams.getKeyspace() == null) {
-      String errMsg = "Restore table request must specify keyspace.";
-      return ApiResponse.error(BAD_REQUEST, errMsg);
+      throw new YWServiceException(BAD_REQUEST, "Restore table request must specify keyspace.");
     }
 
     Backup newBackup = Backup.create(customerUUID, taskParams);
@@ -160,11 +152,9 @@ public class BackupsController extends AuthenticatedController {
   }
 
   public Result delete(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // TODO(API): Let's get rid of raw Json.
+    // Create DeleteBackupReq in form package and bind to that
     ObjectNode formData = (ObjectNode) request().body().asJson();
     List<String> taskUUIDList = new ArrayList<>();
     for (JsonNode backupUUID : formData.get("backupUUID")) {

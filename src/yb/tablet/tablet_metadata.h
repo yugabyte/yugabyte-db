@@ -341,7 +341,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   int64_t cdc_min_replicated_index() const;
 
-  CHECKED_STATUS set_is_under_twodc_replication(bool is_under_twodc_replication);
+  CHECKED_STATUS SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
   bool is_under_twodc_replication() const;
 
@@ -403,6 +403,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Set / get the remote bootstrap / tablet data state.
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
+
+  CHECKED_STATUS SetHiddenAndFlush(bool value);
+  bool hidden() const;
 
   CHECKED_STATUS Flush();
 
@@ -558,6 +561,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   int64_t cdc_min_replicated_index_ = std::numeric_limits<int64_t>::max();
 
   bool is_under_twodc_replication_ = false;
+
+  bool hidden_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

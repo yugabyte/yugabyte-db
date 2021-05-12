@@ -332,6 +332,21 @@ message SysTabletsEntryPB {
 
   // Tablet IDs for this tablet split if they have been registered in master.
   repeated bytes split_tablet_ids = 14;
+
+  optional bool hidden = 15;
+}
+
+message BackfillJobPB {
+  repeated IndexInfoPB indexes = 1;
+
+  enum State {
+    IN_PROGRESS = 0;
+    FAILED = 1;
+    SUCCESS = 2;
+  }
+  // Index's TableId -> State for each index.
+  map<string, State> backfill_state = 2;
+  optional uint64 backfilling_timestamp = 3;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -421,6 +436,10 @@ message SysTablesEntryPB {
   // This is typically set during alters that are caused due to index
   // permissions being changed, when the table is backfilled.
   optional bool updates_only_index_permissions = 31 [ default = false ];
+  // Keeps track of in-progress backfill jobs.
+  // As of Apr 2021, we only have at most one outstanding backfill job, but
+  // this restriction may be removed later on. Hence repeated.
+  repeated BackfillJobPB backfill_jobs = 32;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -732,6 +751,21 @@ message TabletForSplitPB {
   required bytes split_encoded_key = 3;
 }
 
+message ListTabletsOnPathPB {
+  required bytes path_id = 1;
+  message TabletOnPath {
+    required bytes tablet_id = 1;
+    optional uint64 sst_file_size = 2;
+    optional uint64 wal_file_size = 3;
+    optional uint64 uncompressed_sst_file_size = 4;
+  }
+  repeated TabletOnPath tablet = 2;
+}
+
+message TabletPathInfoPB {
+  repeated ListTabletsOnPathPB list_path = 1;
+}
+
 message TSSnapshotScheduleInfoPB {
   optional bytes id = 1;
   optional fixed64 last_snapshot_hybrid_time = 2;
@@ -783,6 +817,8 @@ message TSHeartbeatRequestPB {
 
   // Roundtrip time for previous heartbeat in microseconds.
   optional int64 rtt_us = 12;
+
+  optional TabletPathInfoPB tablet_path_info = 13;
 }
 
 message TSHeartbeatResponsePB {
@@ -950,6 +986,7 @@ message CreateTableRequestPB {
   optional bool is_unique_index = 11 [ default = false ]; // Is a unique index?
   optional bool skip_index_backfill = 18 [ default = false ]; // Skip online schema migration for
                                                               // index?
+  optional bool is_backfill_deferred = 23 [ default = false ]; // Defer backfill for batching later?
 
   // For RBAC.
   optional string creator_role_name = 12;
