@@ -159,8 +159,11 @@ public class Audit extends Model {
   }
 
   public static Audit getOrBadRequest(UUID customerUUID, UUID taskUUID) {
+    Customer.getOrBadRequest(customerUUID);
     Audit entry = find.query().where().eq("task_uuid", taskUUID).findOne();
     if (entry == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid taskUUD: " + taskUUID);
+    } else if (!entry.getCustomerUUID().equals(customerUUID)) {
       throw new YWServiceException(BAD_REQUEST,
           "Task "+ taskUUID + "does not belong to customer " + customerUUID);
     }
