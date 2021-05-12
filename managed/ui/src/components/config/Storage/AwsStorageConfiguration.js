@@ -5,10 +5,10 @@ import { Row, Col } from 'react-bootstrap';
 import { YBButton, YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull, isEmptyObject } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull, isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
-const required = value => value ? undefined : 'This field is required.';
+const required = (value) => value ? undefined : 'This field is required.';
 
 class AwsStorageConfiguration extends Component {
   state = {
@@ -19,45 +19,57 @@ class AwsStorageConfiguration extends Component {
     this.setState({ iamRoleEnabled: event.target.checked });
   };
 
+  disabledInputFields = (config, isEdited, iamRoleEnabled = false) => {
+    if (
+      ((!isEmptyObject(config) && isEdited) || (isEmptyObject(config) && !isEdited)) &&
+      !iamRoleEnabled
+    ) {
+      return false;
+    } else {
+      return true;
+    }
+  };
+
+  componentDidMount = () => {
+    const {
+      customerConfigs: { data }
+    } = this.props;
+    const s3Config = data.find((config) => config.name === 'S3');
+    const config = s3Config ? s3Config.data : {};
+    if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === 'true') {
+      this.setState({ iamRoleEnabled: true });
+    }
+  };
+
   render() {
     const {
       customerConfigs,
       submitting,
       addConfig: { loading },
       deleteStorageConfig,
-      showDeleteStorageConfig
+      showDeleteStorageConfig,
+      enableEdit,
+      onEditConfig
     } = this.props;
     const { iamRoleEnabled } = this.state;
     const s3Config = customerConfigs.data.find((config) => config.name === 'S3');
     const config = s3Config ? s3Config.data : {};
-    const allowKeyEdits = !isEmptyObject(s3Config) || iamRoleEnabled;
+
     return (
       <Row className="config-section-header" key={'s3'}>
-        <Col lg={9}>
+        <Col lg={8}>
           <Row className="config-provider-row" key={'s3-iam-instance-profile'}>
             <Col lg={2}>
               <div className="form-item-custom-label">IAM Role</div>
             </Col>
             <Col lg={9}>
-              {!isEmptyObject(s3Config) ? (
-                <Field
-                  name="IAM_INSTANCE_PROFILE"
-                  component={YBToggle}
-                  input={{
-                    name: 'IAM_INSTANCE_PROFILE',
-                    value: config['IAM_INSTANCE_PROFILE']
-                  }}
-                  subLabel="Whether to use instance's IAM role for S3 backup."
-                  isReadOnly
-                />
-              ) : (
-                <Field
-                  name="IAM_INSTANCE_PROFILE"
-                  component={YBToggle}
-                  onToggle={this.iamInstanceToggle}
-                  subLabel="Whether to use instance's IAM role for S3 backup."
-                />
-              )}
+              <Field
+                name="IAM_INSTANCE_PROFILE"
+                component={YBToggle}
+                onToggle={this.iamInstanceToggle}
+                isReadOnly={this.disabledInputFields(s3Config, enableEdit)}
+                subLabel="Whether to use instance's IAM role for S3 backup."
+              />
             </Col>
           </Row>
           <Row className="config-provider-row" key={'s3-aws-access-key-id'}>
@@ -65,15 +77,12 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Key</div>
             </Col>
             <Col lg={9}>
-              {allowKeyEdits ? (
+              {iamRoleEnabled ? (
                 <Field
                   name="AWS_ACCESS_KEY_ID"
                   placeHolder="AWS Access Key"
-                  input={{
-                    value: config['AWS_ACCESS_KEY_ID'] || '',
-                    disabled: allowKeyEdits
-                  }}
                   component={YBTextInputWithLabel}
+                  isReadOnly={this.disabledInputFields(s3Config, enableEdit, iamRoleEnabled)}
                 />
               ) : (
                 <Field
@@ -81,6 +90,7 @@ class AwsStorageConfiguration extends Component {
                   placeHolder="AWS Access Key"
                   component={YBTextInputWithLabel}
                   validate={required}
+                  isReadOnly={this.disabledInputFields(s3Config, enableEdit, iamRoleEnabled)}
                 />
               )}
             </Col>
@@ -90,15 +100,12 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Secret</div>
             </Col>
             <Col lg={9}>
-              {allowKeyEdits ? (
+              {iamRoleEnabled ? (
                 <Field
                   name="AWS_SECRET_ACCESS_KEY"
                   placeHolder="AWS Access Secret"
-                  input={{
-                    value: config['AWS_SECRET_ACCESS_KEY'] || '',
-                    disabled: allowKeyEdits
-                  }}
                   component={YBTextInputWithLabel}
+                  isReadOnly={this.disabledInputFields(s3Config, enableEdit, iamRoleEnabled)}
                 />
               ) : (
                 <Field
@@ -106,6 +113,7 @@ class AwsStorageConfiguration extends Component {
                   placeHolder="AWS Access Secret"
                   component={YBTextInputWithLabel}
                   validate={required}
+                  isReadOnly={this.disabledInputFields(s3Config, enableEdit, iamRoleEnabled)}
                 />
               )}
             </Col>
@@ -117,7 +125,7 @@ class AwsStorageConfiguration extends Component {
             <Col lg={9}>
               {!isEmptyObject(s3Config) ? (
                 <Field
-                  name="BACKUP_LOCATION"
+                  name="S3_BACKUP_LOCATION"
                   placeHolder="S3 Bucket"
                   input={{
                     value: config['BACKUP_LOCATION'],
@@ -127,7 +135,7 @@ class AwsStorageConfiguration extends Component {
                 />
               ) : (
                 <Field
-                  name="BACKUP_LOCATION"
+                  name="S3_BACKUP_LOCATION"
                   placeHolder="S3 Bucket"
                   component={YBTextInputWithLabel}
                   validate={required}
@@ -167,10 +175,13 @@ class AwsStorageConfiguration extends Component {
           </Row>
         </Col>
         {!isEmptyObject(s3Config) && (
-          <Col lg={3}>
+          <Col lg={4}>
             <div className="action-bar">
               {s3Config.inUse && (
-                <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
+                <YBInfoTip
+                  content={
+                    'Storage configuration is in use and cannot be deleted until associated resources are removed.'
+                  }
                   placement="top"
                 >
                   <span className="disable-delete fa-stack fa-2x">
@@ -181,7 +192,7 @@ class AwsStorageConfiguration extends Component {
               )}
               <YBButton
                 btnText={'Delete Configuration'}
-                disabled={s3Config.inUse || submitting || loading}
+                disabled={s3Config.inUse || submitting || loading || enableEdit}
                 btnClass={'btn btn-default'}
                 onClick={
                   !isEmptyObject(s3Config)
@@ -189,10 +200,16 @@ class AwsStorageConfiguration extends Component {
                     : null
                 }
               />
+              <YBButton
+                btnText="Edit Configuration"
+                btnClass="btn btn-orange"
+                onClick={onEditConfig}
+              />
               {isDefinedNotNull(config) && (
                 <YBConfirmModal
                   name="delete-storage-config"
                   title={'Confirm Delete'}
+                  type="reset"
                   onConfirm={() => deleteStorageConfig(s3Config.configUUID)}
                   currentModal={'delete' + s3Config.name + 'StorageConfig'}
                   visibleModal={this.props.visibleModal}

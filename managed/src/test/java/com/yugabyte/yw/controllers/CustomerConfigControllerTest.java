@@ -171,6 +171,44 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditInUseStorageConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY\", " +
+        "\"ACCESS_SECRET\": \"A-SECRET\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(),
+        configUUID);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    backup.delete();
+    result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
+  }
+
+  @Test
+  public void testEditInvalidCustomerConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    Customer customer = ModelFactory.testCustomer("nc", "New Customer");
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertBadRequest(result, "Invalid configUUID: " + configUUID);
+    assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
+  }
+  
   public void testValidPasswordPolicy() {
     Result result = testPasswordPolicy(8, 1, 1, 1, 1);
     assertOk(result);
@@ -188,6 +226,26 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditWithBackupLocation() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY-NEW\", " +
+        "\"ACCESS_SECRET\": \"DATA\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    // Should not update the field BACKUP_LOCATION to "test".
+    assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
+    // SHould be updated and the API response should give asked data.
+    assertEquals("A-*****EW", json.get("data").get("ACCESS_KEY").textValue());
+    assertEquals("********", json.get("data").get("ACCESS_SECRET").textValue());
+  }
+  
   public void testInvalidPasswordPolicy() {
     Result result = testPasswordPolicy(8, 3, 3, 2, 1);
     assertBadRequest(result, "{\"password policy\":[\"Minimal length should be not less than" +

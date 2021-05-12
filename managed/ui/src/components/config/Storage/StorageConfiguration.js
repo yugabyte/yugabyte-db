@@ -20,15 +20,17 @@ import nfsIcon from './images/nfs.svg';
 import {
   isNonEmptyObject,
   isEmptyObject,
-  isDefinedNotNull
+  isDefinedNotNull,
+  isNonEmptyArray
 } from '../../../utils/ObjectUtils';
+import { Formik } from 'formik';
 
 const storageConfigTypes = {
   NFS: {
     title: 'NFS Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'NFS_BACKUP_LOCATION',
         label: 'NFS Storage Path',
         placeHolder: 'NFS Storage Path'
       }
@@ -38,7 +40,7 @@ const storageConfigTypes = {
     title: 'GCS Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'GCS_BACKUP_LOCATION',
         label: 'GCS Bucket',
         placeHolder: 'GCS Bucket'
       },
@@ -53,14 +55,14 @@ const storageConfigTypes = {
     title: 'Azure Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'AZ_BACKUP_LOCATION',
         label: 'Container URL',
         placeHolder: 'Container URL'
       },
       {
         id: 'AZURE_STORAGE_SAS_TOKEN',
         label: 'SAS Token',
-        placeholder: 'SAS Token'
+        placeHolder: 'SAS Token'
       }
     ]
   }
@@ -88,6 +90,14 @@ const getTabTitle = (configName) => {
 };
 
 class StorageConfiguration extends Component {
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      enableEdit: false
+    };
+  }
+
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs.data.find((config) => config.name.toLowerCase() === name);
   };
@@ -121,27 +131,32 @@ class StorageConfiguration extends Component {
     // These conditions will pick only the required JSON keys from the respective tab.
     switch (props.activeTab) {
       case 'nfs':
+        dataPayload['BACKUP_LOCATION'] = dataPayload['NFS_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION']);
         break;
 
       case 'gcs':
+        dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON']);
         break;
 
       case 'az':
+        dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
         break;
 
       default:
         if (values['IAM_INSTANCE_PROFILE']) {
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
+          dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
           dataPayload = _.pick(dataPayload, [
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
             'IAM_INSTANCE_PROFILE'
           ]);
         } else {
-           dataPayload = _.pick(dataPayload, [
+          dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
+          dataPayload = _.pick(dataPayload, [
             'AWS_ACCESS_KEY_ID',
             'AWS_SECRET_ACCESS_KEY',
             'BACKUP_LOCATION',
@@ -151,30 +166,51 @@ class StorageConfiguration extends Component {
         break;
     }
 
-    return this.props
-      .addCustomerConfig({
-        type: 'STORAGE',
-        name: type,
-        data: dataPayload
-      })
-      .then((resp) => {
-        if (getPromiseState(this.props.addConfig).isSuccess()) {
-          // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
-          this.props.reset();
-          this.props.fetchCustomerConfigs();
-        } else if (getPromiseState(this.props.addConfig).isError()) {
-          // show server-side validation errors under form inputs
-          throw new SubmissionError(this.props.addConfig.error);
-        }
-      });
+    if (values.type === 'update') {
+      this.setState({ enableEdit: false });
+      return this.props
+        .updateCustomerConfig({
+          type: 'STORAGE',
+          configUUID: values.configUUID,
+          name: type,
+          data: dataPayload
+        })
+        .then((resp) => {
+          if (getPromiseState(this.props.updateConfig).isSuccess()) {
+            // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
+            this.props.reset();
+            this.props.fetchCustomerConfigs();
+          } else if (getPromiseState(this.props.updateConfig).isError()) {
+            // show server-side validation errors under form inputs
+            throw new SubmissionError(this.props.updateConfig.error);
+          }
+        });
+    } else {
+      this.setState({ enableEdit: false });
+      return this.props
+        .addCustomerConfig({
+          type: 'STORAGE',
+          name: type,
+          data: dataPayload
+        })
+        .then((resp) => {
+          if (getPromiseState(this.props.addConfig).isSuccess()) {
+            // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
+            this.props.reset();
+            this.props.fetchCustomerConfigs();
+          } else if (getPromiseState(this.props.addConfig).isError()) {
+            // show server-side validation errors under form inputs
+            throw new SubmissionError(this.props.addConfig.error);
+          }
+        });
+    }
   };
 
   deleteStorageConfig = (configUUID) => {
-    this.props.deleteCustomerConfig(configUUID)
-      .then(() => {
-        this.props.reset(); // reset form to initial values
-        this.props.fetchCustomerConfigs();
-      });
+    this.props.deleteCustomerConfig(configUUID).then(() => {
+      this.props.reset(); // reset form to initial values
+      this.props.fetchCustomerConfigs();
+    });
   };
 
   showDeleteConfirmModal = (configName) => {
@@ -185,13 +221,115 @@ class StorageConfiguration extends Component {
     this.props.fetchCustomerConfigs();
   }
 
+  /**
+   * This method will enable edit options for respective
+   * backup config.
+   */
+  onEditConfig = () => {
+    this.setState({ enableEdit: true });
+  };
+
+  /**
+   * This method will disable the edit input fields.
+   */
+  disableEditFields = () => {
+    this.setState({ enableEdit: false });
+  };
+
+  /**
+   * This method will help to disable the backup storage
+   * location field.
+   *
+   * @param {string} fieldKey Input Field Id.
+   * @returns Boolean.
+   */
+  disableInputFields = (fieldKey, enableEdit, activeTab) => {
+    const tab = activeTab.toUpperCase();
+    return !enableEdit || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false;
+  };
+
+  /**
+   * This method will help us to setup the initial value props
+   * to the redux form.
+   *
+   * @param {string} activeTab Current Tab.
+   * @param {Array<object>} configs Backup config Data.
+   */
+  setInitialConfigValues = (activeTab, configs) => {
+    const tab = activeTab.toUpperCase();
+    const data =
+      !isNonEmptyArray(configs) &&
+      configs.data.filter((config) => config.name === activeTab.toUpperCase());
+    let initialValues = data.map((obj) => {
+      switch (activeTab) {
+        case 'nfs':
+          return {
+            type: 'update',
+            configUUID: obj?.configUUID,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION
+          };
+
+        case 'gcs':
+          return {
+            type: 'update',
+            configUUID: obj?.configUUID,
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
+            GCS_CREDENTIALS_JSON: obj.data?.GCS_CREDENTIALS_JSON
+          };
+
+        case 'az':
+          return {
+            type: 'update',
+            configUUID: obj?.configUUID,
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
+            AZURE_STORAGE_SAS_TOKEN: obj.data?.AZURE_STORAGE_SAS_TOKEN
+          };
+
+        default:
+          return {
+            type: 'update',
+            configUUID: obj?.configUUID,
+            IAM_INSTANCE_PROFILE: obj.data?.IAM_INSTANCE_PROFILE,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
+            AWS_HOST_BASE: obj.data?.AWS_HOST_BASE
+          };
+      }
+    });
+
+    if (initialValues.length > 0) {
+      this.props.setInitialConfigValues(initialValues[0]);
+    } else {
+      initialValues = {
+        IAM_INSTANCE_PROFILE: false,
+        AWS_ACCESS_KEY_ID: '',
+        AWS_SECRET_ACCESS_KEY: '',
+        S3_BACKUP_LOCATION: '',
+        AWS_HOST_BASE: ''
+      };
+      this.props.setInitialConfigValues(initialValues);
+    }
+  };
+
   render() {
     const {
       handleSubmit,
       submitting,
       addConfig: { loading },
-      customerConfigs
+      customerConfigs,
+      initialValues
     } = this.props;
+    const { enableEdit } = this.state;
+    const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
+    const config = this.getConfigByType(activeTab, customerConfigs);
+
     if (getPromiseState(customerConfigs).isLoading()) {
       return <YBLoading />;
     }
@@ -205,10 +343,14 @@ class StorageConfiguration extends Component {
           eventKey={'s3'}
           title={getTabTitle('S3')}
           key={'s3-tab'}
-          unmountOnExit={true}>
+          unmountOnExit={true}
+          onSelect={this.setInitialConfigValues(activeTab, customerConfigs)}
+        >
           <AwsStorageConfiguration
             {...this.props}
             deleteStorageConfig={this.deleteStorageConfig}
+            enableEdit={enableEdit}
+            onEditConfig={this.onEditConfig}
           />
         </Tab>
       ];
@@ -231,7 +373,6 @@ class StorageConfiguration extends Component {
           const configFields = [];
           const configTemplate = storageConfigTypes[configName];
           configTemplate.fields.forEach((field) => {
-            const value = config.data[field.id];
             configFields.push(
               <Row className="config-provider-row" key={configName + field.id}>
                 <Col lg={2}>
@@ -241,8 +382,8 @@ class StorageConfiguration extends Component {
                   <Field
                     name={field.id}
                     placeHolder={field.placeHolder}
-                    input={{ value: value, disabled: isDefinedNotNull(value) }}
                     component={YBTextInputWithLabel}
+                    isReadOnly={this.disableInputFields(field.id, enableEdit, activeTab)}
                   />
                 </Col>
               </Row>
@@ -252,7 +393,10 @@ class StorageConfiguration extends Component {
           const configControls = (
             <div className="action-bar">
               {config.inUse && (
-                <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
+                <YBInfoTip
+                  content={
+                    'Storage configuration is in use and cannot be deleted until associated resources are removed.'
+                  }
                   placement="top"
                 >
                   <span className="disable-delete fa-stack fa-2x">
@@ -263,7 +407,13 @@ class StorageConfiguration extends Component {
               )}
               <YBButton
                 btnText={'Delete Configuration'}
-                disabled={config.inUse || submitting || loading || isEmptyObject(config)}
+                disabled={
+                  config.inUse ||
+                  submitting ||
+                  loading ||
+                  isEmptyObject(config) ||
+                  (enableEdit && activeTab !== 'nfs')
+                }
                 btnClass={'btn btn-default'}
                 onClick={
                   isDefinedNotNull(config)
@@ -271,6 +421,13 @@ class StorageConfiguration extends Component {
                     : () => {}
                 }
               />
+              {activeTab !== 'nfs' && (
+                <YBButton
+                  btnText="Edit Configuration"
+                  btnClass="btn btn-orange"
+                  onClick={this.onEditConfig}
+                />
+              )}
               {isDefinedNotNull(config) && (
                 <YBConfirmModal
                   name="delete-storage-config"
@@ -310,31 +467,45 @@ class StorageConfiguration extends Component {
         }
       });
 
-      const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
-      const config = this.getConfigByType(activeTab, customerConfigs);
-
       return (
         <div className="provider-config-container">
-          <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
-            <YBTabsPanel
-              defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
-              activeTab={activeTab}
-              id="storage-config-tab-panel"
-              className="config-tabs"
-              routePrefix="/config/backup/"
-            >
-              {configs}
-            </YBTabsPanel>
+          <Formik initialValues={initialValues}>
+            <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
+              <YBTabsPanel
+                defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
+                activeTab={activeTab}
+                id="storage-config-tab-panel"
+                className="config-tabs"
+                routePrefix="/config/backup/"
+              >
+                {configs}
+              </YBTabsPanel>
 
-            <div className="form-action-button-container">
-              <YBButton
-                btnText={'Save'}
-                btnClass={'btn btn-orange'}
-                disabled={submitting || loading || isNonEmptyObject(config)}
-                btnType="submit"
-              />
-            </div>
-          </form>
+              <div className="form-action-button-container">
+                {!isNonEmptyObject(config) ? (
+                  <YBButton
+                    btnText={'Save'}
+                    btnClass={'btn btn-orange'}
+                    disabled={submitting || loading}
+                    btnType="submit"
+                  />
+                ) : (
+                  <>
+                    {enableEdit && activeTab !== 'nfs' && (
+                      <YBButton btnText="Update" btnClass={'btn btn-orange'} btnType="submit" />
+                    )}
+                    {enableEdit && activeTab !== 'nfs' && (
+                      <YBButton
+                        btnText="Cancel"
+                        btnClass={'btn btn-default'}
+                        onClick={this.disableEditFields}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </form>
+          </Formik>
         </div>
       );
     }

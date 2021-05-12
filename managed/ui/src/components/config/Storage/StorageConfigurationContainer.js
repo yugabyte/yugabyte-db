@@ -9,16 +9,21 @@ import {
   fetchCustomerConfigs,
   fetchCustomerConfigsResponse,
   deleteCustomerConfig,
-  deleteCustomerConfigResponse
+  deleteCustomerConfigResponse,
+  setInitialConfigValues,
+  updateCustomerConfig,
+  updateCustomerConfigResponse
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {
     addConfig: state.customer.addConfig,
+    updateConfig: state.customer.updateConfig,
     customerConfigs: state.customer.configs,
     visibleModal: state.modal.visibleModal,
-    deleteConfig: state.customer.deleteConfig
+    deleteConfig: state.customer.deleteConfig,
+    initialValues: state.customer.setInitialVal
   };
 };
 
@@ -27,6 +32,16 @@ const mapDispatchToProps = (dispatch) => {
     addCustomerConfig: (config) => {
       return dispatch(addCustomerConfig(config)).then((response) => {
         return dispatch(addCustomerConfigResponse(response.payload));
+      });
+    },
+
+    setInitialConfigValues: (initialValues) => {
+      return dispatch(setInitialConfigValues(initialValues));
+    },
+
+    updateCustomerConfig: (config) => {
+      return dispatch(updateCustomerConfig(config)).then((res) => {
+        dispatch(updateCustomerConfigResponse(res.payload));
       });
     },
 
@@ -53,7 +68,8 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 const storageConfigForm = reduxForm({
-  form: 'storageConfigForm'
+  form: 'storageConfigForm',
+  enableReinitialize: true
 });
 
 export default connect(
