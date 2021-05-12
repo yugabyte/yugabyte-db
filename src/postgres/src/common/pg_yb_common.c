@@ -144,3 +144,18 @@ YBIsAnalyzeCmdEnabled()
 	}
 	return cached_value;
 }
+
+const char *YBGetCurrentCloud()
+{
+	return getenv("FLAGS_placement_cloud");
+}
+
+const char *YBGetCurrentRegion()
+{
+	return getenv("FLAGS_placement_region");
+}
+
+const char *YBGetCurrentZone()
+{
+	return getenv("FLAGS_placement_zone");
+}

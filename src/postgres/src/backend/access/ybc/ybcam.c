@@ -48,6 +48,7 @@
 #include "utils/syscache.h"
 #include "utils/selfuncs.h"
 #include "utils/snapmgr.h"
+#include "utils/spccache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
@@ -1410,7 +1411,7 @@ void ybc_heap_endscan(HeapScanDesc scan_desc)
 
 void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 					 bool is_backwards_scan, bool is_uncovered_idx_scan,
-					 Cost *startup_cost, Cost *total_cost)
+					 Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid)
 {
 	/*
 	 * Yugabyte-specific per-tuple cost considerations:
@@ -1420,7 +1421,18 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	 *   - uncovered index scan is more costly than index-only or seq scan because
 	 *     it requires extra request to the main table.
 	 */
-	Cost yb_per_tuple_cost_factor = 10;
+	double tsp_cost = 0.0;
+	bool is_valid_tsp_cost = !is_uncovered_idx_scan 
+								&& get_yb_tablespace_cost(index_tablespace_oid, 
+															&tsp_cost);
+	Cost yb_per_tuple_cost_factor = YB_DEFAULT_PER_TUPLE_COST;
+
+	if (is_valid_tsp_cost && yb_per_tuple_cost_factor > tsp_cost) 
+	{
+		yb_per_tuple_cost_factor = tsp_cost;
+	}
+
+	Assert(!is_valid_tsp_cost || tsp_cost != 0);
 	if (is_backwards_scan)
 	{
 		yb_per_tuple_cost_factor *= YBC_BACKWARDS_SCAN_COST_FACTOR;
@@ -1561,7 +1573,7 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 	}
 
 	ybcCostEstimate(baserel, *selectivity, is_backwards_scan,
-	                is_uncovered_idx_scan, startup_cost, total_cost);
+	                is_uncovered_idx_scan, startup_cost, total_cost, path->indexinfo->reltablespace);
 
 	/*
 	 * Try to evaluate the number of rows this baserel might return.
@@ -1578,7 +1590,6 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 	{
 		baserel->rows = baserel_rows_estimate;
 	}
-
 
 	if (relation)
 		RelationClose(relation);

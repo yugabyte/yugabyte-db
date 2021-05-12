@@ -5577,6 +5577,16 @@ int json_get_int_value(text *json, char *key)
 	return ret_value;
 }
 
+/*
+ * This differs from json_get_value in that the string it returns does not do
+ * character escaping.
+ */
+text *
+json_get_denormalized_value(text *json, char *key)
+{
+	return get_worker(json, &key, NULL, 1, true);
+}
+
 text*
 json_get_value(text *json, char *key)
 {
