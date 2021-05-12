@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.common.YWServiceException;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
@@ -71,6 +72,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
+import static play.mvc.Http.Status.*;
 /**
  * Helper class for Certificates
  */
@@ -169,7 +171,7 @@ public class CertificateHelper {
 
       CertificateInfo cert = CertificateInfo.get(rootCA);
       if (cert.privateKey == null) {
-        throw new RuntimeException("Keyfile cannot be null!");
+        throw new YWServiceException(BAD_REQUEST, "Keyfile cannot be null!");
       }
       X509Certificate cer = getX509CertificateCertObject(FileUtils.readFileToString
           (new File(cert.certificate)));
@@ -180,7 +182,7 @@ public class CertificateHelper {
       } catch (Exception e) {
         LOG.error("Unable to create client CA for username {} using root CA {}",
           username, rootCA, e);
-        throw new RuntimeException("Could not create client cert.");
+        throw new YWServiceException(BAD_REQUEST, "Could not create client cert.");
       }
 
       X500Name clientCertSubject = new X500Name(String.format("CN=%s", username));
@@ -245,7 +247,7 @@ public class CertificateHelper {
       CertificateException | InvalidKeyException | NoSuchProviderException |
       SignatureException e) {
       LOG.error("Unable to create client CA for username {} using root CA {}", username, rootCA, e);
-      throw new RuntimeException("Could not create client cert.");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Could not create client cert.");
     }
   }
 
@@ -253,35 +255,34 @@ public class CertificateHelper {
     String label, UUID customerUUID, String storagePath,
     String certContent, String keyContent, Date certStart,
     Date certExpiry, CertificateInfo.Type certType,
-    CertificateParams.CustomCertInfo customCertInfo) throws IOException {
-
-    if (certContent == null) {
-      throw new RuntimeException("Certfile can't be null");
-    }
-    UUID rootCA_UUID = UUID.randomUUID();
-    String keyPath = null;
-    X509Certificate x509Certificate = getX509CertificateCertObject(certContent);
-    if (certType == CertificateInfo.Type.SelfSigned) {
-      if (!verifySignature(x509Certificate, keyContent))
-        throw new RuntimeException("Invalid certificate.");
-      keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
-        customerUUID.toString(), rootCA_UUID.toString());
-    } else {
-      if (!isValidCACert(x509Certificate))
-        throw new RuntimeException("Invalid CA certificate.");
-    }
-    String certPath = String.format("%s/certs/%s/%s/ca.%s", storagePath,
-      customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
-
-
-    writeCertFileContentToCertPath(getX509CertificateCertObject(certContent), certPath);
-    LOG.info(
-      "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
-      label, rootCA_UUID, certType,
-      certPath, ((keyPath == null) ? "no private key" : keyPath)
-    );
-    CertificateInfo cert;
+    CertificateParams.CustomCertInfo customCertInfo) {
     try {
+      if (certContent == null) {
+        throw new YWServiceException(BAD_REQUEST, "Certfile can't be null");
+      }
+      UUID rootCA_UUID = UUID.randomUUID();
+      String keyPath = null;
+      X509Certificate x509Certificate = getX509CertificateCertObject(certContent);
+      if (certType == CertificateInfo.Type.SelfSigned) {
+        if (!verifySignature(x509Certificate, keyContent))
+          throw new YWServiceException(BAD_REQUEST, "Invalid certificate.");
+        keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
+          customerUUID.toString(), rootCA_UUID.toString());
+      } else {
+        if (!isValidCACert(x509Certificate))
+          throw new YWServiceException(BAD_REQUEST, "Invalid CA certificate.");
+      }
+      String certPath = String.format("%s/certs/%s/%s/ca.%s", storagePath,
+        customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
+
+
+      writeCertFileContentToCertPath(getX509CertificateCertObject(certContent), certPath);
+      LOG.info(
+        "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
+        label, rootCA_UUID, certType,
+        certPath, ((keyPath == null) ? "no private key" : keyPath)
+      );
+      CertificateInfo cert;
       if (certType == CertificateInfo.Type.SelfSigned) {
         writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
         cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
@@ -293,7 +294,7 @@ public class CertificateHelper {
       return cert.uuid;
     } catch (IOException | NoSuchAlgorithmException e) {
       LOG.error("Could not generate checksum for cert");
-      throw new RuntimeException("Checksum generation failed.");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Checksum generation failed.");
     }
   }
 

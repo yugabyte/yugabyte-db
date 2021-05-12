@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -43,6 +44,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
@@ -151,10 +153,11 @@ public class CertificateControllerTest extends FakeDBApplication {
   
   @Test
   public void testDeleteInvalidCertificate() {
-  UUID uuid=UUID.randomUUID();
-  Result result = deleteCertificate(customer.uuid, uuid);
-  JsonNode json = Json.parse(contentAsString(result));
-  assertEquals(BAD_REQUEST, result.status());
+	UUID uuid=UUID.randomUUID();
+  Result result = assertThrows(YWServiceException.class,
+        () -> deleteCertificate(customer.uuid, uuid)).getResult();
+	JsonNode json = Json.parse(contentAsString(result));
+	assertEquals(BAD_REQUEST, result.status());
   }
   
   @Test
@@ -196,7 +199,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result = uploadCertificate(customer.uuid, bodyJson);
+    Result result = assertThrows(YWServiceException.class,
+        () -> uploadCertificate(customer.uuid, bodyJson)).getResult();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
@@ -211,7 +215,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result = uploadCertificate(customer.uuid, bodyJson);
+    Result result = assertThrows(YWServiceException.class,
+        () -> uploadCertificate(customer.uuid, bodyJson)).getResult();
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
   }
@@ -314,7 +319,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     certJson.put("nodeCertPath", "/tmp/nodeCertPath");
     certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
     bodyJson.put("customCertInfo", certJson);
-    Result result = updateCertificate(customer.uuid, certUUID, bodyJson);
+    Result result = assertThrows(YWServiceException.class,
+        () -> updateCertificate(customer.uuid, certUUID, bodyJson)).getResult();
     assertEquals(BAD_REQUEST, result.status());
   }
 
