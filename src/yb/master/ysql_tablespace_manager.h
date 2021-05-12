@@ -55,6 +55,9 @@ class YsqlTablespaceManager {
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
     const TablespaceId& tablespace_id);
 
+  Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+      const scoped_refptr<TableInfo>& table);
+
   Result<boost::optional<ReplicationInfoPB>> GetTableReplicationInfo(
     const scoped_refptr<TableInfo>& table);
 
