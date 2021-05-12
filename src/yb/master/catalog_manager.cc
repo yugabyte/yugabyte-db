@@ -1653,6 +1653,13 @@ std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() {
   return tablespace_manager_;
 }
 
+Result<boost::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
+    const scoped_refptr<TableInfo>& table) {
+
+  auto tablespace_manager = GetTablespaceManager();
+  return tablespace_manager->GetTablespaceForTable(table);
+}
+
 Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
   const TablespaceId& tablespace_id) {
 

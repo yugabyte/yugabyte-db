@@ -73,6 +73,8 @@ DEFINE_int32(
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
 
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
+
 namespace yb {
 
 namespace {
@@ -1105,16 +1107,35 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
             << EscapeForHtmlToString(l->pb.state_msg())
             << "</td></tr>\n";
 
-    // TODO(deepthi.srinivasan): For now, pass empty tablespace_id as tablespaces feature
-    // is disabled anyway. Later when tablespaces are enabled, create and call the
-    // appropriate API to display placement information pertaining to tablespaces.
-    auto replication_info = CHECK_RESULT(
-      master_->catalog_manager()->GetTableReplicationInfo(
-        l->pb.replication_info(), "" /* tablespace_id */));
-    *output << "  <tr><td>Replication Info:</td><td>"
-            << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
-            << "  </td></tr>\n";
-    *output << "</table>\n";
+    TablespaceId tablespace_id;
+    auto result = master_->catalog_manager()->GetTablespaceForTable(table);
+    if (result.ok()) {
+      // If the table is associated with a tablespace, display tablespace, otherwise
+      // just display replication info.
+      if (result.get()) {
+        tablespace_id = result.get().value();
+        *output << "  <tr><td>Tablespace OID:</td><td>"
+                << GetPgsqlTablespaceOid(tablespace_id)
+                << "  </td></tr>\n";
+      }
+      auto replication_info = CHECK_RESULT(master_->catalog_manager()->GetTableReplicationInfo(
+            l->pb.replication_info(), tablespace_id));
+      *output << "  <tr><td>Replication Info:</td><td>"
+              << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
+              << "  </td></tr>\n </table>\n";
+    } else {
+      // The table was associated with a tablespace, but that tablespace was not found.
+      *output << "  <tr><td>Replication Info:</td><td>";
+      if (FLAGS_ysql_tablespace_info_refresh_secs > 0) {
+        *output << "  Tablespace information not available now, please try again after "
+                << FLAGS_ysql_tablespace_info_refresh_secs << " seconds. ";
+      } else {
+        *output << "  Tablespace information is not available as the periodic task "
+                << "  used to refresh it is disabled.";
+
+      }
+      *output << "  </td></tr>\n </table>\n";
+    }
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
     if (s.ok()) {

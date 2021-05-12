@@ -57,8 +57,8 @@ Result<boost::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTablespaceR
       tablespace_id + " not found");
 }
 
-Result<boost::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTableReplicationInfo(
-    const scoped_refptr<TableInfo>& table) {
+Result<boost::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable(
+  const scoped_refptr<TableInfo>& table) {
 
   if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
       !table->UsesTablespacesForPlacement()) {
@@ -83,17 +83,25 @@ Result<boost::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTableReplic
     return STATUS(InternalError, "Tablespace information not found for table " + table->id());
   }
 
-  if (!iter->second) {
+  return iter->second;
+}
+
+Result<boost::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTableReplicationInfo(
+    const scoped_refptr<TableInfo>& table) {
+
+  // Lookup tablespace for the given table.
+  auto tablespace_id = VERIFY_RESULT(GetTablespaceForTable(table));
+
+  if (!tablespace_id) {
     return boost::none;
   }
 
   // Lookup the placement info associated with the above tablespace.
-  const TablespaceId& tablespace_id = iter->second.value();
-  const auto tablespace_iter = tablespace_id_to_replication_info_map_->find(tablespace_id);
-  if (tablespace_iter == tablespace_id_to_replication_info_map_->end()) {
-    return STATUS(InternalError, "Placement policy not found for " + tablespace_id);
+  const auto iter = tablespace_id_to_replication_info_map_->find(tablespace_id.value());
+  if (iter == tablespace_id_to_replication_info_map_->end()) {
+    return STATUS(InternalError, "Placement policy not found for " + tablespace_id.value());
   }
-  return tablespace_iter->second;
+  return iter->second;
 }
 
 bool YsqlTablespaceManager::NeedsRefreshToFindTablePlacement(
