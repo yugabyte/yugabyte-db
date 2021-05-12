@@ -438,7 +438,7 @@ IndexPermissions NextPermission(IndexPermissions perm) {
 
 Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
-    uint32_t current_version) {
+    uint32_t current_version, bool respect_backfill_deferrals) {
   DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
@@ -466,7 +466,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         continue;
       }
       if (idx_pb.index_permissions() == INDEX_PERM_DO_BACKFILL) {
-        if (defer_backfill || idx_pb.is_backfill_deferred()) {
+        if (respect_backfill_deferrals && (defer_backfill || idx_pb.is_backfill_deferred())) {
           LOG(INFO) << "Deferring index-backfill for " << idx_pb.table_id();
           deferred_indexes.emplace_back(idx_pb);
         } else {
@@ -840,6 +840,8 @@ void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& fai
     done_.store(true, std::memory_order_release);
     WARN_NOT_OK(MarkAllIndexesAsSuccess(), "Failed to complete backfill.");
     WARN_NOT_OK(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
+  } else {
+    VLOG_WITH_PREFIX(1) << "Still backfilling " << tablets_pending_ << " more tablets.";
   }
 }
 
@@ -927,15 +929,6 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
           success ? INDEX_PERM_READ_WRITE_AND_DELETE : INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING);
     }
   }
-  RETURN_NOT_OK_PREPEND(
-      MultiStageAlterTable::UpdateIndexPermission(
-          master_->catalog_manager(), indexed_table_, permissions_to_set, boost::none),
-      "Could not update permissions after backfill. "
-      "Possible that the master-leader has changed.");
-
-  VLOG(1) << "Sending alter table requests to the Indexed table";
-  master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
-  VLOG(1) << "DONE Sending alter table requests to the Indexed table";
 
   for (const auto& kv_pair : permissions_to_set) {
     if (kv_pair.second == INDEX_PERM_READ_WRITE_AND_DELETE) {
@@ -943,13 +936,22 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
     }
   }
 
-  LOG(INFO) << "Done backfill on " << indexed_table_->ToString() << " setting permissions to "
-            << yb::ToString(permissions_to_set);
-
+  RETURN_NOT_OK_PREPEND(
+      MultiStageAlterTable::UpdateIndexPermission(
+          master_->catalog_manager(), indexed_table_, permissions_to_set, boost::none),
+      "Could not update permissions after backfill. "
+      "Possible that the master-leader has changed.");
   backfill_job_->SetState(
       all_success ? MonitoredTaskState::kComplete : MonitoredTaskState::kFailed);
   RETURN_NOT_OK(ClearCheckpointStateInTablets());
   indexed_table_->ClearIsBackfilling();
+
+  VLOG(1) << "Sending alter table requests to the Indexed table";
+  master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
+  VLOG(1) << "DONE Sending alter table requests to the Indexed table";
+
+  LOG(INFO) << "Done backfill on " << indexed_table_->ToString() << " setting permissions to "
+            << yb::ToString(permissions_to_set);
   return Status::OK();
 }
 

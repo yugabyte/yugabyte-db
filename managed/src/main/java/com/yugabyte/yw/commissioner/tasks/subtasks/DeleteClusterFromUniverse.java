@@ -17,6 +17,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +50,7 @@ public class DeleteClusterFromUniverse extends UniverseTaskBase {
         public void run(Universe universe) {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           universeDetails.deleteCluster(taskParams().clusterUUID);
+          universeDetails.nodeDetailsSet.removeIf(n -> n.isInPlacement(taskParams().clusterUUID));
           universe.setUniverseDetails(universeDetails);
         }
       };

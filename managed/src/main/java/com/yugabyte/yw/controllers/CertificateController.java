@@ -73,7 +73,7 @@ public class CertificateController extends AuthenticatedController {
                       certContent, keyContent, certStart, certExpiry, certType,
                       customCertInfo
                     );
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(certUUID);
   }
 
@@ -87,7 +87,7 @@ public class CertificateController extends AuthenticatedController {
 
     JsonNode result = CertificateHelper.createClientCertificate(
         rootCA, null, formData.get().username, certStart, certExpiry);
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(result);
   }
 
@@ -96,7 +96,7 @@ public class CertificateController extends AuthenticatedController {
     CertificateInfo.getOrBadRequest(rootCA, customerUUID);
 
     String certContents = CertificateHelper.getCertPEMFileContents(rootCA);
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     ObjectNode result = Json.newObject();
     result.put(CertificateHelper.ROOT_CERT, certContents);
     return ApiResponse.success(result);
@@ -114,9 +114,9 @@ public class CertificateController extends AuthenticatedController {
 
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
     CertificateInfo.delete(reqCertUUID, customerUUID);
-
-    Audit.createAuditEntry(ctx(), request());
-    return ApiResponse.success("Successfully deleted the certificate:" + reqCertUUID);
+    auditService().createAuditEntry(ctx(), request());
+    LOG.info("Successfully deleted the certificate:" + reqCertUUID);
+    return YWSuccess.asResult();
   }
 
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {

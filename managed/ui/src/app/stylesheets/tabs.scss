@@ -8,8 +8,7 @@
   > li {
     > a {
       border: 1px solid #e2e2e1;
-      border: none;
-      border-bottom: none;
+      border: 1px solid transparent;
       min-width: 80px;
       text-align: center;
       color: #555;
@@ -19,7 +18,7 @@
       @include transition(0.35s);
 
       &:first-child {
-        margin-left: -1px;
+        margin-left: -1px;        
       }
 
       @media (min-width: 768px) {
