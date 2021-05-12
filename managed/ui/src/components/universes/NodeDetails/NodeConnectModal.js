@@ -40,7 +40,9 @@ class NodeConnectModal extends Component {
     let accessCommand = null;
     let accessTitle = null;
 
-    if (isEmptyObject(nodeIPs) || !getPromiseState(accessKeys).isSuccess()) {
+    if (
+      (isEmptyObject(nodeIPs) || currentRow.cloudInfo.cloud !== 'kubernetes') &&
+      !getPromiseState(accessKeys).isSuccess()) {
       return <MenuItem>{label}</MenuItem>;
     }
 
