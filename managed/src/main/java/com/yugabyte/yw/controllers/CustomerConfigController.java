@@ -90,7 +90,7 @@ public class CustomerConfigController extends AuthenticatedController {
     JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
     config.data = Json.toJson(updatedData);
     config.update();
-    // Add audit entry after #8051 checked in as the config data contains confidential info.
+    Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success(config);
   }
 }
