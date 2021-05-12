@@ -156,6 +156,11 @@ public class CertificateHelper {
                                                  Date certStart, Date certExpiry) {
     LOG.info("Creating client certificate signed by root CA {} and user {} at path {}",
       rootCA, username, storagePath);
+
+    JcaPEMWriter clientCertWriter;
+    JcaPEMWriter clientKeyWriter;
+    StringWriter certWriter;
+    StringWriter keyWriter;
     try {
       // Add the security provider in case createClientCertificate was never called.
       KeyPair clientKeyPair = getKeyPairObject();
@@ -216,10 +221,8 @@ public class CertificateHelper {
 
       clientCert.verify(cer.getPublicKey(), "BC");
 
-      JcaPEMWriter clientCertWriter;
-      JcaPEMWriter clientKeyWriter;
-      StringWriter certWriter = new StringWriter();
-      StringWriter keyWriter = new StringWriter();
+      certWriter = new StringWriter();
+      keyWriter = new StringWriter();
       ObjectNode bodyJson = Json.newObject();
       if (storagePath != null) {
         String clientCertPath = String.format("%s/%s", storagePath, CLIENT_CERT);
@@ -248,6 +251,19 @@ public class CertificateHelper {
       SignatureException e) {
       LOG.error("Unable to create client CA for username {} using root CA {}", username, rootCA, e);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, "Could not create client cert.");
+    } finally {
+      if (clientCertWriter != null) {
+        clientCertWriter.close();
+      }
+      if (clientKeyWriter != null) {
+        clientKeyWriter.close();
+      }
+      if (certWriter != null) {
+        certWriter.close();
+      }
+      if (keyWriter != null) {
+        keyWriter.close();
+      }
     }
   }
 

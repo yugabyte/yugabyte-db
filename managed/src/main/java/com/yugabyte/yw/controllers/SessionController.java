@@ -371,8 +371,9 @@ public class SessionController extends Controller {
     File file = new File(String.format("%s/application.log", logDir));
     // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
+    ReversedLinesFileReader reader;
     try {
-      ReversedLinesFileReader reader = new ReversedLinesFileReader(file);
+      reader = new ReversedLinesFileReader(file);
       int index = 0;
       ObjectNode result = Json.newObject();
       ArrayNode lines = Json.newArray();
@@ -392,6 +393,10 @@ public class SessionController extends Controller {
       LOG.error("Log file open failed.", ex);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not open log file with error " +
         ex.getMessage());
+    } finally {
+      if (reader != null) {
+        reader.close();
+      }
     }
   }
 
