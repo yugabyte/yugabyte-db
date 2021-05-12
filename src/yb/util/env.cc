@@ -38,6 +38,10 @@ CHECKED_STATUS Env::CreateDirs(const std::string& dirname) {
 RandomAccessFile::~RandomAccessFile() {
 }
 
+Status WritableFile::AppendVector(const std::vector<Slice>& data_vector) {
+  return AppendSlices(data_vector.data(), data_vector.size());
+}
+
 WritableFile::~WritableFile() {
 }
 
