@@ -54,13 +54,11 @@ docker pull yugabytedb/yugabyte:2.4.3.0-b6
 
 * [[1342](https://github.com/yugabyte/yugabyte-db/issues/1342)] Fixing the error message when the get host info call to gcp fails
 
-* [[6758](https://github.com/yugabyte/yugabyte-db/issues/6758)] Unable to reuse On-premise instance incase previouse universe failed / deleted (#8263)
-
 * [[8165](https://github.com/yugabyte/yugabyte-db/issues/8165)]Yugaware creates zombie ssh process
 
-* [[8203](https://github.com/yugabyte/yugabyte-db/issues/8203)] Remove state from cloud initializers to avoid concurrency issues
-
 ### Bug fixes
+
+* [[8176](https://github.com/yugabyte/yugabyte-db/issues/8176)] GCP universes don't have correct nproc system settings.
 
 #### Core database
 
@@ -70,13 +68,7 @@ docker pull yugabytedb/yugabyte:2.4.3.0-b6
 
 #### Yugabyte Platform
 
-* [[8220](https://github.com/yugabyte/yugabyte-db/issues/8220)] Impersonate user from admin console
-
-### DISCARD THESE?
-
-* [[8176](https://github.com/yugabyte/yugabyte-db/issues/8176)]Use a separate config to override settings in 20-nproc.conf
-* [[8173](https://github.com/yugabyte/yugabyte-db/issues/8173)] Remove the third-party submodule and add a text file with thirdparty SHA1
-* [[8041](https://github.com/yugabyte/yugabyte-db/issues/8041)] Preserve environment variables to ansible call
+* [[6758](https://github.com/yugabyte/yugabyte-db/issues/6758)] Unable to reuse On-premise instance incase previouse universe failed / deleted (#8263)
 
 ## v2.4.2.0 - May 3, 2021
 
