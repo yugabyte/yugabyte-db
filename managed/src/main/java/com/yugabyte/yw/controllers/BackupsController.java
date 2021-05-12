@@ -3,22 +3,21 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -145,10 +144,8 @@ public class BackupsController extends AuthenticatedController {
       }
     }
 
-    ObjectNode resultNode = Json.newObject();
-    resultNode.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-    return ApiResponse.success(resultNode);
+    return new YWResults.YWTask(taskUUID).asResult();
   }
 
   public Result delete(UUID customerUUID) {
@@ -156,7 +153,7 @@ public class BackupsController extends AuthenticatedController {
     // TODO(API): Let's get rid of raw Json.
     // Create DeleteBackupReq in form package and bind to that
     ObjectNode formData = (ObjectNode) request().body().asJson();
-    List<String> taskUUIDList = new ArrayList<>();
+    List<UUID> taskUUIDList = new ArrayList<>();
     for (JsonNode backupUUID : formData.get("backupUUID")) {
       UUID uuid = UUID.fromString(backupUUID.asText());
       Backup backup = Backup.get(customerUUID, uuid);
@@ -175,16 +172,11 @@ public class BackupsController extends AuthenticatedController {
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
           CustomerTask.create(customer, uuid, taskUUID, CustomerTask.TargetType.Backup,
              CustomerTask.TaskType.Delete,"Backup");
-          taskUUIDList.add(taskUUID.toString());
+          taskUUIDList.add(taskUUID);
           auditService().createAuditEntry(ctx(), request(), taskUUID);
         }
       }
     }
-    ObjectNode resultNode = Json.newObject();
-    ArrayNode arrayNode = resultNode.putArray("taskUUID");
-    for (String item : taskUUIDList) {
-      arrayNode.add(item);
-    }
-    return ApiResponse.success(resultNode);
+    return new YWResults.YWTasks(taskUUIDList).asResult();
   }
 }
