@@ -58,6 +58,8 @@ class HostPort;
 
 namespace master {
 class AlterTableRequestPB;
+class AnalyzeTableRequestPB;
+class AnalyzeTableResponsePB;
 class CreateTableRequestPB;
 class MasterServiceProxy;
 } // namespace master
@@ -119,6 +121,9 @@ class YBClient::Data {
                              const YBSchema& schema,
                              CoarseTimePoint deadline,
                              std::string* table_id);
+
+  Result<master::AnalyzeTableResponsePB> AnalyzeTable(
+      YBClient* client, const master::AnalyzeTableRequestPB& req, CoarseTimePoint deadline);
 
   // Take one of table id or name.
   CHECKED_STATUS IsCreateTableInProgress(YBClient* client,

@@ -74,31 +74,9 @@ void TabletSplitHeartbeatDataProvider::DoAddData(
     }
 
     const auto& tablet_id = tablet->tablet_id();
-    const auto split_encoded_key = tablet->GetEncodedMiddleSplitKey();
-    if (!split_encoded_key.ok()) {
-      LOG(WARNING) << Format(
-          "Failed to get middle split key for tablet $0: $1", tablet_id,
-          split_encoded_key.status());
-      continue;
-    }
-
-    const auto doc_key_hash = docdb::DecodeDocKeyHash(*split_encoded_key);
-    if (!doc_key_hash.ok()) {
-      LOG(ERROR) << Format(
-          "Failed to decode hash code from the middle split key for tablet $0: $1", tablet_id,
-          doc_key_hash.status());
-      continue;
-    }
 
     auto* const tablet_for_split = req->add_tablets_for_split();
     tablet_for_split->set_tablet_id(tablet_id);
-    tablet_for_split->set_split_encoded_key(*split_encoded_key);
-    if (doc_key_hash->has_value()) {
-      tablet_for_split->set_split_partition_key(
-          PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash->value()));
-    } else {
-      tablet_for_split->set_split_partition_key(*split_encoded_key);
-    }
     VLOG_WITH_FUNC(1) << Format(
         "Found tablet to split: $0, size: $1", tablet->tablet_id(),
         tablet->GetCurrentVersionSstFilesSize());

@@ -7,7 +7,7 @@ image: /images/section_icons/index/develop.png
 menu:
   latest:
     identifier: pg_hint_plan
-    parent: query-1-performance
+    parent: query-tuning
     weight: 600
 isTocNested: true
 showAsideToc: true

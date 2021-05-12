@@ -74,6 +74,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
@@ -194,6 +195,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                              CreateTableResponsePB* resp,
                              rpc::RpcContext* rpc);
 
+  // Analyze a table and provide estimates of pertinent statistics needed by a postgres ANALYZE
+  // command.
+  CHECKED_STATUS AnalyzeTable(const AnalyzeTableRequestPB* req,
+                              AnalyzeTableResponsePB* resp,
+                              rpc::RpcContext* rpc);
+
   // Create the transaction status table if needed (i.e. if it does not exist already).
   //
   // This is called at the end of CreateTable if the table has transactions enabled.
@@ -241,10 +248,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
   // master automatically runs backfill according to the DocDB permissions.
-  CHECKED_STATUS BackfillIndex(
-      const BackfillIndexRequestPB* req,
-      BackfillIndexResponsePB* resp,
-      rpc::RpcContext* rpc);
+  CHECKED_STATUS BackfillIndex(const BackfillIndexRequestPB* req,
+                               BackfillIndexResponsePB* resp,
+                               rpc::RpcContext* rpc);
+
+  // Gets the backfill jobs state associated with the requested table.
+  CHECKED_STATUS GetBackfillJobs(const GetBackfillJobsRequestPB* req,
+                                      GetBackfillJobsResponsePB* resp,
+                                      rpc::RpcContext* rpc);
+
+  // Backfill the indexes for the specified table.
+  // Used for backfilling YCQL defered indexes when triggered from yb-admin.
+  CHECKED_STATUS LaunchBackfillIndexForTable(const LaunchBackfillIndexForTableRequestPB* req,
+                                             LaunchBackfillIndexForTableResponsePB* resp,
+                                             rpc::RpcContext* rpc);
 
   // Delete the specified table.
   //
@@ -723,9 +740,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return *encryption_manager_;
   }
 
-  CHECKED_STATUS SplitTablet(
-      const TabletId& tablet_id, const std::string& split_encoded_key,
-      const std::string& split_partition_key);
+  CHECKED_STATUS SplitTablet(const TabletId& tablet_id);
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -739,6 +754,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
+
+  CHECKED_STATUS TEST_SplitTablet(
+      const TabletId& tablet_id, const std::string& split_encoded_key,
+      const std::string& split_partition_key);
 
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
@@ -1093,12 +1112,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
-  CHECKED_STATUS DeleteTabletsAndSendRequests(const TableInfoPtr& table, HideOnly hide_only);
+  CHECKED_STATUS DeleteTabletsAndSendRequests(
+      const TableInfoPtr& table, const RepeatedBytes& retained_by_snapshot_schedules);
 
   // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
   CHECKED_STATUS DeleteTabletListAndSendRequests(
       const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-      HideOnly hide_only);
+      const RepeatedBytes& retained_by_snapshot_schedules);
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
@@ -1277,6 +1297,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Tablet maps: tablet-id -> TabletInfo
   VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(lock_);
 
+  // Tablets that was hidden instead of deleting, used to cleanup such tablets when time comes.
+  std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(lock_);
+
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
   NamespaceInfoMap namespace_ids_map_ GUARDED_BY(lock_);
   NamespaceNameMapper namespace_names_mapper_ GUARDED_BY(lock_);
@@ -1451,6 +1474,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       CollectFlags flags,
       std::vector<TableDescription>* all_tables,
       std::unordered_set<NamespaceId>* parent_colocated_table_ids);
+
+  void SplitTabletWithKey(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
+      const std::string& split_partition_key);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

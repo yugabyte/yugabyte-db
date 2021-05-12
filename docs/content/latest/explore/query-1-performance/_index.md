@@ -1,15 +1,15 @@
 ---
-title: Query Optimization
-headerTitle: Query Optimization
-linkTitle: Query Optimization
-description: Improve query performance via optimization
-headcontent: Improve query performance via optimization
+title: Query Tuning
+headerTitle: Query Tuning
+linkTitle: Query Tuning
+description: Tuning and optimizing query performance
+headcontent: Tuning and optimizing query performance
 image: /images/section_icons/index/develop.png
 aliases:
 section: Explore
 menu:
   latest:
-    identifier: query-1-performance
+    identifier: query-tuning
     parent: explore
     weight: 235
 ---
@@ -24,7 +24,7 @@ menu:
         <div class="title">Analyze Queries with EXPLAIN</div>
       </div>
       <div class="body">
-        Optimize query performance by creating and analyzing execution plans.
+        Tune your queries by creating and analyzing execution plans.
       </div>
     </a>
   </div>

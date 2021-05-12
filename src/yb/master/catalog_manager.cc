@@ -360,6 +360,16 @@ DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "from pg catalog tables. A value of -1 disables the refresh task.");
 TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
 
+DEFINE_int32(ysql_default_analyze_num_rows, 1000,
+             "The default number of rows in a table to provide when responding to an ANALYZE "
+             "request");
+TAG_FLAG(ysql_default_analyze_num_rows, hidden);
+
+DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
+                 "When set, placement of the tablets of a newly created table will not honor "
+                 "its tablespace placement policy until the loadbalancer runs.");
+TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
+
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
                  "move.");
@@ -2049,6 +2059,13 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
 
 }  // namespace
 
+CHECKED_STATUS CatalogManager::TEST_SplitTablet(
+    const TabletId& tablet_id, const std::string& split_encoded_key,
+    const std::string& split_partition_key) {
+  auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
+}
+
 Status CatalogManager::TEST_SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
   return DoSplitTablet(source_tablet_info, split_hash_code);
@@ -2130,12 +2147,29 @@ Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& 
   return tablet_info;
 }
 
-Status CatalogManager::SplitTablet(
-    const TabletId& tablet_id, const std::string& split_encoded_key,
+void CatalogManager::SplitTabletWithKey(
+    const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
-  const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
+  // if it failed to submit that task. In other words, any failures here are not retriable, and
+  // success indicates that an async and automatically retrying task was submitted.
+  WARN_NOT_OK(
+    DoSplitTablet(tablet, split_encoded_key, split_partition_key),
+    Format("Failed to split tablet with GetSplitKey result for tablet: $0", tablet->tablet_id()));
+}
 
-  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
+Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
+  const auto tablet = VERIFY_RESULT(GetTabletInfo(tablet_id));
+
+  VLOG(2) << "Scheduling GetSplitKey request to leader tserver for source tablet ID: "
+          << tablet->tablet_id();
+  auto call = std::make_shared<AsyncGetTabletSplitKey>(
+      master_, AsyncTaskPool(), tablet,
+      [this, tablet](const std::string& split_encoded_key, const std::string& split_partition_key) {
+        SplitTabletWithKey(tablet, split_encoded_key, split_partition_key);
+      });
+  tablet->table()->AddTask(call);
+  return ScheduleTask(call);
 }
 
 Status CatalogManager::SplitTablet(
@@ -2178,7 +2212,7 @@ Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
   }
 
   return DeleteTabletListAndSendRequests(
-      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString(), HideOnly::kFalse);
+      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString(), {});
 }
 
 Status CatalogManager::DeleteTablet(
@@ -2948,6 +2982,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
+  return Status::OK();
+}
+
+Status CatalogManager::AnalyzeTable(
+    const AnalyzeTableRequestPB* req,
+    AnalyzeTableResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  // TODO -- implement this with some estimate other than flag-determined default.
+  resp->set_rows(FLAGS_ysql_default_analyze_num_rows);
   return Status::OK();
 }
 
@@ -3774,6 +3817,63 @@ Status CatalogManager::BackfillIndex(
       this, indexed_table, {index_info_pb}, boost::none);
 }
 
+Status CatalogManager::GetBackfillJobs(
+    const GetBackfillJobsRequestPB* req,
+    GetBackfillJobsResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  TableIdentifierPB table_id = req->table_identifier();
+
+  scoped_refptr<TableInfo> indexed_table = VERIFY_RESULT(FindTable(table_id));
+  if (indexed_table == nullptr) {
+    Status s = STATUS(NotFound, "Requested table $0 does not exist", table_id.ShortDebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+
+  {
+    auto l = indexed_table->LockForRead();
+    resp->mutable_backfill_jobs()->CopyFrom(l->pb.backfill_jobs());
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::LaunchBackfillIndexForTable(
+    const LaunchBackfillIndexForTableRequestPB* req,
+    LaunchBackfillIndexForTableResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const TableIdentifierPB& table_id = req->table_identifier();
+
+  scoped_refptr<TableInfo> indexed_table = VERIFY_RESULT(FindTable(table_id));
+  if (indexed_table == nullptr) {
+    Status s = STATUS(NotFound, "Requested table $0 does not exist", table_id.ShortDebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  if (indexed_table->GetTableType() != YQL_TABLE_TYPE) {
+    // This request is only supported for YCQL for now.  YSQL has its own mechanism.
+    return STATUS(InvalidArgument, "Unexpected non-YCQL table $0", table_id.ShortDebugString());
+  }
+
+  uint32_t current_version;
+  {
+    auto l = indexed_table->LockForRead();
+    if (l->pb.state() != SysTablesEntryPB::RUNNING) {
+      Status s = STATUS(TryAgain,
+                        "The table is in state $0. An alter may already be in progress.",
+                        SysTablesEntryPB_State_Name(l->pb.state()));
+      VLOG(2) << "Table " << indexed_table->ToString() << " is not running returning " << s;
+      return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+    }
+    current_version = l->pb.version();
+  }
+
+  auto s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+      this, indexed_table, current_version, /* respect deferrals for backfill */ false);
+  if (!s.ok()) {
+    VLOG(3) << __func__ << " Done failed " << s;
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     DeleteTableResponsePB* resp) {
@@ -3928,16 +4028,16 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   for (const auto& table : tables) {
-    HideOnly hide_only = HideOnly::kFalse;
+    RepeatedBytes retained_by_snapshot_schedules;
     for (const auto& entry : schedules_to_tables_map) {
       if (std::binary_search(entry.second.begin(), entry.second.end(), table->id())) {
-        hide_only = HideOnly::kTrue;
-        break;
+        retained_by_snapshot_schedules.Add()->assign(
+            entry.first.AsSlice().cdata(), entry.first.size());
       }
     }
 
     // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, hide_only));
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, retained_by_snapshot_schedules));
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
     // TODO(pitr) handle YSQL colocated tables.
     if (IsColocatedUserTable(*table)) {
@@ -6351,7 +6451,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
     // TODO(pitr) undelete for YSQL tables
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, HideOnly::kFalse));
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, {}));
   }
 
   // Invoke any background tasks and return (notably, table cleanup).
@@ -7300,7 +7400,8 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<Tabl
   return Status::OK();
 }
 
-Status CatalogManager::DeleteTabletsAndSendRequests(const TableInfoPtr& table, HideOnly hide_only) {
+Status CatalogManager::DeleteTabletsAndSendRequests(
+    const TableInfoPtr& table, const RepeatedBytes& retained_by_snapshot_schedules) {
   // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
   if (!CheckIfForbiddenToDeleteTabletOf(table).ok()) {
     return Status::OK();
@@ -7314,7 +7415,8 @@ Status CatalogManager::DeleteTabletsAndSendRequests(const TableInfoPtr& table, H
   });
 
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
-  RETURN_NOT_OK(DeleteTabletListAndSendRequests(tablets, deletion_msg, hide_only));
+  RETURN_NOT_OK(DeleteTabletListAndSendRequests(
+      tablets, deletion_msg, retained_by_snapshot_schedules));
 
   if (IsColocatedParentTable(*table)) {
     SharedLock<LockType> catalog_lock(lock_);
@@ -7332,7 +7434,7 @@ Status CatalogManager::DeleteTabletsAndSendRequests(const TableInfoPtr& table, H
 
 Status CatalogManager::DeleteTabletListAndSendRequests(
     const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-    HideOnly hide_only) {
+    const google::protobuf::RepeatedPtrField<std::string>& retained_by_snapshot_schedules) {
   struct TabletAndLock {
     TabletInfoPtr tablet;
     TabletInfo::WriteLock lock;
@@ -7341,6 +7443,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
   tablets_and_locks.reserve(tablets.size());
   std::vector<TabletInfo*> tablet_infos;
   tablet_infos.reserve(tablets_and_locks.size());
+  std::vector<TabletInfoPtr> marked_as_hidden;
 
   // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
   for (const auto& tablet : tablets) {
@@ -7351,17 +7454,26 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     tablet_infos.emplace_back(tablet.get());
   }
 
+  HideOnly hide_only(!retained_by_snapshot_schedules.empty());
+  HybridTime hide_hybrid_time = hide_only ? master_->clock()->Now() : HybridTime();
+
   // Mark the tablets as deleted.
   for (auto& tablet_and_lock : tablets_and_locks) {
     auto& tablet = tablet_and_lock.tablet;
     auto& tablet_lock = tablet_and_lock.lock;
 
+    bool was_hidden = tablet_lock->ListedAsHidden();
     if (hide_only) {
       LOG(INFO) << "Hiding tablet " << tablet->tablet_id() << " ...";
-      tablet_lock.mutable_data()->pb.set_hidden(true);
+      tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
+      *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+          retained_by_snapshot_schedules;
     } else {
       LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
       tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+    }
+    if (tablet_lock->ListedAsHidden() && !was_hidden) {
+      marked_as_hidden.push_back(tablet);
     }
     DeleteTabletReplicas(tablet.get(), deletion_msg, hide_only);
   }
@@ -7377,6 +7489,12 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     tablet_lock.Commit();
     LOG(INFO) << (hide_only ? "Hid tablet " : "Deleted tablet ") << tablet->tablet_id();
   }
+
+  if (!marked_as_hidden.empty()) {
+    std::lock_guard<LockType> lock(lock_);
+    hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
+  }
+
   return Status::OK();
 }
 
@@ -8203,7 +8321,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
                                                TabletLocationsPB* locs_pb) {
   {
     auto l_tablet = tablet->LockForRead();
-    if (l_tablet->pb.hidden()) {
+    if (l_tablet->is_hidden()) {
       return STATUS_FORMAT(NotFound, "Tablet hidden", tablet->id());
     }
     locs_pb->set_table_id(l_tablet->pb.table_id());
