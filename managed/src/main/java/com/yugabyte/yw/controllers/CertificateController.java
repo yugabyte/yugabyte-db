@@ -1,35 +1,22 @@
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.forms.YWSuccess;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import java.io.IOException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.SignatureException;
-import java.security.cert.CertificateException;
-
-import org.bouncycastle.operator.OperatorCreationException;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import play.mvc.Result;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Result;
 
 import java.util.Date;
 import java.util.List;
@@ -43,11 +30,11 @@ public class CertificateController extends AuthenticatedController {
 
   @Inject
   ValidatingFormFactory formFactory;
-  
+
   public Result upload(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
-    
+
     Date certStart = new Date(formData.get().certStart);
     Date certExpiry = new Date(formData.get().certExpiry);
     String label = formData.get().label;
@@ -116,7 +103,7 @@ public class CertificateController extends AuthenticatedController {
     CertificateInfo.delete(reqCertUUID, customerUUID);
     auditService().createAuditEntry(ctx(), request());
     LOG.info("Successfully deleted the certificate:" + reqCertUUID);
-    return YWSuccess.asResult();
+    return YWResults.YWSuccess.empty();
   }
 
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {

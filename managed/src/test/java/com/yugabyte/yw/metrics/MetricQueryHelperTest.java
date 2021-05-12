@@ -3,10 +3,8 @@ package com.yugabyte.yw.metrics;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.forms.YWError;
 import com.yugabyte.yw.models.MetricConfig;
 import org.hamcrest.core.IsInstanceOf;
 import org.joda.time.DateTime;

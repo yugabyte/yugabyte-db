@@ -19,27 +19,20 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.forms.YWSuccess;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.KmsHistory;
-import com.yugabyte.yw.models.KmsHistoryId;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
+import play.mvc.Result;
 
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.mvc.Result;
-import play.mvc.Results;
-
-import com.yugabyte.yw.models.helpers.CommonUtils;
 
 public class EncryptionAtRestController extends AuthenticatedController {
     public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
@@ -78,10 +71,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
             LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
                     customerUUID);
 
-            ObjectNode resultNode = Json.newObject();
-            resultNode.put("taskUUID", taskUUID.toString());
             auditService().createAuditEntry(ctx(), request(), formData);
-            return Results.status(OK, resultNode);
+            return new YWResults.YWTask(taskUUID).asResult();
         } catch (Exception e) {
             final String errMsg = "Error caught attempting to create KMS configuration";
             LOG.error(errMsg, e);
@@ -169,10 +160,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
             LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
                     customerUUID);
 
-            ObjectNode resultNode = Json.newObject();
-            resultNode.put("taskUUID", taskUUID.toString());
             auditService().createAuditEntry(ctx(), request());
-            return Results.status(OK, resultNode);
+            return new YWResults.YWTask(taskUUID).asResult();
         } catch (Exception e) {
             final String errMsg = "Error caught attempting to delete KMS configuration";
             LOG.error(errMsg, e);
@@ -248,7 +237,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         try {
             keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
             auditService().createAuditEntry(ctx(), request());
-          return YWSuccess.asResult("Key ref was successfully removed");
+          return YWResults.YWSuccess.withMessage("Key ref was successfully removed");
         } catch (Exception e) {
             return ApiResponse.error(BAD_REQUEST, e.getMessage());
         }

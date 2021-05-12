@@ -2,31 +2,28 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.NodeActionFormData;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.inject.Inject;
-
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
-
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public class NodeInstanceController extends AuthenticatedController {
   @Inject
@@ -214,10 +211,8 @@ public class NodeInstanceController extends AuthenticatedController {
               nodeAction.getCustomerTask(), nodeName);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
               taskUUID, universe.universeUUID, universe.name, nodeName);
-      ObjectNode resultNode = Json.newObject();
-      resultNode.put("taskUUID", taskUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-      return ApiResponse.success(resultNode);
+      return new YWResults.YWTask(taskUUID).asResult();
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }

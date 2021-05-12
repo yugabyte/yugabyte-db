@@ -9,13 +9,11 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.ReleaseFormData;
-import com.yugabyte.yw.forms.YWSuccess;
-import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -43,7 +41,7 @@ public class ReleaseController extends AuthenticatedController {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return YWSuccess.asResult();
+    return YWResults.YWSuccess.empty();
   }
 
 
@@ -89,6 +87,6 @@ public class ReleaseController extends AuthenticatedController {
     } catch (RuntimeException re) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
-    return YWSuccess.asResult();
+    return YWResults.YWSuccess.empty();
   }
 }

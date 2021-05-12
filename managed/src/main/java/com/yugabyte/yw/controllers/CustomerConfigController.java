@@ -4,19 +4,15 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.YWSuccess;
-import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -60,7 +56,7 @@ public class CustomerConfigController extends AuthenticatedController {
     }
     alertManager.resolveAlerts(customerUUID, configUUID, "%");
     auditService().createAuditEntry(ctx(), request());
-    return YWSuccess.asResult("configUUID deleted");
+    return YWResults.YWSuccess.withMessage("configUUID deleted");
   }
 
   public Result list(UUID customerUUID) {
@@ -90,7 +86,7 @@ public class CustomerConfigController extends AuthenticatedController {
     JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
     config.data = Json.toJson(updatedData);
     config.update();
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success(config);
   }
 }

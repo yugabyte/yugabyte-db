@@ -2,10 +2,9 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.forms.YWSuccess;
-import com.yugabyte.yw.models.Audit;
-
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.Audit;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -91,9 +90,13 @@ public class AssertHelper {
     JsonNode errorJson = json.get("error");
     assertNotNull(errorJson);
     if (key == null) {
-      assertThat(errorJson.asText(), allOf(notNullValue(), equalTo(value)));
+      assertThat(errorJson.toString(), errorJson.asText(),
+        allOf(notNullValue(), equalTo(value)));
     } else {
-      assertThat(errorJson.get(key).get(0).asText(), allOf(notNullValue(), equalTo(value)));
+      assertThat(errorJson.toString() + "[" + key + "]",
+        errorJson.get(key), is(notNullValue()));
+      assertThat(errorJson.toString(), errorJson.get(key).get(0).asText(),
+        allOf(notNullValue(), equalTo(value)));
     }
   }
 
@@ -114,13 +117,15 @@ public class AssertHelper {
 
   public static void assertYWSuccess(Result result, String expectedMessage) {
     assertOk(result);
-    YWSuccess ywSuccess = Json.fromJson(Json.parse(contentAsString(result)), YWSuccess.class);
+    YWResults.YWSuccess ywSuccess = Json.fromJson(Json.parse(contentAsString(result)),
+      YWResults.YWSuccess.class);
     assertEquals(expectedMessage, ywSuccess.message);
   }
 
   private static void assertYWSuccessNoMessage(Result result) {
     assertOk(result);
-    YWSuccess ywSuccess = Json.fromJson(Json.parse(contentAsString(result)), YWSuccess.class);
+    YWResults.YWSuccess ywSuccess = Json.fromJson(Json.parse(contentAsString(result)),
+      YWResults.YWSuccess.class);
     assertNull(ywSuccess.message);
   }
 }

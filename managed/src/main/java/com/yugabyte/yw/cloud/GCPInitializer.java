@@ -11,31 +11,25 @@
 
 package com.yugabyte.yw.cloud;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
+import com.yugabyte.yw.models.PriceComponent.PriceDetails;
+import play.libs.Json;
+import play.mvc.Result;
+
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 
-import com.google.inject.Singleton;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.YWSuccess;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.PriceComponent;
-import com.yugabyte.yw.models.PriceComponent.PriceDetails;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-
-import play.libs.Json;
-import play.mvc.Result;
-
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 @Singleton
 public class GCPInitializer extends AbstractInitializer {
@@ -151,6 +145,6 @@ public class GCPInitializer extends AbstractInitializer {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
-    return YWSuccess.asResult("GCP Initialized");
+    return YWResults.YWSuccess.withMessage("GCP Initialized");
   }
 }
