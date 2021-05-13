@@ -7,3 +7,4 @@ distro
 boto
 overrides
 downloadutil
+semantic-version
