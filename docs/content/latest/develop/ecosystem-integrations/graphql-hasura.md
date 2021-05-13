@@ -1,7 +1,7 @@
 ---
-title: Hasura
+title: Building Applications with Hasura
 linkTitle: Hasura
-description: Hasura
+description: Building Applications with Hasura
 aliases:
 menu:
   latest:
