@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.common.ModelFactory.createBackup;
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -96,8 +95,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
     List<Alert> alerts = Alert.list(defaultCustomer.uuid);
     assertEquals(2, alerts.size());
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
-    assertEquals(Alert.State.RESOLVED, alerts.get(1).state);
+    assertEquals(Alert.State.RESOLVED, alerts.get(0).getState());
+    assertEquals(Alert.State.RESOLVED, alerts.get(1).getState());
   }
 
   @Test
