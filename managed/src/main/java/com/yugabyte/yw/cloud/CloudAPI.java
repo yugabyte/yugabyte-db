@@ -44,4 +44,12 @@ public interface CloudAPI {
     Provider provider,
     Map<Region, Set<String>> azByRegionMap,
     Set<String> instanceTypesFilter);
+
+  /**
+   * Check whether cloud provider's credentials are valid or not.
+   *
+   * @param config The credentials info.
+   * @return true if credentials are valid otherwise return false.
+   */
+  boolean isValidCreds(Map<String, String> config, String region);
 }
