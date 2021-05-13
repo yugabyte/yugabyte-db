@@ -89,8 +89,10 @@ DEFINE_test_flag(bool, force_master_lookup_all_tablets, false,
                  "If set, force the client to go to the master for all tablet lookup "
                  "instead of reading from cache.");
 
-DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0.0,
+DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0,
                  "If set, mark an RPC as failed and force retry on the first attempt.");
+DEFINE_test_flag(double, simulate_lookup_partition_list_mismatch_probability, 0,
+                 "Probability for simulating the partition list mismatch error on tablet lookup.");
 
 METRIC_DEFINE_histogram(
   server, dns_resolve_latency_during_init_proxy,
@@ -1613,8 +1615,7 @@ void MetaCache::LookupByKeyFailed(
     auto& table_data = it->second;
     const auto versions_formatter = [&] {
       return Format(
-          "MetaCache($0) table $1 partition list version: $2, stored in RPC call: $2, received: $3"
-          "refresh required",
+          "MetaCache($0) table $1 partition list version: $2, stored in RPC call: $2, received: $3",
           static_cast<void*>(this), table->id(), table_data.partition_list->version,
           partition_group_start.partition_list_version, AsString(response_partition_list_version));
     };
@@ -1862,7 +1863,10 @@ bool MetaCache::DoLookupTabletByKey(
     }
     table_data = &table_it->second;
 
-    if (table_data->partition_list->version != partitions->version) {
+    if (table_data->partition_list->version != partitions->version ||
+        (PREDICT_FALSE(RandomActWithProbability(
+            FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability)) &&
+         table->table_type() != YBTableType::TRANSACTION_STATUS_TABLE_TYPE)) {
       (*callback)(STATUS(
           TryAgain,
           Format(

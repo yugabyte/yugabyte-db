@@ -281,6 +281,9 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
 std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
 
+std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
+    MiniCluster* cluster);
+
 CHECKED_STATUS WaitUntilTabletHasLeader(
     MiniCluster* cluster, const string& tablet_id, MonoTime deadline);
 

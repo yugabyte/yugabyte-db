@@ -63,7 +63,6 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
   // Tolerate some errors in the load test due to temporary unavailability.
   static constexpr int kMaxWriteErrors = 1000;
   static constexpr int kMaxReadErrors = 1000;
-  static constexpr bool kStopOnEmptyRead = true;
 
   // Create two separate clients for read and writes.
   auto write_client = CreateYBClient();
@@ -78,8 +77,7 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
   yb::load_generator::MultiThreadedReader reader(kRows, kReaderThreads, &read_session_factory,
                                                  writer.InsertionPoint(), writer.InsertedKeys(),
                                                  writer.FailedKeys(), &stop_requested_flag,
-                                                 kValueSizeBytes, kMaxReadErrors,
-                                                 kStopOnEmptyRead);
+                                                 kValueSizeBytes, kMaxReadErrors);
 
   auto* const emc = external_mini_cluster();
   TabletServerMap ts_map;

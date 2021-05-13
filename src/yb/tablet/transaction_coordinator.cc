@@ -480,7 +480,14 @@ class TransactionState {
 
     auto it = involved_tablets_.find(state.tablets(0));
     if (it == involved_tablets_.end()) {
-      LOG_WITH_PREFIX(DFATAL) << "Applied in unknown tablet: " << state.tablets(0);
+      // This can happen when transaction coordinator retried apply to post-split tablets,
+      // transaction coordinator moved to new status tablet leader and here new transaction
+      // coordinator receives notification about txn is applied in post-split tablet not yet known
+      // to new transaction coordinator.
+      // It is safe to just log warning and ignore, because new transaction coordinator is sending
+      // again apply requests to all involved tablet it knows and will be retrying for ones that
+      // will reply have been already split.
+      LOG_WITH_PREFIX(WARNING) << "Applied in unknown tablet: " << state.tablets(0);
       return Status::OK();
     }
     if (!it->second.all_intents_applied) {

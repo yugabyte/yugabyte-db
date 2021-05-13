@@ -1544,11 +1544,9 @@ Status ProcessTnodeContexts(ExecContext* exec_context,
 }
 
 bool NeedsFlush(const client::YBSessionPtr& session) {
-  // We need to flush session even if there are no buffered operations, but there are pending
-  // errors, since some errors are only checked during Session flush and inside flush callback.
-  // And buffered operations could be removed asynchronously after adding and replaced with pending
-  // errors as a result of asynchronous tablet lookup failures for these operations.
-  return session->CountBufferedOperations() + session->CountPendingErrors() > 0;
+  // We need to flush session if we have added operations because some errors are only checked
+  // during session flush and passed into flush callback.
+  return session->GetAddedNotFlushedOperationsCount() > 0;
 }
 
 } // namespace
@@ -2442,7 +2440,7 @@ void Executor::Reset() {
   exec_context_ = nullptr;
   exec_contexts_.clear();
   write_batch_.Clear();
-  session_->Reset();
+  session_->Abort();
   num_flushes_ = 0;
   result_ = nullptr;
   cb_.Reset();
