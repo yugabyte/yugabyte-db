@@ -476,18 +476,21 @@ class PostgresBuilder(YbBuildToolBase):
         """
 
         with WorkDirContext(YB_SRC_ROOT):
+            # Postgres files.
             code_subset = [
                 'src/postgres',
                 'src/yb/yql/pggate',
                 'python/yb/build_postgres.py',
                 'build-support/build_postgres',
-                'CMakeLists.txt'
+                'CMakeLists.txt',
             ]
+            # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(
-                ['git', 'show', '-s', '--format=%H'] + code_subset
+                ['git', '--no-pager', 'log', '-n', '1', '--format=%H', '--'] + code_subset
             ).decode('utf-8').strip()
+            # Get uncommitted changes to tracked postgres files.
             git_diff = subprocess.check_output(
-                ['git', 'diff', 'HEAD'] + code_subset
+                ['git', 'diff', 'HEAD', '--'] + code_subset
             ).decode('utf-8')
 
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
