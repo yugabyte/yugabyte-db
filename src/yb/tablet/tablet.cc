@@ -3278,6 +3278,8 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
         &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, rocksdb.db_type),
         /* statistics */ nullptr, tablet_options_);
     rocksdb_options.create_if_missing = false;
+    // Disable background compactions, we only need to update flushed frontier.
+    rocksdb_options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleNone;
     std::unique_ptr<rocksdb::DB> db =
         VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, rocksdb.db_dir));
     RETURN_NOT_OK(

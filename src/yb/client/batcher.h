@@ -88,7 +88,9 @@ YB_DEFINE_ENUM(
                           // wait for response. When there is no transaction - we still sending
                           // operations marking transaction as auto ready.
     (kComplete)           // Batcher complete.
-    (kAborted));          // Batcher was aborted.
+    (kAborted)            // Batcher was aborted.
+    (kAddFailed)          // There was an error when adding operation to the batcher.
+    );
 
 // A Batcher is the class responsible for collecting row operations, routing them to the
 // correct tablet server, and possibly batching them together for better efficiency.
@@ -125,7 +127,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // update this when they're implemented.
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
-  CHECKED_STATUS Add(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
+  CHECKED_STATUS Add(std::shared_ptr<YBOperation> yb_op);
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending
@@ -135,6 +137,11 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Return the number of buffered operations. These are only those operations which are
   // "corked" (i.e not yet flushed). Once Flush has been called, this returns 0.
   int CountBufferedOperations() const;
+
+  // Return the number of operations successfully added, but not yet flushed.
+  // This differs from CountBufferedOperations that can decrease before flush due to tablet lookup
+  // errors after addition.
+  int GetAddedNotFlushedOperationsCount() const;
 
   // Flush any buffered operations. The callback will be called once there are no
   // more pending operations from this Batcher. If all of the operations succeeded,
@@ -212,6 +219,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   ~Batcher();
 
+  CHECKED_STATUS DoAdd(std::shared_ptr<YBOperation> yb_op);
   // Add an op to the in-flight set and increment the ref-count.
   void AddInFlightOp(const InFlightOpPtr& op);
 
@@ -288,6 +296,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   std::unordered_set<InFlightOpPtr> ops_ GUARDED_BY(mutex_);
   InFlightOps ops_queue_;
   InFlightOpsGroupsWithMetadata ops_info_;
+
+  int added_not_flushed_operations_count_ GUARDED_BY(mutex_) = 0;
 
   // When each operation is added to the batcher, it is assigned a sequence number
   // which preserves the user's intended order. Preserving order is critical when
