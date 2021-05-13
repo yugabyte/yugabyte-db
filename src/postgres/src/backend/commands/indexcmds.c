@@ -757,6 +757,15 @@ DefineIndex(Oid relationId,
 								accessMethodName, DEFAULT_YB_INDEX_TYPE)));
 				accessMethodName = DEFAULT_YB_INDEX_TYPE;
 			}
+			if (strcmp(accessMethodName, "gin") == 0)
+			{
+				char	   *new_name = "ybgin";
+
+				ereport(NOTICE,
+						(errmsg("replacing access method \"%s\" with \"%s\"",
+								accessMethodName, new_name)));
+				accessMethodName = new_name;
+			}
 		}
 	}
 
