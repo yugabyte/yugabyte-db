@@ -778,7 +778,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertNull(CustomerConfig.getSmtpConfig(customer.uuid));
     List<Alert> alerts = Alert.list(customer.uuid, "%", smtpConfig.configUUID);
     assertEquals(1, alerts.size());
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
+    assertEquals(Alert.State.RESOLVED, alerts.get(0).getState());
 
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
