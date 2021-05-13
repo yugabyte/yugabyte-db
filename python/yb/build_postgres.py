@@ -27,6 +27,7 @@ import subprocess
 import json
 import hashlib
 import time
+import semantic_version
 import shlex
 
 from subprocess import check_call
@@ -468,6 +469,19 @@ class PostgresBuilder(YbBuildToolBase):
             if k in os.environ
         )
 
+    def get_git_version(self):
+        """Get the semantic version of git.  Assume git exists.  Return None if the version cannot
+        be parsed.
+        """
+        version_string = subprocess.check_output(('git', '--version')).decode('utf-8').strip()
+        match = re.match(r'git version (\S+)', version_string)
+        assert match, f"Failed to extract git version from string: {version_string}"
+        try:
+            return semantic_version.Version.coerce(match.group(1))
+        except ValueError as e:
+            logging.warning(f"Failed to interpret git version: {e}")
+            return None
+
     def get_build_stamp(self, include_env_vars):
         """
         Creates a "build stamp" that tries to capture all inputs that might affect the PostgreSQL
@@ -477,20 +491,29 @@ class PostgresBuilder(YbBuildToolBase):
 
         with WorkDirContext(YB_SRC_ROOT):
             # Postgres files.
-            code_subset = [
+            pathspec = [
                 'src/postgres',
                 'src/yb/yql/pggate',
                 'python/yb/build_postgres.py',
                 'build-support/build_postgres',
                 'CMakeLists.txt',
             ]
+            git_version = self.get_git_version()
+            if git_version and git_version >= semantic_version.Version('1.9.0'):
+                # Git version 1.9.0 allows specifying negative pathspec.  Use it to exclude changes
+                # to regress test files not needed for build.
+                pathspec.extend([
+                    ':(exclude)src/postgres/src/test/regress/*_schedule',
+                    ':(exclude)src/postgres/src/test/regress/expected',
+                    ':(exclude)src/postgres/src/test/regress/sql',
+                ])
             # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(
-                ['git', '--no-pager', 'log', '-n', '1', '--format=%H', '--'] + code_subset
+                ['git', '--no-pager', 'log', '-n', '1', '--format=%H', '--'] + pathspec
             ).decode('utf-8').strip()
             # Get uncommitted changes to tracked postgres files.
             git_diff = subprocess.check_output(
-                ['git', 'diff', 'HEAD', '--'] + code_subset
+                ['git', 'diff', 'HEAD', '--'] + pathspec
             ).decode('utf-8')
 
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
