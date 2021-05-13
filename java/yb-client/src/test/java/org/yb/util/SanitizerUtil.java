@@ -44,6 +44,10 @@ public final class SanitizerUtil {
     return null;
   }
 
+  public static int nonSanitizerVsSanitizer(int nonSanitizerValue, int sanitizerValue) {
+    return isSanitizerBuild() ? sanitizerValue : nonSanitizerValue;
+  }
+
   public static long nonTsanVsTsan(long nonTsanValue, long tsanValue) {
     return isTSAN() ? tsanValue : nonTsanValue;
   }
