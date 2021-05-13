@@ -2264,6 +2264,9 @@ Status CatalogManager::FindCDCStreamsMarkedAsDeleting(
 Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
   auto ybclient = master_->async_client_initializer().client();
+  if (!ybclient) {
+    return STATUS(IllegalState, "Client not initialized or shutting down");
+  }
 
   // First. For each deleted stream, delete the cdc state rows.
   // Delete all the entries in cdc_state table that contain all the deleted cdc streams.
