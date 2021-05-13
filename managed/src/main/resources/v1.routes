@@ -121,6 +121,17 @@ POST    /customers/:cUUID/universes/:uniUUID/alert_definitions                 c
 GET     /customers/:cUUID/alert_definitions/:uniUUID/:name                     com.yugabyte.yw.controllers.AlertController.getAlertDefinition(cUUID: java.util.UUID, uniUUID: java.util.UUID, name: String)
 PUT     /customers/:cUUID/alert_definitions/:dUUID                             com.yugabyte.yw.controllers.AlertController.updateAlertDefinition(cUUID: java.util.UUID, dUUID: java.util.UUID)
 
+POST    /customers/:cUUID/alert_receivers                                      com.yugabyte.yw.controllers.AlertController.createAlertReceiver(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_receivers                                      com.yugabyte.yw.controllers.AlertController.listAlertReceivers(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_receivers/:arcUUID                             com.yugabyte.yw.controllers.AlertController.getAlertReceiver(cUUID: java.util.UUID, arcUUID: java.util.UUID)
+PUT     /customers/:cUUID/alert_receivers/:arcUUID                             com.yugabyte.yw.controllers.AlertController.updateAlertReceiver(cUUID: java.util.UUID, arcUUID: java.util.UUID)
+DELETE  /customers/:cUUID/alert_receivers/:arcUUID                             com.yugabyte.yw.controllers.AlertController.deleteAlertReceiver(cUUID: java.util.UUID, arcUUID: java.util.UUID)
+
+POST    /customers/:cUUID/alert_routes                                         com.yugabyte.yw.controllers.AlertController.createAlertRoute(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_routes                                         com.yugabyte.yw.controllers.AlertController.listAlertRoutes(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_routes/:artUUID                                com.yugabyte.yw.controllers.AlertController.getAlertRoute(cUUID: java.util.UUID, artUUID: java.util.UUID)
+DELETE  /customers/:cUUID/alert_routes/:artUUID                                com.yugabyte.yw.controllers.AlertController.deleteAlertRoute(cUUID: java.util.UUID, artUUID: java.util.UUID)
+
 # Access Key API
 GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: java.lang.String)
 GET     /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)

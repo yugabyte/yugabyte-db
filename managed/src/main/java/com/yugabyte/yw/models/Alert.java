@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.*;
 import io.ebean.annotation.EnumValue;
@@ -20,7 +20,7 @@ import javax.persistence.*;
 import java.util.*;
 
 @Entity
-public class Alert extends Model {
+public class Alert extends Model implements AlertLabelsProvider {
 
   /** These are the possible targets for the alert. */
   public enum TargetType {
@@ -49,22 +49,35 @@ public class Alert extends Model {
     TaskType,
 
     @EnumValue("CustomerConfigType")
-    CustomerConfigType;
+    CustomerConfigType,
+
+    @EnumValue("AlertReceiver")
+    AlertReceiverType
   }
 
   public enum State {
     @EnumValue("CREATED")
-    CREATED,
+    CREATED("FIRING"),
     @EnumValue("ACTIVE")
-    ACTIVE,
+    ACTIVE("FIRING"),
     @EnumValue("RESOLVED")
-    RESOLVED
+    RESOLVED("RESOLVED");
+
+    private final String action;
+
+    State(String action) {
+      this.action = action;
+    }
+
+    public String getAction() {
+      return action;
+    }
   }
 
   @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
-  public UUID uuid;
+  private UUID uuid;
 
   @Constraints.Required
   @Column(nullable = false)
@@ -97,11 +110,11 @@ public class Alert extends Model {
   public String message;
 
   @Enumerated(EnumType.STRING)
-  public State state;
+  private State state;
 
   @Constraints.Required @JsonIgnore public boolean sendEmail;
 
-  public UUID definitionUUID;
+  private UUID definitionUUID;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertLabel> labels;
@@ -285,8 +298,9 @@ public class Alert extends Model {
         .findList();
   }
 
-  public void setState(State state) {
-    this.state = state;
+  @Override
+  public UUID getUuid() {
+    return uuid;
   }
 
   public List<AlertLabel> getLabels() {
@@ -297,7 +311,13 @@ public class Alert extends Model {
     return getLabelValue(knownLabel.labelName());
   }
 
+  @Override
   public String getLabelValue(String name) {
+    // Some dynamic labels.
+    if (KnownAlertLabels.ALERT_STATE.labelName().equals(name)) {
+      return state.getAction();
+    }
+
     return labels
         .stream()
         .filter(label -> name.equals(label.getName()))
@@ -315,5 +335,50 @@ public class Alert extends Model {
       this.labels.addAll(labels);
     }
     this.labels.forEach(label -> label.setAlert(this));
+  }
+
+  public State getState() {
+    return state;
+  }
+
+  public void setState(State state) {
+    this.state = state;
+  }
+
+  public UUID getDefinitionUUID() {
+    return definitionUUID;
+  }
+
+  public void setDefinitionUUID(UUID definitionUUID) {
+    this.definitionUUID = definitionUUID;
+  }
+
+  @Override
+  public String toString() {
+    return "Alert [uuid="
+        + uuid
+        + ", customerUUID="
+        + customerUUID
+        + ", targetUUID="
+        + targetUUID
+        + ", targetType="
+        + targetType
+        + ", createTime="
+        + createTime
+        + ", errCode="
+        + errCode
+        + ", type="
+        + type
+        + ", message="
+        + message
+        + ", state="
+        + state
+        + ", sendEmail="
+        + sendEmail
+        + ", definitionUUID="
+        + definitionUUID
+        + ", labels="
+        + labels
+        + "]";
   }
 }

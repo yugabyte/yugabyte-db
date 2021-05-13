@@ -10,29 +10,30 @@
 package com.yugabyte.yw.common.alerts;
 
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
-import com.yugabyte.yw.models.AlertDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class AlertTemplateSubstitutor extends PlaceholderSubstitutor {
+public class AlertTemplateSubstitutor<T extends AlertLabelsProvider>
+    extends PlaceholderSubstitutor {
 
   private static final Logger LOG = LoggerFactory.getLogger(AlertTemplateSubstitutor.class);
 
   private static final String LABELS_PREFIX = "$labels.";
 
-  public AlertTemplateSubstitutor(AlertDefinition definition) {
+  public AlertTemplateSubstitutor(T instance) {
     super(
         key -> {
           if (key.startsWith(LABELS_PREFIX)) {
             String labelName = key.replace(LABELS_PREFIX, "");
-            String labelValue = definition.getLabelValue(labelName);
+            String labelValue = instance.getLabelValue(labelName);
             if (labelValue == null) {
-              LOG.warn("Label {} not found in definition {}", labelName, definition.getUuid());
+              LOG.warn("Label {} not found in object {}", labelName, instance.getUuid());
               return "";
             }
+
             return labelValue;
           }
-          LOG.warn("Unexpected placeholder {} in definition {}", key, definition.getUuid());
+          LOG.warn("Unexpected placeholder {} in object {}", key, instance.getUuid());
           return "";
         });
   }

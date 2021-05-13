@@ -133,7 +133,7 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
       if (smtpConfig == null && alertingFormData.smtpData != null) {
-        alertManager.resolveAlerts(customer.uuid, EmailHelper.DEFAULT_CONFIG_UUID, "%");
+        alertManager.resolveAlerts(customer.uuid, AlertManager.DEFAULT_ALERT_RECEIVER_UUID, "%");
         CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData));
       } else if (smtpConfig != null && alertingFormData.smtpData != null) {
         smtpConfig.setData(Json.toJson(alertingFormData.smtpData));

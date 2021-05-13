@@ -18,7 +18,6 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
@@ -52,22 +51,18 @@ public class QueryAlerts {
 
   private final int YB_QUERY_ALERTS_INTERVAL = 1;
 
-  private final RuntimeConfigFactory configFactory;
-
   @Inject
   public QueryAlerts(
       ExecutionContext executionContext,
       ActorSystem actorSystem,
       AlertManager alertManager,
       MetricQueryHelper queryHelper,
-      AlertDefinitionService alertDefinitionService,
-      RuntimeConfigFactory configFactory) {
+      AlertDefinitionService alertDefinitionService) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.queryHelper = queryHelper;
     this.alertManager = alertManager;
     this.alertDefinitionService = alertDefinitionService;
-    this.configFactory = configFactory;
     this.initialize();
   }
 
@@ -107,19 +102,21 @@ public class QueryAlerts {
                     UUID targetUUID = definition.getTargetUUID();
                     Alert.TargetType targetType =
                         DataConverters.definitionToAlertTargetType(definition.getTargetType());
-                    AlertTemplateSubstitutor substitutor = new AlertTemplateSubstitutor(definition);
-                    String message = substitutor.replace(definition.getMessageTemplate());
+                    Alert alert =
+                        Alert.create(
+                            customerUUID,
+                            targetUUID,
+                            targetType,
+                            "CUSTOMER_ALERT",
+                            "Error",
+                            "" /* Will be set later. */,
+                            definition.isActive(),
+                            definition.getUuid(),
+                            labels);
 
-                    Alert.create(
-                        customerUUID,
-                        targetUUID,
-                        targetType,
-                        "CUSTOMER_ALERT",
-                        "Error",
-                        message,
-                        definition.isActive(),
-                        definition.getUuid(),
-                        labels);
+                    AlertTemplateSubstitutor<Alert> substitutor =
+                        new AlertTemplateSubstitutor<>(alert);
+                    alert.update(substitutor.replace(definition.getMessageTemplate()));
                   } else {
                     alertsStillActive.addAll(existingAlerts);
                   }

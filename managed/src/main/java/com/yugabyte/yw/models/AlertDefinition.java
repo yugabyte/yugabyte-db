@@ -12,6 +12,7 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -25,7 +26,7 @@ import java.util.*;
 import java.util.function.Consumer;
 
 @Entity
-public class AlertDefinition extends Model {
+public class AlertDefinition extends Model implements AlertLabelsProvider {
 
   private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
   private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
@@ -34,7 +35,7 @@ public class AlertDefinition extends Model {
     @EnumValue("Universe")
     Universe(
         KnownAlertLabels.UNIVERSE_UUID,
-        "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing");
+        "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing.");
 
     // TODO will need to store threshold and duration in alert definition itself
     // to be able to show better alert message. Also, will be able to use current {{ value }}
@@ -142,6 +143,7 @@ public class AlertDefinition extends Model {
     return query;
   }
 
+  @Override
   public UUID getUuid() {
     return uuid;
   }
@@ -241,6 +243,7 @@ public class AlertDefinition extends Model {
     return getLabelValue(knownLabel.labelName());
   }
 
+  @Override
   public String getLabelValue(String name) {
     return getEffectiveLabels()
         .stream()

@@ -620,10 +620,10 @@ public class HealthCheckerTest extends FakeDBApplication {
         new HealthChecker.CheckSingleUniverseParams(
             u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
-    assertEquals(State.RESOLVED, Alert.get(alert1.uuid).state);
-    assertEquals(State.RESOLVED, Alert.get(alert2.uuid).state);
+    assertEquals(State.RESOLVED, Alert.get(alert1.getUuid()).getState());
+    assertEquals(State.RESOLVED, Alert.get(alert2.getUuid()).getState());
     // Alert3 is not related to health-check, so it should not be updated.
-    assertNotEquals(State.RESOLVED, Alert.get(alert3.uuid).state);
+    assertNotEquals(State.RESOLVED, Alert.get(alert3.getUuid()).getState());
   }
 
   @Test

@@ -71,12 +71,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     queryAlerts =
         new QueryAlerts(
-            executionContext,
-            actorSystem,
-            alertManager,
-            queryHelper,
-            alertDefinitionService,
-            configFactory);
+            executionContext, actorSystem, alertManager, queryHelper, alertDefinitionService);
 
     customer = ModelFactory.testCustomer();
     universe = ModelFactory.createUniverse(customer.getCustomerId());

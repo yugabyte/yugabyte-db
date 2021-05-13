@@ -2,17 +2,35 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AssertHelper;
+import com.yugabyte.yw.common.EmailFixtures;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.AlertReceiver.TargetType;
+import com.yugabyte.yw.models.AlertRoute;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -27,6 +45,7 @@ import play.mvc.Result;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -37,7 +56,11 @@ import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -62,6 +85,8 @@ public class AlertControllerTest extends FakeDBApplication {
   @Spy private AlertDefinitionService alertDefinitionService;
 
   @InjectMocks private AlertController controller;
+
+  private SmtpData defaultSmtp = EmailFixtures.createSmtpData();
 
   @Before
   public void setUp() {
@@ -285,5 +310,372 @@ public class AlertControllerTest extends FakeDBApplication {
                 () -> controller.updateAlertDefinition(customer.uuid, definitionUUID))
             .getResult();
     AssertHelper.assertBadRequest(result, "Invalid Alert Definition UUID: " + definitionUUID);
+  }
+
+  private void checkEmptyAnswer(String url) {
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+    assertEquals(OK, result.status());
+    assertEquals("[]", contentAsString(result));
+  }
+
+  private ObjectNode getAlertReceiverJson() {
+    AlertReceiverEmailParams arParams = new AlertReceiverEmailParams();
+    arParams.recipients = Collections.singletonList("test@test.com");
+    arParams.smtpData = defaultSmtp;
+
+    ObjectNode data = Json.newObject();
+    data.put("targetType", "Email").put("params", Json.toJson(arParams));
+    return data;
+  }
+
+  private AlertReceiver receiverFromJson(JsonNode json) {
+    ObjectMapper mapper = new ObjectMapper();
+    try {
+      AlertReceiver receiver = mapper.treeToValue(json, AlertReceiver.class);
+      receiver.setParams(AlertUtils.fromJson(receiver.getTargetType(), json.get("params")));
+      return receiver;
+    } catch (JsonProcessingException e) {
+      fail("Bad json format.");
+      return null;
+    }
+  }
+
+  private AlertReceiver createAlertReceiver() {
+    ObjectNode receiverFormDataJson = getAlertReceiverJson();
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.uuid + "/alert_receivers",
+            authToken,
+            receiverFormDataJson);
+    assertEquals(OK, result.status());
+    return receiverFromJson(Json.parse(contentAsString(result)));
+  }
+
+  @Test
+  public void testCreateAndListAlertReceiver_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_receivers");
+
+    AlertReceiver createdReceiver = createAlertReceiver();
+    assertNotNull(createdReceiver.getUuid());
+
+    assertTrue(TargetType.Email == createdReceiver.getTargetType());
+    assertEquals(
+        AlertUtils.fromJson(TargetType.Email, getAlertReceiverJson().get("params")),
+        createdReceiver.getParams());
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.uuid + "/alert_receivers", authToken);
+    assertEquals(OK, result.status());
+    JsonNode listedReceivers = Json.parse(contentAsString(result));
+    assertEquals(1, listedReceivers.size());
+    assertEquals(createdReceiver, receiverFromJson(listedReceivers.get(0)));
+  }
+
+  @Test
+  public void testCreateAlertReceiver_ErrorResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_receivers");
+    ObjectNode data = Json.newObject();
+    data.put("targetType", "Email");
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    doRequestWithAuthTokenAndBody(
+                        "POST",
+                        "/api/customers/" + customer.uuid + "/alert_receivers",
+                        authToken,
+                        data))
+            .getResult();
+
+    AssertHelper.assertBadRequest(
+        result, "Unable to create alert receiver: Email parameters: destinations are empty.");
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_receivers");
+  }
+
+  @Test
+  public void testGetAlertReceiver_OkResult() {
+    AlertReceiver createdReceiver = createAlertReceiver();
+    assertNotNull(createdReceiver.getUuid());
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/" + customer.uuid + "/alert_receivers/" + createdReceiver.getUuid(),
+            authToken);
+    assertEquals(OK, result.status());
+
+    AlertReceiver receiver = receiverFromJson(Json.parse(contentAsString(result)));
+    assertNotNull(receiver);
+    assertEquals(createdReceiver, receiver);
+  }
+
+  @Test
+  public void testGetAlertReceiver_ErrorResult() {
+    UUID uuid = UUID.randomUUID();
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    doRequestWithAuthToken(
+                        "GET",
+                        "/api/customers/" + customer.uuid + "/alert_receivers/" + uuid.toString(),
+                        authToken))
+            .getResult();
+    AssertHelper.assertBadRequest(result, "Invalid Alert Receiver UUID: " + uuid.toString());
+  }
+
+  @Test
+  public void testUpdateAlertReceiver_OkResult() {
+    AlertReceiver createdReceiver = createAlertReceiver();
+    assertNotNull(createdReceiver.getUuid());
+
+    AlertReceiverEmailParams params = (AlertReceiverEmailParams) createdReceiver.getParams();
+    params.recipients = Collections.singletonList("new@test.com");
+    params.smtpData.smtpPort = 1111;
+    createdReceiver.setParams(params);
+
+    ObjectNode data = Json.newObject();
+    data.put("alertReceiverUUID", createdReceiver.getUuid().toString())
+        .put("targetType", "Email")
+        .put("params", Json.toJson(createdReceiver.getParams()));
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/"
+                + customer.uuid
+                + "/alert_receivers/"
+                + createdReceiver.getUuid().toString(),
+            authToken,
+            data);
+    assertEquals(OK, result.status());
+
+    AlertReceiver updatedReceiver = receiverFromJson(Json.parse(contentAsString(result)));
+    assertNotNull(updatedReceiver);
+    assertEquals(createdReceiver, updatedReceiver);
+  }
+
+  @Test
+  public void testUpdateAlertReceiver_ErrorResult() {
+    AlertReceiver createdReceiver = createAlertReceiver();
+    assertNotNull(createdReceiver.getUuid());
+
+    createdReceiver.setTargetType(TargetType.Slack);
+
+    ObjectNode data = Json.newObject();
+    data.put("alertReceiverUUID", createdReceiver.getUuid().toString())
+        .put("targetType", createdReceiver.getTargetType().toString())
+        .put("params", Json.toJson(createdReceiver.getParams()));
+
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    doRequestWithAuthTokenAndBody(
+                        "PUT",
+                        "/api/customers/"
+                            + customer.uuid
+                            + "/alert_receivers/"
+                            + createdReceiver.getUuid().toString(),
+                        authToken,
+                        data))
+            .getResult();
+    AssertHelper.assertBadRequest(
+        result, "Unable to update alert receiver: Slack parameters: channel is empty.");
+  }
+
+  @Test
+  public void testDeleteAlertReceiver_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_receivers");
+
+    AlertReceiver createdReceiver = createAlertReceiver();
+    assertNotNull(createdReceiver.getUuid());
+
+    Result result =
+        doRequestWithAuthToken(
+            "DELETE",
+            "/api/customers/"
+                + customer.uuid
+                + "/alert_receivers/"
+                + createdReceiver.getUuid().toString(),
+            authToken);
+    assertEquals(OK, result.status());
+
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_receivers");
+  }
+
+  @Test
+  public void testDeleteAlertReceiver_ErrorResult() {
+    UUID uuid = UUID.randomUUID();
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    doRequestWithAuthToken(
+                        "DELETE",
+                        "/api/customers/" + customer.uuid + "/alert_receivers/" + uuid.toString(),
+                        authToken))
+            .getResult();
+    AssertHelper.assertBadRequest(result, "Invalid Alert Receiver UUID: " + uuid.toString());
+  }
+
+  private ObjectNode getAlertRouteJson() {
+    AlertDefinition definition = ModelFactory.createAlertDefinition(customer, universe);
+    AlertReceiver receiver =
+        AlertReceiver.create(
+            customer.uuid, TargetType.Email, AlertUtils.createParamsInstance(TargetType.Email));
+
+    ObjectNode data = Json.newObject();
+    data.put("definitionUUID", definition.getUuid().toString())
+        .put("receiverUUID", receiver.getUuid().toString());
+    return data;
+  }
+
+  private AlertRoute routeFromJson(JsonNode json) {
+    try {
+      return new ObjectMapper().treeToValue(json, AlertRoute.class);
+    } catch (JsonProcessingException e) {
+      fail("Bad json format.");
+      return null;
+    }
+  }
+
+  private AlertRoute createAlertRoute() {
+    ObjectNode routeFormDataJson = getAlertRouteJson();
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.uuid + "/alert_routes",
+            authToken,
+            routeFormDataJson);
+    assertEquals(OK, result.status());
+    return routeFromJson(Json.parse(contentAsString(result)));
+  }
+
+  @Test
+  public void testCreateAlertRoute_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+
+    AlertRoute createdRoute = createAlertRoute();
+    assertNotNull(createdRoute.getUuid());
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.uuid + "/alert_routes", authToken);
+    assertEquals(OK, result.status());
+    JsonNode listedRoutes = Json.parse(contentAsString(result));
+    assertEquals(1, listedRoutes.size());
+    assertEquals(createdRoute, routeFromJson(listedRoutes.get(0)));
+  }
+
+  @Test
+  public void testCreateAlertRoute_ErrorResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+    ObjectNode data = Json.newObject();
+    data.put("definitionUUID", UUID.randomUUID().toString())
+        .put("receiverUUID", UUID.randomUUID().toString());
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    doRequestWithAuthTokenAndBody(
+                        "POST",
+                        "/api/customers/" + customer.uuid + "/alert_routes",
+                        authToken,
+                        data))
+            .getResult();
+
+    AssertHelper.assertBadRequest(result, "Unable to create alert route.");
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+  }
+
+  @Test
+  public void testGetAlertRoute_OkResult() {
+    AlertRoute createdRoute = createAlertRoute();
+    assertNotNull(createdRoute.getUuid());
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/" + customer.uuid + "/alert_routes/" + createdRoute.getUuid(),
+            authToken);
+    assertEquals(OK, result.status());
+
+    AlertRoute route = routeFromJson(Json.parse(contentAsString(result)));
+    assertNotNull(route);
+    assertEquals(createdRoute, route);
+  }
+
+  @Test
+  public void testGetAlertRoute_ErrorResult() {
+    UUID uuid = UUID.randomUUID();
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    doRequestWithAuthToken(
+                        "GET",
+                        "/api/customers/" + customer.uuid + "/alert_routes/" + uuid.toString(),
+                        authToken))
+            .getResult();
+    AssertHelper.assertBadRequest(result, "Invalid Alert Route UUID: " + uuid.toString());
+  }
+
+  @Test
+  public void testDeleteAlertRoute_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+
+    AlertRoute createdRoute = createAlertRoute();
+    assertNotNull(createdRoute.getUuid());
+
+    Result result =
+        doRequestWithAuthToken(
+            "DELETE",
+            "/api/customers/"
+                + customer.uuid
+                + "/alert_routes/"
+                + createdRoute.getUuid().toString(),
+            authToken);
+    assertEquals(OK, result.status());
+
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+  }
+
+  @Test
+  public void testDeleteAlertRoute_ErrorResult() {
+    UUID uuid = UUID.randomUUID();
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    doRequestWithAuthToken(
+                        "DELETE",
+                        "/api/customers/" + customer.uuid + "/alert_routes/" + uuid.toString(),
+                        authToken))
+            .getResult();
+    AssertHelper.assertBadRequest(result, "Invalid Alert Route UUID: " + uuid.toString());
+  }
+
+  @Test
+  public void testListAlertRoutes_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+
+    AlertRoute createdRoute1 = createAlertRoute();
+    AlertRoute createdRoute2 = createAlertRoute();
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.uuid + "/alert_routes", authToken);
+    assertEquals(OK, result.status());
+    JsonNode listedRoutes = Json.parse(contentAsString(result));
+    assertEquals(2, listedRoutes.size());
+
+    AlertRoute listedRoute1 = routeFromJson(listedRoutes.get(0));
+    AlertRoute listedRoute2 = routeFromJson(listedRoutes.get(1));
+    assertFalse(listedRoute1.equals(listedRoute2));
+    assertTrue(listedRoute1.equals(createdRoute1) || listedRoute1.equals(createdRoute2));
+    assertTrue(listedRoute2.equals(createdRoute1) || listedRoute2.equals(createdRoute2));
   }
 }
