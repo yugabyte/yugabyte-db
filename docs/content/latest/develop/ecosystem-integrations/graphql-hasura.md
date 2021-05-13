@@ -19,7 +19,6 @@ For more information, see the following:
 - [Hasura GraphQL Engine documentation](https://docs.hasura.io)
 - [Scaling GraphQL Subscriptions to One Million Subscribers Linearly](https://github.com/yugabyte/yugabyte-graphql-apps/blob/master/1M_subscriptions.md)
 - [High Availability of GraphQL Subscriptions Under Infrastructure Failures](https://github.com/yugabyte/yugabyte-graphql-apps/blob/master/resilient_graphql_apps.md)
-- [Multi-Region GraphQL Applications](https://github.com/yugabyte/yugabyte-graphql-apps/blob/master/multi_region_apps.md)
 
 ## Prerequisites
 
@@ -121,7 +120,6 @@ subscription ($id: bigint!) {
      ordertotal
      orderdetails
      ordertime
-     deliveryStatus
    }
  }
 }
