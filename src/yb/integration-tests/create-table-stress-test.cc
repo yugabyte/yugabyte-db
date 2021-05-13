@@ -559,7 +559,7 @@ DontVerifyClusterBeforeNextTearDown();
     table_info->GetAllTablets(&tablets);
     for (const scoped_refptr<master::TabletInfo>& tablet_info : tablets) {
       auto l_tablet = tablet_info->LockForRead();
-      const master::SysTabletsEntryPB& metadata = l_tablet->data().pb;
+      const master::SysTabletsEntryPB& metadata = l_tablet->pb;
       LOG(INFO) << "  Tablet: " << tablet_info->ToString()
                 << " { start_key: "
                 << ((metadata.partition().has_partition_key_start())

@@ -40,13 +40,13 @@ scoped_refptr<TabletInfo> CreateTablet(
     const string& end_key) {
   scoped_refptr<TabletInfo> tablet = new TabletInfo(table, tablet_id);
   auto l = tablet->LockForWrite();
-  PartitionPB* partition = l->mutable_data()->pb.mutable_partition();
+  PartitionPB* partition = l.mutable_data()->pb.mutable_partition();
   partition->set_partition_key_start(start_key);
   partition->set_partition_key_end(end_key);
-  l->mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+  l.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
 
   table->AddTablet(tablet.get());
-  l->Commit();
+  l.Commit();
   return tablet;
 }
 
@@ -63,9 +63,9 @@ void CreateTable(const vector<string> split_keys, const int num_replicas, bool s
 
   if (setup_placement) {
     auto l = table->LockForWrite();
-    auto* ri = l->mutable_data()->pb.mutable_replication_info();
+    auto* ri = l.mutable_data()->pb.mutable_replication_info();
     ri->mutable_live_replicas()->set_num_replicas(num_replicas);
-    l->Commit();
+    l.Commit();
   }
 
   // The splits are of the form ("-a", "a-b", "b-c", "c-"), hence the +1.

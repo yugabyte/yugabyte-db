@@ -103,9 +103,9 @@ Status ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementI
   }
   auto l = tablet->table()->LockForRead();
   if (options_ent->type == READ_ONLY &&
-      l->data().pb.has_replication_info() &&
-      !l->data().pb.replication_info().read_replicas().empty()) {
-    pb->CopyFrom(GetReadOnlyPlacementFromUuid(l->data().pb.replication_info()));
+      l->pb.has_replication_info() &&
+      !l->pb.replication_info().read_replicas().empty()) {
+    pb->CopyFrom(GetReadOnlyPlacementFromUuid(l->pb.replication_info()));
   } else {
     pb->CopyFrom(GetClusterPlacementInfo());
   }
@@ -128,16 +128,16 @@ Status ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
 
 const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const {
   auto l = down_cast<CatalogManager*>(catalog_manager_)->GetClusterConfigInfo()->LockForRead();
-  return l->data().pb.replication_info().live_replicas();
+  return l->pb.replication_info().live_replicas();
 }
 
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
   auto l = down_cast<CatalogManager*>(catalog_manager_)->GetClusterConfigInfo()->LockForRead();
   if (GetEntState()->GetEntOptions()->type == LIVE) {
-    return l->data().pb.replication_info().live_replicas();
+    return l->pb.replication_info().live_replicas();
   } else {
-    return GetReadOnlyPlacementFromUuid(l->data().pb.replication_info());
+    return GetReadOnlyPlacementFromUuid(l->pb.replication_info());
   }
 }
 
