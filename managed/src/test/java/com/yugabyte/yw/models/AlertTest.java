@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Alert.TargetType;
 import junitparams.JUnitParamsRunner;
@@ -41,13 +40,10 @@ public class AlertTest extends FakeDBApplication {
 
   private Customer cust2;
 
-  private AlertDefinitionService alertDefinitionService;
-
   @Before
   public void setUp() {
     cust1 = ModelFactory.testCustomer("Customer 1");
     cust2 = ModelFactory.testCustomer("Customer 2");
-    alertDefinitionService = new AlertDefinitionService();
   }
 
   @Test
@@ -55,7 +51,7 @@ public class AlertTest extends FakeDBApplication {
     AlertDefinition definition = createDefinition();
     Alert alert = createTestAlert(definition);
 
-    Alert queriedAlert = Alert.get(alert.uuid);
+    Alert queriedAlert = Alert.get(alert.getUuid());
 
     assertTestAlert(queriedAlert, definition);
   }
@@ -84,7 +80,7 @@ public class AlertTest extends FakeDBApplication {
 
     alert.delete();
 
-    Alert queriedAlert = Alert.get(alert.uuid);
+    Alert queriedAlert = Alert.get(alert.getUuid());
 
     assertThat(queriedAlert, Matchers.nullValue());
   }
@@ -122,7 +118,7 @@ public class AlertTest extends FakeDBApplication {
   public void testAlertsTypes(Alert.TargetType alertType, UUID uuid, Class<?> claz) {
     Alert alert =
         Alert.create(cust1.uuid, uuid, alertType, TEST_ALERT_CODE, "Warning", "Testing alert.");
-    assertNotNull(alert.uuid);
+    assertNotNull(alert.getUuid());
     assertEquals(cust1.uuid, alert.customerUUID);
     assertEquals(uuid, alert.targetUUID);
     assertEquals("Warning", alert.type);
@@ -228,7 +224,7 @@ public class AlertTest extends FakeDBApplication {
             TEST_ALERT_CODE,
             "Warning",
             "Testing alert 1.");
-    alert1.definitionUUID = definition.getUuid();
+    alert1.setDefinitionUUID(definition.getUuid());
     alert1.save();
 
     Alert alert2 =
@@ -239,8 +235,8 @@ public class AlertTest extends FakeDBApplication {
             TEST_ALERT_CODE,
             "Warning",
             "Testing alert 2.");
-    alert2.state = State.ACTIVE;
-    alert2.definitionUUID = definition.getUuid();
+    alert2.setState(State.ACTIVE);
+    alert2.setDefinitionUUID(definition.getUuid());
     alert2.save();
 
     assertEquals(2, Alert.getActiveCustomerAlerts(cust1.uuid, definition.getUuid()).size());
@@ -265,7 +261,7 @@ public class AlertTest extends FakeDBApplication {
             TEST_ALERT_CODE,
             "Warning",
             "Testing alert 2.");
-    alert2.state = State.ACTIVE;
+    alert2.setState(State.ACTIVE);
     alert2.save();
 
     Alert alert3 =
@@ -276,7 +272,7 @@ public class AlertTest extends FakeDBApplication {
             TEST_ALERT_CODE,
             "Warning",
             "Testing alert 3.");
-    alert3.state = State.ACTIVE;
+    alert3.setState(State.ACTIVE);
     alert3.save();
 
     List<Alert> result = Alert.getActiveCustomerAlertsByTargetUuid(cust1.uuid, targetUUID);
@@ -314,7 +310,7 @@ public class AlertTest extends FakeDBApplication {
     assertThat(alert.errCode, is(TEST_ALERT_CODE));
     assertThat(alert.type, is("Warning"));
     assertThat(alert.message, is("Testing alert 1."));
-    assertThat(alert.definitionUUID, equalTo(definition.getUuid()));
+    assertThat(alert.getDefinitionUUID(), equalTo(definition.getUuid()));
     assertTrue(alert.sendEmail);
     assertThat(alert.getLabels(), containsInAnyOrder(label, label2));
   }

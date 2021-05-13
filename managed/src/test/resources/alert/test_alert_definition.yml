@@ -11,4 +11,4 @@ groups:
           universe_uuid: <universe_uuid>
           universe_name: Test Universe
         annotations:
-          summary: "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing"
+          summary: "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing."
