@@ -22,6 +22,7 @@
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/ptree/pt_dml_write_property.h"
 
 namespace yb {
 namespace ql {
@@ -127,7 +128,8 @@ class PTUpdateStmt : public PTDmlStmt {
                PTExpr::SharedPtr if_clause = nullptr,
                bool else_error = false,
                PTDmlUsingClause::SharedPtr using_clause = nullptr,
-               const bool return_status = false);
+               const bool return_status = false,
+               PTDmlWritePropertyListNode::SharedPtr update_properties = nullptr);
   virtual ~PTUpdateStmt();
 
   template<typename... TypeArgs>
@@ -165,6 +167,10 @@ class PTUpdateStmt : public PTDmlStmt {
     return set_clause_;
   }
 
+  const PTDmlWritePropertyListNode::SharedPtr& update_properties() const {
+    return update_properties_;
+  }
+
  private:
   // --- The parser will decorate this node with the following information --
 
@@ -175,6 +181,9 @@ class PTUpdateStmt : public PTDmlStmt {
 
   // Indicate if a column read is required to execute this update statement.
   bool require_column_read_ = false;
+
+  // Properties added via the WITH clause in UPDATE statement.
+  PTDmlWritePropertyListNode::SharedPtr update_properties_ = nullptr;
 };
 
 }  // namespace ql
