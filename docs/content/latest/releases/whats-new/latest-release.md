@@ -45,22 +45,183 @@ docker pull yugabytedb/yugabyte:2.7.1.0-b184
 
 #### Yugabyte Platform
 
-
 #### Core Database
 
+N/A
 
 ### Improvements
 
 #### Yugabyte Platform
 
-
 #### Core Database
 
+**Point-in-time restore progress**
+
+* [7126] Add restore_snapshot_schedule to admin
+* [7126] Add yb-admin commands to create and list snapshot schedules
+* [7126] PITR: Cleanup not restored tables and tablets
+* [7126] PITR: Cleanup outdated snapshots
+* [7126] PITR: Correct history retention for newly added tablets
+* [7126] PITR: Load snapshot schedules during bootstrap
+* [7126] PITR: Restore deleted table
+* [7126] PITR: Special history retention mechanism
+* [7126] PITR: Take system catalog snapshot
+* [7126] [7135] PITR: Restore table schema
+* [7137] PITR: Provide ability to create snapshot schedule for YSQL database and YCQL keyspace
+
+**TLS-related**
+
+* [6845] [YSQL] Introduce the 'use_node_hostname_for_local_tserver' gflag to use DNS name instead of IP for local tserver connection
+* [7756] Make Encryption at Rest Code Openssl 1.1.1 Compatible
+* [8052] Add ability to configure cipher list and cipher suites.
+
+**UI improvements**
+
+* [docdb] Added a max_depth param to the mem-trackers view (#7903)
+* [7620] Refactor scoped leader shared lock instantiation
+* [7199] track and display heartbeat roundtrip time from each yb-tserver in yb-master UI (#7239)
+* [7543] docdb: Add uptime into master home UI
+* [7484] docdb - Sort the hosts of tablet replicas consistently in Admin UI
+* [7617] docdb: Record and display disk usage by drive
+* [7647] docdb: Adds Num SST Files to TS tablets view
+
+**Performance improvements**
+
+* [7487] docdb - Remove unnecessary Value decoding and TTL calculation in doc_reader.cc
+* [7661] docdb - Run manually triggered compactions concurrently
+* [7798] DocDB: Only the YB-Master Leader should refresh the tablespace info in memory
+* [7844] Set tcmalloc max cache bytes for yb-master similar to the yb-tserver.
+* [7873] docdb - Initialize block cache for master/sys_catalog
+* [7894] Don't create long operation tracker for empty ScopedRWOperation
+* [8002] docdb: Increase thresholds for master long lock warnings
+* [8015] Remove tablets belonging to the same table by taking table lock once
+* [8037] docdb - Refactor memory management for tablets into a separate class
+* [8071] Lookup HostPort in blacklist for TSManager::IsTsBlacklisted
+* [8061] Iterate over copy of namespace_ids_map_ when listing namespaces
+* [8133] remove CatalogManager::CheckOnline()
+* [8167] Properly scope namespace read lock in CatalogManager::CreateTable()
+* [8170] ybase: Check dirty bit of tablet metadata before issuing removal
+* [8260] ybase: Use shared lock when checking table truncation / deletion
+
+**Tablet splitting**
+
+* [5854] docdb: Handling tablet splitting errors at YBSession level
+* [6719] docdb: Added YBOperation table_partition_list_version checking
+* [7108] [docdb] Disable tablet splitting during index backfill
+* [8201] docdb: YBSession API cleanup
+
+**Load balancer and placement improvements**
+
+* [1479] ybase: Allow normal load balancing for DEAD+BLACKLISTED TS
+* [3040] ybase: Allow global leader load balancing
+* [6631] ybase: Allow support for prefixes while specifying placement info
+* [6947] ybase: Allow leader balancing for DEAD nodes
+* [7369] ysql: Respect leader affinity on master sys catalog tablet
+
+**T-server memory overhead**
+
+* [7804] docdb: Make WritableFileWriter buffer gflag controllable
+* [7805] Share Histograms across tablets belonging to a table instead of having Histograms (in TabletMetrics and other objects) separately for each tablet.
+* [8073] Drop rocksdb memstore arena from 128kb to 64kb
+
+**YCQL deferred index backfill**
+
+* [8069] YCQL: Basic support for deferred/batched index backfill
+* [6290] [8069] Pt 2 & 3: CQL Handle partial-failures in a batch of index backfills.
+* [8069] Add a yb-admin command to backfill tables with deferred indexes
+
+**Other core database improvements**
+
+* [1248] ysql: Create background task for verifying tablet data integrity
+* [4934] [7922] Thread safety improvements in the Transaction class
+* [4580] add metric for wal files size (#7260)
+* [6636] docdb: Cache table->tablespace->placement information in YB-Master
+* [6672] docdb: added explicit initialization of libbacktrace into InitYB.
+* [7068] Allow reloading of the config file with 'ts-cli'
+* [7564] ybase: Auto tune ysql_num_shards_per_tserver similar to yb_num_shards_per_tserver
+* [7916] CQL call timeout
+* [7977] [docdb] Send per tablet disk usage to the master via heartbeats
+* [8026] Bump up timestamp_history_retention_interval_sec to 900s
+* [8027] A separate YSQL flag for yb_client_timeout
 
 ### Bug Fixes
 
+#### Yugabyte Platform
+
 #### Core Database
 
+* [2977] docdb: CountIntents() should use shared tablet pointer
+* [3460] YSQL: Integrate Orafce extension with Yugabyte
+* [4250] ybase: Stop Load balancing for deleting/deleted tables
+* [4412] docdb: Fix LB State for Move Operations
+* [5380] Add re-try in postgres build when encountering transient error.
+* [6096] ysql: Fix crash during bootstrap when replaying WAL of deleted colocated table
+* [6615] [7693] [YCQL] Manifest generation for YCQL command for sample apps. kubectl command and docker command to run sample apps will be created automatically.
+* [6672] docdb: fix for deadlock in GlobalBacktraceState constructor
+* [6789] YSQL: Fix ysql_dumpall and ysql_dump to work with Tablespaces
+* [6821] [7069] [7344] (YCQL) Fix issues when selecting optimal scan path
+* [6951] [YSQL] Fix missed check of YBStatus
+* [6972] Update local limit in case of a successful read
+* [6982] [YSQL] Specify read time for catalog tables to guarantee consistent state of catalog cache
+* [7047] [YSQL] Read minimal possible number of columns in case of index scan
+* [7324] YSQL: Early bailout when bind condition is an empty search array
+* [7355] ysql: check backfill bad connection status
+* [7390] Preflight checks should handle sudo passwords when given
+* [7390] Rename V65 migration with R prefix
+* [7398] docdb - Crashing after CopyTo from parent to child causes child bootstrap failure
+* [7398] docdb - Forcing remote bootstrap to replay split operation causes seg fault
+* [7455] [YCQL] Update index from transaction with cross-key statements.
+* [7499] ysql: Import pg_dump: label INDEX ATTACH ArchiveEntries with an owner.
+* [7534] YSQL: Support ALTER TABLE ADD PRIMARY KEY for colocated tables
+* [7547] Set flags automatically based on the node's available resources
+* [7557] YCQL: Support != operator
+* [7600] [YSQL] Explain --masters in ysql_dump cli.
+* [7602] docdb: FlushTablets rpc causes SEGV of the tserver process
+* [7603] rocksdb: Calling memset on atomic variable generates warning (#7604)
+* [7628] Add ldap libraries as special case for yb client packaging
+* [7632] ycql: Support upsert for jsonb column field values
+* [7641] YCQL: Fix checks in index update path that determine full row removal.
+* [7649] YCQL: Block secondary index creation on static columns.
+* [7651] YSQL: Always listen on UNIX domain socket
+* [7678] ysql: Import Fix race condition in psql \e's detection of file modification.
+* [7682] ysql: Import Forbid marking an identity column as nullable.
+* [7702] ysql: Import Avoid corner-case memory leak in SSL parameter processing.
+* [7705] ysql: prioritize internal HBA config
+* [7715] YSQL: Prevent DocPgsqlScanSpec and DocQLScanSpec from accepting rvalue reference to hash and range components
+* [7724] ysql: add GUC var yb_index_state_flags_update_delay
+* [7729] Avoid recreating aborted transaction
+* [7729] Fix checking ABORTED txn status at follower
+* [7741] ysql: Import Don't leak malloc'd strings when a GUC setting is rejected.
+* [7748] YSQL: ALTER ADD PK should do column checks
+* [7791] ysql: Import Fix psql's \connect command some more.
+* [7802] ysql: Import Fix connection string handling in psql's \connect command.
+* [7806] ysql: Import Fix recently-introduced breakage in psql's \connect command.
+* [7812] ysql: Import Fix connection string handling in src/bin/scripts/ programs.
+* [7813] [YSQL] YSQL dump should always include HASH/ASC/DESC modifier for indexes/pkey.
+* [7835] Don't crash when trying to append ValueType::kTombstone to a key
+* [7848] Fix for yb-prof for python3
+* [7872] Remove flashcache-related code
+* [7894] Keep ScopedRWOperation while applying intents for large transaction
+* [7937] YSQL: Avoid unnecessary secondary index writes for UPDATE on table with
+* [7939] Enforce password policy
+* [7940] docdb: Unregister BlockBasedTable memtrackers from parent on tablet deletion
+* [7944] ysql: deprecate flag ysql_wait_until_index_permissions_timeout_ms
+* [7979] ysql Import Fix handling of -d "connection string" in pg_dump/pg_restore.
+* [8065] docdb: Fix Sys Catalog Leader Affinity with Full Move
+* [8006] ysql: Import Fix out-of-bound memory access for interval -> char conversion
+* [8024] YSQL: Redundant read for create table with primary key
+* [8030] ysql: Import Redesign the caching done by get_cached_rowtype().
+* [8047] ysql: Import Fix some inappropriately-disallowed uses of ALTER ROLE/DATABASE SET.
+* [8079] Ensure leadership before handling catalog version
+* [8101] YCQL: Fixed CQLServiceImpl::Shutdown
+* [8102] Traverse pgsql_ops_ once in PgDocOp::ProcessResponseResult()
+* [8112] Correct string substitution in UpdateTablet()
+* [8114] [YSQL] [backup] Partial index syntax error in the ysql_dump output
+* [8118] ysql: Import 'Fix memory leak when rejecting bogus DH parameters.'
+* [8119] ycql: Properly compare BigDecimals for equality
+* [8150] [8196] Fix preceding op id in case of empty ops sent to the follower
+* [8183] ysql: Import Always call ExecShutdownNode() if appropriate.
+* [8225] YQL: Add missing makefile dependency
 
 ### Known Issues
 
