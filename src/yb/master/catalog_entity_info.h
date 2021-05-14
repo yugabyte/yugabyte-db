@@ -312,6 +312,22 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
+  bool visible_to_client() const {
+    return is_running() && !is_hidden();
+  }
+
+  bool is_hiding() const {
+    return pb.hide_state() == SysTablesEntryPB::HIDING;
+  }
+
+  bool is_hidden() const {
+    return pb.hide_state() == SysTablesEntryPB::HIDDEN;
+  }
+
+  bool started_hiding() const {
+    return is_hiding() || is_hidden();
+  }
+
   // Return the table's name.
   const TableName& name() const {
     return pb.name();
@@ -412,6 +428,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Get all tablets of the table.
   void GetAllTablets(TabletInfos *ret) const;
 
+  bool HasTablets() const;
+
   // Get the tablet of the table.  The table must be colocated.
   TabletInfoPtr GetColocatedTablet() const;
 
@@ -420,6 +438,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if all tablets of the table are deleted.
   bool AreAllTabletsDeleted() const;
+
+  // Returns true if all tablets of the table are deleted or hidden.
+  bool AreAllTabletsDeletedOrHidden() const;
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;

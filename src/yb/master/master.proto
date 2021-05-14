@@ -368,6 +368,12 @@ message SysTablesEntryPB {
     DELETED = 5;
   }
 
+  enum HideState {
+    VISIBLE = 0;
+    HIDING = 1;
+    HIDDEN = 2;
+  }
+
   // Table name
   required bytes name = 1;
 
@@ -447,6 +453,8 @@ message SysTablesEntryPB {
   // As of Apr 2021, we only have at most one outstanding backfill job, but
   // this restriction may be removed later on. Hence repeated.
   repeated BackfillJobPB backfill_jobs = 32;
+
+  optional HideState hide_state = 33;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -1149,6 +1157,8 @@ message ListTablesRequestPB {
 
   // Can be used to filter tables based on RelationType
   repeated RelationType relation_type_filter = 4;
+
+  optional bool include_not_running = 5;
 }
 
 message ListTablesResponsePB {
@@ -1161,6 +1171,7 @@ message ListTablesResponsePB {
     optional TableType table_type = 3;
     optional NamespaceIdentifierPB namespace = 4;
     optional RelationType relation_type = 5 [default = USER_TABLE_RELATION];
+    optional SysTablesEntryPB.State state = 6;
   }
 
   repeated TableInfo tables = 2;

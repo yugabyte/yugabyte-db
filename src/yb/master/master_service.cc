@@ -279,8 +279,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
   if (PREDICT_FALSE(FLAGS_TEST_master_fail_transactional_tablet_lookups)) {
-    std::vector<scoped_refptr<TableInfo>> tables;
-    server_->catalog_manager()->GetAllTables(&tables);
+    auto tables = server_->catalog_manager()->GetTables(GetTablesMode::kAll);
     const auto& tablet_id = req->tablet_ids(0);
     for (const auto& table : tables) {
       TabletInfos tablets;
