@@ -16,6 +16,62 @@ isTocNested: true
 showAsideToc: true 
 ---
 
+## v2.7.1 - May 14, 2021
+
+**Build:** `2.7.1.0-b184`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.7.1.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.7.1.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.7.1.0-b184
+```
+
+### New Features
+
+#### Yugabyte Platform
+
+
+#### Core Database
+
+
+### Improvements
+
+#### Yugabyte Platform
+
+
+#### Core Database
+
+
+### Bug Fixes
+
+#### Core Database
+
+
+### Known Issues
+
+#### Yugabyte Platform
+
+N/A
+
+#### Core Database
+
+N/A
+
 ## v2.7.0 - May 5, 2021
 
 Yugabyte release 2.7.0 builds on our work in the 2.5 series, which fed into the 2.4 stable release. With release 2.7.0, we're planning development on a number of [new features](#new-features), as well as refinements to existing functionality.

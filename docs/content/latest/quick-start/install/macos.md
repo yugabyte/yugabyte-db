@@ -115,7 +115,7 @@ showAsideToc: true
       </plist>
     ```
 
-    Enure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
+    Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
 
     ```sh
     $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
@@ -128,13 +128,13 @@ showAsideToc: true
 1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.5.3.1-darwin.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.7.1.0-darwin.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.5.3.1-darwin.tar.gz && cd yugabyte-2.5.3.1/
+    $ tar xvfz yugabyte-2.7.1.0-darwin.tar.gz && cd yugabyte-2.7.1.0/
     ```
 
 ## Configure
