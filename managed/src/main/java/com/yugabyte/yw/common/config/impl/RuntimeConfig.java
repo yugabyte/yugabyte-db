@@ -79,12 +79,4 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
     LOG.trace("After setValue {}", delegate());
     return this;
   }
-
-  public String getStringOrElse(String path, String defaultValue) {
-    if (hasPath(path)) {
-      return getString(path);
-    }
-    return defaultValue;
-  }
-
 }
