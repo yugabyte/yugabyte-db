@@ -85,8 +85,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
   }
 
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
-  catalog_manager->GetAllTables(&tables, true /* includeOnlyRunningTables */);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
   auto& resolver = master_->messenger()->resolver();
 
   std::unordered_map<std::string, std::shared_future<Result<IpAddress>>> dns_lookups;

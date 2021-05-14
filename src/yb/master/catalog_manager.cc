@@ -521,14 +521,14 @@ class IndexInfoBuilder {
 };
 
 template<class Lock, class RespClass>
-Status CheckIfTableDeletedOrNotRunning(const Lock& lock, RespClass* resp) {
+Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp) {
   // This covers both in progress and fully deleted objects.
   if (lock->started_deleting()) {
     Status s = STATUS_SUBSTITUTE(NotFound,
         "The object '$0.$1' does not exist", lock->namespace_id(), lock->name());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
-  if (!lock->is_running()) {
+  if (!lock->visible_to_client()) {
     Status s = STATUS_SUBSTITUTE(ServiceUnavailable,
         "The object '$0.$1' is not running", lock->namespace_id(), lock->name());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
@@ -1899,7 +1899,7 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
             << yb::ToString(index_info);
   TRACE("Locking indexed table");
   auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l, resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // Make sure that the index appears to not have been added to the table until the tservers apply
   // the alter and respond back.
@@ -2533,7 +2533,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     TRACE("Locking indexed table");
-    RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(indexed_table->LockForRead(), resp));
+    RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(indexed_table->LockForRead(), resp));
   }
 
   // Determine if this table should be colocated. If not specified, the table should be colocated if
@@ -3274,7 +3274,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l, resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
   const auto& pb = l->pb;
 
   // 2. Verify if the create is in-progress.
@@ -3705,7 +3705,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   TRACE(Substitute("Locking object with id $0", table_id));
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l, resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
@@ -3765,7 +3765,7 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
   }
 
   TRACE("Locking table");
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(table->LockForRead(), resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(), resp));
 
   resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_TRUNCATE_TABLET));
   return Status::OK();
@@ -4001,15 +4001,14 @@ Status CatalogManager::DeleteTable(
 // IMPORTANT: If modifying, consider updating DeleteYsqlDBTables(), the bulk deletion API.
 Status CatalogManager::DeleteTableInternal(
     const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
-  vector<scoped_refptr<TableInfo>> tables;
-  vector<TableInfo::WriteLock> table_locks;
 
   auto schedules_to_tables_map = VERIFY_RESULT(
       MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::TABLE));
 
+  vector<DeletingTableData> tables;
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
                                     true /* update_indexed_table */, schedules_to_tables_map,
-                                    &tables, &table_locks, resp, rpc));
+                                    &tables, resp, rpc));
 
   // Delete any CDC streams that are set up on this table.
   TRACE("Deleting CDC streams on table");
@@ -4017,8 +4016,8 @@ Status CatalogManager::DeleteTableInternal(
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
-  for (int i = 0; i < table_locks.size(); i++) {
-    table_locks[i].Commit();
+  for (auto& table : tables) {
+    table.write_lock.Commit();
   }
 
   if (PREDICT_FALSE(FLAGS_catalog_manager_inject_latency_in_delete_table_ms > 0)) {
@@ -4028,22 +4027,14 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   for (const auto& table : tables) {
-    RepeatedBytes retained_by_snapshot_schedules;
-    for (const auto& entry : schedules_to_tables_map) {
-      if (std::binary_search(entry.second.begin(), entry.second.end(), table->id())) {
-        retained_by_snapshot_schedules.Add()->assign(
-            entry.first.AsSlice().cdata(), entry.first.size());
-      }
-    }
-
     // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, retained_by_snapshot_schedules));
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
     // TODO(pitr) handle YSQL colocated tables.
-    if (IsColocatedUserTable(*table)) {
+    if (IsColocatedUserTable(*table.info)) {
       auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-          master_, AsyncTaskPool(), table->GetColocatedTablet(), table);
-      table->AddTask(call);
+          master_, AsyncTaskPool(), table.info->GetColocatedTablet(), table.info);
+      table.info->AddTask(call);
       WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
     }
   }
@@ -4071,8 +4062,7 @@ Status CatalogManager::DeleteTableInMemory(
     const bool is_index_table,
     const bool update_indexed_table,
     const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
-    vector<scoped_refptr<TableInfo>>* tables,
-    vector<TableInfo::WriteLock>* table_lcks,
+    vector<DeletingTableData>* tables,
     DeleteTableResponsePB* resp,
     rpc::RpcContext* rpc) {
   // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
@@ -4093,15 +4083,19 @@ Status CatalogManager::DeleteTableInMemory(
   auto table = std::move(*table_result);
 
   TRACE(Substitute("Locking $0", object_type));
-  auto l = table->LockForWrite();
+  auto data = DeletingTableData {
+    .info = table,
+    .write_lock = table->LockForWrite(),
+  };
+  auto& l = data.write_lock;
   resp->set_table_id(table->id());
 
-  if (is_index_table == IsTable(l.data().pb)) {
+  if (is_index_table == IsTable(l->pb)) {
     Status s = STATUS(NotFound, "The object does not exist");
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
-  if (l.data().started_deleting()) {
+  if (l->started_deleting()) {
     if (cascade_delete_index) {
       LOG(WARNING) << "Index " << table_identifier.DebugString() << " was deleted";
       return Status::OK();
@@ -4111,10 +4105,21 @@ Status CatalogManager::DeleteTableInMemory(
     }
   }
 
+  for (const auto& entry : schedules_to_tables_map) {
+    if (std::binary_search(entry.second.begin(), entry.second.end(), table->id())) {
+      data.retained_by_snapshot_schedules.Add()->assign(
+          entry.first.AsSlice().cdata(), entry.first.size());
+    }
+  }
+
   TRACE("Updating metadata on disk");
   // Update the metadata for the on-disk state.
-  l.mutable_data()->set_state(SysTablesEntryPB::DELETING,
-                               Substitute("Started deleting at $0", LocalTimeAsString()));
+  if (data.retained_by_snapshot_schedules.empty()) {
+    l.mutable_data()->set_state(SysTablesEntryPB::DELETING,
+                                 Substitute("Started deleting at $0", LocalTimeAsString()));
+  } else {
+    l.mutable_data()->pb.set_hide_state(SysTablesEntryPB::HIDING);
+  }
 
   // Update sys-catalog with the removed table state.
   Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term());
@@ -4146,11 +4151,11 @@ Status CatalogManager::DeleteTableInMemory(
   // index info from the indexed table.
   if (!is_index_table) {
     TableIdentifierPB index_identifier;
-    for (auto index : l->pb.indexes()) {
+    for (const auto& index : l->pb.indexes()) {
       index_identifier.set_table_id(index.table_id());
       RETURN_NOT_OK(DeleteTableInMemory(index_identifier, true /* is_index_table */,
                                         false /* update_indexed_table */, schedules_to_tables_map,
-                                        tables, table_lcks, resp, rpc));
+                                        tables, resp, rpc));
     }
   } else if (update_indexed_table) {
     s = MarkIndexInfoFromTableForDeletion(
@@ -4168,18 +4173,12 @@ Status CatalogManager::DeleteTableInMemory(
   // For regular (indexed) table, insert table info and lock in the front of the list. Else for
   // index table, append them to the end. We do so so that we will commit and delete the indexed
   // table first before its indexes.
-  if (!is_index_table) {
-    tables->insert(tables->begin(), table);
-    table_lcks->insert(table_lcks->begin(), std::move(l));
-  } else {
-    tables->push_back(table);
-    table_lcks->push_back(std::move(l));
-  }
+  tables->insert(is_index_table ? tables->end() : tables->begin(), std::move(data));
 
   return Status::OK();
 }
 
-TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(TableInfoPtr table) {
+TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableInfoPtr& table) {
   if (table->HasTasks()) {
     return TableInfo::WriteLock();
   }
@@ -4188,7 +4187,7 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(TableInfoPtr 
 
     // For any table in DELETING state, we will want to mark it as DELETED once all its respective
     // tablets have been successfully removed from tservers.
-    if (!lock->is_deleting()) {
+    if (!lock->is_deleting() && !lock->is_hiding()) {
       return TableInfo::WriteLock();
     }
   }
@@ -4200,14 +4199,19 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(TableInfoPtr 
   // This creates a race, wherein, after 2, HasTasks can be false, but we still have not
   // gotten to point 3, which would add further tasks for the deletes.
   //
-  // However, HasTasks is cheaper than AreAllTabletsDeleted...
-  if (!table->AreAllTabletsDeleted() &&
+  // However, HasTasks is cheaper than AreAllTabletsDeletedOrHidden...
+  if (!table->AreAllTabletsDeletedOrHidden() &&
       !IsSystemTable(*table) &&
       !IsColocatedUserTable(*table)) {
     return TableInfo::WriteLock();
   }
 
   auto lock = table->LockForWrite();
+  if (lock->is_hiding()) {
+    LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
+    lock.mutable_data()->pb.set_hide_state(SysTablesEntryPB::HIDDEN);
+    return lock;
+  }
   if (lock->is_deleting()) {
     // Update the metadata for the on-disk state.
     LOG(INFO) << "Marking table as DELETED: " << table->ToString();
@@ -4275,7 +4279,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   TRACE("Locking table");
   auto l = table->LockForRead();
 
-  if (!l->started_deleting()) {
+  if (!l->started_deleting() && !l->started_hiding()) {
     LOG(WARNING) << "Servicing IsDeleteTableDone request for table id "
                  << req->table_id() << ": NOT deleted";
     Status s = STATUS(IllegalState, "The object was NOT deleted", l->pb.state_msg());
@@ -4291,10 +4295,10 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
     return Status::OK();
   }
 
-  if (l->is_deleted()) {
+  if (l->is_deleted() || l->is_hidden()) {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
-              << req->table_id() << ": totally deleted";
-      resp->set_done(true);
+              << req->table_id() << ": totally " << (l->is_hidden() ? "hidden" : "deleted");
+    resp->set_done(true);
   } else {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
               << ((!IsColocatedUserTable(*table)) ? ": deleting tablets" : "");
@@ -4442,7 +4446,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForWrite();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l, resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   bool has_changes = false;
   auto& table_pb = l.mutable_data()->pb;
@@ -4612,7 +4616,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l, resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // 2. Verify if the alter is in-progress.
   TRACE("Verify if there is an alter operation in progress for $0", table->ToString());
@@ -4704,7 +4708,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l, resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   if (l->pb.has_fully_applied_schema()) {
     // An AlterTable is in progress; fully_applied_schema is the last
@@ -4791,7 +4795,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
   {
     TRACE("Locking table");
     auto l = parent_colocated_table->LockForRead();
-    RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l, resp));
+    RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
   }
 
   if (!parent_colocated_table->colocated() || !IsColocatedParentTable(*parent_colocated_table)) {
@@ -4878,7 +4882,9 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     auto& table_info = *entry.second;
     auto ltm = table_info.LockForRead();
 
-    if (!ltm->is_running()) continue;
+    if (!ltm->visible_to_client() && !req->include_not_running()) {
+      continue;
+    }
 
     if (!namespace_id.empty() && namespace_id != table_info.namespace_id()) {
       continue; // Skip tables from other namespaces.
@@ -4922,15 +4928,16 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 
     ListTablesResponsePB::TableInfo *table = resp->add_tables();
     {
-      auto l = (**ns).LockForRead();
+      auto namespace_lock = (**ns).LockForRead();
       table->mutable_namespace_()->set_id((**ns).id());
-      table->mutable_namespace_()->set_name((**ns).name());
-      table->mutable_namespace_()->set_database_type((**ns).database_type());
+      table->mutable_namespace_()->set_name(namespace_lock->name());
+      table->mutable_namespace_()->set_database_type(namespace_lock->pb.database_type());
     }
     table->set_id(entry.second->id());
     table->set_name(ltm->name());
     table->set_table_type(ltm->table_type());
     table->set_relation_type(relation_type);
+    table->set_state(ltm->pb.state());
   }
   return Status::OK();
 }
@@ -4955,16 +4962,32 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& tab
   return FindPtrOrNull(*table_ids_map_, table_id);
 }
 
-void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo>> *tables,
-                                  bool includeOnlyRunningTables) {
-  tables->clear();
-  SharedLock<LockType> l(lock_);
-  for (const auto& e : *table_ids_map_) {
-    if (includeOnlyRunningTables && !e.second->is_running()) {
-      continue;
+std::vector<TableInfoPtr> CatalogManager::GetTables(GetTablesMode mode) {
+  std::vector<TableInfoPtr> result;
+  {
+    SharedLock<LockType> l(lock_);
+    result.reserve(table_ids_map_->size());
+    for (const auto& e : *table_ids_map_) {
+      result.push_back(e.second);
     }
-    tables->push_back(e.second);
   }
+  switch (mode) {
+    case GetTablesMode::kAll:
+      return result;
+    case GetTablesMode::kRunning: {
+      auto filter = [](const TableInfoPtr& table_info) { return !table_info->is_running(); };
+      EraseIf(filter, &result);
+      return result;
+    }
+    case GetTablesMode::kVisibleToClient: {
+      auto filter = [](const TableInfoPtr& table_info) {
+        return !table_info->LockForRead()->visible_to_client();
+      };
+      EraseIf(filter, &result);
+      return result;
+    }
+  }
+  FATAL_INVALID_ENUM_VALUE(GetTablesMode, mode);
 }
 
 void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>* namespaces,
@@ -5100,7 +5123,7 @@ bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
 
 void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid,
                                                 const TabletId& tablet_id,
-                                                scoped_refptr<TableInfo> table) {
+                                                const TableInfoPtr& table) {
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
@@ -5203,7 +5226,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
             report.tablet_data_state() == TABLET_DATA_DELETED) {
           VLOG(1) << "Ignoring report from unknown tablet " << tablet_id;
         } else {
-          LOG(WARNING) << "Ignoring report from unknown tablet " << tablet_id;
+          LOG(DFATAL) << "Ignoring report from unknown tablet " << tablet_id;
         }
         // Every tablet in the report that is processed gets a heartbeat response entry.
         ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
@@ -5271,7 +5294,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
          ++i, ++tablet_iter) {
       const string& tablet_id = tablet_iter->first;
       const scoped_refptr<TabletInfo>& tablet = tablet_iter->second;
-      const scoped_refptr<TableInfo>& table = tablet->table();
+      const TableInfoPtr& table = tablet->table();
       const ReportedTabletPB& report = *FindOrDie(reports, tablet_id);
 
       // Prepare an heartbeat response entry for this tablet, now that we're going to process it.
@@ -8548,7 +8571,7 @@ Status CatalogManager::GetTableLocations(
   }
 
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l, resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   vector<scoped_refptr<TabletInfo>> tablets_in_range;
   table->GetTabletsInRange(req, &tablets_in_range);
@@ -8984,9 +9007,9 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   }
 
   // Only need to fetch if txn tables are not using preferred zones.
-  vector<scoped_refptr<TableInfo>> tables;
+  vector<TableInfoPtr> tables;
   if (!FLAGS_transaction_tables_use_preferred_zones) {
-    master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+    tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   }
 
   auto l = cluster_config_->LockForRead();

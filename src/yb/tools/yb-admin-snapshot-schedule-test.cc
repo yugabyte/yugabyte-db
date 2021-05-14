@@ -210,6 +210,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return schedule_id;
   }
 
+  void TestUndeleteTable(bool restart_masters);
+
   std::unique_ptr<CppCassandraDriver> cql_driver_;
 };
 
@@ -261,7 +263,7 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, last_snapshot_time));
 }
 
-TEST_F(YbAdminSnapshotScheduleTest, UndeleteTable) {
+void YbAdminSnapshotScheduleTest::TestUndeleteTable(bool restart_masters) {
   auto schedule_id = ASSERT_RESULT(PrepareQl());
 
   auto session = client_->NewSession();
@@ -283,8 +285,19 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTable) {
 
   ASSERT_NOK(client::kv_table_test::WriteRow(&table_, session, kMinKey, 0));
 
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, kMinKey, 0));
+
+  if (restart_masters) {
+    ASSERT_OK(RestartAllMasters(cluster_.get()));
+  }
+
   LOG(INFO) << "Restore schedule";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(table_.Open(client::kTableName, client_.get()));
 
   LOG(INFO) << "Reading rows";
   auto rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table_, session));
@@ -298,6 +311,14 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTable) {
   ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, kExtraKey, -kExtraKey));
   auto extra_value = ASSERT_RESULT(client::kv_table_test::SelectRow(&table_, session, kExtraKey));
   ASSERT_EQ(extra_value, -kExtraKey);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, UndeleteTable) {
+  TestUndeleteTable(false);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, UndeleteTableWithRestart) {
+  TestUndeleteTable(true);
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
@@ -319,6 +340,8 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   ASSERT_OK(client_->DeleteTable(client::kTableName));
 
   auto deadline = CoarseMonoClock::now() + kInterval + 10s;
+
+  // Wait tablets deleted from tservers.
   ASSERT_OK(Wait([this, deadline]() -> Result<bool> {
     for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
@@ -329,13 +352,33 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
       RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
       for (const auto& tablet : resp.status_and_schema()) {
         if (tablet.tablet_status().table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-          LOG(INFO) << "Not yet deleted: " << tablet.ShortDebugString();
+          LOG(INFO) << "Not yet deleted tablet: " << tablet.ShortDebugString();
           return false;
         }
       }
     }
     return true;
   }, deadline, "Deleted tablet cleanup"));
+
+  // Wait table marked as deleted.
+  ASSERT_OK(Wait([this, deadline]() -> Result<bool> {
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterServiceProxy>();
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_deadline(deadline);
+    req.set_include_not_running(true);
+    RETURN_NOT_OK(proxy->ListTables(req, &resp, &controller));
+    for (const auto& table : resp.tables()) {
+      if (table.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE
+          && table.relation_type() != master::RelationType::SYSTEM_TABLE_RELATION
+          && table.state() != master::SysTablesEntryPB::DELETED) {
+        LOG(INFO) << "Not yet deleted table: " << table.ShortDebugString();
+        return false;
+      }
+    }
+    return true;
+  }, deadline, "Deleted table cleanup"));
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),

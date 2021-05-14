@@ -693,7 +693,7 @@ class MasterSnapshotCoordinator::Impl {
       WARN_NOT_OK(ExecuteScheduleOperation(operation, leader_term),
                   Format("Failed to execute operation on $0", operation.schedule_id));
     }
-    context_.CleanupHiddenTablets(data.schedule_min_restore_time);
+    context_.CleanupHiddenObjects(data.schedule_min_restore_time);
   }
 
   SnapshotState* BoundingSnapshot(const SnapshotScheduleId& schedule_id, Bound bound)

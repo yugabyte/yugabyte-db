@@ -411,11 +411,27 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
   }
   return false;
 }
-bool TableInfo::AreAllTabletsDeleted() const {
+
+bool TableInfo::HasTablets() const {
   shared_lock<decltype(lock_)> l(lock_);
-  for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
+  return !tablet_map_.empty();
+}
+
+bool TableInfo::AreAllTabletsDeletedOrHidden() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  for (const auto& e : tablet_map_) {
     auto tablet_lock = e.second->LockForRead();
     if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool TableInfo::AreAllTabletsDeleted() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  for (const auto& e : tablet_map_) {
+    if (!e.second->LockForRead()->is_deleted()) {
       return false;
     }
   }

@@ -89,7 +89,8 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
         "Could not submit VerifyTransaction to thread pool");
   }
 
-  LOG(INFO) << "Loaded metadata for table " << table->ToString();
+  LOG(INFO) << "Loaded metadata for table " << table->ToString() << ", state: "
+            << SysTablesEntryPB::State_Name(metadata.state());
   VLOG(1) << "Metadata for table " << table->ToString() << ": " << metadata.ShortDebugString();
 
   return Status::OK();
@@ -101,14 +102,14 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
 Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) {
   // Lookup the table.
-  scoped_refptr<TableInfo> first_table(FindPtrOrNull(
-      *catalog_manager_->table_ids_map_, metadata.table_id()));
+  TableInfoPtr first_table = FindPtrOrNull(*catalog_manager_->table_ids_map_, metadata.table_id());
 
   // TODO: We need to properly remove deleted tablets.  This can happen async of master loading.
   if (!first_table) {
     if (metadata.state() != SysTabletsEntryPB::DELETED) {
-      LOG(ERROR) << "Unexpected Tablet state for " << tablet_id << ": "
-                 << SysTabletsEntryPB::State_Name(metadata.state());
+      LOG(DFATAL) << "Unexpected Tablet state for " << tablet_id << ": "
+                  << SysTabletsEntryPB::State_Name(metadata.state())
+                  << ", unknown table for this tablet: " << metadata.table_id();
     }
     return Status::OK();
   }
@@ -117,7 +118,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   std::vector<TableId> table_ids;
   bool tablet_deleted;
   bool listed_as_hidden;
-  TabletInfo* tablet = new TabletInfo(first_table, tablet_id);
+  TabletInfoPtr tablet(new TabletInfo(first_table, tablet_id));
   {
     auto l = tablet->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
@@ -140,7 +141,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     if (metadata.table_ids_size() == 0) {
       l.mutable_data()->pb.add_table_ids(metadata.table_id());
       Status s = catalog_manager_->sys_catalog_->UpdateItem(
-          tablet, catalog_manager_->leader_ready_term());
+          tablet.get(), catalog_manager_->leader_ready_term());
       if (PREDICT_FALSE(!s.ok())) {
         return STATUS_FORMAT(
             IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
@@ -154,8 +155,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     // Assume we need to delete this tablet until we find an active table using this tablet.
     bool should_delete_tablet = !tablet_deleted;
 
-    for (auto table_id : table_ids) {
-      scoped_refptr<TableInfo> table(FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id));
+    for (const auto& table_id : table_ids) {
+      TableInfoPtr table = FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id);
 
       if (table == nullptr) {
         // If the table is missing and the tablet is in "preparing" state
@@ -188,7 +189,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
         if (tablet_id == kSysCatalogTabletId) {
           table->set_is_system();
         }
-        table->AddTablet(tablet);
+        table->AddTablet(tablet.get());
       }
 
       auto tl = table->LockForRead();
@@ -204,7 +205,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
           << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
       string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-      RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->UpdateItem(tablet, term_),
+      RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->UpdateItem(tablet.get(), term_),
                             strings::Substitute("Error deleting tablet $0", tablet->id()));
     }
 

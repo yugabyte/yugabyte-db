@@ -1095,7 +1095,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // Check table is active, table name and table schema are equal to backed up ones.
     if (table != nullptr) {
       auto table_lock = table->LockForRead();
-      if (table->is_running() && table->name() == meta.name()) {
+      if (table_lock->visible_to_client() && table->name() == meta.name()) {
         VLOG_WITH_PREFIX(1) << __func__ << " found existing table: " << table->ToString();
         // Check the found table schema.
         Schema persisted_schema;
@@ -1112,7 +1112,8 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       } else {
         VLOG_WITH_PREFIX(1)
             << __func__ << " existing table " << table->ToString() << " not suitable: "
-            << table->is_running() << ", name: " << table->name() << " vs " << meta.name();
+            << table_lock->pb.ShortDebugString()
+            << ", name: " << table->name() << " vs " << meta.name();
         table.reset();
       }
     }
@@ -1141,7 +1142,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           table = entry.second;
           auto ltm = table->LockForRead();
 
-          if (table->is_running() &&
+          if (ltm->visible_to_client() &&
               new_namespace_id == table->namespace_id() &&
               meta.name() == ltm->name() &&
               (table_data->is_index() ? IsUserIndexUnlocked(*table)
@@ -1503,16 +1504,30 @@ Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& 
   return Status::OK();
 }
 
-void CatalogManager::CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) {
+void CatalogManager::CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(schedule_min_restore_time);
 
   std::vector<TabletInfoPtr> hidden_tablets;
+  std::vector<TableInfoPtr> tables;
   {
     SharedLock<LockType> l(lock_);
-    if (hidden_tablets_.empty()) {
-      return;
-    }
     hidden_tablets = hidden_tablets_;
+    tables.reserve(table_ids_map_->size());
+    for (const auto& p : *table_ids_map_) {
+      if (!p.second->is_system()) {
+        tables.push_back(p.second);
+      }
+    }
+  }
+  CleanupHiddenTablets(hidden_tablets, schedule_min_restore_time);
+  CleanupHiddenTables(std::move(tables));
+}
+
+void CatalogManager::CleanupHiddenTablets(
+    const std::vector<TabletInfoPtr>& hidden_tablets,
+    const ScheduleMinRestoreTime& schedule_min_restore_time) {
+  if (hidden_tablets.empty()) {
+    return;
   }
   std::vector<TabletInfoPtr> tablets_to_delete;
   std::vector<TabletInfoPtr> tablets_to_remove_from_hidden;
@@ -1548,6 +1563,7 @@ void CatalogManager::CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule
     WARN_NOT_OK(DeleteTabletListAndSendRequests(tablets_to_delete, "Cleanup hidden tablets", {}),
                 "Failed to cleanup hidden tablets");
   }
+
   if (!tablets_to_remove_from_hidden.empty()) {
     auto it = tablets_to_remove_from_hidden.begin();
     std::lock_guard<LockType> l(lock_);
@@ -1562,6 +1578,39 @@ void CatalogManager::CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule
     };
     hidden_tablets_.erase(std::remove_if(hidden_tablets_.begin(), hidden_tablets_.end(), filter),
                           hidden_tablets_.end());
+  }
+}
+
+void CatalogManager::CleanupHiddenTables(std::vector<TableInfoPtr> tables) {
+  std::vector<TableInfo::WriteLock> locks;
+  EraseIf([this, &locks](const TableInfoPtr& table) {
+    {
+      auto lock = table->LockForRead();
+      if (!lock->is_hidden() || lock->started_deleting() || !table->AreAllTabletsDeleted()) {
+        return true;
+      }
+    }
+    auto lock = table->LockForWrite();
+    if (lock->started_deleting()) {
+      return true;
+    }
+    LOG_WITH_PREFIX(INFO) << "Should delete table: " << AsString(table);
+    lock.mutable_data()->set_state(
+        SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
+    locks.push_back(std::move(lock));
+    return false;
+  }, &tables);
+  if (tables.empty()) {
+    return;
+  }
+
+  Status s = sys_catalog_->UpdateItems(tables, leader_ready_term());
+  if (!s.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to mark tables as deleted: " << s;
+    return;
+  }
+  for (auto& lock : locks) {
+    lock.Commit();
   }
 }
 

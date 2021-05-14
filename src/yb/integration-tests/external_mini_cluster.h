@@ -362,6 +362,11 @@ class ExternalMiniCluster : public MiniClusterBase {
     return GetProxy<T>(master(i));
   }
 
+  template <class T>
+  std::shared_ptr<T> GetLeaderMasterProxy() {
+    return GetProxy<T>(GetLeaderMaster());
+  }
+
   // If the cluster is configured for a single non-distributed master, return a proxy to that
   // master. Requires that the single master is running.
   std::shared_ptr<master::MasterServiceProxy> master_proxy();
@@ -822,6 +827,8 @@ template <class T>
 std::shared_ptr<T> ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
   return std::make_shared<T>(proxy_cache_.get(), daemon->bound_rpc_addr());
 }
+
+CHECKED_STATUS RestartAllMasters(ExternalMiniCluster* cluster);
 
 }  // namespace yb
 #endif  // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
