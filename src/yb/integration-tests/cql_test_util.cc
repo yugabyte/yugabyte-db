@@ -272,6 +272,10 @@ void CheckErrorCode(const CassError& error_code) {
 
 } // namespace
 
+void CassandraStatement::SetKeyspace(const string& keyspace) {
+  CheckErrorCode(cass_statement_set_keyspace(cass_statement_.get(), keyspace.c_str()));
+}
+
 void CassandraStatement::Bind(size_t index, const string& v) {
   CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
 }
@@ -375,11 +379,21 @@ CassandraFuture CassandraSession::SubmitBatch(const CassandraBatch& batch) {
 }
 
 Result<CassandraPrepared> CassandraSession::Prepare(
-    const string& prepare_query, MonoDelta timeout) {
-  VLOG(2) << "Execute prepare request: " << prepare_query << ", timeout: " << timeout;
+    const string& prepare_query, MonoDelta timeout, const string& local_keyspace) {
+  VLOG(2) << "Execute prepare request: " << prepare_query << ", timeout: " << timeout
+          << ", keyspace: " << local_keyspace;
   auto deadline = CoarseMonoClock::now() + timeout;
   for (;;) {
-    CassandraFuture future(cass_session_prepare(cass_session_.get(), prepare_query.c_str()));
+    CassFuture* cass_future_ptr = nullptr;
+    if (local_keyspace.empty()) {
+        cass_future_ptr = cass_session_prepare(cass_session_.get(), prepare_query.c_str());
+    } else {
+        CassandraStatement statement(prepare_query);
+        statement.SetKeyspace(local_keyspace);
+        cass_future_ptr = cass_session_prepare_from_existing(cass_session_.get(), statement.get());
+    }
+
+    CassandraFuture future(cass_future_ptr);
     auto wait_result = future.Wait();
     if (wait_result.ok()) {
       return future.Prepared();

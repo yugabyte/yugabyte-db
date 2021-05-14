@@ -184,6 +184,8 @@ class CassandraStatement {
   explicit CassandraStatement(const std::string& query, size_t parameter_count = 0)
       : cass_statement_(cass_statement_new(query.c_str(), parameter_count)) {}
 
+  void SetKeyspace(const std::string& keyspace);
+
   void Bind(size_t index, const std::string& v);
   void Bind(size_t index, const cass_bool_t& v);
   void Bind(size_t index, const cass_float_t& v);
@@ -277,8 +279,11 @@ class CassandraSession {
 
   CassandraFuture SubmitBatch(const CassandraBatch& batch);
 
-  Result<CassandraPrepared> Prepare(
-      const std::string& prepare_query, MonoDelta timeout = MonoDelta::kZero);
+  // If 'local_keyspace' is not empty, creating temporary CassStatement and setting keyspace
+  // for this statement only. Result CassPrepared will be based on this temporary statement.
+  Result<CassandraPrepared> Prepare(const std::string& prepare_query,
+                                    MonoDelta timeout = MonoDelta::kZero,
+                                    const std::string& local_keyspace = std::string());
 
   void Reset();
 
