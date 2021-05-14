@@ -278,7 +278,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) override;
   CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
 
-  void CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
+  void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
+  void CleanupHiddenTablets(
+      const std::vector<TabletInfoPtr>& hidden_tablets,
+      const ScheduleMinRestoreTime& schedule_min_restore_time);
+  // Will filter tables content, so pass it by value here.
+  void CleanupHiddenTables(std::vector<TableInfoPtr> tables);
 
   rpc::Scheduler& Scheduler() override;
 

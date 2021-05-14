@@ -111,7 +111,7 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
   : master_(master),
     callback_pool_(callback_pool),
     replica_picker_(replica_picker.Pass()),
-    table_(table),
+    table_(DCHECK_NOTNULL(table)),
     start_ts_(MonoTime::Now()),
     attempt_(0),
     state_(MonitoredTaskState::kWaiting) {
