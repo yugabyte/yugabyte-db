@@ -115,10 +115,12 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
                            PTExpr::SharedPtr if_clause,
                            const bool else_error,
                            PTDmlUsingClause::SharedPtr using_clause,
-                           const bool return_status)
+                           const bool return_status,
+                           PTDmlWritePropertyListNode::SharedPtr update_properties)
     : PTDmlStmt(memctx, loc, where_clause, if_clause, else_error, using_clause, return_status),
       relation_(relation),
-      set_clause_(set_clause) {
+      set_clause_(set_clause),
+      update_properties_(update_properties) {
 }
 
 PTUpdateStmt::~PTUpdateStmt() {

@@ -20,6 +20,7 @@ add_library(ql_ptree
             pt_property.cc
             pt_keyspace_property.cc
             pt_table_property.cc
+            pt_dml_write_property.cc
             pt_create_keyspace.cc
             pt_use_keyspace.cc
             pt_alter_keyspace.cc
