@@ -39,7 +39,7 @@ public class AuditTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    auditService = new AuditService(app.config(), null);
+    auditService = new AuditService();
 
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
     user = ModelFactory.testUser(customer);

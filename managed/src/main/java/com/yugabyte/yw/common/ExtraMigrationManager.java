@@ -92,8 +92,4 @@ public class ExtraMigrationManager extends DevopsBase {
   public void V68__Create_New_Alert_Definitions_Extra_Migration() {
     recreateMissedAlertDefinitions();
   }
-
-  public void R__Redact_Secrets_From_Audit() {
-    auditService.redactSecretsFromAuditMigration();
-  }
 }
