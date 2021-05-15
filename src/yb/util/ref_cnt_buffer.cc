@@ -18,6 +18,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 
 #include "yb/util/faststring.h"
+#include "yb/util/malloc.h"
 
 namespace yb {
 
@@ -29,16 +30,14 @@ size_t RefCntBuffer::GetInternalBufSize(size_t data_size) {
   return data_size + sizeof(CounterType) + sizeof(size_t);
 }
 
-RefCntBuffer::RefCntBuffer(size_t size)
-    : data_(static_cast<char*>(malloc(GetInternalBufSize(size)))) {
-  CHECK(data_ != nullptr);
+RefCntBuffer::RefCntBuffer(size_t size) {
+  data_ = malloc_with_check(GetInternalBufSize(size));
   size_reference() = size;
   new (&counter_reference()) CounterType(1);
 }
 
-RefCntBuffer::RefCntBuffer(const char* data, size_t size)
-    : data_(static_cast<char*>(malloc(GetInternalBufSize(size)))) {
-  CHECK(data_ != nullptr);
+RefCntBuffer::RefCntBuffer(const char* data, size_t size) {
+  data_ = malloc_with_check(GetInternalBufSize(size));
   memcpy(this->data(), data, size);
   size_reference() = size;
   new (&counter_reference()) CounterType(1);
