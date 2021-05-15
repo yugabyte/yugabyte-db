@@ -133,13 +133,19 @@ N/A
 **Other core database improvements**
 
 * [1248] ysql: Create background task for verifying tablet data integrity
-* [4934] [7922] Thread safety improvements in the Transaction class
+* [3460] YSQL: Integrate Orafce extension with Yugabyte
 * [4580] add metric for wal files size (#7260)
+* [4934] [7922] Thread safety improvements in the Transaction class
 * [6636] docdb: Cache table->tablespace->placement information in YB-Master
 * [6672] docdb: added explicit initialization of libbacktrace into InitYB.
 * [7068] Allow reloading of the config file with 'ts-cli'
+* [7324] YSQL: Early bailout when bind condition is an empty search array
+* [7557] YCQL: Support != operator
 * [7564] ybase: Auto tune ysql_num_shards_per_tserver similar to yb_num_shards_per_tserver
+* [7632] ycql: Support upsert for jsonb column field values
+* [7724] ysql: add GUC var yb_index_state_flags_update_delay
 * [7916] CQL call timeout
+* [7937] YSQL: Avoid unnecessary secondary index writes for UPDATE on table with
 * [7977] [docdb] Send per tablet disk usage to the master via heartbeats
 * [8026] Bump up timestamp_history_retention_interval_sec to 900s
 * [8027] A separate YSQL flag for yb_client_timeout
@@ -151,7 +157,6 @@ N/A
 #### Core Database
 
 * [2977] docdb: CountIntents() should use shared tablet pointer
-* [3460] YSQL: Integrate Orafce extension with Yugabyte
 * [4250] ybase: Stop Load balancing for deleting/deleted tables
 * [4412] docdb: Fix LB State for Move Operations
 * [5380] Add re-try in postgres build when encountering transient error.
@@ -164,7 +169,6 @@ N/A
 * [6972] Update local limit in case of a successful read
 * [6982] [YSQL] Specify read time for catalog tables to guarantee consistent state of catalog cache
 * [7047] [YSQL] Read minimal possible number of columns in case of index scan
-* [7324] YSQL: Early bailout when bind condition is an empty search array
 * [7355] ysql: check backfill bad connection status
 * [7390] Preflight checks should handle sudo passwords when given
 * [7390] Rename V65 migration with R prefix
@@ -174,12 +178,10 @@ N/A
 * [7499] ysql: Import pg_dump: label INDEX ATTACH ArchiveEntries with an owner.
 * [7534] YSQL: Support ALTER TABLE ADD PRIMARY KEY for colocated tables
 * [7547] Set flags automatically based on the node's available resources
-* [7557] YCQL: Support != operator
 * [7600] [YSQL] Explain --masters in ysql_dump cli.
 * [7602] docdb: FlushTablets rpc causes SEGV of the tserver process
 * [7603] rocksdb: Calling memset on atomic variable generates warning (#7604)
 * [7628] Add ldap libraries as special case for yb client packaging
-* [7632] ycql: Support upsert for jsonb column field values
 * [7641] YCQL: Fix checks in index update path that determine full row removal.
 * [7649] YCQL: Block secondary index creation on static columns.
 * [7651] YSQL: Always listen on UNIX domain socket
@@ -188,7 +190,6 @@ N/A
 * [7702] ysql: Import Avoid corner-case memory leak in SSL parameter processing.
 * [7705] ysql: prioritize internal HBA config
 * [7715] YSQL: Prevent DocPgsqlScanSpec and DocQLScanSpec from accepting rvalue reference to hash and range components
-* [7724] ysql: add GUC var yb_index_state_flags_update_delay
 * [7729] Avoid recreating aborted transaction
 * [7729] Fix checking ABORTED txn status at follower
 * [7741] ysql: Import Don't leak malloc'd strings when a GUC setting is rejected.
@@ -202,7 +203,6 @@ N/A
 * [7848] Fix for yb-prof for python3
 * [7872] Remove flashcache-related code
 * [7894] Keep ScopedRWOperation while applying intents for large transaction
-* [7937] YSQL: Avoid unnecessary secondary index writes for UPDATE on table with
 * [7939] Enforce password policy
 * [7940] docdb: Unregister BlockBasedTable memtrackers from parent on tablet deletion
 * [7944] ysql: deprecate flag ysql_wait_until_index_permissions_timeout_ms
