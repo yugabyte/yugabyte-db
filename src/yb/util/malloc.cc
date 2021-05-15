@@ -30,6 +30,7 @@
 // under the License.
 //
 #include "yb/util/malloc.h"
+#include <glog/logging.h>
 
 #if defined(__linux__)
 #include <malloc.h>
@@ -45,6 +46,12 @@ size_t malloc_usable_size(const void* obj) {
 #else
   return malloc_size(obj);
 #endif // defined(__linux__)
+}
+
+char* malloc_with_check(size_t size) {
+  auto data = static_cast<char*>(malloc(size));
+  CHECK(data != nullptr) << "failed to allocate " << size << " bytes";
+  return data;
 }
 
 } // namespace yb
