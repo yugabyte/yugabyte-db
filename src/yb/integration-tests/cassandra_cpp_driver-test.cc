@@ -1964,16 +1964,17 @@ TEST_F_EX(
       session2.ExecuteGetFuture("create index test_table_index_by_k2 on test_table (k2);");
   const YBTableName index_table_name2(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_k2");
 
+  const auto kMaxWait = kTimeMultiplier * 90s;
   perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
-      CoarseMonoClock::now() + 90s, 50ms));
+      CoarseMonoClock::now() + kMaxWait, 50ms));
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   LOG(INFO) << "Index table " << index_table_name.ToString()
             << " created to INDEX_PERM_READ_WRITE_AND_DELETE";
 
   perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
-      CoarseMonoClock::now() + 90s, 50ms));
+      CoarseMonoClock::now() + kMaxWait, 50ms));
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   LOG(INFO) << "Index " << index_table_name2.ToString()
             << " created to INDEX_PERM_READ_WRITE_AND_DELETE";
