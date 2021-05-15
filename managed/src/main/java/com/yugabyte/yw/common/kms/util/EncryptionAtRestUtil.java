@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.models.KmsConfig;
@@ -32,6 +33,7 @@ import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
 import play.api.Play;
 import play.libs.Json;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class EncryptionAtRestUtil {
     protected static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestUtil.class);
@@ -163,6 +165,7 @@ public class EncryptionAtRestUtil {
         );
     }
 
+    @Deprecated
     public static KmsHistory getActiveKey(UUID universeUUID) {
         KmsHistory activeHistory = null;
         try {
@@ -175,6 +178,14 @@ public class EncryptionAtRestUtil {
             LOG.error(errMsg, e);
         }
         return activeHistory;
+    }
+
+    public static KmsHistory getActiveKeyOrBadRequest(UUID universeUUID) {
+      KmsHistory activeKey = getActiveKey(universeUUID);
+      if(activeKey == null) {
+        throw new YWServiceException(BAD_REQUEST, "Could not retrieve ActiveKey");
+      }
+      return activeKey;
     }
 
     public static KmsHistory getLatestConfigKey(UUID universeUUID, UUID configUUID) {
