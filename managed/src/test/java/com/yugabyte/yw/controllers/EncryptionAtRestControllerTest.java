@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.services.AwsEARService;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
@@ -60,6 +61,8 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
+import static play.test.Helpers.*;
+import static org.junit.Assert.assertThrows;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EncryptionAtRestControllerTest extends FakeDBApplication {
@@ -168,12 +171,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         ObjectNode kmsConfigReq = Json.newObject()
                 .put("base_url", "some_base_url")
                 .put("api_key", "some_api_token");
-        Result createKMSResult = doRequestWithAuthTokenAndBody(
-                "POST",
-                kmsConfigUrl,
-                authToken,
-                kmsConfigReq
-        );
+        Result createKMSResult = assertThrows(YWServiceException.class,
+          () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq))
+          .getResult();
         assertOk(createKMSResult);
         String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
                 "/kms/SMARTKEY/create_key";
@@ -181,12 +181,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
                 .put("kms_provider", "SMARTKEY")
                 .put("algorithm", algorithm)
                 .put("key_size", Integer.toString(keySize));
-        Result createKeyResult = doRequestWithAuthTokenAndBody(
-                "POST",
-                url,
-                authToken,
-                createPayload
-        );
+        Result createKeyResult = assertThrows(YWServiceException.class,
+          () -> doRequestWithAuthTokenAndBody("POST", url, authToken, createPayload))
+          .getResult();
         assertOk(createKeyResult);
         JsonNode json = Json.parse(contentAsString(createKeyResult));
         String keyValue = json.get("value").asText();
@@ -206,7 +203,8 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         ObjectNode body = Json.newObject()
                 .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm")
                 .put("configUUID", configUUID.toString());
-        Result recoverKeyResult = doRequestWithAuthTokenAndBody("POST", url, authToken, body);
+        Result recoverKeyResult = assertThrows(YWServiceException.class,
+          () -> doRequestWithAuthTokenAndBody("POST", url, authToken, body)).getResult();
         JsonNode json = Json.parse(contentAsString(recoverKeyResult));
         String expectedErrorMsg = String.format(
                 "No universe key found for universe %s",
