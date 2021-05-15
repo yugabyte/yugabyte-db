@@ -942,6 +942,14 @@ public class UniverseController extends AuthenticatedController {
 
   }
 
+  private boolean hasAnyNodeStopped(Universe universe) {
+    for (NodeDetails node : universe.getNodes()) {
+      if (node.state == NodeDetails.NodeState.Stopped) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -950,6 +958,9 @@ public class UniverseController extends AuthenticatedController {
     boolean isForceDelete = false;
     if (request().getQueryString("isForceDelete") != null) {
       isForceDelete = Boolean.parseBoolean(request().getQueryString("isForceDelete"));
+    }
+    if (hasAnyNodeStopped(universe)) {
+      isForceDelete = true;
     }
     boolean isDeleteBackups = false;
     if (request().getQueryString("isDeleteBackups") != null) {
