@@ -160,7 +160,7 @@ public class CustomerController extends AuthenticatedController {
 
     if (customer.delete()) {
       ObjectNode responseJson = Json.newObject();
-      Audit.createAuditEntry(ctx(), request());
+      auditService().createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     }
@@ -182,7 +182,7 @@ public class CustomerController extends AuthenticatedController {
 
     customer.upsertFeatures(formData.features);
 
-    Audit.createAuditEntry(ctx(), request(), requestBody);
+    auditService().createAuditEntry(ctx(), request(), requestBody);
     return ok(customer.getFeatures());
   }
 

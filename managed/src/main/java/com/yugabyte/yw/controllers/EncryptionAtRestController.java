@@ -83,7 +83,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
             ObjectNode resultNode = Json.newObject();
             resultNode.put("taskUUID", taskUUID.toString());
-            Audit.createAuditEntry(ctx(), request(), formData);
+            auditService().createAuditEntry(ctx(), request(), formData);
             return Results.status(OK, resultNode);
         } catch (Exception e) {
             final String errMsg = "Error caught attempting to create KMS configuration";
@@ -174,7 +174,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
             ObjectNode resultNode = Json.newObject();
             resultNode.put("taskUUID", taskUUID.toString());
-            Audit.createAuditEntry(ctx(), request());
+            auditService().createAuditEntry(ctx(), request());
             return Results.status(OK, resultNode);
         } catch (Exception e) {
             final String errMsg = "Error caught attempting to delete KMS configuration";
@@ -206,7 +206,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             ObjectNode result = Json.newObject()
                     .put("reference", keyRef)
                     .put("value", Base64.getEncoder().encodeToString(recoveredKey));
-            Audit.createAuditEntry(ctx(), request(), formData);
+            auditService().createAuditEntry(ctx(), request(), formData);
             return ApiResponse.success(result);
         } catch (Exception e) {
             final String errMsg = String.format(
@@ -250,7 +250,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         ));
         try {
             keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
-            Audit.createAuditEntry(ctx(), request());
+            auditService().createAuditEntry(ctx(), request());
             return ApiResponse.success("Key ref was successfully removed");
         } catch (Exception e) {
             return ApiResponse.error(BAD_REQUEST, e.getMessage());

@@ -133,7 +133,7 @@ public class InstanceTypeController extends AuthenticatedController {
         formData.get().numCores,
         formData.get().memSizeGB,
         formData.get().instanceTypeDetails);
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
       return ApiResponse.success(it);
     } catch (Exception e) {
       LOG.error("Unable to create instance type {}: {}", formData.rawData(), e.getMessage());
@@ -164,8 +164,10 @@ public class InstanceTypeController extends AuthenticatedController {
 
       instanceType.setActive(false);
       instanceType.save();
+
+      auditService().createAuditEntry(ctx(), request());
+
       ObjectNode responseJson = Json.newObject();
-      Audit.createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     } catch (Exception e) {

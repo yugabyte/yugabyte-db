@@ -141,7 +141,7 @@ public class AccessKeyController extends AuthenticatedController {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
     }
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(accessKey);
   }
 
@@ -162,7 +162,7 @@ public class AccessKeyController extends AuthenticatedController {
     );
 
     if (accessKey.delete()) {
-      Audit.createAuditEntry(ctx(), request());
+      auditService().createAuditEntry(ctx(), request());
       return ApiResponse.success("Deleted KeyCode: " + keyCode);
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete KeyCode: " + keyCode);

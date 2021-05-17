@@ -50,7 +50,7 @@ public class ReleaseController extends AuthenticatedController {
     } catch (RuntimeException re) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, re.getMessage());
     }
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success();
   }
 
@@ -98,7 +98,7 @@ public class ReleaseController extends AuthenticatedController {
       } else {
         return ApiResponse.error(BAD_REQUEST, "Missing Required param: State");
       }
-      Audit.createAuditEntry(ctx(), request(), formData);
+      auditService().createAuditEntry(ctx(), request(), formData);
       return ApiResponse.success(m);
     } catch (RuntimeException re) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, re.getMessage());

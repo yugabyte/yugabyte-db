@@ -37,7 +37,7 @@ public class CustomerConfigController extends AuthenticatedController {
     }
 
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
-    Audit.createAuditEntry(ctx(), request(), formData);
+    auditService().createAuditEntry(ctx(), request(), formData);
     return ApiResponse.success(customerConfig);
   }
 
@@ -50,7 +50,7 @@ public class CustomerConfigController extends AuthenticatedController {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,
           "Customer Configuration could not be deleted.");
     }
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success("configUUID deleted");
   }
 
