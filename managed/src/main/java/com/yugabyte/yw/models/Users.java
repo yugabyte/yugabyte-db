@@ -24,9 +24,12 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.YWServiceException;
+
 
 import play.data.validation.Constraints;
 import play.libs.Json;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 
 @Entity
@@ -139,8 +142,17 @@ public class Users extends Model {
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {
   };
 
+  @Deprecated
   public static Users get(UUID userUUID) {
     return find.query().where().eq("uuid", userUUID).findOne();
+  }
+
+  public static Users getOrBadRequest(UUID userUUID) {
+    Users user = get(userUUID);
+    if (user == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid User UUID:" + userUUID);
+    }
+    return user;
   }
 
   public static List<Users> getAll(UUID customerUUID) {

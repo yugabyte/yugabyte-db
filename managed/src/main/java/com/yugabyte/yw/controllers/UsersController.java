@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.UserRegisterFormData;
@@ -45,16 +46,9 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response with user.
    */
   public Result index(UUID customerUUID, UUID userUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    try {
-      Users user = Users.get(userUUID);
-      return ApiResponse.success(user);
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to fetch user.");
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Users user = Users.getOrBadRequest(userUUID);
+    return ApiResponse.success(user);
   }
 
   /**
@@ -62,16 +56,9 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response with users belonging to the customer.
    */
   public Result list(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    try {
-      List<Users> users = Users.getAll(customerUUID);
-      return ApiResponse.success(users);
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to fetch users.");
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    List<Users> users = Users.getAll(customerUUID);
+    return ApiResponse.success(users);
   }
 
   /**
@@ -80,10 +67,7 @@ public class UsersController extends AuthenticatedController {
    */
   public Result create(UUID customerUUID) {
 
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Form<UserRegisterFormData> form = formFactory
       .getFormDataOrBadRequest(UserRegisterFormData.class);
 
@@ -93,14 +77,9 @@ public class UsersController extends AuthenticatedController {
     if (passwordCheckResult != null) {
       return passwordCheckResult;
     }
-    Users user;
-    try {
-      user = Users.create(formData.getEmail(), formData.getPassword(),
-        formData.getRole(), customerUUID);
-      updateFeatures(user);
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not create user");
-    }
+    Users user = Users.create(formData.getEmail(), formData.getPassword(),
+      formData.getRole(), customerUUID);
+    updateFeatures(user);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
     return ApiResponse.success(user);
 
@@ -111,21 +90,15 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response on whether or not delete user was successful or not.
    */
   public Result delete(UUID customerUUID, UUID userUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
-    }
-    Users user = Users.get(userUUID);
-    if (user == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid User UUID:" + userUUID);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      return ApiResponse.error(BAD_REQUEST,
+      throw new YWServiceException(BAD_REQUEST,
           String.format("User UUID %s does not belong to customer %s",
                         userUUID.toString(), customerUUID.toString()));
     }
     if (user.getIsPrimary()) {
-      return ApiResponse.error(BAD_REQUEST,
+      throw new YWServiceException(BAD_REQUEST,
           String.format("Cannot delete primary user %s for customer %s",
                         userUUID.toString(), customerUUID.toString()));
     }
@@ -135,7 +108,7 @@ public class UsersController extends AuthenticatedController {
       auditService().createAuditEntry(ctx(), request());
       return ApiResponse.success(responseJson);
     } else {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
     }
   }
 
@@ -144,33 +117,23 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response on whether role change was successful or not.
    */
   public Result changeRole(UUID customerUUID, UUID userUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
-    }
-    Users user = Users.get(userUUID);
-    if (user == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid User UUID:" + userUUID);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      return ApiResponse.error(BAD_REQUEST,
+      throw new YWServiceException(BAD_REQUEST,
           String.format("User UUID %s does not belong to customer %s",
                         userUUID.toString(), customerUUID.toString()));
     }
     if (request().getQueryString("role") != null) {
         String role = request().getQueryString("role");
         if (Role.SuperAdmin == user.getRole()) {
-          return ApiResponse.error(BAD_REQUEST, "Can't change super admin role.");
+          throw new YWServiceException(BAD_REQUEST, "Can't change super admin role.");
         }
-        try {
-          user.setRole(Role.valueOf(role));
-          user.save();
-          updateFeatures(user);
-        } catch (Exception e) {
-          return ApiResponse.error(BAD_REQUEST, "Incorrect Role Specified");
-        }
+        user.setRole(Role.valueOf(role));
+        user.save();
+        updateFeatures(user);
     } else {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Request");
+      throw new YWServiceException(BAD_REQUEST, "Invalid Request");
     }
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
@@ -181,16 +144,10 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response on whether role change was successful or not.
    */
   public Result changePassword(UUID customerUUID, UUID userUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
-    }
-    Users user = Users.get(userUUID);
-    if (user == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid User UUID:" + userUUID);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      return ApiResponse.error(BAD_REQUEST,
+      throw new YWServiceException(BAD_REQUEST,
           String.format("User UUID %s does not belong to customer %s",
                         userUUID.toString(), customerUUID.toString()));
     }
@@ -211,12 +168,12 @@ public class UsersController extends AuthenticatedController {
         return YWResults.YWSuccess.empty();
       }
     }
-    return ApiResponse.error(BAD_REQUEST, "Invalid User Credentials.");
+    throw new YWServiceException(BAD_REQUEST, "Invalid User Credentials.");
   }
 
   private void updateFeatures(Users user) {
+    Customer customer = Customer.getOrBadRequest(user.customerUUID);
     try {
-      Customer customer = Customer.get(user.customerUUID);
       String configFile = user.getRole().getFeaturesFile();
       if (customer.code.equals("cloud")) {
         configFile = "cloudFeatureConfig.json";
