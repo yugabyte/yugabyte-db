@@ -16,7 +16,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Like PostgreSQL, YugabyteDB enforces security in multiple ways:
+Like PostgreSQL, YugabyteDB provides security in multiple ways:
 
 * **Authentication** - limit access to the database to clients with proper credentials
 
