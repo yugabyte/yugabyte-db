@@ -41,6 +41,7 @@ import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.*;
 
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
@@ -208,7 +209,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testCreateWithInvalidParams() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
-    Result result = createProvider(bodyJson);
+    Result result = assertThrows(YWServiceException.class,
+      () -> createProvider(bodyJson)).getResult();
     assertBadRequest(result, "\"name\":[\"This field is required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
@@ -367,7 +369,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     bodyJson.putArray("regionList").addAll(regions);
 
-    Result result = createKubernetesProvider(bodyJson);
+    Result result = assertThrows(YWServiceException.class,
+      () -> createKubernetesProvider(bodyJson)).getResult();
     JsonNode json = Json.parse(contentAsString(result));
     assertBadRequest(result, "Kubeconfig can't be at two levels");
     assertAuditEntry(0, customer.uuid);
@@ -426,7 +429,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteProviderWithInvalidProviderUUID() {
     UUID providerUUID = UUID.randomUUID();
-    Result result = deleteProvider(providerUUID);
+    Result result = assertThrows(YWServiceException.class,
+      () -> deleteProvider(providerUUID)).getResult();
     assertBadRequest(result, "Invalid Provider UUID: " + providerUUID);
     assertAuditEntry(0, customer.uuid);
   }
@@ -447,7 +451,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
-    Result result = deleteProvider(p.uuid);
+    Result result = assertThrows(YWServiceException.class,
+      () -> deleteProvider(p.uuid)).getResult();
     assertBadRequest(result, "Cannot delete Provider with Universes");
     assertAuditEntry(0, customer.uuid);
   }
@@ -547,7 +552,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "1234");
-    Result result = editProvider(bodyJson, p.uuid);
+    Result result = assertThrows(YWServiceException.class,
+      () -> editProvider(bodyJson, p.uuid)).getResult();
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "Expected aws/k8s, but found providers with code: onprem");
     assertAuditEntry(0, customer.uuid);
@@ -558,7 +564,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "");
-    Result result = editProvider(bodyJson, p.uuid);
+    Result result = assertThrows(YWServiceException.class,
+      () -> editProvider(bodyJson, p.uuid)).getResult();
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "Required field hosted zone id");
     assertAuditEntry(0, customer.uuid);
@@ -601,7 +608,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
-    Result result = createProvider(bodyJson);
+    Result result = assertThrows(YWServiceException.class,
+      () -> createProvider(bodyJson)).getResult();
     assertBadRequest(result, "Invalid AWS Credentials.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -616,7 +624,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 0);
-    Result result = createProvider(bodyJson);
+    Result result = assertThrows(YWServiceException.class,
+      () -> createProvider(bodyJson)).getResult();
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
     assertAuditEntry(0, customer.uuid);
