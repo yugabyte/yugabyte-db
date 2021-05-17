@@ -34,7 +34,7 @@ class R__Redact_Secrets_From_Audit extends JdbcMigration with MigrationChecksumP
 
   override def getChecksum: Integer = {
     val codeChecksum: Int = 82918220 // Change me if you want to force migration to run
-    val secretPathsChecksum: Int = MurmurHash3.arrayHash(AuditService.SERCET_PATHS.toArray);
+    val secretPathsChecksum: Int = MurmurHash3.arrayHash(AuditService.SECRET_PATHS.toArray);
     MurmurHash3.arrayHash(Array(codeChecksum, secretPathsChecksum))
   }
 }
