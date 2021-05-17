@@ -493,12 +493,38 @@ export default class ClusterFields extends Component {
     }
     // If nodeInstanceList changes, fetch number of available nodes
     if (getPromiseState(nodeInstanceList).isSuccess()) {
+      // let nodesPerRegion = [];
+
+      // nodeInstanceList.data.forEach((node) => {
+      //   isNonEmptyArray(this.state.regionList) &&
+      //     this.state.regionList.forEach((region) => {
+      //       if (node.details.region === region.label) {
+      //         nodesPerRegion.push(node);
+      //       }
+      //     });
+      // });
+
+      let nodesPerRegion = [];
+      nodeInstanceList.data.forEach(node => {
+        isNonEmptyArray(this.state.regionList) &&
+          this.state.regionList.forEach(region => {
+            (node.details.region === region.label) &&
+            nodesPerRegion.push(node)
+          })
+      });
+
       let numNodesAvailable = nodeInstanceList.data.reduce((acc, val) => {
         if (!val.inUse) {
           acc++;
         }
         return acc;
       }, 0);
+
+      console.log(nodesPerRegion, '****** yello *****');
+      console.log(numNodesAvailable, '****** yello1 *****');
+
+      
+
       // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
       if (
         this.props.type === 'Edit' ||
