@@ -1006,7 +1006,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		{
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
-			 * a version incremenet because we do not do any negative caching for them.
+			 * a version increment because we do not do any negative caching for them.
 			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
@@ -1051,6 +1051,19 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		{
 			CreateStmt *stmt = castNode(CreateStmt, parsetree);
 			ListCell *lc = NULL;
+			/*
+			 * If a partition table is being created, this means pg_inherits
+			 * table that is being cached should be invalidated. If the cache
+			 * is not invalidated here, it is possible that one connection
+			 * could create a new partition and insert data into it without
+			 * the other connections knowing about this. However, due to
+			 * snapshot isolation guarantees, transactions that are already
+			 * underway need not abort.
+			 */
+			if (stmt->partbound != NULL) {
+					*is_breaking_catalog_change = false;
+					return true;
+			}
 			foreach (lc, stmt->constraints)
 			{
 				Constraint *con = lfirst(lc);
