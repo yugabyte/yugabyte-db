@@ -39,8 +39,7 @@ using internal::ErrorCollector;
 
 using std::shared_ptr;
 
-YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock)
-    : error_collector_(std::make_shared<ErrorCollector>()) {
+YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock) {
   batcher_config_.client = client;
   batcher_config_.non_transactional_read_point =
       clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr;
@@ -100,12 +99,6 @@ void YBSession::Abort() {
   }
 }
 
-void YBSession::Reset() {
-  Abort();
-  error_collector_->ClearErrors();
-  is_failed_ = false;
-}
-
 Status YBSession::Close(bool force) {
   if (batcher_) {
     if (batcher_->HasPendingOperations() && !force) {
@@ -135,15 +128,10 @@ void YBSession::SetDeadline(CoarseTimePoint deadline) {
 }
 
 Status YBSession::Flush() {
-  RETURN_NOT_OK(CheckIfFailed());
   return FlushFuture().get().status;
 }
 
 FlushStatus YBSession::FlushAndGetOpsErrors() {
-  auto s = CheckIfFailed();
-  if (!s.ok()) {
-    return {s, {error_collector_->GetAndClearErrors()}};
-  }
   return FlushFuture().get();
 }
 
@@ -161,30 +149,26 @@ internal::BatcherPtr CreateBatcher(const YBSession::BatcherConfig& config) {
 }
 
 void FlushBatcherAsync(
-    const internal::BatcherPtr& batcher, const std::shared_ptr<ErrorCollector>& error_collector,
-    FlushCallback callback, YBSession::BatcherConfig config,
+    const internal::BatcherPtr& batcher, FlushCallback callback, YBSession::BatcherConfig config,
     const internal::IsWithinTransactionRetry is_within_transaction_retry);
 
 void MoveErrorsAndRunCallback(
-    CollectedErrors* errors, FlushCallback callback, const Status& status,
-    ErrorCollector* error_collector) {
-  for (auto& error : *errors) {
+    CollectedErrors errors, FlushCallback callback, const Status& status) {
+  for (auto& error : errors) {
     VLOG(4) << "Operation " << AsString(error->failed_op())
             << " failed with: " << AsString(error->status());
-    error_collector->AddError(std::move(error));
   }
   // TODO: before enabling transaction sealing we might need to call Transaction::Flushed
   // for ops that we have retried, failed again and decided not to retry due to deadline.
   // See comments for YBTransaction::Impl::running_requests_ and
   // Batcher::RemoveInFlightOpsAfterFlushing.
   // https://github.com/yugabyte/yugabyte-db/issues/7984.
-  FlushStatus flush_status{status, error_collector->GetAndClearErrors()};
+  FlushStatus flush_status{status, std::move(errors)};
   callback(&flush_status);
 }
 
 void BatcherFlushDone(
     const internal::BatcherPtr& done_batcher, const Status& s,
-    const std::shared_ptr<ErrorCollector>& error_collector,
     FlushCallback callback, YBSession::BatcherConfig batcher_config) {
   auto errors = done_batcher->GetAndClearPendingErrors();
   size_t retriable_errors_count = 0;
@@ -193,42 +177,54 @@ void BatcherFlushDone(
   }
   if (errors.size() > retriable_errors_count || errors.empty()) {
     // We only retry failed ops if all of them failed with retriable errors.
-    MoveErrorsAndRunCallback(&errors, std::move(callback), s, error_collector.get());
+    MoveErrorsAndRunCallback(std::move(errors), std::move(callback), s);
     return;
   }
 
-  auto retry_batcher = CreateBatcher(batcher_config);
-  retry_batcher->SetDeadline(done_batcher->deadline());
-  Status batcher_add_status = Status::OK();
-  for (auto& error : errors) {
-    VLOG(4) << "Retrying " << AsString(error->failed_op())
-            << " due to: " << AsString(error->status());
-    const auto op = error->shared_failed_op();
-    op->ResetTablet();
-    batcher_add_status = retry_batcher->Add(op);
-    if (!batcher_add_status.ok()) {
-      LOG(WARNING) << Format(
-          "Failed to add operation $0 to batcher for retry: $1", op, batcher_add_status);
-      MoveErrorsAndRunCallback(
-          &errors, std::move(callback), batcher_add_status, error_collector.get());
-      return;
+  internal::BatcherPtr retry_batcher;
+  const auto deadline = done_batcher->deadline();
+  while (CoarseMonoClock::now() < deadline) {
+    retry_batcher = CreateBatcher(batcher_config);
+    retry_batcher->SetDeadline(deadline);
+    Status batcher_add_status = Status::OK();
+    for (auto& error : errors) {
+      VLOG(4) << "Retrying " << AsString(error->failed_op())
+              << " due to: " << AsString(error->status());
+      const auto op = error->shared_failed_op();
+      op->ResetTablet();
+      batcher_add_status = retry_batcher->Add(op);
+      if (!batcher_add_status.ok()) {
+        LOG(INFO) << Format(
+            "Failed to add operation $0 to batcher for retry: $1", op, batcher_add_status);
+        if (ShouldSessionRetryError(batcher_add_status)) {
+          continue;
+        } else {
+          MoveErrorsAndRunCallback(std::move(errors), std::move(callback), batcher_add_status);
+          return;
+        }
+      }
     }
+
+    FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
+        internal::IsWithinTransactionRetry::kTrue);
+    return;
   }
 
-  FlushBatcherAsync(
-      retry_batcher, error_collector, std::move(callback), batcher_config,
-      internal::IsWithinTransactionRetry::kTrue);
+  const auto timed_out = STATUS_FORMAT(
+      TimedOut, "Timed out when retrying, now: $0, deadline: $1", CoarseMonoClock::now(), deadline);
+  LOG(INFO) << timed_out;
+  MoveErrorsAndRunCallback(std::move(errors), std::move(callback), timed_out);
 }
 
 void FlushBatcherAsync(
-    const internal::BatcherPtr& batcher, const std::shared_ptr<ErrorCollector>& error_collector,
-    FlushCallback callback, YBSession::BatcherConfig batcher_config,
+    const internal::BatcherPtr& batcher, FlushCallback callback,
+    YBSession::BatcherConfig batcher_config,
     const internal::IsWithinTransactionRetry is_within_transaction_retry) {
   batcher->set_allow_local_calls_in_curr_thread(
       batcher_config.allow_local_calls_in_curr_thread);
   batcher->FlushAsync(
       std::bind(
-          &BatcherFlushDone, batcher, _1, error_collector, std::move(callback), batcher_config),
+          &BatcherFlushDone, batcher, _1, std::move(callback), batcher_config),
       is_within_transaction_retry);
 }
 
@@ -246,7 +242,7 @@ void YBSession::FlushAsync(FlushCallback callback) {
   old_batcher.swap(batcher_);
   if (old_batcher) {
     FlushBatcherAsync(
-        old_batcher, error_collector_, std::move(callback), batcher_config_,
+        old_batcher, std::move(callback), batcher_config_,
         internal::IsWithinTransactionRetry::kFalse);
   } else {
     FlushStatus ok;
@@ -337,20 +333,8 @@ internal::Batcher& YBSession::Batcher() {
   return *batcher_;
 }
 
-Status YBSession::CheckIfFailed() {
-  return is_failed_ ? STATUS(IllegalState, "Session failed") : Status::OK();
-}
-
 Status YBSession::Apply(YBOperationPtr yb_op) {
-  RETURN_NOT_OK(CheckIfFailed());
-  Status s = Batcher().Add(yb_op);
-  if (!PREDICT_FALSE(s.ok())) {
-    is_failed_ = true;
-    error_collector_->AddError(yb_op, s);
-    return s;
-  }
-
-  return Status::OK();
+  return Batcher().Add(yb_op);
 }
 
 Status YBSession::ApplyAndFlush(YBOperationPtr yb_op) {
@@ -360,15 +344,9 @@ Status YBSession::ApplyAndFlush(YBOperationPtr yb_op) {
 }
 
 Status YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
-  RETURN_NOT_OK(CheckIfFailed());
   auto& batcher = Batcher();
   for (const auto& op : ops) {
-    Status s = batcher.Add(op);
-    if (!PREDICT_FALSE(s.ok())) {
-      is_failed_ = true;
-      error_collector_->AddError(op, s);
-      return s;
-    }
+    RETURN_NOT_OK(batcher.Add(op));
   }
   return Status::OK();
 }
@@ -378,8 +356,12 @@ Status YBSession::ApplyAndFlush(const std::vector<YBOperationPtr>& ops) {
   return FlushFuture().get().status;
 }
 
-int YBSession::CountBufferedOperations() const {
+int YBSession::TEST_CountBufferedOperations() const {
   return batcher_ ? batcher_->CountBufferedOperations() : 0;
+}
+
+int YBSession::GetAddedNotFlushedOperationsCount() const {
+  return batcher_ ? batcher_->GetAddedNotFlushedOperationsCount() : 0;
 }
 
 bool YBSession::TEST_HasPendingOperations() const {
@@ -393,10 +375,6 @@ bool YBSession::TEST_HasPendingOperations() const {
     }
   }
   return false;
-}
-
-int YBSession::CountPendingErrors() const {
-  return error_collector_->CountErrors();
 }
 
 void YBSession::SetForceConsistentRead(ForceConsistentRead value) {

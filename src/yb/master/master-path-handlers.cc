@@ -789,8 +789,7 @@ void MasterPathHandlers::HandleHealthCheck(
     jw.String("under_replicated_tablets");
     jw.StartArray();
 
-    vector<scoped_refptr<TableInfo>> tables;
-    master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+    auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
     for (const auto& table : tables) {
       // Ignore tables that are neither user tables nor user indexes.
       // However there are a bunch of system tables that still need to be investigated:
@@ -868,8 +867,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
 
   bool has_tablegroups = master_->catalog_manager()->HasTablegroups();
 
@@ -881,8 +879,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     ordered_tables[i] = std::make_unique<StringMap>();
   }
 
-  TableType table_cat;
-  for (const scoped_refptr<TableInfo>& table : tables) {
+  for (const auto& table : tables) {
     auto l = table->LockForRead();
     if (!l->is_running()) {
       continue;
@@ -891,6 +888,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;
 
+    TableType table_cat;
     // Determine the table category. YugaWare tables should be displayed as system tables.
     if (is_platform) {
       table_cat = kSystemTable;
@@ -1163,8 +1161,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
                                          Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
   *output << "<h3>Active Tasks</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Task Name</th><th>State</th><th>Start "
@@ -1220,8 +1217,7 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  std::vector<TableInfoPtr> tables;
-  master_->catalog_manager()->GetAllTables(&tables, /* includeOnlyRunningTables */ true);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   for (const auto& table : tables) {
     if (master_->catalog_manager()->IsSystemTable(*table.get())) {
@@ -1404,8 +1400,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   }
 
   // Get all the tables.
-  vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables, true /* includeOnlyRunningTables */);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   // Get the list of user tables.
   vector<scoped_refptr<TableInfo> > user_tables;
@@ -2014,8 +2009,7 @@ string MasterPathHandlers::RegistrationToHtml(
 }
 
 void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
-  vector<scoped_refptr<TableInfo>> tables;
-  master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
     if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
       // will be taken care of by colocated parent table

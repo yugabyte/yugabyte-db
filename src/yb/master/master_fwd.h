@@ -45,6 +45,7 @@ class IsEncryptionEnabledResponsePB;
 class ListSnapshotRestorationsResponsePB;
 class ListSnapshotSchedulesResponsePB;
 class ListSnapshotsResponsePB;
+class PermissionsManager;
 class ReportedTabletPB;
 class SnapshotCoordinatorContext;
 class SnapshotScheduleFilterPB;

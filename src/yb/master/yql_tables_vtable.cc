@@ -28,10 +28,9 @@ YQLTablesVTable::YQLTablesVTable(const TableName& table_name,
 Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables, true);
-  for (scoped_refptr<TableInfo> table : tables) {
 
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  for (const auto& table : tables) {
     // Skip non-YQL tables.
     if (!CatalogManager::IsYcqlTable(*table)) {
       continue;

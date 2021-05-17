@@ -10,23 +10,31 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-package org.yb.pgsql;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.yb.util.SanitizerUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+#include "yb/util/debug/lock_debug.h"
 
-// Runs the pg_regress test suite on YB code.
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressGin extends BasePgSQLTest {
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return SanitizerUtil.nonSanitizerVsSanitizer(120, 400);
+#include <glog/logging.h>
+
+namespace yb {
+
+namespace {
+
+thread_local NonRecursiveSharedLockBase* head = nullptr;
+
+} // namespace
+
+NonRecursiveSharedLockBase::NonRecursiveSharedLockBase(void* mutex)
+    : mutex_(mutex), next_(head) {
+  auto current = head;
+  while (current != nullptr) {
+    LOG_IF(DFATAL, current->mutex_ == mutex) << "Recursive shared lock";
+    current = current->next_;
   }
-
-  @Test
-  public void testPgRegressGin() throws Exception {
-    runPgRegressTest("yb_gin_schedule");
-  }
+  head = this;
 }
+
+NonRecursiveSharedLockBase::~NonRecursiveSharedLockBase() {
+  head = next_;
+}
+
+}  // namespace yb

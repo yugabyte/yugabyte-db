@@ -18,27 +18,20 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopping;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateCert;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.*;
 
 public class UpgradeUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UpgradeUniverse.class);
@@ -221,19 +214,27 @@ public class UpgradeUniverse extends UniverseTaskBase {
       return nodes;
     }
 
-    Map<UUID, PlacementInfo.PlacementAZ> placementAZMap =
-      PlacementInfoUtil.getPlacementAZMap(universe);
+    Map<UUID, Map<UUID, PlacementInfo.PlacementAZ>> placementAZMapPerCluster =
+      PlacementInfoUtil.getPlacementAZMapPerCluster(universe);
+    UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     return nodes.stream()
       .sorted(Comparator.<NodeDetails, Boolean>comparing(
-        node -> {
-          PlacementInfo.PlacementAZ placementAZ = placementAZMap.get(node.azUuid);
-          if (placementAZ == null) {
-            return true;
-          }
-          // Primary zones go first
-          return !placementAZ.isAffinitized;
+        // Fully upgrade primary cluster first
+        node -> !node.placementUuid.equals(primaryClusterUuid)
+      ).thenComparing(node -> {
+        Map<UUID, PlacementInfo.PlacementAZ> placementAZMap =
+          placementAZMapPerCluster.get(node.placementUuid);
+        if (placementAZMap == null) {
+          // Well, this shouldn't happen - but just to make sure we'll not fail - sort to the end
+          return true;
         }
-      ).thenComparing(NodeDetails::getNodeIdx))
+        PlacementInfo.PlacementAZ placementAZ = placementAZMap.get(node.azUuid);
+        if (placementAZ == null) {
+          return true;
+        }
+        // Primary zones go first
+        return !placementAZ.isAffinitized;
+      }).thenComparing(NodeDetails::getNodeIdx))
       .collect(Collectors.toList());
   }
 
