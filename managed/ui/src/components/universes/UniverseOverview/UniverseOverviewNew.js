@@ -706,20 +706,29 @@ export default class UniverseOverviewNew extends Component {
     const showUpdate =
       updateAvailable && !isDisabled(currentCustomer.data.features, 'universes.actions');
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
+    const updateInProgress = currentUniverse?.data?.universeDetails?.updateInProgress;
 
+    const upgradeLink = () => {
+      return updateInProgress ? (
+        <span>
+          Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
+        </span>
+      ) : (
+        <a
+          onClick={(e) => {
+            this.props.showSoftwareUpgradesModal(e);
+            e.preventDefault();
+          }}
+          href="/"
+        >
+          Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
+        </a>
+      );
+    };
     const infoWidget = (
       <YBWidget
         headerLeft={'Info'}
-        headerRight={
-          showUpdate && !universePaused ? (
-            <a onClick={(e) => {
-              this.props.showSoftwareUpgradesModal(e);
-              e.preventDefault();
-            }} href="/">
-              Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
-            </a>
-          ) : null
-        }
+        headerRight={showUpdate && !universePaused ? upgradeLink() : null}
         body={
           <FlexContainer className={'centered'} direction={'column'}>
             <FlexGrow>
