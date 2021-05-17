@@ -18,7 +18,7 @@ showAsideToc: true
 
 ## Overview
 
-The YugabyteDB JDBC Driver is based on the open source [PostgreSQL JDBC Driver (PgJDBC)](https://github.com/pgjdbc/pgjdbc) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC Driver extends PgJDBC to add support for distributed SQL databases created in YugabyteDB universes, including cluster awareness and load balancing. Like PgJDBC, the YugabyteDB JDBC Driver is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The YugabyteDB JDBC Driver is based on the open source [PostgreSQL JDBC Driver (PgJDBC)](https://github.com/pgjdbc/pgjdbc) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC Driver extends PgJDBC to add support for distributed SQL databases created in YugabyteDB universes, including cluster awareness and load balancing. Like PgJDBC, the YugabyteDB JDBC Driver is not based on [`libpq`](../ysql-client-drivers/#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 ### Cluster awareness
 
