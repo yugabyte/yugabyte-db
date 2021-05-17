@@ -4,18 +4,12 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import java.util.Optional;
-import java.util.UUID;
-
+import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Universe;
+import java.util.Optional;
+import java.util.UUID;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
@@ -29,9 +23,6 @@ public class ExtraMigrationManager extends DevopsBase {
 
   @Inject
   TemplateManager templateManager;
-
-  @Inject
-  AuditService auditService;
 
   @Override
   protected String getCommandType() {
