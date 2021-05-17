@@ -36,7 +36,7 @@ public class AuditService {
   public static final String SECRET_REPLACEMENT = "REDACTED";
   // List of json paths to any secret fields we want to redact in audit entries.
   // More on json path format can be found here: https://goessner.net/articles/JsonPath/
-  public static final List<String> SERCET_PATHS = ImmutableList.of(
+  public static final List<String> SECRET_PATHS = ImmutableList.of(
     "$..password",
     "$..confirmPassword",
     // AWS credentials
@@ -67,7 +67,7 @@ public class AuditService {
     "$..smtpPassword"
   );
 
-  public static final List<JsonPath> SECRET_JSON_PATHS = SERCET_PATHS.stream()
+  public static final List<JsonPath> SECRET_JSON_PATHS = SECRET_PATHS.stream()
     .map(JsonPath::compile)
     .collect(Collectors.toList());
 
