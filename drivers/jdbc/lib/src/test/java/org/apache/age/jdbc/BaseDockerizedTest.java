@@ -1,0 +1,54 @@
+package org.apache.age.jdbc;
+
+import java.sql.DriverManager;
+import java.sql.Statement;
+import org.apache.age.jdbc.base.Agtype;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestInstance.Lifecycle;
+import org.postgresql.jdbc.PgConnection;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.utility.DockerImageName;
+
+@TestInstance(Lifecycle.PER_CLASS)
+public class BaseDockerizedTest {
+
+    private PgConnection connection;
+    private GenericContainer<?> agensGraphContainer;
+
+
+    public PgConnection getConnection() {
+        return connection;
+    }
+
+    @AfterAll
+    public void afterAll() throws Exception {
+        connection.close();
+        agensGraphContainer.stop();
+    }
+
+    @BeforeAll
+    public void beforeAll() throws Exception {
+        String CORRECT_DB_PASSWORDS = "postgres";
+        agensGraphContainer = new GenericContainer<>(DockerImageName
+            .parse("sorrell/agensgraph-extension-alpine:latest"))
+            .withEnv("POSTGRES_PASSWORD", CORRECT_DB_PASSWORDS)
+            .withExposedPorts(5432);
+        agensGraphContainer.start();
+
+        int mappedPort = agensGraphContainer.getMappedPort(5432);
+        String jdbcUrl = String
+            .format("jdbc:postgresql://%s:%d/%s", "localhost", mappedPort, "postgres");
+
+        connection = DriverManager.getConnection(jdbcUrl, "postgres", CORRECT_DB_PASSWORDS)
+            .unwrap(PgConnection.class);
+        connection.addDataType("agtype", Agtype.class);
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("CREATE EXTENSION IF NOT EXISTS age;");
+            statement.execute("LOAD 'age'");
+            statement.execute("SET search_path = ag_catalog, \"$user\", public;");
+            statement.execute("SELECT create_graph('cypher');");
+        }
+    }
+}
