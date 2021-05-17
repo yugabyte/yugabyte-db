@@ -16,17 +16,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Like PostgerSQL, YugabyteDB enforces security in multiple ways:
+Like PostgreSQL, YugabyteDB enforces security in multiple ways:
 
-* Authentication - limit access to the database to clients with proper credentials
+* **Authentication** - limit access to the database to clients with proper credentials
 
-* Authorization - establish roles and privileges to restrict activities that clients can perform
+* **Authorization** - establish roles and privileges to restrict activities that clients can perform
 
-* Encryption - encrypt the database, as well as all network communication between servers
+* **Encryption** - encrypt the database, as well as all network communication between servers
 
-* Auditing - conduct session- and object-level auditing
+* **Auditing** - conduct session- and object-level auditing
 
-* Restricting network access - limit connections to the database using RPC binding
+* **Restricting network access** - limit connections to the database using RPC binding
 
 ## Authentication
 
