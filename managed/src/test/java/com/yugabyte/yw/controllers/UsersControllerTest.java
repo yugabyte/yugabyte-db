@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -127,10 +128,11 @@ public class UsersControllerTest extends FakeDBApplication {
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.SuperAdmin);
     assertEquals(testUser1.getRole(), Role.SuperAdmin);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
-    Result result = route(fakeRequest("PUT",
+    Result result = assertThrows(YWServiceException.class,
+      () -> route(fakeRequest("PUT",
         String.format("%s/%s?role=ReadOnly",
-        String.format(baseRoute, customer1.uuid), testUser1.uuid))
-        .cookie(validCookie));
+          String.format(baseRoute, customer1.uuid), testUser1.uuid))
+        .cookie(validCookie))).getResult();
     assertEquals(result.status(), BAD_REQUEST);
   }
 
