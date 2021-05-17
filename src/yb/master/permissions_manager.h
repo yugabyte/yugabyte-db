@@ -14,17 +14,19 @@
 #ifndef YB_MASTER_PERMISSIONS_MANAGER_H
 #define YB_MASTER_PERMISSIONS_MANAGER_H
 
-#include "yb/master/master.pb.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/util/status.h"
-#include "yb/rpc/rpc.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/roles_permissions.h"
 
+#include "yb/master/master.pb.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
+
+#include "yb/rpc/rpc.h"
+
+#include "yb/util/status.h"
+
 namespace yb {
 namespace master {
-
-class CatalogManager;
 
 class PermissionsManager final {
  public:
@@ -63,7 +65,7 @@ class PermissionsManager final {
       int64_t term,
       // This value is only set to false during the creation of the
       // default role when it doesn't exist.
-      const bool increment_roles_version = true);
+      const bool increment_roles_version = true) REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Grant one role to another role.
   CHECKED_STATUS GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
@@ -84,7 +86,7 @@ class PermissionsManager final {
 
   // Increment the version stored in roles_version_ if it exists. Otherwise, creates a
   // SysVersionInfo object with version equal to 0 to track the roles versions.
-  CHECKED_STATUS IncrementRolesVersionUnlocked();
+  CHECKED_STATUS IncrementRolesVersionUnlocked() REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Grant the specified permissions.
   template<class RespClass>
@@ -102,14 +104,15 @@ class PermissionsManager final {
   // don't leave old permissions alive. This is specially dangerous when a resource with the same
   // canonical name is created again.
   template<class RespClass>
-  CHECKED_STATUS RemoveAllPermissionsForResourceUnlocked(const std::string& canonical_resource,
-                                                         RespClass* resp);
+  CHECKED_STATUS RemoveAllPermissionsForResourceUnlocked(
+      const std::string& canonical_resource, RespClass* resp)
+      REQUIRES_SHARED(catalog_manager_->mutex_);
 
   template<class RespClass>
   CHECKED_STATUS RemoveAllPermissionsForResource(const std::string& canonical_resource,
                                                  RespClass* resp);
 
-  CHECKED_STATUS PrepareDefaultRoles(int64_t term);
+  CHECKED_STATUS PrepareDefaultRoles(int64_t term) REQUIRES_SHARED(catalog_manager_->mutex_);
 
   void GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles);
 

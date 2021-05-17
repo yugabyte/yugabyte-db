@@ -76,11 +76,6 @@ PermissionsManager::PermissionsManager(CatalogManager* catalog_manager)
 }
 
 Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
-  // Verify we have the catalog manager lock.
-  if (!catalog_manager_->lock_.is_locked()) {
-    return STATUS(IllegalState, "We don't have the catalog manager lock!");
-  }
-
   if (FindPtrOrNull(roles_map_, kDefaultCassandraUsername) != nullptr) {
     LOG(INFO) << "Role " << kDefaultCassandraUsername
               << " already created, skipping initialization";
@@ -113,7 +108,7 @@ Status PermissionsManager::GrantPermissions(
     const std::vector<PermissionType>& permissions,
     const ResourceType resource_type,
     RespClass* resp) {
-  std::lock_guard<decltype(catalog_manager_->lock_)> l(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
 
   scoped_refptr<RoleInfo> rp;
   rp = FindPtrOrNull(roles_map_, role_name);
@@ -182,8 +177,6 @@ template Status PermissionsManager::GrantPermissions<CreateNamespaceResponsePB>(
 
 // Create a SysVersionInfo object to track the roles versions.
 Status PermissionsManager::IncrementRolesVersionUnlocked() {
-  DCHECK(catalog_manager_->lock_.is_locked()) << "We don't have the catalog manager lock!";
-
   // Prepare write.
   auto l = CHECK_NOTNULL(security_config_.get())->LockForWrite();
   const uint64_t roles_version = l.mutable_data()->pb.security_config().roles_version();
@@ -208,8 +201,6 @@ template<class RespClass>
 Status PermissionsManager::RemoveAllPermissionsForResourceUnlocked(
     const std::string& canonical_resource,
     RespClass* resp) {
-
-  DCHECK(catalog_manager_->lock_.is_locked()) << "We don't have the catalog manager lock!";
 
   bool permissions_modified = false;
   for (const auto& e : roles_map_) {
@@ -244,7 +235,7 @@ template<class RespClass>
 Status PermissionsManager::RemoveAllPermissionsForResource(
     const std::string& canonical_resource,
     RespClass* resp) {
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
   return RemoveAllPermissionsForResourceUnlocked(canonical_resource, resp);
 }
 
@@ -266,9 +257,6 @@ Status PermissionsManager::CreateRoleUnlocked(
     const bool superuser,
     int64_t term,
     const bool increment_roles_version) {
-  if (!catalog_manager_->lock_.is_locked()) {
-    return STATUS(IllegalState, "We don't have the catalog manager lock!");
-  }
   // Create Entry.
   SysRoleEntryPB role_entry;
   role_entry.set_role(role_name);
@@ -314,7 +302,7 @@ Status PermissionsManager::CreateRole(
   Status s;
   {
     TRACE("Acquired catalog manager lock");
-    std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+    CatalogManager::LockGuard lock(catalog_manager_->mutex_);
     // Only a SUPERUSER role can create another SUPERUSER role. In Apache Cassandra this gets
     // checked before the existence of the new role.
     if (req->superuser()) {
@@ -364,7 +352,7 @@ Status PermissionsManager::AlterRole(
   Status s;
 
   TRACE("Acquired catalog manager lock");
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
 
   auto role = FindPtrOrNull(roles_map_, req->name());
   if (role == nullptr) {
@@ -448,7 +436,7 @@ Status PermissionsManager::DeleteRole(
   }
 
   TRACE("Acquired catalog manager lock");
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
 
   auto role = FindPtrOrNull(roles_map_, req->name());
   if (role == nullptr) {
@@ -573,7 +561,7 @@ Status PermissionsManager::GrantRevokeRole(
   {
     constexpr char role_not_found_msg_str[] = "$0 doesn't exist";
     TRACE("Acquired catalog manager lock");
-    std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+    CatalogManager::LockGuard lock(catalog_manager_->mutex_);
 
     scoped_refptr<RoleInfo> granted_role;
     granted_role = FindPtrOrNull(roles_map_, req->granted_role());
@@ -761,7 +749,7 @@ Status PermissionsManager::GetPermissions(
     rpc::RpcContext* rpc) {
   std::shared_ptr<GetPermissionsResponsePB> permissions_cache;
   {
-    std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+    CatalogManager::LockGuard lock(catalog_manager_->mutex_);
     if (!permissions_cache_) {
       BuildRecursiveRolesUnlocked();
       if (!permissions_cache_) {
@@ -819,7 +807,7 @@ Status PermissionsManager::GrantRevokePermission(
             << RequestorString(rpc) << ": " << req->ShortDebugString();
   RETURN_NOT_OK(catalog_manager_->CheckOnline());
 
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
   TRACE("Acquired catalog manager lock");
   Status s;
   scoped_refptr<TableInfo> table;
@@ -971,7 +959,7 @@ Status PermissionsManager::GrantRevokePermission(
 
 void PermissionsManager::GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles) {
   roles->clear();
-  SharedLock<decltype(catalog_manager_->lock_)> l(catalog_manager_->lock_);
+  CatalogManager::SharedLock lock(catalog_manager_->mutex_);
   for (const RoleInfoMap::value_type& e : roles_map_) {
     roles->push_back(e.second);
   }
@@ -995,7 +983,7 @@ vector<string> PermissionsManager::DirectMemberOf(const RoleName& role) {
 
 void PermissionsManager::BuildRecursiveRoles() {
   TRACE("Acquired catalog manager lock");
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
   BuildRecursiveRolesUnlocked();
 }
 

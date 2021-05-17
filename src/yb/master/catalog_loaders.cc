@@ -32,6 +32,7 @@
 
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_util.h"
+#include "yb/master/permissions_manager.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
@@ -388,7 +389,7 @@ Status ClusterConfigLoader::Visit(
     l.mutable_data()->pb.CopyFrom(metadata);
 
     {
-      std::lock_guard<CatalogManager::LockType> blacklist_lock(catalog_manager_->blacklist_lock_);
+      CatalogManager::LockGuard blacklist_lock(catalog_manager_->blacklist_mutex_);
 
       if (metadata.has_server_blacklist()) {
         // Rebuild the blacklist state for load movement completion tracking.

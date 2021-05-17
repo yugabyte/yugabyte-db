@@ -58,7 +58,6 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/system_tablet.h"
@@ -70,7 +69,9 @@
 #include "yb/rpc/rpc.h"
 #include "yb/server/monitored_task.h"
 #include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/util/cow_object.h"
+#include "yb/util/debug/lock_debug.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -473,7 +474,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Return the table info for the table with the specified UUID, if it exists.
   TableInfoPtr GetTableInfo(const TableId& table_id);
-  TableInfoPtr GetTableInfoUnlocked(const TableId& table_id) REQUIRES_SHARED(lock_);
+  TableInfoPtr GetTableInfoUnlocked(const TableId& table_id) REQUIRES_SHARED(mutex_);
 
   // Get Table info given namespace id and table name.
   // Does not work for YSQL tables because of possible ambiguity.
@@ -498,11 +499,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Return the recent user-initiated jobs.
   std::vector<std::shared_ptr<MonitoredTask>> GetRecentJobs();
 
-  NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const REQUIRES_SHARED(lock_);
+  NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const REQUIRES_SHARED(mutex_);
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
 
   NamespaceName GetNamespaceNameUnlocked(const scoped_refptr<TableInfo>& table) const
-      REQUIRES_SHARED(lock_);
+      REQUIRES_SHARED(mutex_);
   NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
 
   // Is the table a system table?
@@ -510,11 +511,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Is the table a user created table?
   bool IsUserTable(const TableInfo& table) const;
-  bool IsUserTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(lock_);
+  bool IsUserTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
 
   // Is the table a user created index?
   bool IsUserIndex(const TableInfo& table) const;
-  bool IsUserIndexUnlocked(const TableInfo& table) const REQUIRES_SHARED(lock_);
+  bool IsUserIndexUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
 
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
@@ -534,7 +535,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
   bool IsUserCreatedTable(const TableInfo& table) const;
-  bool IsUserCreatedTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(lock_);
+  bool IsUserCreatedTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
@@ -655,7 +656,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the percentage of leaders/tablets that have been moved off of the (leader) black-listed
   // tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
-      bool blacklist_leader) EXCLUDES(blacklist_lock_);
+      bool blacklist_leader) EXCLUDES(blacklist_mutex_);
 
   // API to check if all the live tservers have similar tablet workload.
   CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
@@ -675,7 +676,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
   CHECKED_STATUS VisitSysCatalog(int64_t term);
-  virtual CHECKED_STATUS RunLoaders(int64_t term) REQUIRES(lock_);
+  virtual CHECKED_STATUS RunLoaders(int64_t term) REQUIRES(mutex_);
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
@@ -689,30 +690,30 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   static bool IsYcqlTable(const TableInfo& table);
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceUnlocked(
-      const NamespaceIdentifierPB& ns_identifier) const REQUIRES_SHARED(lock_);
+      const NamespaceIdentifierPB& ns_identifier) const REQUIRES_SHARED(mutex_);
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespace(
-      const NamespaceIdentifierPB& ns_identifier) const EXCLUDES(lock_);
+      const NamespaceIdentifierPB& ns_identifier) const EXCLUDES(mutex_);
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(
-      const NamespaceId& id) const EXCLUDES(lock_);
+      const NamespaceId& id) const EXCLUDES(mutex_);
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceByIdUnlocked(
-      const NamespaceId& id) const REQUIRES_SHARED(lock_);
+      const NamespaceId& id) const REQUIRES_SHARED(mutex_);
 
   Result<scoped_refptr<TableInfo>> FindTableUnlocked(
-      const TableIdentifierPB& table_identifier) const REQUIRES_SHARED(lock_);
+      const TableIdentifierPB& table_identifier) const REQUIRES_SHARED(mutex_);
 
   Result<scoped_refptr<TableInfo>> FindTable(
-      const TableIdentifierPB& table_identifier) const EXCLUDES(lock_);
+      const TableIdentifierPB& table_identifier) const EXCLUDES(mutex_);
 
-  Result<scoped_refptr<TableInfo>> FindTableById(const TableId& table_id) const EXCLUDES(lock_);
+  Result<scoped_refptr<TableInfo>> FindTableById(const TableId& table_id) const EXCLUDES(mutex_);
 
   Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
-      const TableId& table_id) const REQUIRES_SHARED(lock_);
+      const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
   Result<bool> TableExists(
-      const std::string& namespace_name, const std::string& table_name) const EXCLUDES(lock_);
+      const std::string& namespace_name, const std::string& table_name) const EXCLUDES(mutex_);
 
   Result<TableDescription> DescribeTable(
       const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress);
@@ -726,7 +727,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   std::string GenerateId(boost::optional<const SysRowEntry::Type> entity_type = boost::none);
   std::string GenerateIdUnlocked(boost::optional<const SysRowEntry::Type> entity_type = boost::none)
-      REQUIRES_SHARED(lock_);
+      REQUIRES_SHARED(mutex_);
 
   ThreadPool* AsyncTaskPool() { return async_task_pool_.get(); }
 
@@ -854,38 +855,38 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // first leader election of the cluster.
   //
   // Sets the version field of the SysClusterConfigEntryPB to 0.
-  CHECKED_STATUS PrepareDefaultClusterConfig(int64_t term) REQUIRES(lock_);
+  CHECKED_STATUS PrepareDefaultClusterConfig(int64_t term) REQUIRES(mutex_);
 
   // Sets up various system configs.
-  CHECKED_STATUS PrepareDefaultSysConfig(int64_t term) REQUIRES(lock_);
+  CHECKED_STATUS PrepareDefaultSysConfig(int64_t term) REQUIRES(mutex_);
 
   // Starts an asynchronous run of initdb. Errors are handled in the callback. Returns true
   // if started running initdb, false if decided that it is not needed.
-  bool StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(lock_);
+  bool StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(mutex_);
 
-  CHECKED_STATUS PrepareDefaultNamespaces(int64_t term) REQUIRES(lock_);
+  CHECKED_STATUS PrepareDefaultNamespaces(int64_t term) REQUIRES(mutex_);
 
-  CHECKED_STATUS PrepareSystemTables(int64_t term) REQUIRES(lock_);
+  CHECKED_STATUS PrepareSystemTables(int64_t term) REQUIRES(mutex_);
 
-  CHECKED_STATUS PrepareSysCatalogTable(int64_t term) REQUIRES(lock_);
+  CHECKED_STATUS PrepareSysCatalogTable(int64_t term) REQUIRES(mutex_);
 
   template <class T>
   CHECKED_STATUS PrepareSystemTableTemplate(const TableName& table_name,
                                             const NamespaceName& namespace_name,
                                             const NamespaceId& namespace_id,
-                                            int64_t term) REQUIRES(lock_);
+                                            int64_t term) REQUIRES(mutex_);
 
   CHECKED_STATUS PrepareSystemTable(const TableName& table_name,
                                     const NamespaceName& namespace_name,
                                     const NamespaceId& namespace_id,
                                     const Schema& schema,
                                     int64_t term,
-                                    YQLVirtualTable* vtable) REQUIRES(lock_);
+                                    YQLVirtualTable* vtable) REQUIRES(mutex_);
 
   CHECKED_STATUS PrepareNamespace(YQLDatabase db_type,
                                   const NamespaceName& name,
                                   const NamespaceId& id,
-                                  int64_t term) REQUIRES(lock_);
+                                  int64_t term) REQUIRES(mutex_);
 
   void ProcessPendingNamespace(NamespaceId id,
                                std::vector<scoped_refptr<TableInfo>> template_tables,
@@ -909,10 +910,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      IndexInfoPB* index_info,
                                      vector<TabletInfo*>* tablets,
                                      CreateTableResponsePB* resp,
-                                     scoped_refptr<TableInfo>* table) REQUIRES(lock_);
+                                     scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
   CHECKED_STATUS CreateTabletsFromTable(const vector<Partition>& partitions,
                                         const scoped_refptr<TableInfo>& table,
-                                        std::vector<TabletInfo*>* tablets) REQUIRES(lock_);
+                                        std::vector<TabletInfo*>* tablets) REQUIRES(mutex_);
 
   // Helper for creating copartitioned table.
   CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB& req,
@@ -943,13 +944,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                            const PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
                                            const NamespaceName& namespace_name,
-                                           IndexInfoPB* index_info) REQUIRES(lock_);
+                                           IndexInfoPB* index_info) REQUIRES(mutex_);
 
   // Helper for creating the initial TabletInfo state.
   // Leaves the tablet "write locked" with the new info in the
   // "dirty" state field.
   TabletInfo *CreateTabletInfo(TableInfo* table,
-                               const PartitionPB& partition) REQUIRES(lock_);
+                               const PartitionPB& partition) REQUIRES(mutex_);
 
   // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
   Status RemoveTableIdsFromTabletInfo(
@@ -1173,7 +1174,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      TabletToTabletServerMap *add_replica_tasks_map,
                                      TabletToTabletServerMap *remove_replica_tasks_map,
                                      TabletToTabletServerMap *stepdown_leader_tasks)
-      REQUIRES_SHARED(lock_);
+      REQUIRES_SHARED(mutex_);
 
   // Abort creation of 'table': abort all mutation for TabletInfo and
   // TableInfo objects (releasing all COW locks), abort all pending
@@ -1215,8 +1216,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // these nodes. Also sets the initial load (which is the number of tablets on these nodes)
   // when the blacklist load removal operation was started. It permits overwrite semantics
   // for the blacklist.
-  CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist) REQUIRES(blacklist_lock_);
-  CHECKED_STATUS SetLeaderBlacklist(const BlacklistPB& leader_blacklist) REQUIRES(blacklist_lock_);
+  CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist) REQUIRES(blacklist_mutex_);
+  CHECKED_STATUS SetLeaderBlacklist(const BlacklistPB& leader_blacklist) REQUIRES(blacklist_mutex_);
 
   // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
   // Does not change any other tablets and their partitions.
@@ -1282,37 +1283,40 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // easy to make a "gettable set".
 
   // Lock protecting the various in memory storage structures.
-  typedef rw_spinlock LockType;
-  mutable LockType lock_;
+  using MutexType = rw_spinlock;
+  using SharedLock = NonRecursiveSharedLock<MutexType>;
+  using LockGuard = std::lock_guard<MutexType>;
+  using UniqueLock = std::unique_lock<MutexType>;
+  mutable MutexType mutex_;
 
   // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore
   // are not saved in the name maps below.
 
   // Table map: table-id -> TableInfo
-  VersionTracker<TableInfoMap> table_ids_map_ GUARDED_BY(lock_);
+  VersionTracker<TableInfoMap> table_ids_map_ GUARDED_BY(mutex_);
 
   // Table map: [namespace-id, table-name] -> TableInfo
   // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   // Note that this map isn't used for YSQL tables.
-  TableInfoByNameMap table_names_map_ GUARDED_BY(lock_);
+  TableInfoByNameMap table_names_map_ GUARDED_BY(mutex_);
 
   // Tablet maps: tablet-id -> TabletInfo
-  VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(lock_);
+  VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(mutex_);
 
   // Tablets that was hidden instead of deleting, used to cleanup such tablets when time comes.
-  std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(lock_);
+  std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
-  NamespaceInfoMap namespace_ids_map_ GUARDED_BY(lock_);
-  NamespaceNameMapper namespace_names_mapper_ GUARDED_BY(lock_);
+  NamespaceInfoMap namespace_ids_map_ GUARDED_BY(mutex_);
+  NamespaceNameMapper namespace_names_mapper_ GUARDED_BY(mutex_);
 
   // User-Defined type maps: udtype-id -> UDTypeInfo and udtype-name -> UDTypeInfo
-  UDTypeInfoMap udtype_ids_map_ GUARDED_BY(lock_);
-  UDTypeInfoByNameMap udtype_names_map_ GUARDED_BY(lock_);
+  UDTypeInfoMap udtype_ids_map_ GUARDED_BY(mutex_);
+  UDTypeInfoByNameMap udtype_names_map_ GUARDED_BY(mutex_);
 
   // RedisConfig map: RedisConfigKey -> RedisConfigInfo
   typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;
-  RedisConfigInfoMap redis_config_map_ GUARDED_BY(lock_);
+  RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on Load.
@@ -1344,13 +1348,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // to execute time-lenient catalog manager tasks.
   std::unique_ptr<yb::ThreadPool> background_tasks_thread_pool_;
 
-  mutable LockType blacklist_lock_;
+  mutable MutexType blacklist_mutex_;
 
   // Track all information related to the black list operations.
-  BlacklistState blacklistState GUARDED_BY(blacklist_lock_);
+  BlacklistState blacklistState GUARDED_BY(blacklist_mutex_);
 
   // Track all information related to the leader black list operations.
-  BlacklistState leaderBlacklistState GUARDED_BY(blacklist_lock_);
+  BlacklistState leaderBlacklistState GUARDED_BY(blacklist_mutex_);
 
   // TODO: convert this to YB_DEFINE_ENUM for automatic pretty-printing.
   enum State {
@@ -1418,15 +1422,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Tablet of colocated namespaces indexed by the namespace id.
   std::unordered_map<NamespaceId, scoped_refptr<TabletInfo>> colocated_tablet_ids_map_
-      GUARDED_BY(lock_);
+      GUARDED_BY(mutex_);
 
   typedef std::unordered_map<TablegroupId, scoped_refptr<TabletInfo>> TablegroupTabletMap;
 
   std::unordered_map<NamespaceId, TablegroupTabletMap> tablegroup_tablet_ids_map_
-      GUARDED_BY(lock_);
+      GUARDED_BY(mutex_);
 
   std::unordered_map<TablegroupId, scoped_refptr<TablegroupInfo>> tablegroup_ids_map_
-      GUARDED_BY(lock_);
+      GUARDED_BY(mutex_);
 
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
@@ -1456,7 +1460,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
  private:
-  virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);
+  virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(mutex_);
 
   CHECKED_STATUS CollectTable(
       const TableDescription& table_description,
@@ -1507,7 +1511,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 
-  mutable LockType tablespace_lock_;
+  mutable MutexType tablespace_mutex_;
 
   // The tablespace_manager_ encapsulates two maps that are periodically updated by a background
   // task that reads tablespace information from the PG catalog tables. The task creates a new
@@ -1516,7 +1520,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // once populated and are garbage collected once all references to them go out of scope.
   // No clients are expected to update the managaer, they take a lock merely to copy the
   // shared_ptr and read from it.
-  std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_lock_);
+  std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_mutex_);
 
   // Whether the periodic job to update tablespace info is running.
   std::atomic<bool> tablespace_bg_task_running_;

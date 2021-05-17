@@ -153,7 +153,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
   explicit CDCStreamLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
   Status Visit(const CDCStreamId& stream_id, const SysCDCStreamEntryPB& metadata)
-      REQUIRES(catalog_manager_->lock_) {
+      REQUIRES(catalog_manager_->mutex_) {
     DCHECK(!ContainsKey(catalog_manager_->cdc_stream_map_, stream_id))
         << "CDC stream already exists: " << stream_id;
 
@@ -321,7 +321,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
     RpcContext* rpc) {
   SnapshotId snapshot_id;
   {
-    std::lock_guard<LockType> l(lock_);
+    LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     // Verify that the system is not in snapshot creating/restoring state.
@@ -367,7 +367,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 
   // Put the snapshot data descriptor to the catalog manager.
   {
-    std::lock_guard<LockType> l(lock_);
+    LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     // Verify that the snapshot does not exist.
@@ -436,7 +436,7 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
 
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   {
-    std::shared_lock<LockType> l(lock_);
+    SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     if (!current_snapshot_id_.empty()) {
@@ -511,7 +511,7 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
 }
 
 Status CatalogManager::RestoreNonTransactionAwareSnapshot(const string& snapshot_id) {
-  std::lock_guard<LockType> l(lock_);
+  LockGuard lock(mutex_);
   TRACE("Acquired catalog manager lock");
 
   if (!current_snapshot_id_.empty()) {
@@ -645,7 +645,7 @@ Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
 }
 
 Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id) {
-  std::lock_guard<LockType> l(lock_);
+  LockGuard lock(mutex_);
   TRACE("Acquired catalog manager lock");
 
   TRACE("Looking up snapshot");
@@ -934,7 +934,7 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   // on the original cluster where the backup was created.
   scoped_refptr<NamespaceInfo> ns;
   {
-    SharedLock<LockType> l(lock_);
+    SharedLock lock(mutex_);
     ns = FindPtrOrNull(namespace_ids_map_, entry.id());
   }
 
@@ -948,7 +948,7 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   if (db_type == YQL_DATABASE_PGSQL) {
     // YSQL database must be created via external call. Find it by name.
     {
-      SharedLock<LockType> l(lock_);
+      SharedLock lock(mutex_);
       ns = FindPtrOrNull(namespace_names_mapper_[db_type], meta.name());
     }
 
@@ -1023,7 +1023,7 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
     scoped_refptr<TableInfo> indexed_table;
     {
-      SharedLock<LockType> l(lock_);
+      SharedLock lock(mutex_);
       // Try to find the specified indexed table by id.
       indexed_table = FindPtrOrNull(*table_ids_map_, req.indexed_table_id());
     }
@@ -1097,7 +1097,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   if (new_namespace_id == table_data->old_namespace_id) {
     TRACE("Looking up table");
     {
-      SharedLock<LockType> l(lock_);
+      SharedLock lock(mutex_);
       table = FindPtrOrNull(*table_ids_map_, table_data->old_table_id);
     }
 
@@ -1145,7 +1145,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           return STATUS_FORMAT(InternalError, "$0 expected empty new table id but $1 found",
                                __func__, table_data->new_table_id);
         }
-        SharedLock<LockType> l(lock_);
+        SharedLock lock(mutex_);
 
         for (const auto& entry : *table_ids_map_) {
           table = entry.second;
@@ -1183,7 +1183,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
     TRACE("Looking up new table");
     {
-      SharedLock<LockType> l(lock_);
+      SharedLock lock(mutex_);
       table = FindPtrOrNull(*table_ids_map_, table_data->new_table_id);
     }
 
@@ -1329,7 +1329,7 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   // Update tablets IDs map.
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
-    SharedLock<LockType> l(lock_);
+    SharedLock lock(mutex_);
     scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
 
     if (tablet != nullptr) {
@@ -1367,7 +1367,7 @@ const Schema& CatalogManager::schema() {
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
   TabletInfos result;
   result.reserve(ids.size());
-  SharedLock<LockType> l(lock_);
+  SharedLock lock(mutex_);
   for (const auto& id : ids) {
     auto it = tablet_map_->find(id);
     result.push_back(it != tablet_map_->end() ? it->second : nullptr);
@@ -1516,7 +1516,7 @@ void CatalogManager::CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule
   std::vector<TabletInfoPtr> hidden_tablets;
   std::vector<TableInfoPtr> tables;
   {
-    SharedLock<LockType> l(lock_);
+    SharedLock lock(mutex_);
     hidden_tablets = hidden_tablets_;
     tables.reserve(table_ids_map_->size());
     for (const auto& p : *table_ids_map_) {
@@ -1572,7 +1572,7 @@ void CatalogManager::CleanupHiddenTablets(
 
   if (!tablets_to_remove_from_hidden.empty()) {
     auto it = tablets_to_remove_from_hidden.begin();
-    std::lock_guard<LockType> l(lock_);
+    LockGuard lock(mutex_);
     // Order of tablets in tablets_to_remove_from_hidden matches order in hidden_tablets_,
     // so we could avoid searching in tablets_to_remove_from_hidden.
     auto filter = [&it, end = tablets_to_remove_from_hidden.end()](const TabletInfoPtr& tablet) {
@@ -1643,7 +1643,7 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
   // Get the snapshot data descriptor from the catalog manager.
   scoped_refptr<SnapshotInfo> snapshot;
   {
-    std::lock_guard<LockType> manager_l(lock_);
+    LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     if (current_snapshot_id_.empty()) {
@@ -1695,7 +1695,7 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
   }
 
   if (finished) {
-    std::lock_guard<LockType> manager_l(lock_);
+    LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
     current_snapshot_id_ = "";
   }
@@ -1719,7 +1719,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
   // Get the snapshot data descriptor from the catalog manager.
   scoped_refptr<SnapshotInfo> snapshot;
   {
-    std::lock_guard<LockType> manager_l(lock_);
+    LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     if (current_snapshot_id_.empty()) {
@@ -1771,7 +1771,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
       LOG(INFO) << "Restored snapshot " << snapshot->id();
     }
 
-    std::lock_guard<LockType> manager_l(lock_);
+    LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
     current_snapshot_id_ = "";
   }
@@ -1796,7 +1796,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
   // Get the snapshot data descriptor from the catalog manager.
   scoped_refptr<SnapshotInfo> snapshot;
   {
-    std::lock_guard<LockType> manager_l(lock_);
+    LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, snapshot_id);
@@ -1837,7 +1837,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
 
     const Status s = sys_catalog_->DeleteItem(snapshot.get(), leader_ready_term());
 
-    std::lock_guard<LockType> manager_l(lock_);
+    LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     if (current_snapshot_id_ == snapshot_id) {
@@ -2117,7 +2117,7 @@ Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_id
 std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable(
     const TableId& table_id) {
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
-  std::shared_lock<LockType> l(lock_);
+  SharedLock lock(mutex_);
 
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
@@ -2132,7 +2132,7 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
 void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams) {
   streams->clear();
   streams->reserve(cdc_stream_map_.size());
-  std::shared_lock<LockType> l(lock_);
+  SharedLock lock(mutex_);
   for (const CDCStreamInfoMap::value_type& e : cdc_stream_map_) {
     if (!e.second->LockForRead()->is_deleting()) {
       streams->push_back(e.second);
@@ -2172,7 +2172,7 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
   scoped_refptr<CDCStreamInfo> stream;
   {
     TRACE("Acquired catalog manager lock");
-    std::lock_guard<LockType> l(lock_);
+    LockGuard lock(mutex_);
 
     // Construct the CDC stream if the producer wasn't bootstrapped.
     CDCStreamId stream_id;
@@ -2219,7 +2219,7 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
 
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
   {
-    std::shared_lock<LockType> l(lock_);
+    SharedLock lock(mutex_);
     for (const auto& stream_id : req->stream_id()) {
       auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
 
@@ -2273,7 +2273,7 @@ Status CatalogManager::MarkCDCStreamsAsDeleting(
 Status CatalogManager::FindCDCStreamsMarkedAsDeleting(
     std::vector<scoped_refptr<CDCStreamInfo>>* streams) {
   TRACE("Acquired catalog manager lock");
-  std::shared_lock<LockType> l(lock_);
+  SharedLock lock(mutex_);
   for (const CDCStreamInfoMap::value_type& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
     if (ltm->is_deleting()) {
@@ -2311,7 +2311,7 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     scoped_refptr<TableInfo> table;
     {
       TRACE("Acquired catalog manager lock");
-      SharedLock<LockType> l(lock_);
+      SharedLock lock(mutex_);
       table = FindPtrOrNull(*table_ids_map_, stream->table_id());
     }
     // GetAllTablets locks lock_ in shared mode.
@@ -2382,7 +2382,7 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
   // Remove it from the map.
   TRACE("Removing from CDC stream maps");
   {
-    std::lock_guard<LockType> l(lock_);
+    LockGuard lock(mutex_);
     for (const auto& stream : streams_to_delete) {
       if (cdc_stream_map_.erase(stream->id()) < 1) {
         return STATUS(IllegalState, "Could not remove CDC stream from map", stream->id());
@@ -2413,7 +2413,7 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
 
   scoped_refptr<CDCStreamInfo> stream;
   {
-    std::shared_lock<LockType> l(lock_);
+    SharedLock lock(mutex_);
     stream = FindPtrOrNull(cdc_stream_map_, req->stream_id());
   }
 
@@ -2444,7 +2444,7 @@ Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
     table = VERIFY_RESULT(FindTableById(req->table_id()));
   }
 
-  std::shared_lock<LockType> l(lock_);
+  SharedLock lock(mutex_);
 
   for (const CDCStreamInfoMap::value_type& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
@@ -2462,7 +2462,6 @@ Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
 }
 
 bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
-  LOG_IF(DFATAL, !lock_.is_locked()) << "CatalogManager lock must be taken";
   scoped_refptr<CDCStreamInfo> stream = FindPtrOrNull(cdc_stream_map_, stream_id);
   if (stream == nullptr || stream->LockForRead()->is_deleting()) {
     return false;
@@ -2521,7 +2520,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   scoped_refptr<UniverseReplicationInfo> ri;
   {
     TRACE("Acquired catalog manager lock");
-    std::shared_lock<LockType> l(lock_);
+    SharedLock lock(mutex_);
 
     if (FindPtrOrNull(universe_replication_map_, req->producer_id()) != nullptr) {
       return STATUS(InvalidArgument, "Producer already present", req->producer_id(),
@@ -2548,7 +2547,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   LOG(INFO) << "Setup universe replication from producer " << ri->ToString();
 
   {
-    std::lock_guard<LockType> l(lock_);
+    LockGuard lock(mutex_);
     universe_replication_map_[ri->id()] = ri;
   }
 
@@ -2769,7 +2768,7 @@ void CatalogManager::GetTableSchemaCallback(
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
   {
-    std::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     universe = FindPtrOrNull(universe_replication_map_, universe_id);
@@ -2812,7 +2811,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
   {
-    std::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     universe = FindPtrOrNull(universe_replication_map_, universe_id);
@@ -2924,7 +2923,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     const std::string& universe_id, const TableId& table_id, const Result<CDCStreamId>& stream_id) {
   scoped_refptr<UniverseReplicationInfo> universe;
   {
-    std::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     universe = FindPtrOrNull(universe_replication_map_, universe_id);
@@ -3068,7 +3067,7 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
 
   scoped_refptr<UniverseReplicationInfo> original_universe;
   {
-    std::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     original_universe = FindPtrOrNull(universe_replication_map_, original_producer_id.ToString());
@@ -3143,7 +3142,7 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
 
   scoped_refptr<UniverseReplicationInfo> ri;
   {
-    std::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     ri = FindPtrOrNull(universe_replication_map_, req->producer_id());
@@ -3210,7 +3209,7 @@ void CatalogManager::DeleteUniverseReplicationUnlocked(
     return;
   }
   // Remove it from the map.
-  std::lock_guard<LockType> catalog_lock(lock_);
+  LockGuard lock(mutex_);
   if (universe_replication_map_.erase(universe->id()) < 1) {
     LOG(ERROR) << "An error occurred while removing replication info from map: " << s
                << ": universe_id: " << universe->id();
@@ -3238,7 +3237,7 @@ Status CatalogManager::SetUniverseReplicationEnabled(
 
   scoped_refptr<UniverseReplicationInfo> universe;
   {
-    std::shared_lock<LockType> l(lock_);
+    SharedLock lock(mutex_);
 
     universe = FindPtrOrNull(universe_replication_map_, req->producer_id());
     if (universe == nullptr) {
@@ -3308,7 +3307,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
   // Verify that there is an existing Universe config
   scoped_refptr<UniverseReplicationInfo> original_ri;
   {
-    std::shared_lock<LockType> l(lock_);
+    SharedLock lock(mutex_);
 
     original_ri = FindPtrOrNull(universe_replication_map_, req->producer_id());
     if (original_ri == nullptr) {
@@ -3459,7 +3458,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // Verify no 'alter' command running.
     scoped_refptr<UniverseReplicationInfo> alter_ri;
     {
-      std::shared_lock<LockType> l(lock_);
+      SharedLock lock(mutex_);
       alter_ri = FindPtrOrNull(universe_replication_map_, alter_producer_id);
     }
     {
@@ -3534,7 +3533,7 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
 
   scoped_refptr<UniverseReplicationInfo> universe;
   {
-    std::shared_lock<LockType> l(lock_);
+    SharedLock lock(mutex_);
 
     universe = FindPtrOrNull(universe_replication_map_, req->producer_id());
     if (universe == nullptr) {
