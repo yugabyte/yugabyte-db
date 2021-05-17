@@ -32,6 +32,7 @@
 
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_util.h"
+#include "yb/master/permissions_manager.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "

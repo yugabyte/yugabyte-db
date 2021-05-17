@@ -86,7 +86,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
   CatalogManager catalog_manager(nullptr);
   {
-    std::lock_guard<CatalogManager::LockType> l(catalog_manager.lock_);
+    CatalogManager::LockGuard lock(catalog_manager.mutex_);
     ASSERT_NOK(catalog_manager.PrepareDefaultClusterConfig(0));
   }
 
