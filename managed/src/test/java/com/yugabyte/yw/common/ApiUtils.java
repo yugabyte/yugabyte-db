@@ -2,35 +2,18 @@
 
 package com.yugabyte.yw.common;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.UUID;
-
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.ColumnDetails;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TableDetails;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
 import org.yb.ColumnSchema.SortOrder;
+
+import java.util.*;
 
 public class ApiUtils {
   public static String UTIL_INST_TYPE = "m3.medium";
@@ -154,6 +137,30 @@ public class ApiUtils {
         universeDetails.rootCA = universe.getUniverseDetails().rootCA;
         universe.setUniverseDetails(universeDetails);
       }
+    };
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithReadReplica(
+    final UserIntent userIntent,
+    final PlacementInfo placementInfo) {
+
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      UniverseDefinitionTaskParams.Cluster readReplica =
+        universeDetails.upsertCluster(userIntent, placementInfo, UUID.randomUUID());
+      int currentNodes = universeDetails.nodeDetailsSet.size();
+      for (int idx = currentNodes + 1; idx <= currentNodes + userIntent.numNodes; idx++) {
+        NodeDetails node = getDummyNodeDetails(idx, NodeState.Live, false);
+        node.placementUuid = readReplica.uuid;
+        if (placementInfo != null) {
+          List<PlacementInfo.PlacementAZ> azList =
+            placementInfo.cloudList.get(0).regionList.get(0).azList;
+          int azIndex = (idx - 1) % azList.size();
+          node.azUuid = azList.get(azIndex).uuid;
+        }
+        universeDetails.nodeDetailsSet.add(node);
+      }
+      universe.setUniverseDetails(universeDetails);
     };
   }
 
