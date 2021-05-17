@@ -543,6 +543,61 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testPgInheritsCacheConsistency() throws Exception {
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt1 = connection1.createStatement();
+         Statement stmt2 = connection2.createStatement()) {
+
+      // Create a partitioned table and some partitions in connection1.
+      stmt1.executeUpdate("CREATE TABLE prt (a int, b varchar) PARTITION BY RANGE(a)");
+      stmt1.executeUpdate("CREATE TABLE prt_p1 PARTITION OF prt FOR VALUES FROM (0) TO (10)");
+
+      // Create additional partitions in connection2 and perform operations ensuring that the cache
+      // is populated in connection2.
+      stmt2.executeUpdate("CREATE TABLE prt_p2 PARTITION OF prt FOR VALUES FROM (10) TO (20)");
+
+      // Now in a loop, create a new partition and insert data into it in connection1.
+      // The cache in connection2 must refresh itself each time a partition is created in
+      // connection1, therefore the data fetched using SELECT query in both connections
+      // must be the same.
+      final int numIterations = 25;
+      final String query = "SELECT * FROM prt WHERE a>0";
+      for (int ii = 2; ii < numIterations; ++ii) {
+        final int startPartition = 10 * ii;
+        final int endPartition = 10 * (ii + 1);
+        stmt1.executeUpdate(String.format(
+              "CREATE TABLE prt_p%d PARTITION OF prt FOR VALUES FROM (%d) TO (%d)",
+              ii + 1, startPartition, endPartition));
+        stmt1.executeUpdate(String.format("INSERT INTO prt_p%d(a,b) VALUES (%d, 'abc')",
+                                          ii + 1, startPartition + 1));
+        waitForTServerHeartbeat();
+        assertEquals(getRowList(stmt1, query).size(), getRowList(stmt2, query).size());
+      }
+
+      // Now repeat the same test as above, but start a transaction in stmt2 in
+      // the loop. Snapshot isolation guarantees here should ensure that the
+      // transaction in stmt2 should not see the new partition or the data inserted
+      // in stmt1.
+      for (int ii = numIterations; ii < numIterations * 2; ++ii) {
+        stmt2.execute("BEGIN");
+        final int startPartition = 10 * ii;
+        final int endPartition = 10 * (ii + 1);
+        stmt1.executeUpdate(String.format(
+              "CREATE TABLE prt_p%d PARTITION OF prt FOR VALUES FROM (%d) TO (%d)",
+              ii + 1, startPartition, endPartition));
+        stmt1.executeUpdate(String.format(
+              "INSERT INTO prt_p%d(a,b) VALUES (%d, 'abc')",
+              ii + 1, startPartition + 1));
+        waitForTServerHeartbeat();
+        assertEquals(getRowList(stmt1, query).size() - 1, getRowList(stmt2, query).size());
+        stmt2.execute("END");
+      }
+
+    }
+  }
+
   private static Optional<Throwable> captureThrow(ThrowingRunnable action) {
     try {
       action.run();

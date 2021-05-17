@@ -45,6 +45,7 @@
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
@@ -491,6 +492,17 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		64
+	},
+	{InheritsRelationId,    /* INHERITSRELID */
+		InheritsParentIndexId,
+		2,
+		{
+			Anum_pg_inherits_inhparent,
+			Anum_pg_inherits_inhrelid,
+			0,
+			0
+		},
+		32
 	},
 	{LanguageRelationId,		/* LANGNAME */
 		LanguageNameIndexId,
