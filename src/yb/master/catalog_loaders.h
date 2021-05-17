@@ -52,7 +52,7 @@ namespace master {
   private: \
     CHECKED_STATUS Visit( \
         const key_type& key, \
-        const entry_pb_name& metadata) override REQUIRES(catalog_manager_->lock_); \
+        const entry_pb_name& metadata) override REQUIRES(catalog_manager_->mutex_); \
     \
     CatalogManager *catalog_manager_; \
     \

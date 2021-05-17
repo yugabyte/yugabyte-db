@@ -685,7 +685,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
   vector<TabletId> tablet_ids;
   {
-    SharedLock<CatalogManager::LockType> l(mini_master_->master()->catalog_manager()->lock_);
+    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
     for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
       auto tablet = elem.second;
       if (tablet->table()->name() == kTableName) {
@@ -704,7 +704,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
 
   // Verify that the test table's tablets are in the DELETED state.
   {
-    SharedLock<CatalogManager::LockType> l(mini_master_->master()->catalog_manager()->lock_);
+    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
     for (const auto& tablet_id : tablet_ids) {
       auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
       ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());

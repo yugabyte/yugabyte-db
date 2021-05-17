@@ -156,6 +156,7 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  debug/lock_debug.cc
   debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
   debug/trace_event_impl_constants.cc

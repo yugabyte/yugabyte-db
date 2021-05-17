@@ -41,15 +41,19 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_service_base-internal.h"
 #include "yb/master/master.h"
+#include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-#include "yb/master/encryption_manager.h"
+
 #include "yb/server/webserver.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
