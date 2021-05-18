@@ -86,7 +86,10 @@ describe('EditProviderForm components tests', () => {
     const universeListMock = getInitialState();
     universeListMock.promiseState = { name: 'SUCCESS', ordinal: 1 };
     universeListMock.data = universeListMockData;
-    const { component } = setup(universeListMock, providerToEdit);
+    const editProviderMock = getInitialState();
+    editProviderMock.promiseState = { name: 'SUCCESS', ordinal: 1 };
+    editProviderMock.data = providerToEdit;
+    const { component } = setup(universeListMock, editProviderMock);
     expect(
       component.getByDisplayValue('yb-admin-test-aws_12581bba-b6f7-4a35-8694-060436dcafcc-key')
     ).toBeInTheDocument();
@@ -100,7 +103,10 @@ describe('EditProviderForm components tests', () => {
     universeListMock.promiseState = { name: 'SUCCESS', ordinal: 1 };
     universeListMock.data = universeListMockData;
     providerToEdit.uuid = providerToEdit.uuid + 'test';
-    const { component } = setup(universeListMock, providerToEdit);
+    const editProviderMock = getInitialState();
+    editProviderMock.promiseState = { name: 'SUCCESS', ordinal: 1 };
+    editProviderMock.data = providerToEdit;
+    const { component } = setup(universeListMock, editProviderMock);
     expect(
       component.getByDisplayValue('yb-admin-test-aws_12581bba-b6f7-4a35-8694-060436dcafcc-key')
     ).toBeInTheDocument();
