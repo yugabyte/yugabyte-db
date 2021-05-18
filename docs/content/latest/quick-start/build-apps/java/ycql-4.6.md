@@ -79,12 +79,18 @@ Create a file, named `pom.xml`, and then copy the following content into it. The
   <artifactId>hello-world</artifactId>
   <version>1.0</version>
   <packaging>jar</packaging>
+  <properties>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+  </properties>
 
- <dependency>
-   <groupId>com.yugabyte</groupId>
-   <artifactId>java-driver-core</artifactId>
-   <version>4.6.0-yb-6</version>
- </dependency>
+  <dependencies>
+    <dependency>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>java-driver-core</artifactId>
+      <version>4.6.0-yb-6</version>
+    </dependency>
+  </dependencies>
 
   <build>
     <plugins>

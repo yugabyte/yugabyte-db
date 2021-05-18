@@ -68,7 +68,7 @@ There are a number of options that can be customized in the properties file loca
 ## Build the application
 
 ```sh
-$ cd ./java/spring
+$ cd orm-examples/java/spring
 ```
 
 ```sh
