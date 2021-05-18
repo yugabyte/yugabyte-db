@@ -775,8 +775,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
             << EXPR_VALUE_FOR_LOG(commit1_fail_count) << ", "
             << EXPR_VALUE_FOR_LOG(insert2_fail_count) << ", "
             << EXPR_VALUE_FOR_LOG(commit2_fail_count);
-  ASSERT_GE(commit1_fail_count, iterations/4);
-  ASSERT_GE(insert2_fail_count, iterations/4);
+  ASSERT_GE(commit1_fail_count, iterations / 4);
+  ASSERT_GE(insert2_fail_count, iterations / 4);
   ASSERT_EQ(commit2_fail_count, 0);
 }
 
