@@ -716,7 +716,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
   size_t insert2_fail_count = 0;
 
   const auto kStartTxnStatementStr = "START TRANSACTION ISOLATION LEVEL REPEATABLE READ";
-  for (int i = 1; i <= 100; ++i) {
+  const int iterations = 48;
+  for (int i = 1; i <= iterations; ++i) {
     std::string dictname = Format("contendedkey$0", i);
     const int dictnamespace = i;
     ASSERT_OK(conn1.Execute(kStartTxnStatementStr));
@@ -774,8 +775,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
             << EXPR_VALUE_FOR_LOG(commit1_fail_count) << ", "
             << EXPR_VALUE_FOR_LOG(insert2_fail_count) << ", "
             << EXPR_VALUE_FOR_LOG(commit2_fail_count);
-  ASSERT_GE(commit1_fail_count, 25);
-  ASSERT_GE(insert2_fail_count, 25);
+  ASSERT_GE(commit1_fail_count, iterations / 4);
+  ASSERT_GE(insert2_fail_count, iterations / 4);
   ASSERT_EQ(commit2_fail_count, 0);
 }
 
