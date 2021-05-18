@@ -18,7 +18,7 @@ Below are a list of security measures that can be implemented to protect your Yu
 
 ## Enable authentication
 
-Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
+Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
 Read more about [how to enable authentication in YugabyteDB](../authentication).
 
@@ -36,7 +36,7 @@ Run the YB-Master and YB-TServer services with a dedicated operating system user
 
 ### Restrict machine and port access
 
-Ensure that YugabyteDB runs in a trusted network environment.  Here are some steps to ensure that:
+Ensure that YugabyteDB runs in a trusted network environment, such that:
 
 * Servers running YugabyteDB services are directly accessible only by the servers running the application and database administrators.
 
