@@ -321,6 +321,7 @@ export default class ClusterFields extends Component {
         this.setState({
           providerType: formValues[clusterType].providerType,
           providerSelected: formValues[clusterType].provider,
+          regionList: formValues[clusterType].regionList,
           numNodes: formValues[clusterType].numNodes ? formValues[clusterType].numNodes : 3,
           replicationFactor: formValues[clusterType].replicationFactor
             ? Number(formValues[clusterType].replicationFactor)
@@ -492,16 +493,39 @@ export default class ClusterFields extends Component {
       this.props.fetchUniverseResources(nextProps.universe.universeConfigTemplate.data);
     }
     // If nodeInstanceList changes, fetch number of available nodes
-    if (
-      getPromiseState(nodeInstanceList).isSuccess() &&
-      getPromiseState(this.props.cloud.nodeInstanceList).isLoading()
-    ) {
+    if (getPromiseState(nodeInstanceList).isSuccess()) {
+      // let nodesPerRegion = [];
+
+      // nodeInstanceList.data.forEach((node) => {
+      //   isNonEmptyArray(this.state.regionList) &&
+      //     this.state.regionList.forEach((region) => {
+      //       if (node.details.region === region.label) {
+      //         nodesPerRegion.push(node);
+      //       }
+      //     });
+      // });
+
+      let nodesPerRegion = [];
+      nodeInstanceList.data.forEach(node => {
+        isNonEmptyArray(this.state.regionList) &&
+          this.state.regionList.forEach(region => {
+            (node.details.region === region.label) &&
+            nodesPerRegion.push(node)
+          })
+      });
+
       let numNodesAvailable = nodeInstanceList.data.reduce((acc, val) => {
         if (!val.inUse) {
           acc++;
         }
         return acc;
       }, 0);
+
+      console.log(nodesPerRegion, '****** yello *****');
+      console.log(numNodesAvailable, '****** yello1 *****');
+
+      
+
       // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
       if (
         this.props.type === 'Edit' ||
@@ -569,11 +593,15 @@ export default class ClusterFields extends Component {
       this.configureUniverseNodeList();
     } else if (currentProvider && currentProvider.code === 'onprem') {
       toggleDisableSubmit(false);
+      const primaryReplicaNodeLen = formValues?.primary?.regionList?.length > 0 ?
+        formValues?.primary?.numNodes : 0;
+      const asyncReplicaNodeLen = formValues?.async?.regionList?.length > 0 ?
+        formValues?.async?.numNodes : 0;
       if (
         isNonEmptyArray(this.state.regionList) &&
         currentProvider &&
         this.state.instanceTypeSelected &&
-        this.state.numNodes > this.state.maxNumNodes
+        ((primaryReplicaNodeLen + asyncReplicaNodeLen) > this.state.maxNumNodes)
       ) {
         const placementStatusObject = {
           error: {
