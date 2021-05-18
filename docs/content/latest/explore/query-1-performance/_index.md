@@ -48,7 +48,7 @@ menu:
         <div class=“title”>View Live Queries with pg_stat_activity</div>
       </div>
       <div class="body">
-        Troubleshoot problems and identify long running queries with this activity view.
+        Troubleshoot problems and identify long-running queries with the activity view.
       </div>
     </a>
   </div>
