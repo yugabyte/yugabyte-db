@@ -34,7 +34,7 @@ Using client authentication, you can define how the database server establishes 
 
 * Password - authenticate using MD5 or SCRAM-SHA-256
 * LDAP - use external LDAP services to perform client authentication
-* Host-based - authenticate local and remote clients based on IP address and using TLS certiciates
+* Host-based - authenticate local and remote clients based on IP address and using TLS certificates
 * Trust - authorize specific local connections
 
 The method used to authenticate a particular client connection can be selected on the basis of (client) host address, database, and user.
