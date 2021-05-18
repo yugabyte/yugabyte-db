@@ -53,7 +53,7 @@ public class CustomerTaskController extends AuthenticatedController {
   @Inject
   private RuntimeConfigFactory runtimeConfigFactory;
 
-  static final String MAX_TASKS = "yb.max_tasks";
+  static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
 
   protected static final int TASK_HISTORY_LIMIT = 6;
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
@@ -90,7 +90,7 @@ public class CustomerTaskController extends AuthenticatedController {
     }
     
     customerTaskList = customerTaskQuery.setMaxRows(
-          runtimeConfigFactory.globalRuntimeConf().getInt(MAX_TASKS))
+          runtimeConfigFactory.globalRuntimeConf().getInt(CUSTOMER_TASK_DB_QUERY_LIMIT))
       .orderBy("create_time desc")
       .findPagedList()
       .getList();

@@ -289,7 +289,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskHistoryLimit() {
     String authToken = user.createAuthToken();
     Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
-    when(config.getInt(CustomerTaskController.MAX_TASKS))
+    when(config.getInt(CustomerTaskController.CUSTOMER_TASK_DB_QUERY_LIMIT))
       .thenReturn(25);
     IntStream.range(0, 100).forEach(i -> createTaskWithStatus(
         universe.universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0));
