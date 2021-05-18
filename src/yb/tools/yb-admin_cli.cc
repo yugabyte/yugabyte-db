@@ -293,6 +293,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         return Status::OK();
       });
 
+  Register(
+      "backfill_indexes_for_table", " <table>",
+      [client](const CLIArguments& args) -> Status {
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin(), args.end()));
+        RETURN_NOT_OK_PREPEND(client->LaunchBackfillIndexForTable(table_name),
+                              yb::Format("Unable to launch backfill for indexes in $0",
+                                         table_name));
+        return Status::OK();
+      });
+
   static const auto kIncludeDBType = "include_db_type";
   static const auto kIncludeTableId = "include_table_id";
   static const auto kIncludeTableType = "include_table_type";

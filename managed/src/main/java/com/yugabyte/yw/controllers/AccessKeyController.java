@@ -7,8 +7,7 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.AccessKeyFormData;
-import com.yugabyte.yw.forms.YWSuccess;
-import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -142,7 +141,7 @@ public class AccessKeyController extends AuthenticatedController {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
     }
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(accessKey);
   }
 
@@ -163,8 +162,8 @@ public class AccessKeyController extends AuthenticatedController {
     );
 
     if (accessKey.delete()) {
-      Audit.createAuditEntry(ctx(), request());
-      return YWSuccess.asResult("Deleted KeyCode: " + keyCode);
+      auditService().createAuditEntry(ctx(), request());
+      return YWResults.YWSuccess.withMessage("Deleted KeyCode: " + keyCode);
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete KeyCode: " + keyCode);
     }

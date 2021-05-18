@@ -1,0 +1,6 @@
+# src/test/regress/yb_gin_schedule
+#
+################################################################################
+# YB GIN Testsuite: Yugabyte-owned (non-ported) gin index tests.
+################################################################################
+test: yb_gin

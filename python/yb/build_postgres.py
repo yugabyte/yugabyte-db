@@ -27,6 +27,7 @@ import subprocess
 import json
 import hashlib
 import time
+import semantic_version
 import shlex
 
 from subprocess import check_call
@@ -358,7 +359,7 @@ class PostgresBuilder(YbBuildToolBase):
         thirdparty_installed_common_bin_path = os.path.join(
             self.thirdparty_dir, 'installed', 'common', 'bin')
         new_path_str = ':'.join([thirdparty_installed_common_bin_path] + self.original_path)
-        self.set_env_var('PATH', new_path_str)
+        os.environ['PATH'] = new_path_str
 
     def sync_postgres_source(self):
         logging.info("Syncing postgres source code")
@@ -468,6 +469,19 @@ class PostgresBuilder(YbBuildToolBase):
             if k in os.environ
         )
 
+    def get_git_version(self):
+        """Get the semantic version of git.  Assume git exists.  Return None if the version cannot
+        be parsed.
+        """
+        version_string = subprocess.check_output(('git', '--version')).decode('utf-8').strip()
+        match = re.match(r'git version (\S+)', version_string)
+        assert match, f"Failed to extract git version from string: {version_string}"
+        try:
+            return semantic_version.Version.coerce(match.group(1))
+        except ValueError as e:
+            logging.warning(f"Failed to interpret git version: {e}")
+            return None
+
     def get_build_stamp(self, include_env_vars):
         """
         Creates a "build stamp" that tries to capture all inputs that might affect the PostgreSQL
@@ -476,25 +490,36 @@ class PostgresBuilder(YbBuildToolBase):
         """
 
         with WorkDirContext(YB_SRC_ROOT):
-            code_subset = [
+            # Postgres files.
+            pathspec = [
                 'src/postgres',
                 'src/yb/yql/pggate',
                 'python/yb/build_postgres.py',
                 'build-support/build_postgres',
-                'CMakeLists.txt'
+                'CMakeLists.txt',
             ]
+            git_version = self.get_git_version()
+            if git_version and git_version >= semantic_version.Version('1.9.0'):
+                # Git version 1.9.0 allows specifying negative pathspec.  Use it to exclude changes
+                # to regress test files not needed for build.
+                pathspec.extend([
+                    ':(exclude)src/postgres/src/test/regress/*_schedule',
+                    ':(exclude)src/postgres/src/test/regress/expected',
+                    ':(exclude)src/postgres/src/test/regress/sql',
+                ])
+            # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(
-                ['git', '--no-pager', 'log', '-n', '1', '--pretty=%H'] + code_subset
+                ['git', '--no-pager', 'log', '-n', '1', '--format=%H', '--'] + pathspec
             ).decode('utf-8').strip()
-            git_diff = subprocess.check_output(['git', 'diff'] + code_subset).decode('utf-8')
-            git_diff_cached = subprocess.check_output(
-                ['git', 'diff', '--cached'] + code_subset).decode('utf-8')
+            # Get uncommitted changes to tracked postgres files.
+            git_diff = subprocess.check_output(
+                ['git', 'diff', 'HEAD', '--'] + pathspec
+            ).decode('utf-8')
 
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
         build_stamp = "\n".join([
             "git_commit_sha1=%s" % git_hash,
             "git_diff_sha256=%s" % sha256(git_diff),
-            "git_diff_cached_sha256=%s" % sha256(git_diff_cached)
             ])
 
         if include_env_vars:
@@ -693,6 +718,12 @@ class PostgresBuilder(YbBuildToolBase):
             self.clean_postgres()
 
         mkdir_p(self.pg_build_root)
+        if self.should_configure:
+            # Regardless of build stamp, the postgres code in src should be synced to the code in
+            # build.  It's fine to do this only for the configure step because the make step depends
+            # on the configure step as defined in src/postgres/CMakeLists.txt.
+            with WorkDirContext(self.pg_build_root):
+                self.sync_postgres_source()
 
         self.set_env_vars('configure')
         saved_build_stamp = self.get_saved_build_stamp()
@@ -714,7 +745,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         with WorkDirContext(self.pg_build_root):
             if self.should_configure:
-                self.sync_postgres_source()
                 configure_start_time_sec = time.time()
                 self.configure_postgres()
                 logging.info("The configure step of building PostgreSQL took %.1f sec",

@@ -43,7 +43,8 @@ class MultiStageAlterTable {
   // middle of an index backfill. Will update the IndexPermission from
   // INDEX_PERM_DELETE_ONLY -> INDEX_PERM_WRITE_AND_DELETE -> BACKFILL
   static Status LaunchNextTableInfoVersionIfNecessary(
-      CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version);
+      CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version,
+      bool respect_backfill_deferrals = true);
 
   // Clears the fully_applied_* state for the given table and optionally sets it to RUNNING.
   // If the version has changed and does not match the expected version no

@@ -16,6 +16,7 @@ import javax.persistence.*;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @Entity
 public class Audit extends Model {
@@ -104,26 +105,6 @@ public class Audit extends Model {
   public static final Finder<UUID, Audit> find = new Finder<UUID, Audit>(Audit.class) {
   };
 
-  public static void createAuditEntry(Http.Context ctx, Http.Request request) {
-    createAuditEntry(ctx, request, null, null);
-  }
-
-  public static void createAuditEntry(Http.Context ctx, Http.Request request, JsonNode params) {
-    createAuditEntry(ctx, request, params, null);
-  }
-
-  public static void createAuditEntry(Http.Context ctx, Http.Request request, UUID taskUUID) {
-    createAuditEntry(ctx, request, null, taskUUID);
-  }
-
-  public static void createAuditEntry(
-    Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
-    Users user = (Users) ctx.args.get("user");
-    String method = request.method();
-    String path = request.path();
-    Audit entry = Audit.create(user.uuid, user.customerUUID, path, method, params, taskUUID);
-  }
-
   /**
    * Create new audit entry.
    *
@@ -157,5 +138,9 @@ public class Audit extends Model {
 
   public static List<Audit> getAllUserEntries(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
+  public static void forEachEntry(Consumer<Audit> consumer) {
+    find.query().findEach(consumer);
   }
 }

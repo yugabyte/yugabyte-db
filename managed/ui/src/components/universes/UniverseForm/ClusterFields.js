@@ -2034,7 +2034,7 @@ export default class ClusterFields extends Component {
               <div className="form-right-aligned-labels right-side-form-field">
                 {iopsField}
                 {throughputField}
-                <Row>{selectEncryptionAtRestConfig}</Row>
+                {selectEncryptionAtRestConfig}
               </div>
             </Col>
           </Row>

@@ -230,7 +230,7 @@ Status CassandraFuture::CheckErrorCode() {
       case CASS_ERROR_SERVER_INVALID_QUERY:
         return STATUS(QLError, message_slice);
       default:
-        LOG(INFO) << "Cassandra error code: " << rc;
+        LOG(INFO) << "Cassandra error code: " << rc << ": " << message;
         return STATUS(RuntimeError, message_slice);
     }
   }
@@ -238,32 +238,40 @@ Status CassandraFuture::CheckErrorCode() {
   return Status::OK();
 }
 
+namespace {
+
+void CheckErrorCode(const CassError& error_code) {
+  CHECK_EQ(CASS_OK, error_code) << ": " << cass_error_desc(error_code);
+}
+
+} // namespace
+
 void CassandraStatement::Bind(size_t index, const string& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
+  CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_bool_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_bool(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_bool(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_float_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_float(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_float(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_double_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_double(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_double(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_int32_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_int32(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_int32(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_int64_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_int64(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_int64(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const CassandraJson& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_string(cass_statement_.get(), index, v.value().c_str()));
+  CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.value().c_str()));
 }
 
 CassStatement* CassandraStatement::get() const {
@@ -375,8 +383,8 @@ CppCassandraDriver::CppCassandraDriver(
   auto hosts_str = JoinStrings(hosts, ",");
   LOG(INFO) << "Create Cassandra cluster to " << hosts_str << " :" << port << " ...";
   cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
-  CHECK_EQ(CASS_OK, cass_cluster_set_contact_points(cass_cluster_, hosts_str.c_str()));
-  CHECK_EQ(CASS_OK, cass_cluster_set_port(cass_cluster_, port));
+  CheckErrorCode(cass_cluster_set_contact_points(cass_cluster_, hosts_str.c_str()));
+  CheckErrorCode(cass_cluster_set_port(cass_cluster_, port));
   cass_cluster_set_request_timeout(cass_cluster_, kCassandraTimeOut.ToMilliseconds());
 
   // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.

@@ -196,10 +196,20 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	/* make new portal structure */
 	portal = (Portal) MemoryContextAllocZero(TopPortalContext, sizeof *portal);
 
-	/* initialize portal context; typically it won't store much */
+	/*
+	 * Initialize portal context; typically it won't store much.
+	 * - portalContext lasts for the lifetime of the portal thru multiple portal runs.
+	 * - runContext only lasts for the lifetime of one portal run, and one portal may run many
+	 *   times. When SELECT is fetches in multiple batches, each batch is associated with one
+	 *   portal run.  Some memory allocated in the portal run should only last till the end of
+	 *   each run and should be allocated by runContext.
+	 */
 	portal->portalContext = AllocSetContextCreate(TopPortalContext,
 												  "PortalContext",
 												  ALLOCSET_SMALL_SIZES);
+	portal->ybRunContext = AllocSetContextCreate(portal->portalContext,
+												 "PortalRunContext",
+												 ALLOCSET_SMALL_SIZES);
 
 	/* create a resource owner for the portal */
 	portal->resowner = ResourceOwnerCreate(CurTransactionResourceOwner,

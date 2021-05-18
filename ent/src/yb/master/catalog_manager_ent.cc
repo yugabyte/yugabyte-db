@@ -1095,7 +1095,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // Check table is active, table name and table schema are equal to backed up ones.
     if (table != nullptr) {
       auto table_lock = table->LockForRead();
-      if (table->is_running() && table->name() == meta.name()) {
+      if (table_lock->visible_to_client() && table->name() == meta.name()) {
         VLOG_WITH_PREFIX(1) << __func__ << " found existing table: " << table->ToString();
         // Check the found table schema.
         Schema persisted_schema;
@@ -1112,7 +1112,8 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       } else {
         VLOG_WITH_PREFIX(1)
             << __func__ << " existing table " << table->ToString() << " not suitable: "
-            << table->is_running() << ", name: " << table->name() << " vs " << meta.name();
+            << table_lock->pb.ShortDebugString()
+            << ", name: " << table->name() << " vs " << meta.name();
         table.reset();
       }
     }
@@ -1141,7 +1142,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           table = entry.second;
           auto ltm = table->LockForRead();
 
-          if (table->is_running() &&
+          if (ltm->visible_to_client() &&
               new_namespace_id == table->namespace_id() &&
               meta.name() == ltm->name() &&
               (table_data->is_index() ? IsUserIndexUnlocked(*table)
@@ -1497,10 +1498,120 @@ Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& 
   }
   for (const auto& id_and_type : objects_to_restore) {
     return STATUS_FORMAT(
-        IllegalState, "Expected to restore $0/$1, but it does not present after restoration",
+        IllegalState, "Expected to restore $0/$1, but it is not present after restoration",
         SysRowEntry::Type_Name(id_and_type.second), id_and_type.first);
   }
   return Status::OK();
+}
+
+void CatalogManager::CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(schedule_min_restore_time);
+
+  std::vector<TabletInfoPtr> hidden_tablets;
+  std::vector<TableInfoPtr> tables;
+  {
+    SharedLock<LockType> l(lock_);
+    hidden_tablets = hidden_tablets_;
+    tables.reserve(table_ids_map_->size());
+    for (const auto& p : *table_ids_map_) {
+      if (!p.second->is_system()) {
+        tables.push_back(p.second);
+      }
+    }
+  }
+  CleanupHiddenTablets(hidden_tablets, schedule_min_restore_time);
+  CleanupHiddenTables(std::move(tables));
+}
+
+void CatalogManager::CleanupHiddenTablets(
+    const std::vector<TabletInfoPtr>& hidden_tablets,
+    const ScheduleMinRestoreTime& schedule_min_restore_time) {
+  if (hidden_tablets.empty()) {
+    return;
+  }
+  std::vector<TabletInfoPtr> tablets_to_delete;
+  std::vector<TabletInfoPtr> tablets_to_remove_from_hidden;
+
+  for (const auto& tablet : hidden_tablets) {
+    auto lock = tablet->LockForRead();
+    if (!lock->ListedAsHidden()) {
+      tablets_to_remove_from_hidden.push_back(tablet);
+      continue;
+    }
+    auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
+    bool cleanup = true;
+    for (const auto& schedule_id_str : lock->pb.retained_by_snapshot_schedules()) {
+      auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+      auto it = schedule_min_restore_time.find(schedule_id);
+      // If schedule is not present in schedule_min_restore_time then it means that schedule
+      // was deleted, so it should not retain the tablet.
+      if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
+        VLOG_WITH_PREFIX(1)
+            << "Retaining tablet: " << tablet->tablet_id() << ", hide hybrid time: "
+            << hide_hybrid_time << ", because of schedule: " << schedule_id
+            << ", min restore time: " << it->second;
+        cleanup = false;
+        break;
+      }
+    }
+    if (cleanup) {
+      tablets_to_delete.push_back(tablet);
+    }
+  }
+  if (!tablets_to_delete.empty()) {
+    LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
+    WARN_NOT_OK(DeleteTabletListAndSendRequests(tablets_to_delete, "Cleanup hidden tablets", {}),
+                "Failed to cleanup hidden tablets");
+  }
+
+  if (!tablets_to_remove_from_hidden.empty()) {
+    auto it = tablets_to_remove_from_hidden.begin();
+    std::lock_guard<LockType> l(lock_);
+    // Order of tablets in tablets_to_remove_from_hidden matches order in hidden_tablets_,
+    // so we could avoid searching in tablets_to_remove_from_hidden.
+    auto filter = [&it, end = tablets_to_remove_from_hidden.end()](const TabletInfoPtr& tablet) {
+      if (it != end && tablet.get() == it->get()) {
+        ++it;
+        return true;
+      }
+      return false;
+    };
+    hidden_tablets_.erase(std::remove_if(hidden_tablets_.begin(), hidden_tablets_.end(), filter),
+                          hidden_tablets_.end());
+  }
+}
+
+void CatalogManager::CleanupHiddenTables(std::vector<TableInfoPtr> tables) {
+  std::vector<TableInfo::WriteLock> locks;
+  EraseIf([this, &locks](const TableInfoPtr& table) {
+    {
+      auto lock = table->LockForRead();
+      if (!lock->is_hidden() || lock->started_deleting() || !table->AreAllTabletsDeleted()) {
+        return true;
+      }
+    }
+    auto lock = table->LockForWrite();
+    if (lock->started_deleting()) {
+      return true;
+    }
+    LOG_WITH_PREFIX(INFO) << "Should delete table: " << AsString(table);
+    lock.mutable_data()->set_state(
+        SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
+    locks.push_back(std::move(lock));
+    return false;
+  }, &tables);
+  if (tables.empty()) {
+    return;
+  }
+
+  Status s = sys_catalog_->UpdateItems(tables, leader_ready_term());
+  if (!s.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to mark tables as deleted: " << s;
+    return;
+  }
+  for (auto& lock : locks) {
+    lock.Commit();
+  }
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
@@ -2153,6 +2264,9 @@ Status CatalogManager::FindCDCStreamsMarkedAsDeleting(
 Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
   auto ybclient = master_->async_client_initializer().client();
+  if (!ybclient) {
+    return STATUS(IllegalState, "Client not initialized or shutting down");
+  }
 
   // First. For each deleted stream, delete the cdc state rows.
   // Delete all the entries in cdc_state table that contain all the deleted cdc streams.
