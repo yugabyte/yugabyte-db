@@ -8,45 +8,35 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import org.yb.client.SetFlagResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.master.Master;
 import play.libs.Json;
 
-import java.io.IOException;
 import java.io.File;
-
+import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.DownloadingSoftware;
@@ -54,9 +44,7 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
 
@@ -72,6 +60,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   YBClient mockClient;
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
+
+  Region region;
+  AvailabilityZone az1;
+  AvailabilityZone az2;
+  AvailabilityZone az3;
 
   String cert1Contents = "-----BEGIN CERTIFICATE-----\n" +
       "MIIDEjCCAfqgAwIBAgIUEdzNoxkMLrZCku6H1jQ4pUgPtpQwDQYJKoZIhvcNAQEL\n" +
@@ -117,10 +110,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     upgradeUniverse.setUserTaskUUID(UUID.randomUUID());
-    Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone az1 = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
-    AvailabilityZone az3 = AvailabilityZone.create(region, "az-3", "AZ 3", "subnet-3");
+    region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
+    az1 = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    az2 = AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
+    az3 = AvailabilityZone.create(region, "az-3", "AZ 3", "subnet-3");
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
     CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
@@ -152,12 +145,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     // Setup mocks
     mockClient = mock(YBClient.class);
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-      Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
-    GetMasterClusterConfigResponse mockConfigResponse =
-      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.getMasterClusterConfig()).thenAnswer(i -> {
+        Master.SysClusterConfigEntryPB.Builder configBuilder =
+          Master.SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.version);
+        GetMasterClusterConfigResponse mockConfigResponse =
+          new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+        return mockConfigResponse;
+      });
     } catch (Exception e) {}
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
@@ -694,10 +689,54 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals(3, downloadTasks.size());
     position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, true);
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
-    position = assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
+    position = assertSoftwareCommonTasks(subTasksByPosition, position,
+      UpgradeType.ROLLING_UPGRADE, false);
     position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
     assertEquals(50, position);
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithReadReplica() {
+    // create default universe
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+      new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 3;
+    userIntent.ybSoftwareVersion = "old-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(region.uuid);
+    PlacementInfo pi = new PlacementInfo();
+    // Currently read replica zones are always affinitized
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, true);
+
+    defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID,
+      ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+
+    UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
+    taskParams.ybSoftwareVersion = "new-version";
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software,
+      defaultUniverse.version);
+    verify(mockNodeManager, times(33)).nodeCommand(any(), any());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+      subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+
+    int position = 0;
+    List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
+    assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
+    assertEquals(6, downloadTasks.size());
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, true);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
+    position = assertSoftwareCommonTasks(subTasksByPosition, position,
+      UpgradeType.ROLLING_UPGRADE, false);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true);
+    assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
+    assertEquals(74, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -1183,6 +1222,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       // We need to check that the master leader is upgraded last.
       Arrays.asList(1, 3, 2) :
       // We need to check that isAffinitized zone node is upgraded first.
-      Arrays.asList(2, 1, 3);
+      defaultUniverse.getUniverseDetails().getReadOnlyClusters().isEmpty() ?
+        Arrays.asList(2, 1, 3) :
+        // Primary cluster first, then read replica.
+        Arrays.asList(2, 1, 3, 6, 4, 5) ;
   }
 }

@@ -801,7 +801,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     >
   > tasks_ GUARDED_BY(mutex_);
 
-  double thread_creation_failure_probability_ = 0;
+  std::atomic<double> thread_creation_failure_probability_{0};
 };
 
 // ------------------------------------------------------------------------------------------------

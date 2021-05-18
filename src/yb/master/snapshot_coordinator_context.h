@@ -73,7 +73,7 @@ class SnapshotCoordinatorContext {
   virtual CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) = 0;
   virtual CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) = 0;
 
-  virtual void CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
+  virtual void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
 
   virtual const Schema& schema() = 0;
 

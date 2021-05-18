@@ -11,3 +11,4 @@ boto==2.49.0
 overrides==3.1.0
 downloadutil==1.0.2
 packaging==20.9
+semantic-version==2.8.5
