@@ -928,7 +928,6 @@ export default class ClusterFields extends Component {
       formValues,
       clusterType
     } = this.props;
-    
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
     const verifyIntentConditions = function () {
