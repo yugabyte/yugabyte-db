@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -47,7 +48,10 @@ import play.libs.ws.StandaloneWSResponse;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.mvc.*;
+import play.libs.concurrent.HttpExecutionContext;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import javax.persistence.PersistenceException;
 import java.io.File;
 import java.io.IOException;
@@ -59,6 +63,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.time.Duration;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.models.Users.Role;
@@ -91,6 +96,12 @@ public class SessionController extends Controller {
 
   @Inject
   PasswordPolicyService passwordPolicyService;
+
+  @Inject
+  RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject
+  HttpExecutionContext ec;
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
@@ -396,58 +407,63 @@ public class SessionController extends Controller {
   }
 
   @With(TokenAuthenticator.class)
-  public Result proxyRequest(UUID universeUUID, String requestUrl) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    try {
-      // Validate that the request is of <ip/hostname>:<port> format
-      Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
-      if (!matcher.matches()) {
-        LOG.error("Request {} does not match expected pattern", requestUrl);
-        return ApiResponse.error(BAD_REQUEST, "Invalid proxy request");
-      }
-
-      // Extract host + port from request
-      String host = matcher.group(1);
-      String port = matcher.group(2);
-      String addr = String.format("%s:%s", host, port);
-
-      // Validate that the proxy request is for a node from the specified universe
-      if (!universe.nodeExists(host, Integer.parseInt(port))) {
-        LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
-        return ApiResponse.error(BAD_REQUEST, "Invalid proxy request");
-      }
-
-      // Add query params to proxied request
-      requestUrl = apiHelper.buildUrl(requestUrl, request().queryString());
-
-      // Make the request
-      WSRequest request = ws.url("http://" + requestUrl);
-      CompletionStage<? extends StandaloneWSResponse> response = request.get();
-      StandaloneWSResponse r = response.toCompletableFuture().get(1, TimeUnit.MINUTES);
-
-      // Format the response body
-      if (r.getStatus() == 200) {
-        Result result;
-        String url = request.getUrl();
-        if (url.contains(".png") || url.contains(".ico") || url.contains("fontawesome")) {
-          result = ok(r.getBodyAsBytes().toArray());
-        } else {
-          result = ok(apiHelper.replaceProxyLinks(r.getBody(), universeUUID, addr));
+  public CompletionStage<Result> proxyRequest(UUID universeUUID, String requestUrl) {
+    return CompletableFuture.supplyAsync(() -> {
+      Universe universe = Universe.getOrBadRequest(universeUUID);
+      try {
+        // Validate that the request is of <ip/hostname>:<port> format
+        Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
+        if (!matcher.matches()) {
+          LOG.error("Request {} does not match expected pattern", requestUrl);
+          return ApiResponse.error(BAD_REQUEST, "Invalid proxy request");
         }
 
-        // Set response headers
-        for (Map.Entry<String, List<String>> entry : r.getHeaders().entrySet()) {
-          if (!entry.getKey().equals("Content-Length") && !entry.getKey().equals("Content-Type")) {
-            result = result.withHeader(entry.getKey(), String.join(",", entry.getValue()));
+        // Extract host + port from request
+        String host = matcher.group(1);
+        String port = matcher.group(2);
+        String addr = String.format("%s:%s", host, port);
+
+        // Validate that the proxy request is for a node from the specified universe
+        if (!universe.nodeExists(host, Integer.parseInt(port))) {
+          LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
+          return ApiResponse.error(BAD_REQUEST, "Invalid proxy request");
+        }
+
+        // Add query params to proxied request
+        final String finalRequestUrl = apiHelper.buildUrl(requestUrl, request().queryString());
+
+        // Make the request
+        Duration timeout = runtimeConfigFactory
+            .globalRuntimeConf().getDuration("yb.proxy_endpoint_timeout");
+        WSRequest request = ws.url("http://" + finalRequestUrl).setRequestTimeout(timeout);
+        CompletionStage<? extends StandaloneWSResponse> response = request.get();
+        StandaloneWSResponse r = response.toCompletableFuture().get(1, TimeUnit.MINUTES);
+
+        // Format the response body
+        if (r.getStatus() == 200) {
+          Result result;
+          String url = request.getUrl();
+          if (url.contains(".png") || url.contains(".ico") || url.contains("fontawesome")) {
+            result = ok(r.getBodyAsBytes().toArray());
+          } else {
+            result = ok(apiHelper.replaceProxyLinks(r.getBody(), universeUUID, addr));
           }
-        }
 
-        return result.as(r.getContentType());
-      } else {
-        return ApiResponse.error(BAD_REQUEST, r.getStatusText());
+          // Set response headers
+          for (Map.Entry<String, List<String>> entry : r.getHeaders().entrySet()) {
+            if (!entry.getKey().equals("Content-Length") &&
+                  !entry.getKey().equals("Content-Type")) {
+              result = result.withHeader(entry.getKey(), String.join(",", entry.getValue()));
+            }
+          }
+
+          return result.as(r.getContentType());
+        } else {
+          return ApiResponse.error(BAD_REQUEST, r.getStatusText());
+        }
+      } catch (Exception e) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
       }
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
+    }, ec.current());
   }
 }
