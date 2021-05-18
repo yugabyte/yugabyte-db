@@ -10,6 +10,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 
@@ -19,6 +21,9 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+
+import io.ebean.Model;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -27,6 +32,7 @@ import play.test.WithApplication;
 import play.test.Helpers;
 
 import java.util.Calendar;
+import java.util.stream.IntStream;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -50,17 +56,31 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.InjectMocks;
 
+@RunWith(MockitoJUnitRunner.class)
 public class CustomerTaskControllerTest extends FakeDBApplication {
   private Customer customer;
   private Users user;
   private Universe universe;
+
+  @Mock
+  private RuntimeConfig<Model> config;
+
+  @Mock
+  SettableRuntimeConfigFactory mockRuntimeConfigFactory;
+
+  @InjectMocks
+  private CustomerTaskController controller;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     universe = createUniverse(customer.getCustomerId());
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
   }
 
   @Test
@@ -262,6 +282,24 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertTrue(universeTasks.isArray());
     assertEquals(1, universeTasks.size());
     assertValues(universeTasks, "id", ImmutableList.of(taskUUID1.toString()));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testTaskHistoryLimit() {
+    String authToken = user.createAuthToken();
+    Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
+    when(config.getInt(CustomerTaskController.CUSTOMER_TASK_DB_QUERY_LIMIT))
+      .thenReturn(25);
+    IntStream.range(0, 100).forEach(i -> createTaskWithStatus(
+        universe.universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0));
+    Result result = controller.list(customer.uuid);
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isObject());
+    JsonNode universeTasks = json.get(universe.universeUUID.toString());
+    assertTrue(universeTasks.isArray());
+    assertEquals(25, universeTasks.size());
     assertAuditEntry(0, customer.uuid);
   }
 
