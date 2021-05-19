@@ -11,27 +11,27 @@
 package com.yugabyte.yw.commissioner;
 
 import akka.actor.ActorSystem;
-import io.jsonwebtoken.lang.Collections;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
 import com.yugabyte.yw.common.config.ConfigSubstitutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.DataConverters;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 @Singleton
 public class QueryAlerts {
@@ -84,17 +84,38 @@ public class QueryAlerts {
     Set<Alert> alertsStillActive = new HashSet<>();
     AlertDefinition.listActive(customerUUID).forEach(definition -> {
       try {
-        Universe universe = Universe.getOrBadRequest(definition.universeUUID);
-        String query = new ConfigSubstitutor(configFactory.forUniverse(universe))
-            .replace(definition.query);
+        String query;
+        // TODO Need to store threshold and duration in definition itself - this way custom
+        // logic will not be needed for each definition target type
+        switch (definition.targetType) {
+          case Universe:
+            Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
+            query = new ConfigSubstitutor(configFactory.forUniverse(universe))
+              .replace(definition.query);
+            break;
+          default:
+            throw new IllegalStateException(
+              "Unexpected definition type " + definition.targetType.name());
+        }
         if (!queryHelper.queryDirect(query).isEmpty()) {
           List<Alert> existingAlerts = Alert.getActiveCustomerAlerts(customerUUID, definition.uuid);
           // Create an alert to activate if it doesn't exist already.
-          if (Collections.isEmpty(existingAlerts)) {
-            Alert.create(customerUUID, definition.universeUUID, Alert.TargetType.UniverseType,
-                "CUSTOMER_ALERT", "Error",
-                String.format("%s for %s is firing", definition.name, universe.name),
-                definition.isActive, definition.uuid);
+          if (CollectionUtils.isEmpty(existingAlerts)) {
+            // For now - copy labels from definition to alert. Later, alert will also
+            // have own labels from Prometheus.
+            List<AlertLabel> labels = definition.getEffectiveLabels().stream()
+              .map(l -> new AlertLabel(l.getName(), l.getValue()))
+              .collect(Collectors.toList());
+
+            UUID targetUUID = definition.getTargetUUID();
+            Alert.TargetType targetType = DataConverters
+              .definitionToAlertTargetType(definition.targetType);
+            AlertTemplateSubstitutor substitutor = new AlertTemplateSubstitutor(definition);
+            String message = substitutor.replace(definition.getMessageTemplate());
+
+            Alert.create(customerUUID, targetUUID, targetType,
+              "CUSTOMER_ALERT", "Error", message,
+              definition.isActive, definition.uuid, labels);
           } else {
             alertsStillActive.addAll(existingAlerts);
           }

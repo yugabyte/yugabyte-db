@@ -2,16 +2,6 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -20,17 +10,18 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Alert.TargetType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.DataConverters;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
+
+import java.util.Collections;
+import java.util.UUID;
+import java.util.concurrent.*;
 
 public abstract class AbstractTaskBase implements ITask {
 
@@ -174,6 +165,7 @@ public abstract class AbstractTaskBase implements ITask {
     Alert.TargetType alertType = DataConverters.taskTargetToAlertTargetType(task.getTarget());
     Alert.create(customer.uuid,
         alertType == TargetType.TaskType ? task.getTaskUUID() : task.getTargetUUID(), alertType,
-        ALERT_ERROR_CODE, "Error", content, true, null);
+        ALERT_ERROR_CODE, "Error", content, true, null,
+      Collections.emptyList());
   }
 }

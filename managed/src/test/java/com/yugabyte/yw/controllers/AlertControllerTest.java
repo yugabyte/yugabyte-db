@@ -7,43 +7,49 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Users;
-
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
+
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.UUID;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static org.mockito.Mockito.*;
-import static play.test.Helpers.*;
-import static org.junit.Assert.*;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertControllerTest extends FakeDBApplication {
@@ -200,8 +206,9 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertDefinition_OkResult() {
     when(config.getString("config.parameter")).thenReturn("test");
 
-    AlertDefinition definition = AlertDefinition.create(customer.uuid, universe.universeUUID,
-        ALERT_NAME, "query {{ config.parameter }}", true);
+    AlertDefinition definition = AlertDefinition.create(customer.uuid,
+      AlertDefinition.TargetType.Universe, ALERT_NAME, "query {{ config.parameter }}", true,
+      AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
     Result result = controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_NAME);
     assertOk(result);
 
@@ -227,8 +234,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
   @Test
   public void testUpdateAlertDefinition_OkResult() {
-    AlertDefinition definition = AlertDefinition.create(customer.uuid, universe.universeUUID,
-        ALERT_NAME, "query {{ config.parameter }}", true);
+    AlertDefinition definition = AlertDefinition.create(customer.uuid,
+      AlertDefinition.TargetType.Universe, ALERT_NAME, "query {{ config.parameter }}", true,
+      AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
 
     // For FormData we are setting only used fields. This could be changed later.
     AlertDefinitionFormData data = new AlertDefinitionFormData();
@@ -255,7 +263,7 @@ public class AlertControllerTest extends FakeDBApplication {
     Result result = assertThrows(YWServiceException.class,
         () -> controller.updateAlertDefinition(customerUUID, definitionUUID)).getResult();
     AssertHelper.assertBadRequest(result, "Invalid Customer UUID:" + customerUUID);
-   
+
     result = assertThrows(YWServiceException.class,
         () -> controller.updateAlertDefinition(customer.uuid, definitionUUID)).getResult();
     AssertHelper.assertBadRequest(result, "Invalid Alert Definition UUID: " + definitionUUID);

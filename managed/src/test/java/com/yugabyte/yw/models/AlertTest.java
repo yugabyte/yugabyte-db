@@ -1,24 +1,28 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Alert.TargetType;
-
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
-
 import java.util.List;
 import java.util.UUID;
+
+import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.hasSize;
+import static org.junit.Assert.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class AlertTest extends FakeDBApplication {
@@ -26,6 +30,12 @@ public class AlertTest extends FakeDBApplication {
   private static final String TEST_ALERT_CODE = "TEST_ALERT_1";
 
   private static final String TEST_ALERT_CODE_2 = "TEST_ALERT_2";
+
+  private static final String TEST_LABEL = "test_label";
+  private static final String TEST_LABEL_VALUE = "test_value";
+
+  private static final String TEST_LABEL_2 = "test_label_2";
+  private static final String TEST_LABEL_VALUE_2 = "test_value2";
 
   private Customer cust1;
 
@@ -38,12 +48,42 @@ public class AlertTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAdd() {
-    Alert alert = Alert.create(cust1.uuid, TEST_ALERT_CODE, "Warning", "Testing alert.");
-      assertNotNull(alert.uuid);
-      assertEquals(cust1.uuid, alert.customerUUID);
-      assertEquals("Warning", alert.type);
-      assertEquals("Testing alert.", alert.message);
+  public void testAddAndGet() {
+    AlertDefinition definition = createDefinition();
+    Alert alert = createTestAlert(definition);
+
+    Alert queriedAlert = Alert.get(alert.uuid);
+
+    assertTestAlert(queriedAlert, definition);
+  }
+
+  @Test
+  public void testUpdateAndQueryByLabel() {
+    AlertDefinition definition = createDefinition();
+    Alert alert = createTestAlert(definition);
+
+    alert.update("New message");
+
+    AlertLabel oldLabel1 = new AlertLabel(alert, TEST_LABEL, TEST_LABEL_VALUE);
+    AlertLabel oldLabel2 = new AlertLabel(alert, TEST_LABEL_2, TEST_LABEL_VALUE_2);
+    List<Alert> queriedAlerts = Alert.get(cust1.uuid, oldLabel1);
+
+    assertThat(queriedAlerts, hasSize(1));
+    Alert queriedAlert = queriedAlerts.get(0);
+    assertThat(queriedAlert.message, is("New message"));
+    assertThat(queriedAlert.getLabels(), containsInAnyOrder(oldLabel1, oldLabel2));
+  }
+
+  @Test
+  public void testDelete() {
+    AlertDefinition definition = createDefinition();
+    Alert alert = createTestAlert(definition);
+
+    alert.delete();
+
+    Alert queriedAlert = Alert.get(alert.uuid);
+
+    assertThat(queriedAlert, Matchers.nullValue());
   }
 
   @Test
@@ -144,8 +184,10 @@ public class AlertTest extends FakeDBApplication {
   public void testGetActiveCustomerAlerts() {
     UUID targetUUID = UUID.randomUUID();
     Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
-    AlertDefinition definition = AlertDefinition.create(cust1.uuid, universe.universeUUID,
-        "alertDefinition", "query {{ test.parameter }}", true);
+    AlertDefinition definition = AlertDefinition.create(cust1.uuid,
+      AlertDefinition.TargetType.Universe,
+      "alertDefinition", "query {{ test.parameter }}", true,
+      ImmutableList.of());
 
     Alert alert1 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
         "Warning", "Testing alert 1.");
@@ -181,5 +223,49 @@ public class AlertTest extends FakeDBApplication {
 
     assertEquals(2, result.size());
     assertFalse(result.contains(alert3));
+  }
+
+  public AlertDefinition createDefinition() {
+    Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
+    return AlertDefinition.create(
+      cust1.getUuid(),
+      AlertDefinition.TargetType.Universe,
+      "name",
+      "query",
+      true,
+      AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get()
+    );
+  }
+
+  public Alert createTestAlert(AlertDefinition definition) {
+    AlertLabel label = new AlertLabel(TEST_LABEL, TEST_LABEL_VALUE);
+    AlertLabel label2 = new AlertLabel(TEST_LABEL_2, TEST_LABEL_VALUE_2);
+    return Alert.create(
+      cust1.uuid,
+      definition.getUniverseUUID(),
+      TargetType.UniverseType,
+      TEST_ALERT_CODE,
+      "Warning",
+      "Testing alert 1.",
+      true,
+      definition.uuid,
+      ImmutableList.of(label, label2)
+    );
+  }
+
+  private void assertTestAlert(Alert alert, AlertDefinition definition) {
+    AlertLabel label = new AlertLabel(
+      alert, TEST_LABEL, TEST_LABEL_VALUE);
+    AlertLabel label2 = new AlertLabel(
+      alert, TEST_LABEL_2, TEST_LABEL_VALUE_2);
+    assertThat(alert.customerUUID, is(cust1.uuid));
+    assertThat(alert.targetUUID, is(definition.getUniverseUUID()));
+    assertThat(alert.targetType, is(TargetType.UniverseType));
+    assertThat(alert.errCode, is(TEST_ALERT_CODE));
+    assertThat(alert.type, is("Warning"));
+    assertThat(alert.message, is("Testing alert 1."));
+    assertThat(alert.definitionUUID, equalTo(definition.uuid));
+    assertTrue(alert.sendEmail);
+    assertThat(alert.getLabels(), containsInAnyOrder(label, label2));
   }
 }
