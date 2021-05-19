@@ -77,7 +77,8 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
     OUT cpu_sys_time        float8,
     OUT wal_records 		int8,
     OUT wal_fpi 			int8,
-    OUT wal_bytes 			numeric
+    OUT wal_bytes 			numeric,
+    OUT comments 			TEXT
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
@@ -144,6 +145,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     queryid,
     top_queryid,
     query,
+	comments,
 	planid,
 	query_plan,
 	(SELECT query from pg_stat_monitor_internal(true) s where s.queryid = p.top_queryid) AS top_query,

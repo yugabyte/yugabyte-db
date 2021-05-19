@@ -15,13 +15,14 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include <regex.h>
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
 
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "devel"
-#define PG_STAT_STATEMENTS_COLS         51  /* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         52  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
 
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
@@ -73,6 +74,7 @@ static struct rusage  rusage_end;
 static unsigned char *pgss_qbuf[MAX_BUCKETS];
 static char *pgss_explain(QueryDesc *queryDesc);
 
+static char *extract_query_comments(const char *query);
 static int  get_histogram_bucket(double q_time);
 static bool IsSystemInitialized(void);
 static void dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
@@ -893,6 +895,7 @@ pgss_update_entry(pgssEntry *entry,
 						int bucketid,
 						uint64 queryid,
 						const char *query,
+						const char *comments,
 						PlanInfo *plan_info,
 						CmdType cmd_type,
 						SysInfo *sys_info,
@@ -910,6 +913,7 @@ pgss_update_entry(pgssEntry *entry,
 	pgssSharedState     *pgss = pgsm_get_ss();
 	double              old_mean;
 	int             	message_len = error_info ? strlen (error_info->message) : 0;
+	int             	comments_len = comments ? strlen (comments) : 0;
 	int             	sqlcode_len = error_info ? strlen (error_info->sqlcode) : 0;
 	int             	plan_text_len = plan_info ? strlen (plan_info->plan_text) : 0;
 
@@ -922,6 +926,7 @@ pgss_update_entry(pgssEntry *entry,
 		if (reset)
 			memset(&entry->counters, 0, sizeof(Counters));
 
+		_snprintf(e->counters.info.comments, comments, comments_len, COMMENTS_LEN);
 		e->counters.state = kind;
 		if (kind == PGSS_PLAN)
 		{
@@ -1204,12 +1209,14 @@ pgss_store(uint64 queryid,
 	uint64 			dbid = MyDatabaseId;
 	uint64 			ip = pg_get_client_addr();
 	uint64			planid = plan_info ? plan_info->planid: 0;
-
+	char            *comments;
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
 		return;
 
 	Assert(query != NULL);
+
+	comments = extract_query_comments(query);
 
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])
@@ -1258,6 +1265,7 @@ pgss_store(uint64 queryid,
 							bucketid,			/* bucketid */
 							queryid,			/* queryid */
 							query, 				/* query */
+							comments,			/* comments */
 							plan_info,			/* PlanInfo */
 							cmd_type,			/* CmdType */
 							sys_info,			/* SysInfo */
@@ -1364,7 +1372,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
-	if (tupdesc->natts != 48)
+	if (tupdesc->natts != 49)
 		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
@@ -1658,6 +1666,12 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 											Int32GetDatum(-1));
 			/* wal_bytes at column number 46 */
 			values[i++] = wal_bytes;
+
+			/* application_name at column number 47 */
+			if (strlen(tmp.info.comments) > 0)
+				values[i++] = CStringGetTextDatum(tmp.info.comments);
+			else
+				nulls[i++] = true;
 		}
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
@@ -3049,3 +3063,26 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 	return CStringGetTextDatum(text_str);
 }
 
+char *
+extract_query_comments(const char *query)
+{
+	regex_t    preg;
+	char       *pattern = "/\\*.*\\*/";
+	int        rc;
+	size_t     nmatch = 1;
+	regmatch_t pmatch;
+	char       *comments = palloc0(512);
+
+   rc = regcomp(&preg, pattern, 0);
+   if (rc != 0)
+   {
+	   printf("regcomp() failed, returning nonzero (%d)\n", rc);
+	   return "";
+   }
+   rc = regexec(&preg, query, nmatch, &pmatch, 0);
+   if (rc != 0)
+	   return "";
+   sprintf(comments, "%.*s", pmatch.rm_eo - pmatch.rm_so -4, &query[pmatch.rm_so + 2]);
+   regfree(&preg);
+   return comments;
+}

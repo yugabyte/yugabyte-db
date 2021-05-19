@@ -78,6 +78,7 @@
 #define CMD_LST				10
 #define CMD_LEN				20
 #define APPLICATIONNAME_LEN	100
+#define COMMENTS_LEN        512
 #define PGSM_OVER_FLOW_MAX	10
 #define PLAN_TEXT_LEN		1024
 /* the assumption of query max nested level */
@@ -211,6 +212,7 @@ typedef struct QueryInfo
 	uint64		parentid;					/* parent queryid of current query*/
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
 	char		application_name[APPLICATIONNAME_LEN];
+	char		comments[COMMENTS_LEN];
 	char		relations[REL_LST][REL_LEN];         /* List of relation involved in the query */
 	int			num_relations;				/*  Number of relation in the query */
 	CmdType		cmd_type;                   /* query command type SELECT/UPDATE/DELETE/INSERT */
