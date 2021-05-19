@@ -30,8 +30,8 @@ The following table describes the fields and their values:
 
 | Field | Type | Description |
 | :---- | :--- | :---------- |
-| `datid` | oid | The object identifier (OID) of the database to which the backend is connected. |
-| `datname` | name | The name of the database to which the backend is connected. |
+| `datid` | oid | Object identifier (OID) of the database to which the backend is connected. |
+| `datname` | name | Name of the database to which the backend is connected. |
 | `pid` | integer | Backend process ID. |
 | `usesysid` | oid | The user's OID. |
 | `usename` | name | The user's name. |
@@ -63,10 +63,10 @@ yugabyte=# SELECT datname, pid, application_name, state, query
 ```
 
 ```output
-datname  |  pid  | application_name | state  |                                   query                                   
+ datname  |  pid  | application_name | state  |                                   query                                   
 ----------+-------+------------------+--------+----------------------------------------------------------------------------
-yugabyte | 10027 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
-         | 10013 |                  |        |
+ yugabyte | 10027 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
+          | 10013 |                  |        |
 (2 rows)
 ```
 
@@ -95,9 +95,9 @@ Often enough, you may need to identify long-running queries, because these queri
     ```
 
     ```output
-    id  |     name      | state
+     id  |     name      | state
     -----+---------------+-------
-    212 | Jacinthe Rowe | CO
+     212 | Jacinthe Rowe | CO
     (1 row)
     ```
 
@@ -127,11 +127,11 @@ Since the transaction never ends, it wastes resources as an open process.
     ```
 
     ```output
-    datname  |  pid  | application_name |        state        |                                   query                                   
+     datname  |  pid  | application_name |        state        |                                   query                                   
     ----------+-------+------------------+---------------------+----------------------------------------------------------------------------
-    yugabyte | 10381 | ysqlsh           | active              | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
-    yb_demo  | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212;
-             | 10013 |                  |                     |
+     yugabyte | 10381 | ysqlsh           | active              | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
+     yb_demo  | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212;
+              | 10013 |                  |                     |
     (3 rows)
     ```
 
@@ -146,9 +146,9 @@ Since the transaction never ends, it wastes resources as an open process.
     ```
 
     ```output
-    pg_terminate_backend
+     pg_terminate_backend
     ---------------------------
-    t
+     t
     (1 row)
     ```
 
@@ -160,10 +160,10 @@ Since the transaction never ends, it wastes resources as an open process.
     ```
 
     ```output
-    datname  |  pid  | application_name | state  |                                   query                                   
+     datname  |  pid  | application_name | state  |                                   query                                   
     ----------+-------+------------------+--------+----------------------------------------------------------------------------
-    yugabyte | 10381 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
-             | 10013 |                  |        |
+     yugabyte | 10381 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
+              | 10013 |                  |        |
     (2 rows)
     ```
 
@@ -201,8 +201,8 @@ yugabyte=# SELECT datname, pid, application_name, state, query, xact_start
 ```
 
 ```output
-datname |  pid  | application_name |        state        |                     query                     |          xact_start         
+ datname |  pid  | application_name |        state        |                     query                     |          xact_start         
 ---------+-------+------------------+---------------------+-----------------------------------------------+------------------------------
-yb_demo | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212; | 2021-05-06 15:26:28.74615-04
+ yb_demo | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212; | 2021-05-06 15:26:28.74615-04
 (1 row)
 ```
