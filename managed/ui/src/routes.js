@@ -121,6 +121,10 @@ function validateSession(store, replacePath, callback) {
   const userId = Cookies.get('userId') || localStorage.getItem('userId');
   const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
+    var location = window.location.pathname;
+    if (location !== '/') {
+      localStorage.setItem('pathToRedirect', location);
+    }
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
         store.dispatch(insecureLoginResponse(response));
@@ -169,6 +173,10 @@ function validateSession(store, replacePath, callback) {
           localStorage.setItem('customerId', response.payload.data['uuid']);
         }
         localStorage.setItem('userId', userId);
+        if (localStorage.getItem('pathToRedirect')) {
+          browserHistory.push(localStorage.getItem('pathToRedirect'));
+          localStorage.removeItem('pathToRedirect');
+        }
       } else {
         store.dispatch(resetCustomer());
         clearCredentials();
