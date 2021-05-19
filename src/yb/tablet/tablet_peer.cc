@@ -101,6 +101,8 @@ DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
+DECLARE_int32(ysql_transaction_abort_timeout_ms);
+
 namespace yb {
 namespace tablet {
 
@@ -527,12 +529,35 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-void TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  if (StartShutdown()) {
+Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
+  bool isShutdownInitiated = StartShutdown();
+
+  RETURN_NOT_OK(AbortSQLTransactions());
+
+  if (isShutdownInitiated) {
     CompleteShutdown(is_drop_table);
   } else {
     WaitUntilShutdown();
   }
+  return Status::OK();
+}
+
+Status TabletPeer::AbortSQLTransactions() {
+  // Once raft group state enters QUIESCING state,
+  // new queries cannot be processed from then onwards.
+  // Aborting any remaining active transactions in the tablet.
+  if (tablet_ && tablet_->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    if (tablet_->transaction_participant()) {
+      HybridTime maxCutoff = HybridTime::kMax;
+      LOG(INFO) << "Aborting transactions that started prior to " << maxCutoff
+                << " for tablet id " << tablet_->tablet_id();
+      CoarseTimePoint deadline = CoarseMonoClock::Now() +
+          MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
+      WARN_NOT_OK(tablet_->transaction_participant()->StopActiveTxnsPriorTo(maxCutoff, deadline),
+                  "Cannot abort transactions for tablet " + tablet_->tablet_id());
+    }
+  }
+  return Status::OK();
 }
 
 Status TabletPeer::CheckRunning() const {
@@ -673,6 +698,10 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
   status_pb_out->set_state(state_);
   status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
+  auto tablet = tablet_;
+  if (tablet) {
+    status_pb_out->set_table_type(tablet->table_type());
+  }
   disk_size_info.ToPB(status_pb_out);
 }
 
@@ -1190,7 +1219,7 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 
-TableType TabletPeer::table_type() {
+TableType TabletPeer::table_type() EXCLUDES(lock_) {
   // TODO: what if tablet is not set?
   return DCHECK_NOTNULL(tablet())->table_type();
 }

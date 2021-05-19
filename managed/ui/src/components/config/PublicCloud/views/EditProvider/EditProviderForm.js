@@ -7,12 +7,13 @@ import { Field } from 'redux-form';
 import { isNonEmptyObject, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../../utils/PromiseUtils';
 import { getClusterProviderUUIDs } from '../../../../../utils/UniverseUtils';
+import { YBLoading } from '../../../../common/indicators';
 
 export default class EditProviderForm extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      providerInUse: new Set()
+      providersInUse: new Set()
     };
   }
   submitEditProvider = (payload) => {
@@ -24,55 +25,55 @@ export default class EditProviderForm extends Component {
   };
 
   componentDidUpdate(prevProps) {
-    const { editProvider } = this.props;
-    if (
-      isNonEmptyObject(editProvider) &&
-      getPromiseState(editProvider).isSuccess() &&
-      getPromiseState(prevProps.editProvider).isLoading()
-    ) {
-      this.props.reloadCloudMetadata();
-      this.props.switchToResultView();
+    const { editProvider, universeList, reloadCloudMetadata, switchToResultView } = this.props;
+    const { providersInUse } = this.state;
+    if (isNonEmptyObject(editProvider)) {
+      if(getPromiseState(editProvider).isSuccess() &&
+        getPromiseState(prevProps.editProvider).isLoading()
+      ) {
+        reloadCloudMetadata();
+        switchToResultView();
+      }
     }
-  }
 
-  componentDidMount() {
-    this.props.fetchUniverseList();
-  }
-
-  shouldComponentUpdate(nextProps) {
-    const { providerInUse } = this.state;
-    if (
-      nextProps.universeList.data &&
-      nextProps.universeList.data.length !== 0 &&
-      providerInUse.size === 0
-    ) {
-      nextProps.universeList.data.forEach((universe) => {
+    if (universeList.data && universeList.data.length !== 0 && providersInUse.size === 0) {
+      universeList.data.forEach((universe) => {
         const [primaryClusterProviderUUID, readOnlyClusterProviderUUID] = getClusterProviderUUIDs(
           universe.universeDetails.clusters
         );
         if (primaryClusterProviderUUID) {
-          providerInUse.add(primaryClusterProviderUUID);
+          providersInUse.add(primaryClusterProviderUUID);
         }
         if (readOnlyClusterProviderUUID) {
-          providerInUse.add(readOnlyClusterProviderUUID);
+          providersInUse.add(readOnlyClusterProviderUUID);
         }
       });
-      this.setState({ providerInUse });
+      this.setState({ providersInUse: new Set(providersInUse) });
     }
-    return true;
+  }
+
+  componentDidMount() {
+    if (!getPromiseState(this.props.universeList).isSuccess()) {
+      this.props.fetchUniverseList();
+    }
   }
 
   render() {
-    const { error, handleSubmit, hostedZoneId, uuid } = this.props;
-    const { providerInUse } = this.state;
+    const { error, handleSubmit, hostedZoneId, uuid, universeList } = this.props;
+    const { providersInUse } = this.state;
     let isHostedZoneIdValid = true;
     let verifyEditConditions = true;
     if (!isNonEmptyString(hostedZoneId)) {
       isHostedZoneIdValid = false;
       verifyEditConditions = false;
     }
+
+    if (getPromiseState(universeList).isLoading()) {
+      return <YBLoading />;
+    }
+
     return (
-      <div>
+      <div data-testid="edit-provider-form">
         <h4>Edit Provider</h4>
         <form name="EditProviderForm" onSubmit={handleSubmit(this.submitEditProvider)}>
           {error && <Alert bsStyle="danger">{error}</Alert>}
@@ -82,7 +83,7 @@ export default class EditProviderForm extends Component {
               type="text"
               label="Name"
               component={YBTextInputWithLabel}
-              isReadOnly={providerInUse.has(uuid)}
+              isReadOnly={providersInUse.has(uuid)}
             />
             <Field
               name="accountUUID"
@@ -92,25 +93,26 @@ export default class EditProviderForm extends Component {
               isReadOnly={true}
             />
             <Field
+              ariaLabel="secretKey"
               name="secretKey"
               type="text"
               label="SSH Key"
               component={YBTextInputWithLabel}
-              isReadOnly={providerInUse.has(uuid)}
+              isReadOnly={providersInUse.has(uuid)}
             />
             <Field
               name="hostedZoneId"
               type="text"
               label="Hosted Zone ID"
               component={YBTextInputWithLabel}
-              isReadOnly={isHostedZoneIdValid || providerInUse.has(uuid)}
+              isReadOnly={isHostedZoneIdValid || providersInUse.has(uuid)}
             />
             <div className="form-action-button-container">
               <YBButton
                 btnText={'Submit'}
                 btnClass={'btn btn-default save-btn'}
                 btnType="submit"
-                disabled={verifyEditConditions && providerInUse.has(uuid)}
+                disabled={verifyEditConditions && providersInUse.has(uuid)}
               />
               <YBButton
                 btnText={'Cancel'}

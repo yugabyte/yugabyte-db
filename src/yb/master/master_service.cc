@@ -41,15 +41,19 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_service_base-internal.h"
 #include "yb/master/master.h"
+#include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-#include "yb/master/encryption_manager.h"
+
 #include "yb/server/webserver.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
@@ -185,12 +189,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     return;
   }
 
-  ts_desc->UpdateHeartbeatTime();
-  ts_desc->set_num_live_replicas(req->num_live_tablets());
-  ts_desc->set_leader_count(req->leader_count());
-  ts_desc->set_physical_time(req->ts_physical_time());
-  ts_desc->set_hybrid_time(HybridTime::FromPB(req->ts_hybrid_time()));
-  ts_desc->set_heartbeat_rtt(MonoDelta::FromMicroseconds(req->rtt_us()));
+  ts_desc->UpdateHeartbeat(req);
 
   // Adjust the table report limit per heartbeat so this can be dynamically changed.
   if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit)) {
@@ -217,8 +216,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     if (rpc.GetClientDeadline() > safe_time_left) {
       for (const auto& tablet : req->tablets_for_split()) {
         VLOG(1) << "Got tablet to split: " << AsString(tablet);
-        const auto split_status = server_->catalog_manager()->SplitTablet(
-            tablet.tablet_id(), tablet.split_encoded_key(), tablet.split_partition_key());
+        const auto split_status = server_->catalog_manager()->SplitTablet(tablet.tablet_id());
         if (!split_status.ok()) {
           if (MasterError(split_status) == MasterErrorPB::REACHED_SPLIT_LIMIT) {
             YB_LOG_EVERY_N_SECS(WARNING, 60 * 60) << split_status;
@@ -280,8 +278,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
   if (PREDICT_FALSE(FLAGS_TEST_master_fail_transactional_tablet_lookups)) {
-    std::vector<scoped_refptr<TableInfo>> tables;
-    server_->catalog_manager()->GetAllTables(&tables);
+    auto tables = server_->catalog_manager()->GetTables(GetTablesMode::kAll);
     const auto& tablet_id = req->tablet_ids(0);
     for (const auto& table : tables) {
       TabletInfos tablets;
@@ -370,6 +367,7 @@ BOOST_PP_SEQ_FOR_EACH(
     MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK, CatalogManager,
     (CreateTable)
     (IsCreateTableDone)
+    (AnalyzeTable)
     (TruncateTable)
     (IsTruncateTableDone)
     (BackfillIndex)

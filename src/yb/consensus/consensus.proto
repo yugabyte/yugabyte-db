@@ -542,6 +542,7 @@ enum OpIdType {
   UNKNOWN_OPID_TYPE = 0;
   RECEIVED_OPID = 1;
   COMMITTED_OPID = 2;
+  SPLIT_OPID = 3;
 }
 
 message GetLastOpIdRequestPB {

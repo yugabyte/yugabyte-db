@@ -14,7 +14,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import com.yugabyte.yw.forms.YWSuccess;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.*;
@@ -118,7 +118,7 @@ public class TablesController extends AuthenticatedController {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);
       // TODO: This should be temporary unavailable error and not a success!!
-      return YWSuccess.asResult(errMsg);
+      return YWResults.YWSuccess.withMessage(errMsg);
     }
     String certificate = universe.getCertificate();
     YBClient client = null;

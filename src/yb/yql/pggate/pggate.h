@@ -420,6 +420,13 @@ class PgApiImpl {
   CHECKED_STATUS ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
+  // Analyze.
+  CHECKED_STATUS NewAnalyze(const PgObjectId& table_id,
+                           PgStatement **handle);
+
+  CHECKED_STATUS ExecAnalyze(PgStatement *handle, int32_t* rows);
+
+  //------------------------------------------------------------------------------------------------
   // Transaction control.
   PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
 

@@ -211,6 +211,11 @@ TAG_FLAG(disable_alter_vs_write_mutual_exclusion, runtime);
 DEFINE_bool(cleanup_intents_sst_files, true,
             "Cleanup intents files that are no more relevant to any running transaction.");
 
+DEFINE_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
+             "Max amount of time we can wait for active transactions to abort on a tablet "
+             "after DDL (ie. DROP TABLE) is executed. This deadline is same as "
+             "unresponsive_ts_rpc_timeout_ms");
+
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
@@ -1859,7 +1864,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
 
   rocksdb::WriteBatch regular_write_batch;
   auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-      data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state,
+      data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state, data.log_ht,
       &regular_write_batch, intents_db_.get(), nullptr /* intents_write_batch */));
 
   // data.hybrid_time contains transaction commit time.
@@ -1884,7 +1889,7 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-          id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(),
+          id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(), HybridTime(),
           nullptr /* regular_write_batch */, intents_db_.get(), &intents_write_batch));
       if (new_apply_state.key.empty()) {
         break;
@@ -3273,6 +3278,8 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
         &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, rocksdb.db_type),
         /* statistics */ nullptr, tablet_options_);
     rocksdb_options.create_if_missing = false;
+    // Disable background compactions, we only need to update flushed frontier.
+    rocksdb_options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleNone;
     std::unique_ptr<rocksdb::DB> db =
         VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, rocksdb.db_dir));
     RETURN_NOT_OK(

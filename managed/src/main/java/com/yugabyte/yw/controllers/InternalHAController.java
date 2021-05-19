@@ -15,7 +15,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.DemoteInstanceFormData;
-import com.yugabyte.yw.forms.YWSuccess;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
@@ -30,8 +30,8 @@ import play.mvc.With;
 
 import java.io.File;
 import java.net.URL;
-import java.util.Map;
 import java.util.Date;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -162,7 +162,7 @@ public class InternalHAController extends Controller {
     if (success) {
       // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
       replicationManager.cleanupReceivedBackups(leaderUrl);
-      return YWSuccess.asResult("File uploaded");
+      return YWResults.YWSuccess.withMessage("File uploaded");
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "failed to copy backup");
     }

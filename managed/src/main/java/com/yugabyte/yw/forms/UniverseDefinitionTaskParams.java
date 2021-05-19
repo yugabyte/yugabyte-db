@@ -6,8 +6,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common;
@@ -19,7 +19,6 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import play.data.validation.Constraints;
-import play.libs.Json;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -44,6 +43,7 @@ import java.util.stream.Collectors;
  */
 
 @JsonIgnoreProperties(ignoreUnknown = true)
+@JsonDeserialize(converter = UniverseDefinitionTaskParams.BaseConverter.class)
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @Constraints.Required()
@@ -65,7 +65,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // id. This is used as the prefix of node names in the universe.
   public String nodePrefix = null;
 
-  // The UUID of the rootCA to be used to generate client certificates and facilitate TLS communication.
+  // The UUID of the rootCA to be used to generate client certificates and facilitate TLS
+  // communication.
   public UUID rootCA = null;
 
   // This flag represents whether user has chosen to provide placement info
@@ -188,21 +189,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       this.userIntent = userIntent;
     }
 
-    @Deprecated
-    public JsonNode toJson() {
-      if (userIntent == null) {
-        return null;
-      }
-      ObjectNode clusterJson = (ObjectNode) Json.toJson(this);
-      if (userIntent.regionList != null && !userIntent.regionList.isEmpty()) {
-        List<Region> regions = Region.find.query().where().idIn(userIntent.regionList).findList();
-        if (!regions.isEmpty()) {
-          clusterJson.set("regions", Json.toJson(regions));
-        }
-      }
-      return clusterJson;
-    }
-
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public List<Region> getRegions() {
       List<Region> regions = ImmutableList.of();
@@ -230,12 +216,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
       if (!cluster.userIntent.providerType.equals(userIntent.providerType)) {
         throw new IllegalArgumentException("Mismatched provider types, expected " +
-            userIntent.providerType.name() + " but got " + cluster.userIntent.providerType.name());
+          userIntent.providerType.name() + " but got " + cluster.userIntent.providerType.name());
       }
 
       // We only deal with AWS instance tags.
       if (!Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType) ||
-          userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
+        userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
         return true;
       }
 
@@ -266,8 +252,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // The list of regions that the user wants to place data replicas into.
     public List<UUID> regionList;
 
-    // The regions that the user wants to nominate as the preferred region. This makes sense only for
-    // a multi-region setup.
+    // The regions that the user wants to nominate as the preferred region. This makes sense only
+    // for a multi-region setup.
     public UUID preferredRegion;
 
     // Cloud Instance Type that the user wants
@@ -322,20 +308,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
-    public Map<String, String> masterGFlags = new HashMap<String, String>();
-    public Map<String, String> tserverGFlags = new HashMap<String, String>();
+    public Map<String, String> masterGFlags = new HashMap<>();
+    public Map<String, String> tserverGFlags = new HashMap<>();
 
     // Instance tags (used for AWS only).
-    public Map<String, String> instanceTags = new HashMap<String, String>();
+    public Map<String, String> instanceTags = new HashMap<>();
 
     @Override
     public String toString() {
       return "UserIntent " + "for universe=" + universeName + " type=" +
-             instanceType + ", numNodes=" + numNodes + ", prov=" + provider + ", provType=" +
-             providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
-             preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
-             ", deviceInfo='" + deviceInfo + "', timeSync=" + useTimeSync + ", publicIP=" +
-             assignPublicIP + ", tags=" + instanceTags;
+        instanceType + ", numNodes=" + numNodes + ", prov=" + provider + ", provType=" +
+        providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
+        preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
+        ", deviceInfo='" + deviceInfo + "', timeSync=" + useTimeSync + ", publicIP=" +
+        assignPublicIP + ", tags=" + instanceTags;
     }
 
     public UserIntent clone() {
@@ -366,17 +352,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // NOTE: If new fields are checked, please add them to the toString() as well.
     public boolean equals(UserIntent other) {
       if (universeName.equals(other.universeName) &&
-          provider.equals(other.provider) &&
-          providerType == other.providerType &&
-          replicationFactor == other.replicationFactor &&
-          compareRegionLists(regionList, other.regionList) &&
-          Objects.equals(preferredRegion, other.preferredRegion) &&
-          instanceType.equals(other.instanceType) &&
-          numNodes == other.numNodes &&
-          ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
-          (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
-          assignPublicIP == other.assignPublicIP &&
-          useTimeSync == other.useTimeSync) {
+        provider.equals(other.provider) &&
+        providerType == other.providerType &&
+        replicationFactor == other.replicationFactor &&
+        compareRegionLists(regionList, other.regionList) &&
+        Objects.equals(preferredRegion, other.preferredRegion) &&
+        instanceType.equals(other.instanceType) &&
+        numNodes == other.numNodes &&
+        ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
+        (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
+        assignPublicIP == other.assignPublicIP &&
+        useTimeSync == other.useTimeSync) {
         return true;
       }
       return false;
@@ -384,17 +370,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean onlyRegionsChanged(UserIntent other) {
       if (universeName.equals(other.universeName) &&
-          provider.equals(other.provider) &&
-          providerType == other.providerType &&
-          replicationFactor == other.replicationFactor &&
-          newRegionsAdded(regionList, other.regionList) &&
-          Objects.equals(preferredRegion, other.preferredRegion) &&
-          instanceType.equals(other.instanceType) &&
-          numNodes == other.numNodes &&
-          ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
-          (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
-          assignPublicIP == other.assignPublicIP &&
-          useTimeSync == other.useTimeSync) {
+        provider.equals(other.provider) &&
+        providerType == other.providerType &&
+        replicationFactor == other.replicationFactor &&
+        newRegionsAdded(regionList, other.regionList) &&
+        Objects.equals(preferredRegion, other.preferredRegion) &&
+        instanceType.equals(other.instanceType) &&
+        numNodes == other.numNodes &&
+        ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
+        (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
+        assignPublicIP == other.assignPublicIP &&
+        useTimeSync == other.useTimeSync) {
         return true;
       }
       return false;
@@ -403,6 +389,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     private static boolean newRegionsAdded(List<UUID> left, List<UUID> right) {
       return (new HashSet<>(left)).containsAll(new HashSet<>(right));
     }
+
     /**
      * Helper API to check if the set of regions is the same in two lists. Does not validate that
      * the UUIDs correspond to actual, existing Regions.
@@ -424,7 +411,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      */
     @JsonIgnore
     public Map<String, String> getInstanceTagsForInstanceOps() {
-      Map<String, String> retTags = new HashMap<String, String>();
+      Map<String, String> retTags = new HashMap<>();
       if (!Provider.InstanceTagsEnabledProviders.contains(providerType)) {
         return retTags;
       }
@@ -467,7 +454,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    * if one does not already exist. Otherwise, update the existing primary cluster with the
    * specified UserIntent and PlacementInfo.
    *
-   * @param userIntent UserIntent describing the primary cluster.
+   * @param userIntent    UserIntent describing the primary cluster.
    * @param placementInfo PlacementInfo describing the placement of the primary cluster.
    * @return the updated/inserted primary cluster.
    */
@@ -481,7 +468,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         primaryCluster.placementInfo = placementInfo;
       }
     } else {
-      primaryCluster = new Cluster(ClusterType.PRIMARY, (userIntent == null) ? new UserIntent() : userIntent);
+      primaryCluster = new Cluster(ClusterType.PRIMARY, (userIntent == null) ? new UserIntent() :
+        userIntent);
       primaryCluster.placementInfo = placementInfo;
       clusters.add(primaryCluster);
     }
@@ -493,9 +481,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    * if one does not already exist. Otherwise, update the existing cluster with the
    * specified UserIntent and PlacementInfo.
    *
-   * @param userIntent UserIntent describing the cluster.
+   * @param userIntent    UserIntent describing the cluster.
    * @param placementInfo PlacementInfo describing the placement of the cluster.
-   * @param clusterUuid uuid of the cluster we want to change.
+   * @param clusterUuid   uuid of the cluster we want to change.
    * @return the updated/inserted cluster.
    */
   public Cluster upsertCluster(UserIntent userIntent, PlacementInfo placementInfo,
@@ -526,7 +514,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     Cluster cluster = getClusterByUuid(clusterUuid);
     if (cluster == null) {
       throw new IllegalArgumentException("UUID " + clusterUuid + " not found in universe " +
-                                         universeUUID);
+        universeUUID);
     }
 
     clusters.remove(cluster);
@@ -539,21 +527,21 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public Cluster getPrimaryCluster() {
-     List<Cluster> foundClusters = clusters.stream()
-                                           .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
-                                           .collect(Collectors.toList());
-     if (foundClusters.size() > 1) {
-       throw new RuntimeException("Multiple primary clusters found in params for universe " +
-                                  universeUUID.toString());
-     }
-     return Iterables.getOnlyElement(foundClusters, null);
+    List<Cluster> foundClusters = clusters.stream()
+      .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
+      .collect(Collectors.toList());
+    if (foundClusters.size() > 1) {
+      throw new RuntimeException("Multiple primary clusters found in params for universe " +
+        universeUUID.toString());
+    }
+    return Iterables.getOnlyElement(foundClusters, null);
   }
 
   @JsonIgnore
   public Set<NodeDetails> getTServers() {
     Set<NodeDetails> Tservers = new HashSet<>();
     for (NodeDetails n : nodeDetailsSet) {
-      if (n.isTserver){
+      if (n.isTserver) {
         Tservers.add(n);
       }
     }
@@ -568,8 +556,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @JsonIgnore
   public List<Cluster> getReadOnlyClusters() {
     return clusters.stream()
-                   .filter(c -> c.clusterType.equals(ClusterType.ASYNC))
-                   .collect(Collectors.toList());
+      .filter(c -> c.clusterType.equals(ClusterType.ASYNC))
+      .collect(Collectors.toList());
   }
 
   /**
@@ -584,13 +572,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getPrimaryCluster();
     }
 
-    List<Cluster> foundClusters =  clusters.stream()
+    List<Cluster> foundClusters = clusters.stream()
       .filter(c -> c.uuid.equals(uuid))
       .collect(Collectors.toList());
 
     if (foundClusters.size() > 1) {
       throw new RuntimeException("Multiple clusters with uuid " + uuid.toString() +
-          " found in params for universe " + universeUUID.toString());
+        " found in params for universe " + universeUUID.toString());
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
@@ -598,14 +586,32 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   /**
    * Helper API to retrieve nodes that are in a specified cluster.
+   *
    * @param uuid UUID of the cluster that we want nodes from.
    * @return A Set of NodeDetails that are in the specified cluster.
    */
   @JsonIgnore
   public Set<NodeDetails> getNodesInCluster(UUID uuid) {
-    if (nodeDetailsSet == null) return null;
+    if (nodeDetailsSet == null)
+      return null;
     return nodeDetailsSet.stream()
-                         .filter(n -> n.isInPlacement(uuid))
-                         .collect(Collectors.toSet());
+      .filter(n -> n.isInPlacement(uuid))
+      .collect(Collectors.toSet());
+  }
+
+  public static class BaseConverter<T extends UniverseDefinitionTaskParams>
+    extends StdConverter<T, T> {
+    @Override
+    public T convert(T taskParams) {
+      // If there is universe level communication port set then push it down to node level
+      if (taskParams.communicationPorts != null && taskParams.nodeDetailsSet != null) {
+        taskParams.nodeDetailsSet.forEach(nodeDetails ->
+          CommunicationPorts.setCommunicationPorts(taskParams.communicationPorts, nodeDetails));
+      }
+      if (taskParams.expectedUniverseVersion == null) {
+        taskParams.expectedUniverseVersion = -1;
+      }
+      return taskParams;
+    }
   }
 }
