@@ -50,16 +50,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Constraints.MinLength(1)
   public List<Cluster> clusters = new LinkedList<>();
 
-  @JsonIgnore
   // This is set during configure to figure out which cluster type is intended to be modified.
-  public ClusterType currentClusterType = ClusterType.PRIMARY;
+  public ClusterType currentClusterType;
 
-  public enum ClusterOperationType {
-    CREATE, EDIT, DELETE
+  public ClusterType getCurrentClusterType() {
+    return currentClusterType == null? ClusterType.PRIMARY : currentClusterType;
   }
-
-  @JsonIgnore
-  public ClusterOperationType clusterOperation;
 
   // This should be a globally unique name - it is a combination of the customer id and the universe
   // id. This is used as the prefix of node names in the universe.

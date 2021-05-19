@@ -317,7 +317,7 @@ public class NodeManager extends DevopsBase {
           extra_gflags.put("enable_ysql", "false");
         }
 
-        if (taskParam.currentClusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+        if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
             && taskParam.setTxnTableWaitCountFlag) {
           extra_gflags.put(
               "txn_table_wait_min_ts_count",

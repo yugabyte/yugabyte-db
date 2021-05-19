@@ -54,6 +54,7 @@ import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
+import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFormDataToTaskParams;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.*;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.empty;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
@@ -105,24 +106,11 @@ public class UniverseController extends AuthenticatedController {
     this.ybService = service;
   }
 
-  private boolean validateEncryption(ObjectNode formData) {
-    ArrayNode clusters = (ArrayNode) formData.get("clusters");
-    if (clusters == null)
-      return true;
-    for (JsonNode cluster : clusters) {
-      JsonNode userIntent = cluster.get("userIntent");
-      if (userIntent == null)
-        return true;
-
-      JsonNode nodeToNodeEncryptionJson = userIntent.get("enableNodeToNodeEncrypt");
-      JsonNode clientToNodeEncryptionJson = userIntent.get("enableClientToNodeEncrypt");
-
-      boolean nodeToNodeEncryption =
-        nodeToNodeEncryptionJson != null && nodeToNodeEncryptionJson.asBoolean();
-      boolean clientToNodeEncryption =
-        clientToNodeEncryptionJson != null && clientToNodeEncryptionJson.asBoolean();
-
-      if (!nodeToNodeEncryption && clientToNodeEncryption) {
+  private boolean validateEncryption(UniverseDefinitionTaskParams taskParams) {
+    List<Cluster> clusters = taskParams.clusters;
+    for (Cluster cluster : clusters) {
+      UserIntent userIntent = cluster.userIntent;
+      if (!userIntent.enableNodeToNodeEncrypt && userIntent.enableClientToNodeEncrypt) {
         return false;
       }
     }
@@ -287,36 +275,28 @@ public class UniverseController extends AuthenticatedController {
    * @return UniverseDefinitionTasksParams in a serialized form
    */
   public Result configure(UUID customerUUID) {
-    ObjectNode formData = (ObjectNode) request().body().asJson();
 
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    JsonNode clustType = formData.get("currentClusterType");
-    JsonNode clustOp = formData.get("clusterOperation");
-    if (!formData.hasNonNull("currentClusterType") || clustType.asText().isEmpty() ||
-      !formData.hasNonNull("clusterOperation") || clustOp.asText().isEmpty()) {
-      throw new YWServiceException(BAD_REQUEST,
-        "Invalid currentClusterType or clusterOperation.");
-    }
-    ClusterType currentClusterType = ClusterType.valueOf(clustType.asText());
-    UniverseDefinitionTaskParams.ClusterOperationType clusterOpType =
-      UniverseDefinitionTaskParams.ClusterOperationType.valueOf(clustOp.asText());
-    UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
-        UniverseDefinitionTaskParams.class);
+    UniverseConfigureTaskParams taskParams = bindFormDataToTaskParams(
+      request(), UniverseConfigureTaskParams.class);
 
-    taskParams.currentClusterType = currentClusterType;
+    if (taskParams.currentClusterType == null) {
+      throw new YWServiceException(BAD_REQUEST, "currentClusterType must be set");
+    }
+    if (taskParams.clusterOperation == null) {
+      throw new YWServiceException(BAD_REQUEST, "clusterOperation must be set");
+    }
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
     //  uuid.
-    Cluster c = taskParams.currentClusterType.equals(ClusterType.PRIMARY) ?
+    Cluster c = taskParams.getCurrentClusterType().equals(ClusterType.PRIMARY) ?
       taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
     UserIntent primaryIntent = c.userIntent;
     primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
     primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
     if (checkIfNodeParamsValid(taskParams, c)) {
-      PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid,
-        clusterOpType);
+      PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
     } else {
       throw new YWServiceException(BAD_REQUEST,
         "Invalid Node/AZ combination for given instance type " + c.userIntent.instanceType);
@@ -332,14 +312,12 @@ public class UniverseController extends AuthenticatedController {
    * @return the Result object containing the Resource JSON data.
    */
   public Result getUniverseResources(UUID customerUUID) {
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
-        UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(
+      request(), UniverseDefinitionTaskParams.class);
 
     Set<NodeDetails> nodesInCluster;
 
-    if (taskParams.currentClusterType.equals(ClusterType.PRIMARY)) {
+    if (taskParams.getCurrentClusterType().equals(ClusterType.PRIMARY)) {
       nodesInCluster = taskParams.nodeDetailsSet.stream()
         .filter(n -> n.isInPlacement(taskParams.getPrimaryCluster().uuid))
         .collect(Collectors.toSet());
@@ -362,16 +340,14 @@ public class UniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     LOG.info("Create for {}.", customerUUID);
     // Get the user submitted form data.
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
-        UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(
+        request(), UniverseDefinitionTaskParams.class);
 
     if (taskParams.getPrimaryCluster() != null &&
       !Util.isValidUniverseNameFormat(taskParams.getPrimaryCluster().userIntent.universeName)) {
       throw new YWServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
-    if (!validateEncryption(formData)) {
+    if (!validateEncryption(taskParams)) {
       return ApiResponse.error(
         BAD_REQUEST,
         "Node-to-node TLS needs to be enabled for client-to-node TLS to be enabled"
@@ -536,7 +512,7 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
       universe.universeUUID + ":" + universe.name);
 
-    auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
+    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return ApiResponse.success(createResp(universe, taskUUID));
   }
 
@@ -547,9 +523,8 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Updating universe key {} for {}.", universeUUID, customerUUID);
     // Get the user submitted form data.
 
-    ObjectNode formData = (ObjectNode) request().body().asJson();
     EncryptionAtRestKeyParams taskParams =
-      EncryptionAtRestKeyParams.bindFromFormData(universeUUID, formData);
+      EncryptionAtRestKeyParams.bindFromFormData(universeUUID, request());
 
     try {
       TaskType taskType = TaskType.SetUniverseKey;
@@ -585,8 +560,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
         universe.universeUUID + ":" + universe.name);
 
-      auditService().createAuditEntry(ctx(), request(),
-        Json.toJson(formData), taskUUID);
+      auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
       return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Exception e) {
       String errMsg = String.format(
@@ -673,10 +647,8 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Update universe {} [ {} ] customer {}.", universe.name, universeUUID, customerUUID);
     // Get the user submitted form data.
 
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
-        UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(
+      request(), UniverseDefinitionTaskParams.class);
 
     if (!universe.getUniverseDetails().isUniverseEditable()) {
       String errMsg = "Universe UUID " + universeUUID + " cannot be edited.";
@@ -767,8 +739,7 @@ public class UniverseController extends AuthenticatedController {
       universe.name);
     LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
       universe.universeUUID, universe.name);
-    auditService().createAuditEntry(ctx(), request(),
-      Json.toJson(formData), taskUUID);
+    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return ApiResponse.success(createResp(universe, taskUUID));
   }
 
@@ -1017,10 +988,8 @@ public class UniverseController extends AuthenticatedController {
 
     LOG.info("Create cluster for {} in {}.", customerUUID, universeUUID);
     // Get the user submitted form data.
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    UniverseDefinitionTaskParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData,
-        UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(
+      request(), UniverseDefinitionTaskParams.class);
 
     if (taskParams.clusters == null || taskParams.clusters.size() != 1) {
       throw new YWServiceException(BAD_REQUEST, "Invalid 'clusters' field/size: " +
@@ -1089,7 +1058,7 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
       taskUUID, universe.universeUUID, universe.name);
 
-    auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
+    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return ApiResponse.success(createResp(universe, taskUUID));
   }
 
@@ -1190,9 +1159,7 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     // Bind upgrade params
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    UpgradeParams taskParams =
-      UniverseControllerRequestBinder.bindFormDataToTaskParams(formData, UpgradeParams.class);
+    UpgradeParams taskParams = bindFormDataToTaskParams(request(), UpgradeParams.class);
 
     if (taskParams.taskType == null) {
       throw new YWServiceException(BAD_REQUEST, "task type is required");
@@ -1318,7 +1285,7 @@ public class UniverseController extends AuthenticatedController {
       universe.universeUUID, universe.name);
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
-    auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
+    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return Results.status(OK, resultNode);
   }
 
@@ -1402,9 +1369,8 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     // Bind disk size increase data.
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    DiskIncreaseFormData taskParams = UniverseControllerRequestBinder
-      .bindFormDataToTaskParams(formData, DiskIncreaseFormData.class);
+    DiskIncreaseFormData taskParams = bindFormDataToTaskParams(
+      request(), DiskIncreaseFormData.class);
 
     if (taskParams.size == 0) {
       throw new YWServiceException(BAD_REQUEST, "Size cannot be 0.");
@@ -1451,7 +1417,7 @@ public class UniverseController extends AuthenticatedController {
       universe.universeUUID, universe.name);
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
-    auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
+    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return Results.status(OK, resultNode);
   }
 
@@ -1573,7 +1539,7 @@ public class UniverseController extends AuthenticatedController {
     Integer yqlServerRpcPort = universe.getUniverseDetails().communicationPorts.yqlServerRpcPort;
     StringBuilder nodeBuilder = new StringBuilder();
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-    String sampleAppCommand = null;
+    String sampleAppCommand;
     boolean isKubernetesProvider = cluster
       .userIntent
       .providerType

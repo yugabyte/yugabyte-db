@@ -96,6 +96,16 @@ public class AuditService {
     createAuditEntry(ctx, request, null, taskUUID);
   }
 
+  public void createAuditEntryWithReqBody(Http.Context ctx) {
+    createAuditEntryWithReqBody(ctx, null);
+  }
+
+  public void createAuditEntryWithReqBody(Http.Context ctx, UUID taskUUID) {
+    createAuditEntry(ctx, ctx.request(), ctx.request().body().asJson(), taskUUID);
+  }
+
+  // TODO make this internal method and use WithReqBody
+  @Deprecated
   public void createAuditEntry(
     Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
     Users user = (Users) ctx.args.get("user");

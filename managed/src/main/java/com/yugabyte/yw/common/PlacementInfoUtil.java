@@ -4,14 +4,16 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -338,12 +340,18 @@ public class PlacementInfoUtil {
    * @param taskParams : Universe task params.
    * @param customerId : Current customer's id.
    * @param placementUuid : uuid of the cluster user is working on.
-   * @param clusterOpType : Cluster Operation Type (CREATE/EDIT)
    */
-  public static void updateUniverseDefinition(UniverseDefinitionTaskParams taskParams,
+  public static void updateUniverseDefinition(UniverseConfigureTaskParams taskParams,
                                               Long customerId,
-                                              UUID placementUuid,
-                                              ClusterOperationType clusterOpType) {
+                                              UUID placementUuid) {
+    updateUniverseDefinition(taskParams, customerId, placementUuid, taskParams.clusterOperation);
+  }
+
+  @VisibleForTesting
+  public static void updateUniverseDefinition(UniverseDefinitionTaskParams taskParams,
+                                       Long customerId,
+                                       UUID placementUuid,
+                                       ClusterOperationType clusterOpType) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
 
     // Create node details set if needed.
@@ -369,7 +377,7 @@ public class PlacementInfoUtil {
 
     // Reset the config and AZ configuration
     if (taskParams.resetAZConfig) {
-      if (clusterOpType.equals(ClusterOperationType.EDIT)) {
+      if (clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.EDIT)) {
         UniverseDefinitionTaskParams details = universe.getUniverseDetails();
         // Set AZ and clusters to original values prior to editing
         taskParams.clusters = details.clusters;
@@ -378,7 +386,7 @@ public class PlacementInfoUtil {
         taskParams.resetAZConfig = false;
 
         return;
-      } else if (clusterOpType.equals(ClusterOperationType.CREATE)) {
+      } else if (clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.CREATE)) {
         taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
         // Set node count equal to RF
         cluster.userIntent.numNodes = cluster.userIntent.replicationFactor;
@@ -402,7 +410,7 @@ public class PlacementInfoUtil {
     // If no placement info, and if this is the first primary or readonly cluster create attempt,
     // choose a new placement.
     if (cluster.placementInfo == null &&
-        clusterOpType.equals(ClusterOperationType.CREATE)) {
+        clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.CREATE)) {
       taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
       cluster.placementInfo = getPlacementInfo(
         cluster.clusterType,
@@ -429,7 +437,7 @@ public class PlacementInfoUtil {
     }
 
     Cluster oldCluster = null;
-    if (clusterOpType.equals(ClusterOperationType.EDIT)) {
+    if (clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.EDIT)) {
       if (universe == null) {
         throw new IllegalArgumentException("Cannot perform edit operation on " +
             cluster.clusterType + " without universe.");
@@ -449,9 +457,9 @@ public class PlacementInfoUtil {
     }
 
     boolean primaryClusterEdit = cluster.clusterType.equals(PRIMARY) &&
-        clusterOpType.equals(ClusterOperationType.EDIT);
+        clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     boolean readOnlyClusterEdit = cluster.clusterType.equals(ASYNC) &&
-        clusterOpType.equals(ClusterOperationType.EDIT);
+        clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.EDIT);
 
     LOG.info("Update mode info: primEdit={}, roEdit={}, opType={}, cluster={}.",
              primaryClusterEdit, readOnlyClusterEdit, clusterOpType, cluster.clusterType);
@@ -477,7 +485,7 @@ public class PlacementInfoUtil {
     // For ex., when RF goes from 3/5/7 to 1, we want to show only one zone. When RF goes from 1
     // to 5, we will show existing zones. ResetConfig can be used to change zone count.
     boolean mode_changed = false;
-    if (clusterOpType.equals(ClusterOperationType.CREATE)) {
+    if (clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.CREATE)) {
       int totalRF = cluster.placementInfo.cloudList.stream()
         .flatMap(cloud -> cloud.regionList.stream())
         .flatMap(region -> region.azList.stream())
@@ -1164,7 +1172,7 @@ public class PlacementInfoUtil {
   public static void configureNodeEditUsingPlacementInfo(UniverseDefinitionTaskParams taskParams) {
     // TODO: this only works for a case when we have one read replica,
     // if we have more than one we need to revisit this logic.
-    Cluster currentCluster = taskParams.currentClusterType.equals(PRIMARY) ?
+    Cluster currentCluster = taskParams.getCurrentClusterType().equals(PRIMARY) ?
         taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
 
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
