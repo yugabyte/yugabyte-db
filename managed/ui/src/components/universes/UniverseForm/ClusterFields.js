@@ -494,37 +494,22 @@ export default class ClusterFields extends Component {
     }
     // If nodeInstanceList changes, fetch number of available nodes
     if (getPromiseState(nodeInstanceList).isSuccess()) {
-      // let nodesPerRegion = [];
-
-      // nodeInstanceList.data.forEach((node) => {
-      //   isNonEmptyArray(this.state.regionList) &&
-      //     this.state.regionList.forEach((region) => {
-      //       if (node.details.region === region.label) {
-      //         nodesPerRegion.push(node);
-      //       }
-      //     });
-      // });
-
       let nodesPerRegion = [];
-      nodeInstanceList.data.forEach(node => {
+      nodeInstanceList.data.forEach((node) => {
         isNonEmptyArray(this.state.regionList) &&
-          this.state.regionList.forEach(region => {
-            (node.details.region === region.label) &&
-            nodesPerRegion.push(node)
-          })
+          this.state.regionList.forEach((region) => {
+            // There is no region id available in the node instance
+            // thus we're relying upon the region label.
+            node.details.region === region.label && nodesPerRegion.push(node);
+          });
       });
 
-      let numNodesAvailable = nodeInstanceList.data.reduce((acc, val) => {
+      let numNodesAvailable = nodesPerRegion.reduce((acc, val) => {
         if (!val.inUse) {
           acc++;
         }
         return acc;
       }, 0);
-
-      console.log(nodesPerRegion, '****** yello *****');
-      console.log(numNodesAvailable, '****** yello1 *****');
-
-      
 
       // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
       if (
@@ -1773,7 +1758,6 @@ export default class ClusterFields extends Component {
     const regionAndProviderDefined =
       isNonEmptyArray(formValues[clusterType]?.regionList) &&
       isNonEmptyString(formValues[clusterType]?.provider);
-
     // For onprem provider type if numNodes < maxNumNodes then show the AZ error.
     if (self.props.universe.currentPlacementStatus && placementCloud && regionAndProviderDefined) {
       placementStatus = (
