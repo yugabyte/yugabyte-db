@@ -10,45 +10,37 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import javax.mail.MessagingException;
-
 import akka.Done;
+import akka.actor.ActorSystem;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.Configuration;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
-
-import akka.actor.ActorSystem;
-import com.google.common.annotations.VisibleForTesting;
-
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
-import io.prometheus.client.Gauge;
-import io.prometheus.client.CollectorRegistry;
-
-import com.fasterxml.jackson.databind.JsonNode;
+import javax.mail.MessagingException;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Singleton
 public class HealthChecker {
@@ -321,7 +313,8 @@ public class HealthChecker {
       "Warning",
       details,
       true,
-      null
+      null,
+      Collections.emptyList()
     );
   }
 

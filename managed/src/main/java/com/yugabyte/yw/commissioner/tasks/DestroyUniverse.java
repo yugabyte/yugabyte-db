@@ -12,6 +12,9 @@ package com.yugabyte.yw.commissioner.tasks;
 
 
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionLabel;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,6 +107,8 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       AlertManager alertManager = Play.current().injector().instanceOf(AlertManager.class);
       alertManager.resolveAlerts(params().customerUUID, params().universeUUID, "%");
+      AlertDefinition.delete(params().customerUUID,
+        new AlertDefinitionLabel(KnownAlertLabels.UNIVERSE_UUID, params().universeUUID.toString()));
 
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
