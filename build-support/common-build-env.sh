@@ -2167,9 +2167,19 @@ update_submodules() {
 }
 
 set_prebuilt_thirdparty_url() {
+  expect_vars_to_be_set YB_COMPILER_TYPE build_type
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
     local auto_thirdparty_url=""
-    local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}.txt
+    local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}
+    if [[ ${YB_COMPILER_TYPE} =~ ^.*[0-9]+$ ]]; then
+      # For compiler types like gcc9 or clang11, append the compiler type to the file path.
+      thirdparty_url_file+="_${YB_COMPILER_TYPE}"
+    fi
+    if [[ $YB_COMPILER_TYPE == "clang" && ( $build_type == "asan" || $build_type == "tsan" ) ]]
+    then
+      thirdparty_url_file+="_sanitizers"
+    fi
+    thirdparty_url_file+=.txt
     if [[ -f $thirdparty_url_file ]]; then
       auto_thirdparty_url=$( read_file_and_trim "$thirdparty_url_file" )
       if [[ $auto_thirdparty_url != http://* && $auto_thirdparty_url != https://* ]]; then
