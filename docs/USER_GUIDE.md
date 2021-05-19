@@ -447,3 +447,80 @@ postgres=# SELECT substr(query,0,50), query_plan from pg_stat_monitor limit 10;
 (10 rows)
 
 ```
+#### SQL Commenter  / tags.
+
+```sql
+CREATE EXTENSION hstore;
+CREATE FUNCTION text_to_hstore(s text) RETURNS hstore AS $$
+BEGIN
+    RETURN hstore(s::text[]);
+EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+END; $$ LANGUAGE plpgsql STRICT;
+
+postgres=# SELECT 1 AS num /* { "application", java_app, "real_ip", 192.168.1.1} */;
+ num 
+-----
+   1
+(1 row)
+
+postgres=# SELECT 1 AS num1,2 AS num2 /* { "application", java_app, "real_ip", 192.168.1.2} */;
+ num1 | num2 
+------+------
+    1 |    2
+(1 row)
+
+postgres=# SELECT 1 AS num1,2 AS num2, 3 AS num3 /* { "application", java_app, "real_ip", 192.168.1.3} */;
+ num1 | num2 | num3 
+------+------+------
+    1 |    2 |    3
+(1 row)
+
+postgres=# SELECT 1 AS num1,2 AS num2, 3 AS num3, 4 AS num4 /* { "application", psql_app, "real_ip", 192.168.1.3} */;
+ num1 | num2 | num3 | num4 
+------+------+------+------
+    1 |    2 |    3 |    4
+(1 row)
+
+postgres=# select query, text_to_hstore(comments) as comments_tags from pg_stat_monitor;
+                                                     query                                                     |                    comments_tags                    
+---------------------------------------------------------------------------------------------------------------+-----------------------------------------------------
+ SELECT $1 AS num /* { "application", psql_app, "real_ip", 192.168.1.3) */                                     | "real_ip"=>"192.168.1.1", "application"=>"java_app"
+ SELECT pg_stat_monitor_reset();                                                                               | 
+ select query, comments, text_to_hstore(comments) from pg_stat_monitor;                                        | 
+ SELECT $1 AS num1,$2 AS num2, $3 AS num3 /* { "application", java_app, "real_ip", 192.168.1.3} */             | "real_ip"=>"192.168.1.3", "application"=>"java_app"
+ select query, text_to_hstore(comments) as comments_tags from pg_stat_monitor;                                 | 
+ SELECT $1 AS num1,$2 AS num2 /* { "application", java_app, "real_ip", 192.168.1.2} */                         | "real_ip"=>"192.168.1.2", "application"=>"java_app"
+ SELECT $1 AS num1,$2 AS num2, $3 AS num3, $4 AS num4 /* { "application", psql_app, "real_ip", 192.168.1.3} */ | "real_ip"=>"192.168.1.3", "application"=>"psql_app"
+(7 rows)
+
+postgres=# select query, text_to_hstore(comments)->'application' as application_name from pg_stat_monitor;
+                                                     query                                                     | application_name 
+---------------------------------------------------------------------------------------------------------------+----------
+ SELECT $1 AS num /* { "application", psql_app, "real_ip", 192.168.1.3) */                                     | java_app
+ SELECT pg_stat_monitor_reset();                                                                               | 
+ select query, text_to_hstore(comments)->"real_ip" as comments_tags from pg_stat_monitor;                      | 
+ select query, text_to_hstore(comments)->$1 from pg_stat_monitor                                               | 
+ select query, text_to_hstore(comments) as comments_tags from pg_stat_monitor;                                 | 
+ select query, text_to_hstore(comments)->"application" as comments_tags from pg_stat_monitor;                  | 
+ SELECT $1 AS num1,$2 AS num2 /* { "application", java_app, "real_ip", 192.168.1.2} */                         | java_app
+ SELECT $1 AS num1,$2 AS num2, $3 AS num3 /* { "application", java_app, "real_ip", 192.168.1.3} */             | java_app
+ select query, comments, text_to_hstore(comments) from pg_stat_monitor;                                        | 
+ SELECT $1 AS num1,$2 AS num2, $3 AS num3, $4 AS num4 /* { "application", psql_app, "real_ip", 192.168.1.3} */ | psql_app
+(10 rows)
+
+postgres=# select query, text_to_hstore(comments)->'real_ip' as real_ip from pg_stat_monitor;
+                                                     query                                                     |  real_ip 
+---------------------------------------------------------------------------------------------------------------+-------------
+ SELECT $1 AS num /* { "application", psql_app, "real_ip", 192.168.1.3) */                                     | 192.168.1.1
+ SELECT pg_stat_monitor_reset();                                                                               | 
+ select query, text_to_hstore(comments)->"real_ip" as comments_tags from pg_stat_monitor;                      | 
+ select query, text_to_hstore(comments)->$1 from pg_stat_monitor                                               | 
+ select query, text_to_hstore(comments) as comments_tags from pg_stat_monitor;                                 | 
+ select query, text_to_hstore(comments)->"application" as comments_tags from pg_stat_monitor;                  | 
+ SELECT $1 AS num1,$2 AS num2 /* { "application", java_app, "real_ip", 192.168.1.2} */                         | 192.168.1.2
+ SELECT $1 AS num1,$2 AS num2, $3 AS num3 /* { "application", java_app, "real_ip", 192.168.1.3} */             | 192.168.1.3
+ select query, comments, text_to_hstore(comments) from pg_stat_monitor;                                        | 
+ SELECT $1 AS num1,$2 AS num2, $3 AS num3, $4 AS num4 /* { "application", psql_app, "real_ip", 192.168.1.3} */ | 192.168.1.3
+(10 rows)
+```
