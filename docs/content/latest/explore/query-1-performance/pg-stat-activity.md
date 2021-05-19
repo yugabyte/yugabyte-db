@@ -131,7 +131,7 @@ Since the transaction never ends, it wastes resources as an open process.
     ----------+-------+------------------+---------------------+----------------------------------------------------------------------------
     yugabyte | 10381 | ysqlsh           | active              | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
     yb_demo  | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212;
-            | 10013 |                  |                     |
+             | 10013 |                  |                     |
     (3 rows)
     ```
 
@@ -155,14 +155,15 @@ Since the transaction never ends, it wastes resources as an open process.
 1. The pg_terminate_backend function returns `t` on success, and `f` on failure. Query pg_stat_activity again in the second terminal, and verify that the idle process has ended.
 
     ```sql
-    yugabyte=# SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
+    yugabyte=# SELECT datname, pid, application_name, state, query
+        FROM pg_stat_activity;
     ```
 
     ```output
     datname  |  pid  | application_name | state  |                                   query                                   
     ----------+-------+------------------+--------+----------------------------------------------------------------------------
     yugabyte | 10381 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
-            | 10013 |                  |        |
+             | 10013 |                  |        |
     (2 rows)
     ```
 
@@ -194,7 +195,9 @@ yugabyte=# SELECT datname, pid, application_name, state, query, now() - xact_sta
 **Get a list of processes where the current transaction has taken more than 1 minute**:
 
 ```sql
-yugabyte=# SELECT datname, pid, application_name, state, query, xact_start FROM pg_stat_activity WHERE now() - xact_start > '1 min';
+yugabyte=# SELECT datname, pid, application_name, state, query, xact_start 
+    FROM pg_stat_activity 
+    WHERE now() - xact_start > '1 min';
 ```
 
 ```output
