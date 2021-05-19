@@ -59,15 +59,17 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     checkParams();
     String masterAddresses = getMasterAddresses();
     YBClient client = getClient();
-    boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
-    HostAndPort hp = getHostPort();
-
-    Map<String, String> gflags = taskParams().gflags;
-    if (taskParams().updateMasterAddrs) {
-      String flagToSet = isTserverTask ? TSERVER_MASTER_ADDR_FLAG : MASTER_MASTER_ADDR_FLAG;
-      gflags = ImmutableMap.of(flagToSet, masterAddresses);
-    }
+    
     try {
+      boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
+      HostAndPort hp = getHostPort();
+
+      Map<String, String> gflags = taskParams().gflags;
+      if (taskParams().updateMasterAddrs) {
+        String flagToSet = isTserverTask ? TSERVER_MASTER_ADDR_FLAG : MASTER_MASTER_ADDR_FLAG;
+        gflags = ImmutableMap.of(flagToSet, masterAddresses);
+      }
+
       if (gflags == null) {
         throw new IllegalArgumentException("Gflags cannot be null during a setFlag operation.");
       }
@@ -82,7 +84,8 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
+    } finally {
+      closeClient(client);
     }
-    closeClient(client);
   }
 }

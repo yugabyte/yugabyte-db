@@ -1272,7 +1272,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip,
         server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
-    return client.waitForServer(hp, 5000);
+    boolean result = client.waitForServer(hp, 5000);
+    ybService.closeClient();
+    return result;
   }
 
   public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs) {

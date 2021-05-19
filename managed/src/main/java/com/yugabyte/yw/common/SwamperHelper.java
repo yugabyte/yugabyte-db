@@ -131,16 +131,20 @@ public class SwamperHelper {
 
   private void writeTargetJsonFile(String swamperFile, ArrayNode targetsJson) {
     if (swamperFile != null) {
+      FileWriter file;
       try {
-        FileWriter file = new FileWriter(swamperFile);
+        file = new FileWriter(swamperFile);
         file.write((Json.prettyPrint(targetsJson)));
         file.flush();
-        file.close();
         LOG.info("Wrote Swamper Target file: {}", swamperFile);
 
       } catch (IOException e) {
         LOG.error("Unable to write to Swamper Target JSON: {}", swamperFile);
         throw new RuntimeException(e.getMessage());
+      } finally {
+        if (file != null) {
+          file.close();
+        }
       }
     }
   }
@@ -194,4 +198,3 @@ public class SwamperHelper {
     removeUniverseTargetJson(universeUUID, "yugabyte");
   }
 }
-
