@@ -47,14 +47,22 @@ def exception_handling(func):
     return inner_function
 
 
-class YBUniverse(YBUniverseAction):
-     def __init__(self):
+class YBUniverse():
+    def __init__(self):
         self.parse_arguments()
         self.base_url = os.environ.get('YB_PLATFORM_URL', '')
         self.customer_uuid = ''
         self.api_token = os.environ.get('YB_PLATFORM_API_TOKEN', '')
-
     
+
+    @staticmethod
+    def __get_input_from_user(message):
+        if python_version == 2:
+            return raw_input(message)
+        else:
+            return input(message)
+
+
     def __call_api(self, url, data=None, is_delete=False):
         """
         Call the corresponding url with auth token, headers and returns the response.
@@ -231,10 +239,13 @@ class YBUniverse(YBUniverseAction):
             data = self.__convert_unicode_json(json.loads(f.read()))
 
         clusters = data.get('clusters')
-        if universe_name:
-            for each_cluster in clusters:
+        for each_cluster in clusters:
+            if universe_name:
                 each_cluster['userIntent']['universeName'] = universe_name
-        return data
+            else:
+                universe_name = each_cluster['userIntent']['universeName']
+                break
+        return data, universe_name
 
 
     def __post_universe_config(self, configure_json):
@@ -315,22 +326,24 @@ class YBUniverse(YBUniverseAction):
         """
         toolbar_width = 100
         # each hash represents 2 % of the progress
+        sys.stdout.write("[%s]"%(("-")*toolbar_width))
+        sys.stdout.write("0%\n")
+        sys.stdout.flush()
+        time.sleep(5)
         while True:
-
             progress = self.__get_task_details(task_id)
             sys.stdout.write("[%s]"%(("-")*toolbar_width))
             sys.stdout.write("{0}%".format(progress))
-            sys.stdout.flush()
             sys.stdout.write("\r") # return to start of line
             sys.stdout.flush()
             sys.stdout.write("[")#Overwrite over the existing text from the start 
             sys.stdout.write("#"*(progress))# number of # denotes the progress completed
             sys.stdout.write('\n')
             sys.stdout.flush()
-            if progress == progress:
+            if progress == 100:
                 exit()
             time.sleep(20)
-
+            
 
     def __get_task_details(self, task_id):
         """
@@ -392,6 +405,19 @@ class YBUniverse(YBUniverseAction):
         if not self.args.no_wait:
             self.__task_progress_bar(task_id)
 
+    def __validate_universe_name(self, universe_name):
+        """
+        Get the universe details and store it in a json file after formatting the json.
+
+        :param universe_name: Name of the universe to take a json data from.
+        :return: None
+        """
+        universe_delete_url = '{0}/api/v1/customers/{1}/universes/find/{2}'.format(
+            self.base_url, self.customer_uuid, universe_name)
+
+        response = self.__call_api(universe_delete_url)
+        self.__convert_unicode_json(json.loads(response.read()))
+        
 
     def create_universe(self):
         """
@@ -404,7 +430,11 @@ class YBUniverse(YBUniverseAction):
             exit()
         input_file = script_path + '/' + self.args.file
         universe_name = self.args.universe_name
-        configure_json = self.__modify_universe_config(input_file, universe_name)
+
+        configure_json, universe_name = self.__modify_universe_config(input_file, universe_name)
+
+        self.__validate_universe_name(universe_name)
+
         universe_config_json = self.__post_universe_config(configure_json)
         # add the missing fields in the config json.
         universe_config_json['clusterOperation'] = 'CREATE'
@@ -456,7 +486,7 @@ class YBUniverse(YBUniverseAction):
                 zones.append(zone)
             region = {}
             region['zones'] = zones
-            region['name'] = each.get('name')
+            region['region_name'] = each.get('name')
             region['uuid'] = each.get('uuid')
             region['provider'] = each.get('provider').get('code')
             regions.append(region)
@@ -489,13 +519,13 @@ class YBUniverse(YBUniverseAction):
         """
         confirmation = self.args.yes and 'y'
         if not confirmation:
-            confirmation = input("Continue with deleting universe(y/n)? :")
+            confirmation = self.__get_input_from_user("Continue with deleting universe(y/n)?: ")
         if confirmation.lower()[0] == 'y':
             if not self.args.force:
-                print('Note:- Universe deletion can fail due to errors, Use `--force` to ignore errors and force delete.')
+                print('\nNote:- Universe deletion can fail due to errors, Use `--force` to ignore errors and force delete.\n')
             name = self.args.universe_name
             universe_uuid = self.args.universe_uuid
-            if not (name or uuid):
+            if not (name or universe_uuid):
                 print("Required universe name | uuid to delete universe.")
                 print("Use \`-n|--universe_name <universe_name>\` to pass universe name.")
                 print("Use \`-u|--universe_uuid <universe_uuid>\` to pass universe uuid.")
