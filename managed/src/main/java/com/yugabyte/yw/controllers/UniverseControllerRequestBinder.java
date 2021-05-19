@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,7 +38,7 @@ public class UniverseControllerRequestBinder {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseControllerRequestBinder.class);
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
-    ObjectNode formData, Class<T> paramType) {
+    Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
     // Notes about code deleted from here:
     // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
@@ -46,6 +47,7 @@ public class UniverseControllerRequestBinder {
     // 2. encryptionAtRestConfig - See @JsonAlias annotations on the EncryptionAtRestConfig props
     // 3. cluster.userIntent gflags list to maps - TODO
     try {
+      ObjectNode formData = (ObjectNode) request.body().asJson();
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
 
