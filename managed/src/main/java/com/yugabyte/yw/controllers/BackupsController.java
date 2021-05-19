@@ -170,8 +170,8 @@ public class BackupsController extends AuthenticatedController {
           taskParams.backupUUID = uuid;
           UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
-          CustomerTask.create(customer, uuid, taskUUID, CustomerTask.TargetType.Backup,
-             CustomerTask.TaskType.Delete,"Backup");
+          CustomerTask.create(customer, backup.getBackupInfo().universeUUID, taskUUID,
+              CustomerTask.TargetType.Backup, CustomerTask.TaskType.Delete,"Backup");
           taskUUIDList.add(taskUUID);
           auditService().createAuditEntry(ctx(), request(), taskUUID);
         }
