@@ -26,7 +26,7 @@ Like PostgreSQL, YugabyteDB provides security in multiple ways:
 
 * **Auditing** - conduct session- and object-level auditing
 
-* **Restricting network access** - limit connections to the database using RPC binding
+* **Network access restriction** - limit connections to the database using RPC binding
 
 ## Authentication
  
@@ -37,55 +37,55 @@ Using client authentication, you can define how the database server establishes 
 * Host-based - authenticate local and remote clients based on IP address and using TLS certificates
 * Trust - authorize specific local connections
 
-The method used to authenticate a particular client connection can be selected on the basis of (client) host address, database, and user.
+You can choose the method to use to authenticate a particular client connection based on the client host address, the database they are connecting to, and user credentials.
 
-The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to clients depends on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
+YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
 Read more about [how to enable authentication in YugabyteDB](../../secure/authentication).
 
 ## Authorization
 
-YugabyteDB provides role-based access control, consisting of a collection of privileges on resources given to roles. 
+YugabyteDB provides role-based access control (RBAC), consisting of a collection of privileges on resources given to roles. 
 
 Read more about [authorization in YugabyteDB](../../secure/authorization).
 
 ### Roles
 
-Roles are essential to implementing and administering access control on a YugabyteDB cluster. Roles can represent individual users or a group of users, and encapsulate a set of privileges that can be assigned to other roles (or users). Roles can be modified to grant users or applications only the essential privileges based on the operations they need to perform against the database. Typically, an administrator role is created first. The administrator then creates additional roles for users.  
+Roles are essential for implementing and administering access control on a YugabyteDB cluster. Roles can represent individual users or a group of users, and encapsulate a set of privileges that can be assigned to other roles (or users). You can modify roles to grant users or applications the minimum required privileges based on the operations they need to perform against the database. Typically, you create an administrator role first, and the administrator then creates additional roles for users.  
 
 ### Privileges
 
-Roles are explicitly granted privileges to access objects in the database using the `GRANT` command. You can, for example, assign read access to one role, data modify access to another role, and alter table access to a third.
+You grant privileges explicitly to roles to access objects in the database using the `GRANT` command. You can, for example, assign read access to one role, data modify access to another role, and alter table access to a third.
 
-By default, when an object is created, only the owner has privileges, and other roles must be granted privileges.
+By default, only the owner has privileges on new objects; you must grant privileges to other roles explicitly.
 
 ### Row-level access
 
 In addition to database access permissions available through the `ROLE` and `GRANT` privilege system, YugabyteDB provides a more granular level of security where tables can have row security policies that restrict the rows that users can access.
 
-Row-level Security (RLS) restricts rows that can be returned by normal queries or inserted, updated, or deleted by DML commands. Row-level security policies can be created specific to a `DML` command or with `ALL` commands. They can also be used to create policies on a particular role or multiple roles.
+Row-level Security (RLS) restricts rows that can be returned by normal queries or inserted, updated, or deleted by DML commands. RLS policies can be created specific to a `DML` command or with `ALL` commands. They can also be used to create policies on a particular role or multiple roles.
 
-By default, tables do not have any row level policies defined, so that if a user has access privileges to a table, all rows within the table are available to query and update.
+By default, tables do not have any RLS policies defined, so that if a user has access privileges to a table, all rows within the table are available to query and update.
 
 ### Column-level access
 
-Column-level security in YugabyteDB is used to restrict users to viewing only a particular column or set of columns in a table. You do this by creating a view that includes only the columns that the user needs access to using the `CREATE VIEW` command.
+You can use column-level security in YugabyteDB to restrict users to viewing only a particular column or set of columns in a table. You do this by creating a view that includes only the columns that the user needs access to using the `CREATE VIEW` command.
 
 ## Encryption
 
-YugabyteDB supports encryption both of clusters, and all network communication between servers. 
+YugabyteDB supports both encryption in transit (that is, the network communication between servers), and encryption at rest (that is, encryption of the database itself). Yugabyte further provides column-level encryption to protect sensitive data in tables.
 
 ### Encryption in transit
 
 [TLS encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to server network communication. Servers are secured using TLS certificates, which can be from a public CA or self-signed.
 
-You should enable encryption in transit for YugabyteDB clusters and clients to ensure privacy and integrity of data transferred over the network.
+You should enable encryption in transit for YugabyteDB clusters and clients to ensure privacy and the integrity of data transferred over the network.
 
 Read more about enabling [Encryption in transit](../../secure/tls-encryption) in YugabyteDB.
 
 ### Encryption at rest
 
-[Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data at rest, i.e., stored on disk, is protected. You can configure YugabyteDB with a user-generated symmetric key to perform cluster-wide encryption.
+[Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data at rest (that is, stored on disk), is protected. You can configure YugabyteDB with a user-generated symmetric key to perform cluster-wide encryption.
 
 Read more about enabling [Encryption at rest](../../secure/encryption-at-rest) in YugabyteDB.
 
@@ -97,19 +97,23 @@ Read more about enabling [column-level encryption](../../secure/column-level-enc
 
 ## Auditing
 
-The goal of audit logging is to enable you to produce audit logs often required to comply with government, financial, or ISO certifications. YugabyteDB YSQL uses the PostgreSQL Audit Extension (`pgAudit`) to provide detailed session and/or object audit logging via YugabyteDB TServer logging.
+Use audit logging to produce audit logs needed to comply with government, financial, or ISO certifications. YugabyteDB YSQL uses the PostgreSQL Audit Extension (`pgAudit`) to provide detailed session and object audit logging via YugabyteDB TServer logging.
 
 Read more about [audit logging](../../secure/audit-logging) in YugabyteDB.
 
-### Session
+### Session logging
 
-Session logging is enabled on a per user session basis. You can enable session logging for all DML and DDL statements and log all relations in DML statements.
+Session logging is enabled on a per user session basis. You can enable session logging for all `DML` and `DDL` statements and log all relations in `DML` statements.
 
-### Object
+Read more about [Session-Level Audit Logging in YSQL](../../secure/audit-logging/session-audit-logging-ysql/).
 
-Object logging logs statements that affect a particular relation, and is intended to be a finer-grained replacement for session-level logging. As such, it may not make sense to use them in conjunction but one possible scenario would be to use session logging to capture each statement and then supplement that with object logging to get more detail about specific relations.
+### Object logging
 
-In YugabyteDB, object-level audit logging is implemented by reusing the PG role system. The `pgaudit.role` setting defines the role that will be used for audit logging. A relation (TABLE, VIEW, etc.) will be audit logged when the audit role has permissions for the command executed or inherits the permissions from another role. This allows you to effectively have multiple audit roles even though there is a single master role in any context.
+Object logging logs statements that affect a particular relation, and is intended to be a finer-grained replacement for session-level logging. It may not make sense to use them in conjunction, but you could, for example, use session logging to capture each statement and then supplement that with object logging to get more detail about specific relations.
+
+YugabyteDB implements object-level audit logging by reusing the PostgreSQL role system. The `pgaudit.role` setting defines the role that will be used for audit logging. A relation (such as `TABLE` or `VIEW`) will be audit logged when the audit role has permissions for the command executed or inherits the permissions from another role. This allows you to effectively have multiple audit roles even though there is a single master role in any context.
+
+Read more about [Object-Level Audit Logging in YSQL](../../secure/audit-logging/object-audit-logging-ysql/).
 
 ## Restricting network access
 
@@ -117,6 +121,6 @@ Ensure that YugabyteDB runs in a trusted network environment, such that:
 
 * Servers running YugabyteDB services are directly accessible only by the servers running the application and database administrators.
 
-* Only servers running applications can connect to YugabyteDB services on the RPC ports. Access to the [YugabyteDB ports](../../deploy/checklist/#default-ports-reference) should be denied to everybody else.
+* Only servers running applications can connect to YugabyteDB services on the RPC ports. Access to the [YugabyteDB ports](../../deploy/checklist/#default-ports-reference) should be denied to all others.
 
-In addition, you can limit the interfaces on which YugabyteDB instances listen for incoming connections. To specify just the required interfaces when starting `yb-master` and `yb-tserver`, use the `--rpc_bind_addresses` option. Do not bind to the loopback address. Read more in the [Admin Reference](../../reference/configuration/yb-tserver/) section on how to use these options when starting `yb-master` and `yb-tserver` services.
+In addition, you can limit the interfaces on which YugabyteDB instances listen for incoming connections. To specify just the required interfaces when starting `yb-master` and `yb-tserver`, use the `--rpc_bind_addresses` option. Do not bind to the loopback address. Refer to the [Admin Reference](../../reference/configuration/yb-tserver/) for more information on using these options.
