@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.amazonaws.services.s3.model.Bucket;
+import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.AmazonS3;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,7 +16,6 @@ import com.yugabyte.yw.models.CustomerConfig;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.UrlValidator;
 import play.libs.Json;
-
 import javax.inject.Inject;
 import javax.validation.ConstraintViolation;
 import javax.validation.Validator;
@@ -22,7 +24,14 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.HashSet;
 import java.util.regex.Pattern;
+import java.util.UUID;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.regions.Regions;
 
 import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
 import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
@@ -49,6 +58,8 @@ public class CustomerConfigValidator {
   private static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
+
+  private static final String[] S3_BUCKET_NAME = { "^s3://*" };
 
   private final Validator validator;
 
@@ -88,6 +99,44 @@ public class CustomerConfigValidator {
     }
 
     protected abstract void doValidate(String value, ObjectNode errorsCollector);
+  }
+
+  public static class ConfigS3PreflightCheckValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigS3PreflightCheckValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data, ObjectNode errorJson) {
+      if (this.name.equals("S3") && data.get("AWS_ACCESS_KEY_ID") != null) {
+        String bucketname = data.get("BACKUP_LOCATION").asText();
+        //Assuming bucket name will always start with s3:// otherwise that will be invalid
+        if (bucketname.length() < 5 || !bucketname.startsWith("s3://")) {
+          errorJson.set(fieldName, Json.newArray().add("Invalid bucket name: " + bucketname));
+        } else {
+          try {
+            bucketname = bucketname.substring(5);
+            AmazonS3 s3client = create(data.get("AWS_ACCESS_KEY_ID").asText(),
+              data.get("AWS_SECRET_ACCESS_KEY").asText());
+            List<Bucket> buckets = s3client.listBuckets();
+            final HashSet<String> bucketList = new HashSet<String>();
+            boolean isBucketExists = false;
+            for (Bucket bucket : buckets) {
+              bucketList.add(bucket.getName());
+            }
+            if (!bucketList.contains(bucketname))
+              errorJson.set(fieldName, Json.newArray().add("Bucket name " + bucketname +
+                " doesn't exist"));
+          } catch(AmazonS3Exception s3Exception) {
+            errorJson.set(fieldName, Json.newArray().add(s3Exception.getErrorMessage()));
+          }
+        }
+      }
+    }
   }
 
   public class ConfigObjectValidator<T> extends ConfigValidator {
@@ -181,7 +230,7 @@ public class CustomerConfigValidator {
     validators.add(new ConfigValidatorRegEx(STORAGE.name(), NAME_NFS, BACKUP_LOCATION_FIELDNAME,
         NFS_PATH_REGEXP));
     validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME,
-        S3_URL_SCHEMES, false));
+      S3_URL_SCHEMES, false));
     validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_S3, AWS_HOST_BASE_FIELDNAME,
         S3_URL_SCHEMES, true));
     validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME,
@@ -190,6 +239,8 @@ public class CustomerConfigValidator {
         AZ_URL_SCHEMES, false));
     validators.add(new ConfigObjectValidator<>(
       PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
+    validators.add(new ConfigS3PreflightCheckValidator(
+      STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME));
   }
 
   public ObjectNode validateFormData(JsonNode formData) {
@@ -233,5 +284,18 @@ public class CustomerConfigValidator {
     validators.forEach(v -> v.validate(formData.get("type").asText(), formData.get("name").asText(),
         formData.get("data"), errorJson));
     return errorJson;
+  }
+
+  //TODO: move this out to some common util file.
+  public static AmazonS3 create(String key, String secret) {
+    AWSCredentials credentials = new BasicAWSCredentials(
+      key,
+      secret
+    );
+    return AmazonS3ClientBuilder
+      .standard()
+      .withCredentials(new AWSStaticCredentialsProvider(credentials))
+      .withRegion(Regions.DEFAULT_REGION)
+      .build();
   }
 }
