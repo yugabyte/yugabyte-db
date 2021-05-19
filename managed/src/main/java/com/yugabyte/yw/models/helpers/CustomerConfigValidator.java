@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.regex.Pattern;
-import java.util.UUID;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -58,8 +57,6 @@ public class CustomerConfigValidator {
   private static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
-
-  private static final String[] S3_BUCKET_NAME = { "^s3://*" };
 
   private final Validator validator;
 
@@ -124,7 +121,6 @@ public class CustomerConfigValidator {
               data.get("AWS_SECRET_ACCESS_KEY").asText());
             List<Bucket> buckets = s3client.listBuckets();
             final HashSet<String> bucketList = new HashSet<String>();
-            boolean isBucketExists = false;
             for (Bucket bucket : buckets) {
               bucketList.add(bucket.getName());
             }
