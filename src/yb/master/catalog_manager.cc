@@ -3809,6 +3809,11 @@ Status CatalogManager::BackfillIndex(
     indexed_table = GetTableInfo(indexed_table_id);
   }
 
+  if (indexed_table == nullptr) {
+    return STATUS(InvalidArgument, "Empty indexed table",
+                  index_table_identifier.ShortDebugString());
+  }
+
   // TODO(jason): when ready to use INDEX_PERM_DO_BACKFILL for resuming backfill across master
   // leader changes, replace the following (issue #6218).
 
@@ -3980,7 +3985,8 @@ Status CatalogManager::DeleteTable(
       indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->pb);
     }
     scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
-    const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
+    const bool is_pg_table = indexed_table != nullptr &&
+                             indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
     bool is_transactional;
     {
       Schema index_schema;
