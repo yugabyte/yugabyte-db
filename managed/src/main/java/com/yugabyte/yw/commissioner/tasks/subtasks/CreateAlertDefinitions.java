@@ -2,15 +2,15 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CreateAlertDefinitions extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateAlertDefinitions.class);
@@ -34,8 +34,9 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
 
       for (AlertDefinitionTemplate definition : AlertDefinitionTemplate.values()) {
         if (definition.isCreateForNewUniverse()) {
-          AlertDefinition.create(customer.uuid, universe.universeUUID, definition.getName(),
-              definition.buildTemplate(nodePrefix), true);
+          AlertDefinition.create(customer.uuid, AlertDefinition.TargetType.Universe,
+            definition.getName(), definition.buildTemplate(nodePrefix), true,
+            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
         }
       }
 
