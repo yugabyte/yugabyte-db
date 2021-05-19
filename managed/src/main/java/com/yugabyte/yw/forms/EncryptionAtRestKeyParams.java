@@ -12,9 +12,9 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
 import play.libs.Json;
+import play.mvc.Http;
 
 import java.util.UUID;
 
@@ -23,12 +23,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 public class EncryptionAtRestKeyParams extends UniverseTaskParams {
 
   public static EncryptionAtRestKeyParams bindFromFormData(
-    UUID universeUUID, ObjectNode formData) {
+    UUID universeUUID, Http.Request request) {
     EncryptionAtRestKeyParams taskParams = new EncryptionAtRestKeyParams();
     taskParams.universeUUID = universeUUID;
     try {
       taskParams.encryptionAtRestConfig =
-        Json.mapper().treeToValue(formData, EncryptionAtRestConfig.class);
+        Json.mapper().treeToValue(request.body().asJson(), EncryptionAtRestConfig.class);
     } catch (JsonProcessingException e) {
       throw new YWServiceException(BAD_REQUEST, e.getMessage());
     }

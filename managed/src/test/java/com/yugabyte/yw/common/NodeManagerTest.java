@@ -154,6 +154,7 @@ public class NodeManagerTest extends FakeDBApplication {
     params.nodeName = testData.node.getNodeName();
     params.universeUUID = universe.universeUUID;
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    params.currentClusterType = ClusterType.PRIMARY;
   }
 
   private void addValidDeviceInfo(TestData testData, NodeTaskParams params) {
