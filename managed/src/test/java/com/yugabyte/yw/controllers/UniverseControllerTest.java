@@ -59,7 +59,7 @@ import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.*;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.PlacementInfoUtil.*;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
+import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static junit.framework.TestCase.assertFalse;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
@@ -98,7 +98,7 @@ public class UniverseControllerTest extends WithApplication {
   private ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
-  
+
 
   @Override
   protected Application provideApplication() {
@@ -840,7 +840,7 @@ public class UniverseControllerTest extends WithApplication {
     "true, true",
     "false, true",
     "true, false",
-    "false, false",   
+    "false, false",
     "null, true",
     })
   // @formatter:on
@@ -1440,11 +1440,12 @@ public class UniverseControllerTest extends WithApplication {
     InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5,
         new InstanceType.InstanceTypeDetails());
 
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
     taskParams.nodePrefix = "univConfCreate";
     taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
+    taskParams.clusterOperation = CREATE;
     PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(),
-        taskParams.getPrimaryCluster().uuid, CREATE);
+        taskParams.getPrimaryCluster().uuid);
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     // Needed for the universe_resources call.
     DeviceInfo di = new DeviceInfo();
@@ -1459,12 +1460,30 @@ public class UniverseControllerTest extends WithApplication {
     PlacementInfo.PlacementAZ paz = azList.get(0);
     paz.numNodesInAZ += 2;
     primaryCluster.userIntent.numNodes += 2;
-    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
+    final String url = "/api/customers/" + customer.uuid + "/universe_configure";
+
+    ObjectNode noCurClusterTypeJson = (ObjectNode) Json.toJson(taskParams);
+    noCurClusterTypeJson.put("clusterOperation", "CREATE");
+    noCurClusterTypeJson.put("currentClusterType", "");
+
+    Result result = assertThrows(YWServiceException.class,
+      () -> doRequestWithAuthTokenAndBody("POST", url, authToken, noCurClusterTypeJson))
+      .getResult();
+    assertBadRequest(result, "currentClusterType");
+
+    ObjectNode noCurClusterOp = (ObjectNode) Json.toJson(taskParams);
+    noCurClusterOp.remove("clusterOperation");
+
+    result = assertThrows(YWServiceException.class,
+      () -> doRequestWithAuthTokenAndBody("POST", url, authToken, noCurClusterOp))
+      .getResult();
+    assertBadRequest(result, "clusterOperation");
+
+    ObjectNode  topJson = (ObjectNode) Json.toJson(taskParams);
     topJson.put("currentClusterType", "PRIMARY");
     topJson.put("clusterOperation", "CREATE");
 
-    String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
 
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -1474,8 +1493,8 @@ public class UniverseControllerTest extends WithApplication {
     // Now test the resource endpoint also works.
     // TODO: put this in its own test once we refactor the provider+region+az creation and payload
     // generation...
-    url = "/api/customers/" + customer.uuid + "/universe_resources";
-    result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
+    result = doRequestWithAuthTokenAndBody("POST",
+      "/api/customers/" + customer.uuid + "/universe_resources", authToken, topJson);
     assertOk(result);
     assertAuditEntry(0, customer.uuid);
   }
@@ -1576,7 +1595,7 @@ public class UniverseControllerTest extends WithApplication {
     ui.preferredRegion = ui.regionList.get(0);
     utd.upsertPrimaryCluster(ui, null);
     PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId(), utd.getPrimaryCluster().uuid,
-        UniverseDefinitionTaskParams.ClusterOperationType.CREATE);
+        UniverseConfigureTaskParams.ClusterOperationType.CREATE);
     Universe.UniverseUpdater updater = universe -> universe.setUniverseDetails(utd);
     Universe.saveDetails(u.universeUUID, updater);
     u = Universe.getOrBadRequest(u.universeUUID);
