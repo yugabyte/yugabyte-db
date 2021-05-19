@@ -18,12 +18,15 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.config.ConfigSubstitutor;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.forms.AlertFormData;
-import com.yugabyte.yw.forms.MetricQueryParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -100,7 +103,7 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     Form<AlertFormData> formData = formFactory.getFormDataOrBadRequest(AlertFormData.class);
-   
+
     AlertFormData data = formData.get();
     Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
@@ -132,10 +135,11 @@ public class AlertController extends AuthenticatedController {
     updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
     AlertDefinition definition = AlertDefinition.create(
       customerUUID,
-      universeUUID,
+      AlertDefinition.TargetType.Universe,
       data.name,
       data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-      data.isActive
+      data.isActive,
+      AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get()
     );
 
     return ok(Json.toJson(definition));
@@ -157,18 +161,30 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     AlertDefinition definition = AlertDefinition.getOrBadRequest(alertDefinitionUUID);
-    
+
     Form<AlertDefinitionFormData> formData = formFactory.getFormDataOrBadRequest(
         AlertDefinitionFormData.class);
 
     AlertDefinitionFormData data = formData.get();
-    Universe universe = Universe.getOrBadRequest(definition.universeUUID);
-    updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-    definition = AlertDefinition.update(
-      definition.uuid,
-      data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-      data.isActive
-    );
-    return ok(Json.toJson(definition));
-}
+
+    AlertDefinition updatedDefinition;
+    switch (definition.targetType) {
+      // TODO Need to store threshold and duration in definition itself - this way custom
+      // logic will not be needed for each definition target type
+      case Universe:
+        Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
+        updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
+        updatedDefinition = AlertDefinition.update(
+          definition.uuid,
+          data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
+          data.isActive,
+          AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get()
+        );
+        break;
+      default:
+        throw new IllegalStateException(
+          "Unexpected definition type " + definition.targetType.name());
+    }
+    return ok(Json.toJson(updatedDefinition));
+  }
 }
