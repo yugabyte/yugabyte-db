@@ -153,13 +153,6 @@ Status SnapshotOperation::Prepare() {
   return Status::OK();
 }
 
-void SnapshotOperation::DoStart() {
-  state()->TrySetHybridTimeFromClock();
-
-  TRACE("START. HybridTime: $0",
-      server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
-}
-
 Status SnapshotOperation::DoAborted(const Status& status) {
   TRACE("SnapshotOperation: operation aborted");
   state()->Finish();

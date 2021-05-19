@@ -360,11 +360,6 @@ DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "from pg catalog tables. A value of -1 disables the refresh task.");
 TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
 
-DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
-                 "When set, placement of the tablets of a newly created table will not honor "
-                 "its tablespace placement policy until the loadbalancer runs.");
-TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
-
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
                  "move.");
@@ -572,8 +567,6 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
 
 constexpr auto kDefaultYQLPartitionsRefreshBgTaskSleep = 10s;
 
-constexpr auto kDefaultYSQLTablespaceRefreshBgTaskSleepSecs = 10s;
-
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -603,7 +596,7 @@ CatalogManager::CatalogManager(Master* master)
       state_(kConstructed),
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
-      load_balance_policy_(new enterprise::ClusterLoadBalancer(this)),
+      load_balance_policy_(std::make_unique<ClusterLoadBalancer>(this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
@@ -611,7 +604,7 @@ CatalogManager::CatalogManager(Master* master)
       ysql_transaction_(this, master_),
       tablespace_placement_map_(std::make_shared<TablespaceIdToReplicationInfoMap>()),
       table_to_tablespace_map_(std::make_shared<TableToTablespaceIdMap>()),
-      tablespace_info_task_running_(false) {
+      tablespace_bg_task_running_(false) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -1784,47 +1777,75 @@ CatalogManager::GetAndUpdateYsqlTablespaceInfo() {
   return tablespace_map;
 }
 
-void CatalogManager::StartRefreshYSQLTablePlacementInfo() {
-  bool is_task_running = tablespace_info_task_running_.exchange(true);
-  if (!is_task_running) {
-    // The task is not already running. Start it.
-    RefreshYSQLTablePlacementInfo();
-  }
-}
-
-void CatalogManager::RefreshYSQLTablePlacementInfo() {
-  auto wait_time = GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs) * 1s;
-  // If FLAGS_enable_ysql_tablespaces_for_placement is not set, refresh is disabled.
-  if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) && wait_time > 0s) {
-    DoRefreshYSQLTablePlacementInfo();
-  }
-
-  if (wait_time <= 0s) {
-    wait_time = kDefaultYSQLTablespaceRefreshBgTaskSleepSecs;
-  }
-  refresh_ysql_tablespace_info_task_.Schedule([this](const Status& status) {
-    Status s = background_tasks_thread_pool_->SubmitFunc(
-      std::bind(&CatalogManager::RefreshYSQLTablePlacementInfo, this));
-    if (!s.IsOk()) {
-      LOG(WARNING) << "Failed to schedule: RefreshYSQLTablePlacementInfo";
-      tablespace_info_task_running_ = false;
-    }
-  }, wait_time);
-}
-
-void CatalogManager::DoRefreshYSQLTablePlacementInfo() {
-  // First refresh the tablespace info in memory.
-  auto table_info = GetTableInfo(kPgTablespaceTableId);
-  if (table_info == nullptr) {
-    LOG(WARNING) << "Table info not found for pg_tablespace catalog table";
+void CatalogManager::StartTablespaceBgTaskIfStopped() {
+  if (GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs) <= 0 ||
+      !GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+    // The tablespace bg task is disabled. Nothing to do.
     return;
   }
 
-  // Update tablespace_placement_map_.
-  auto&& s = GetAndUpdateYsqlTablespaceInfo();
+  const bool is_task_running = tablespace_bg_task_running_.exchange(true);
+  if (is_task_running) {
+    // Task already running, nothing to do.
+    return;
+  }
+
+  ScheduleRefreshTablespaceInfoTask(true /* schedule_now */);
+}
+
+void CatalogManager::ScheduleRefreshTablespaceInfoTask(const bool schedule_now) {
+  int wait_time = 0;
+
+  if (!schedule_now) {
+    wait_time = GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs);
+    if (wait_time <= 0) {
+      // The tablespace refresh task has been disabled.
+      tablespace_bg_task_running_ = false;
+      return;
+    }
+  }
+
+  refresh_ysql_tablespace_info_task_.Schedule([this](const Status& status) {
+    Status s = background_tasks_thread_pool_->SubmitFunc(
+      std::bind(&CatalogManager::RefreshTablespaceInfoPeriodically, this));
+    if (!s.IsOk()) {
+      // Failed to submit task to the thread pool. Mark that the task is now
+      // no longer running.
+      LOG(WARNING) << "Failed to schedule: RefreshTablespaceInfoPeriodically";
+      tablespace_bg_task_running_ = false;
+    }
+  }, wait_time * 1s);
+}
+
+void CatalogManager::RefreshTablespaceInfoPeriodically() {
+  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+    tablespace_bg_task_running_ = false;
+    return;
+  }
+
+  if (!CheckIsLeaderAndReady().IsOk()) {
+    LOG(INFO) << "No longer the leader, so cancelling tablespace info task";
+    tablespace_bg_task_running_ = false;
+    return;
+  }
+
+  // Refresh the tablespace info in memory.
+  DoRefreshTablespaceInfo();
+
+  // Schedule the next iteration of the task.
+  ScheduleRefreshTablespaceInfoTask();
+}
+
+void CatalogManager::DoRefreshTablespaceInfo() {
+  VLOG(2) << "Running RefreshTablespaceInfoPeriodically task";
+
+  // First refresh the tablespace info in memory.
+  auto s = GetAndUpdateYsqlTablespaceInfo();
   if (!s.ok()) {
+    // Refresh of tablespaces failed.
     LOG(WARNING) << "Updating tablespace information failed with error "
                  << StatusToString(s);
+    return;
   }
 
   // Now the table->tablespace information has to be updated in memory. To do this, first,
@@ -1839,6 +1860,12 @@ void CatalogManager::DoRefreshYSQLTablePlacementInfo() {
       if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
+
+      if (ns.second->colocated()) {
+        // Skip processing tables in colocated databases.
+        continue;
+      }
+
       // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
       namespace_id_vec.emplace_back(ns.first);
     }
@@ -1858,11 +1885,14 @@ void CatalogManager::DoRefreshYSQLTablePlacementInfo() {
     VLOG(5) << "Successfully refreshed placement information for namespace "
             << nsid;
   }
-  // Update table_to_tablespace_map_ and update the last refreshed time.
+  // Update table_to_tablespace_map_.
   {
     std::lock_guard<LockType> l(tablespace_lock_);
     table_to_tablespace_map_ = table_to_tablespace_map;
   }
+
+  VLOG(3) << "Refreshed tablespace information in memory";
+  return;
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
@@ -2468,13 +2498,19 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   auto ns = VERIFY_RESULT(FindNamespace(req.namespace_()));
-  auto ns_lock = ns->LockForRead();
-  if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
-    Status s = STATUS(NotFound, "Namespace not found");
-    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  bool colocated;
+  NamespaceId namespace_id;
+  NamespaceName namespace_name;
+  {
+    auto ns_lock = ns->LockForRead();
+    if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
+      Status s = STATUS(NotFound, "Namespace not found");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    namespace_id = ns->id();
+    namespace_name = ns->name();
+    colocated = ns->colocated();
   }
-  const NamespaceId& namespace_id = ns->id();
-  const NamespaceName& namespace_name = ns->name();
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
@@ -2493,7 +2529,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Determine if this table should be colocated. If not specified, the table should be colocated if
   // and only if the namespace is colocated.
-  bool colocated = ns->colocated();
   if (!req.colocated()) {
     // Opt out of colocation if the request says so.
     colocated = false;
@@ -2589,12 +2624,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (num_tablets <= 0) {
-    SharedLock<LockType> l(blacklist_lock_);
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
+    BlacklistSet blacklist = BlacklistSetFromPB();
     TSDescriptorVector ts_descs;
     master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-        &ts_descs, replication_info.live_replicas().placement_uuid(), blacklistState.tservers_);
+        &ts_descs, replication_info.live_replicas().placement_uuid(),
+        blacklist);
     num_tablets = ts_descs.size() * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
                                                  : FLAGS_yb_num_shards_per_tserver);
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
@@ -3705,8 +3741,11 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
 
   // Lookup the truncated table.
   TRACE("Looking up table $0", req->table_id());
-  std::lock_guard<LockType> l_map(lock_);
-  scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, req->table_id());
+  scoped_refptr<TableInfo> table;
+  {
+    std::lock_guard<LockType> l_map(lock_);
+    table = FindPtrOrNull(*table_ids_map_, req->table_id());
+  }
 
   if (table == nullptr) {
     Status s = STATUS(NotFound, "The object does not exist: table with id", req->table_id());
@@ -4143,8 +4182,11 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 
   // Lookup the deleted table.
   TRACE("Looking up table $0", req->table_id());
-  std::lock_guard<LockType> l_map(lock_);
-  scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, req->table_id());
+  scoped_refptr<TableInfo> table;
+  {
+    std::lock_guard<LockType> l_map(lock_);
+    table = FindPtrOrNull(*table_ids_map_, req->table_id());
+  }
 
   if (table == nullptr) {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
@@ -6942,15 +6984,15 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
   *common->mutable_cloud_info() = peer.cloud_info();
 
   // Todo(Rahul) : May need to be changed when we implement table level overrides.
-  SysClusterConfigEntryPB config;
-  RETURN_NOT_OK(GetClusterConfig(&config));
-  // If the config has no replication info, use empty string for the placement uuid, otherwise
-  // calculate it from the reported peer.
-  auto placement_uuid = config.has_replication_info() ?
+  {
+    auto l = cluster_config_->LockForRead();
+    // If the config has no replication info, use empty string for the placement uuid, otherwise
+    // calculate it from the reported peer.
+    auto placement_uuid = l->data().pb.has_replication_info() ?
       VERIFY_RESULT(CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
-          config.replication_info(), peer)) : "";
-  common->set_placement_uuid(placement_uuid);
-
+          l->data().pb.replication_info(), peer)) : "";
+    common->set_placement_uuid(placement_uuid);
+  }
   return master_->ts_manager()->RegisterTS(instance_pb, registration_pb, master_->MakeCloudInfoPB(),
                                            &master_->proxy_cache(),
                                            RegisteredThroughHeartbeat::kFalse);
@@ -7121,6 +7163,11 @@ Status CatalogManager::UpdateMastersListInMemoryAndDisk() {
 
 Status CatalogManager::EnableBgTasks() {
   std::lock_guard<LockType> l(lock_);
+  // Initialize refresh_ysql_tablespace_info_task_. This will be used to
+  // manage the background task that refreshes tablespace info. This task
+  // will be started by the CatalogManagerBgTasks below.
+  refresh_ysql_tablespace_info_task_.Bind(&master_->messenger()->scheduler());
+
   background_tasks_.reset(new CatalogManagerBgTasks(this));
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
@@ -7131,10 +7178,6 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
-  // Add bg thread to refresh tablespace information for ysql tables.
-  refresh_ysql_tablespace_info_task_.Bind(&master_->messenger()->scheduler());
-  RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-      [this]() { StartRefreshYSQLTablePlacementInfo(); }));
   return Status::OK();
 }
 
@@ -7730,8 +7773,8 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
   // For those tablets which need to be created in this round, assign replicas.
   TSDescriptorVector ts_descs;
   {
-    SharedLock<LockType> l(blacklist_lock_);
-    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklistState.tservers_);
+    BlacklistSet blacklist = BlacklistSetFromPB();
+    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
   }
   Status s;
   unordered_set<TableInfo*> ok_status_tables;
@@ -7787,10 +7830,12 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
         if (!lock) {
           lock = tablet->table()->LockForWrite(); // table.lock
         }
-        if (tablet->table()->RemoveTablet(
-          tablet->metadata().dirty().pb.partition().partition_key_start())) {
-          VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
-            "table " << lock->data().name();
+        if (tablet->metadata().is_dirty()) {
+          if (tablet->table()->RemoveTablet(
+            tablet->metadata().dirty().pb.partition().partition_key_start())) {
+            VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
+              "table " << lock->data().name();
+          }
         }
       }
     }
@@ -8011,8 +8056,8 @@ void CatalogManager::StartElectionIfReady(
   // Find tservers that can be leaders for a tablet.
   TSDescriptorVector ts_descs;
   {
-    SharedLock<LockType> l(blacklist_lock_);
-    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, leaderBlacklistState.tservers_);
+    BlacklistSet blacklist = BlacklistSetFromPB();
+    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
   }
 
   std::vector<std::string> possible_leaders;
@@ -8600,76 +8645,23 @@ Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
   return Status::OK();
 }
 
-Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
-  if (!blacklistState.tservers_.empty()) {
-    LOG(WARNING) << "Overwriting " << blacklistState.ToString()
-                 << " with new size " << blacklist.hosts_size()
-                 << " and initial load " << blacklist.initial_replica_load() << ".";
-    blacklistState.Reset();
-  }
-
-  for (const auto& pb : blacklist.hosts()) {
-    blacklistState.tservers_.insert(HostPortFromPB(pb));
-  }
-
-  // Set the initial load.
-  if (blacklist.has_initial_replica_load()) {
-    blacklistState.initial_load_ = blacklist.initial_replica_load();
-  }
-
-  LOG(INFO) << "Set blacklist size = " << blacklistState.tservers_.size() << " with load "
-            << blacklistState.initial_load_;
-
-  return Status::OK();
-}
-
-Status CatalogManager::SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
-  if (!leaderBlacklistState.tservers_.empty()) {
-    LOG(WARNING) << "Overwriting " << leaderBlacklistState.ToString()
-                 << " with new size " << leader_blacklist.hosts_size()
-                 << " and initial load " << leader_blacklist.initial_leader_load() << ".";
-    leaderBlacklistState.Reset();
-  }
-
-  for (const auto& pb : leader_blacklist.hosts()) {
-    leaderBlacklistState.tservers_.insert(HostPortFromPB(pb));
-  }
-
-  // Set the initial leader load.
-  if (leader_blacklist.has_initial_leader_load()) {
-    leaderBlacklistState.initial_load_ = leader_blacklist.initial_leader_load();
-  }
-
-  LOG(INFO) << "Set leader blacklist size = " << leaderBlacklistState.tservers_.size()
-            << " with load " << leaderBlacklistState.initial_load_;
-
-  return Status::OK();
-}
-
 Status CatalogManager::SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) {
   SysClusterConfigEntryPB config(req->cluster_config());
 
-  {
-    std::lock_guard <LockType> blacklist_lock(blacklist_lock_);
-
-    // Save the list of blacklisted servers to be used for completion checking.
-    if (config.has_server_blacklist()) {
-      RETURN_NOT_OK(SetBlackList(config.server_blacklist()));
-
-      config.mutable_server_blacklist()->set_initial_replica_load(
-          GetNumRelevantReplicas(blacklistState, false /* leaders_only */));
-      blacklistState.initial_load_ = config.server_blacklist().initial_replica_load();
-    }
-
-    // Save the list of leader blacklist to be used for completion checking.
-    if (config.has_leader_blacklist()) {
-      RETURN_NOT_OK(SetLeaderBlacklist(config.leader_blacklist()));
-
-      config.mutable_leader_blacklist()->set_initial_leader_load(
-          GetNumRelevantReplicas(leaderBlacklistState, true /* leaders_only */));
-      leaderBlacklistState.initial_load_ = config.leader_blacklist().initial_leader_load();
-    }
+  if (config.has_server_blacklist()) {
+    config.mutable_server_blacklist()->set_initial_replica_load(
+        GetNumRelevantReplicas(config.server_blacklist(), false /* leaders_only */));
+    LOG(INFO) << Format("Set blacklist of total tservers: $0, with initial load: $1",
+                    config.server_blacklist().hosts().size(),
+                    config.server_blacklist().initial_replica_load());
+  }
+  if (config.has_leader_blacklist()) {
+    config.mutable_leader_blacklist()->set_initial_leader_load(
+        GetNumRelevantReplicas(config.leader_blacklist(), true /* leaders_only */));
+    LOG(INFO) << Format("Set leader blacklist of total tservers: $0, with initial load: $1",
+                    config.leader_blacklist().hosts().size(),
+                    config.leader_blacklist().initial_leader_load());
   }
 
   auto l = cluster_config_->LockForWrite();
@@ -8831,17 +8823,15 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   }
 
   {
-    SharedLock<LockType> l(blacklist_lock_);
+    BlacklistSet blacklist = BlacklistSetFromPB();
     if (live_replicas_placement_uuid.empty()) {
-      master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklistState.tservers_);
+      master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
     } else {
       master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-          &ts_descs, live_replicas_placement_uuid, blacklistState.tservers_);
+          &ts_descs, live_replicas_placement_uuid,
+          blacklist);
     }
   }
-
-  SysClusterConfigEntryPB config;
-  RETURN_NOT_OK(GetClusterConfig(&config));
 
   // Only need to fetch if txn tables are not using preferred zones.
   vector<scoped_refptr<TableInfo>> tables;
@@ -8849,9 +8839,10 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
     master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
   }
 
+  auto l = cluster_config_->LockForRead();
   Status s = CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs,
-                                                           config.replication_info(),
-                                                           tables);
+                                          l->data().pb.replication_info(),
+                                          tables);
   if (!s.ok()) {
     return SetupError(
         resp->mutable_error(), MasterErrorPB::CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK, s);
@@ -8860,17 +8851,7 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   return Status::OK();
 }
 
-void BlacklistState::Reset() {
-  tservers_.clear();
-  initial_load_ = 0;
-}
-
-std::string BlacklistState::ToString() {
-  return Substitute("Blacklist has $0 servers, initial load is $1.",
-                    tservers_.size(), initial_load_);
-}
-
-int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only) {
+int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistPB& blacklist, bool leaders_only) {
   int64_t res = 0;
   std::lock_guard <LockType> tablet_map_lock(lock_);
   for (const TabletInfoMap::value_type& entry : *tablet_map_) {
@@ -8887,24 +8868,11 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistState& state, bool
       if (leaders_only && replica.second.role != RaftPeerPB::LEADER) {
         continue;
       }
-      TSRegistrationPB reg = replica.second.ts_desc->GetRegistration();
-      bool found = false;
-      for (const auto& hp : reg.common().private_rpc_addresses()) {
-        if (state.tservers_.count(HostPortFromPB(hp)) != 0) {
-          found = true;
+      for (int i = 0; i < blacklist.hosts_size(); i++) {
+        if (replica.second.ts_desc->IsRunningOn(blacklist.hosts(i))) {
+          ++res;
           break;
         }
-      }
-      if (!found) {
-        for (const auto& hp : reg.common().broadcast_addresses()) {
-          if (state.tservers_.count(HostPortFromPB(hp)) != 0) {
-            found = true;
-            break;
-          }
-        }
-      }
-      if (found) {
-        res++;
       }
     }
   }
@@ -8927,34 +8895,40 @@ Status CatalogManager::GetLeaderBlacklistCompletionPercent(GetLoadMovePercentRes
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
     bool blacklist_leader) {
-  SharedLock<LockType> l(blacklist_lock_);
+  auto l = cluster_config_->LockForRead();
 
-  BlacklistState& state = (blacklist_leader) ? leaderBlacklistState : blacklistState;
+  // Fine to pass in empty defaults if server_blacklist or leader_blacklist is not filled.
+  const BlacklistPB& state = (blacklist_leader) ?
+                                l->data().pb.leader_blacklist() : l->data().pb.server_blacklist();
   int64_t blacklist_replicas = GetNumRelevantReplicas(state, blacklist_leader);
+  int64_t initial_load = (blacklist_leader) ?
+                                state.initial_leader_load(): state.initial_replica_load();
 
   // On change of master leader, initial_load_ information may be lost temporarily. Reset to
   // current value to avoid reporting progress percent as 100. Note that doing so will report
   // progress percent as 0 instead.
-  if (state.initial_load_ < blacklist_replicas) {
-    LOG(INFO) << "Reset blacklist initial load from " << state.initial_load_
-      <<  " to " << blacklist_replicas;
-    state.initial_load_ = blacklist_replicas;
+  if (initial_load < blacklist_replicas) {
+    LOG(INFO) << Format("Initial load: $0, current load: $1."
+              " Initial load is less than the current load. Probably a master leader change."
+              " Reporting progress as 0", state.initial_replica_load(),
+              blacklist_replicas);
+    initial_load = blacklist_replicas;
   }
 
   LOG(INFO) << "Blacklisted count " << blacklist_replicas
-            << " across " << state.tservers_.size()
-            << " servers, with initial load " << state.initial_load_;
+            << " across " << state.hosts_size()
+            << " servers, with initial load " << initial_load;
 
   // Case when a blacklisted servers did not have any starting load.
-  if (state.initial_load_ == 0) {
+  if (initial_load == 0) {
     resp->set_percent(100);
     return Status::OK();
   }
 
   resp->set_percent(
-      100 - (static_cast<double>(blacklist_replicas) * 100 / state.initial_load_));
+      100 - (static_cast<double>(blacklist_replicas) * 100 / initial_load));
   resp->set_remaining(blacklist_replicas);
-  resp->set_total(state.initial_load_);
+  resp->set_total(initial_load);
 
   return Status::OK();
 }
@@ -9164,10 +9138,9 @@ void CatalogManager::RebuildYQLSystemPartitions() {
 }
 
 Status CatalogManager::SysCatalogRespectLeaderAffinity() {
-  SysClusterConfigEntryPB config;
-  RETURN_NOT_OK(GetClusterConfig(&config));
+  auto l = cluster_config_->LockForRead();
 
-  const auto& affinitized_leaders = config.replication_info().affinitized_leaders();
+  const auto& affinitized_leaders = l->data().pb.replication_info().affinitized_leaders();
   if (affinitized_leaders.empty()) {
     return Status::OK();
   }
@@ -9221,6 +9194,18 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   }
 
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
+}
+
+BlacklistSet CatalogManager::BlacklistSetFromPB() {
+  auto l = cluster_config_->LockForRead();
+
+  const auto& blacklist_pb = l->data().pb.server_blacklist();
+  BlacklistSet blacklist_set;
+  for (int i = 0; i < blacklist_pb.hosts_size(); i++) {
+    blacklist_set.insert(HostPortFromPB(blacklist_pb.hosts(i)));
+  }
+
+  return blacklist_set;
 }
 
 }  // namespace master

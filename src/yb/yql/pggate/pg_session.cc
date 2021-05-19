@@ -330,7 +330,7 @@ void SetupSession(client::YBSession* session) {
 //--------------------------------------------------------------------------------------------------
 
 PgSessionAsyncRunResult::PgSessionAsyncRunResult(PgsqlOpBuffer buffered_operations,
-                                                 std::future<Status> future_status,
+                                                 std::future<client::FlushStatus> future_status,
                                                  client::YBSessionPtr session)
     : buffered_operations_(std::move(buffered_operations)),
       future_status_(std::move(future_status)),
@@ -339,9 +339,9 @@ PgSessionAsyncRunResult::PgSessionAsyncRunResult(PgsqlOpBuffer buffered_operatio
 
 Status PgSessionAsyncRunResult::GetStatus(PgSession* pg_session) {
   SCHECK(InProgress(), IllegalState, "Request must be in progress");
-  auto status = future_status_.get();
-  future_status_ = std::future<Status>();
-  RETURN_NOT_OK(CombineErrorsToStatus(session_->GetAndClearPendingErrors(), status));
+  const auto flush_status = future_status_.get();
+  future_status_ = std::future<client::FlushStatus>();
+  RETURN_NOT_OK(CombineErrorsToStatus(flush_status.errors, flush_status.status));
   for (const auto& bop : buffered_operations_) {
     RETURN_NOT_OK(pg_session->HandleResponse(*bop.operation, bop.relation_id));
   }
@@ -461,9 +461,7 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
 
 Result<PgSessionAsyncRunResult> PgSession::RunHelper::Flush() {
   if (yb_session_) {
-    auto future_status = MakeFuture<Status>([this](auto callback) {
-      yb_session_->FlushAsync([callback](const Status& status) { callback(status); });
-    });
+    auto future_status = yb_session_->FlushFuture();
     return PgSessionAsyncRunResult(
         std::move(pending_ops_), std::move(future_status), std::move(yb_session_));
   }
@@ -1089,8 +1087,8 @@ Status PgSession::FlushOperations(PgsqlOpBuffer ops, IsTransactionalSession tran
   for (const auto& buffered_op : ops) {
     RETURN_NOT_OK(ApplyOperation(session, transactional, buffered_op));
   }
-  const auto status = session->FlushFuture().get();
-  RETURN_NOT_OK(CombineErrorsToStatus(session->GetAndClearPendingErrors(), status));
+  const auto flush_status = session->FlushFuture().get();
+  RETURN_NOT_OK(CombineErrorsToStatus(flush_status.errors, flush_status.status));
   for (const auto& buffered_op : ops) {
     RETURN_NOT_OK(HandleResponse(*buffered_op.operation, buffered_op.relation_id));
   }

@@ -7,8 +7,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
@@ -70,7 +68,7 @@ public class UniverseTest extends FakeDBApplication {
     assertNotNull(u);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    u.setConfig(config);
+    u.updateConfig(config);
     assertEquals(config, u.getConfig());
   }
 
@@ -286,7 +284,7 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     Map<String, String> universeParams = new HashMap<>();
     universeParams.put(Universe.TAKE_BACKUPS, "true");
-    u.setConfig(universeParams);
+    u.updateConfig(universeParams);
 
     // Create regions
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
@@ -362,7 +360,7 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
@@ -381,7 +379,8 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
     userIntent.masterGFlags = null;
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
+      .get(0).uuid.toString();
 
     // SaveDetails in order to generate universeDetailsJson with null gflags
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
@@ -420,7 +419,7 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
@@ -588,7 +587,8 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
+      .get(0).uuid.toString();
     userIntent.numNodes = 3;
     u = Universe.saveDetails(u.universeUUID,
       ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(true, 3));
@@ -704,7 +704,8 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
     userIntent.regionList = new ArrayList<>();
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
+    .get(0).uuid.toString();
     userIntent.numNodes = numNodes;
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, setMasters));
     return u;

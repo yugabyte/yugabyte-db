@@ -136,23 +136,6 @@ typedef unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 
 typedef unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
-// Component within the catalog manager which tracks blacklist (decommission) operation
-// related information.
-class BlacklistState {
- public:
-  BlacklistState() { Reset(); }
-  ~BlacklistState() {}
-
-  void Reset();
-
-  std::string ToString();
-
-  // Set of blacklisted servers host/ports. Protected by leader_lock_ in catalog manager.
-  std::unordered_set<HostPort, HostPortHash> tservers_;
-  // In-memory tracker for initial blacklist load.
-  int64_t initial_load_;
-};
-
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -450,6 +433,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 
+  ClusterLoadBalancer* load_balancer() { return load_balance_policy_.get(); }
+
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const;
@@ -645,7 +630,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the percentage of leaders/tablets that have been moved off of the (leader) black-listed
   // tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
-      bool blacklist_leader) EXCLUDES(blacklist_lock_);
+      bool blacklist_leader);
 
   // API to check if all the live tservers have similar tablet workload.
   CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
@@ -1175,14 +1160,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetAndUpdateYsqlTablespaceInfo();
 
   // Starts the periodic job to update tablespace info if it is not running.
-  void StartRefreshYSQLTablePlacementInfo();
+  void StartTablespaceBgTaskIfStopped();
 
   // Background task that refreshes the in-memory state for YSQL tables with their associated
   // tablespace info.
-  void RefreshYSQLTablePlacementInfo();
+  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped()
+  // above.
+  void RefreshTablespaceInfoPeriodically();
 
-  // Helper function to refresh tablespace_placement_map_ and table_to_tablespace_map_.
-  void DoRefreshYSQLTablePlacementInfo();
+  // Helper function to schedule the next iteration of the tablespace info task.
+  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
+
+  // Helper function to refresh the tablespace info.
+  void DoRefreshTablespaceInfo();
 
   // Report metrics.
   void ReportMetrics();
@@ -1203,13 +1193,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
 
-  // Set the current list of black listed nodes, which is used to track the load movement off of
-  // these nodes. Also sets the initial load (which is the number of tablets on these nodes)
-  // when the blacklist load removal operation was started. It permits overwrite semantics
-  // for the blacklist.
-  CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist) REQUIRES(blacklist_lock_);
-  CHECKED_STATUS SetLeaderBlacklist(const BlacklistPB& leader_blacklist) REQUIRES(blacklist_lock_);
-
   // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
   // Does not change any other tablets and their partitions.
   // Returns TabletInfo for registered tablet.
@@ -1228,7 +1211,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
 
   // Calculate the total number of replicas which are being handled by servers in state.
-  int64_t GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only);
+  int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
 
   int64_t leader_ready_term() EXCLUDES(state_lock_) {
     std::lock_guard<simple_spinlock> l(state_lock_);
@@ -1263,10 +1246,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   virtual Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
     return SnapshotSchedulesToTabletsMap();
   }
-
-  // ----------------------------------------------------------------------------------------------
-  // Private member fields
-  // ----------------------------------------------------------------------------------------------
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
@@ -1331,14 +1310,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
   std::unique_ptr<yb::ThreadPool> background_tasks_thread_pool_;
-
-  mutable LockType blacklist_lock_;
-
-  // Track all information related to the black list operations.
-  BlacklistState blacklistState GUARDED_BY(blacklist_lock_);
-
-  // Track all information related to the leader black list operations.
-  BlacklistState leaderBlacklistState GUARDED_BY(blacklist_lock_);
 
   // TODO: convert this to YB_DEFINE_ENUM for automatic pretty-printing.
   enum State {
@@ -1462,7 +1433,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map_ GUARDED_BY(tablespace_lock_);
 
   // Whether the periodic job to update tablespace info is running.
-  std::atomic<bool> tablespace_info_task_running_;
+  std::atomic<bool> tablespace_bg_task_running_;
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);
@@ -1481,6 +1452,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   ServerRegistrationPB server_registration_;
+
+  BlacklistSet BlacklistSetFromPB();
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

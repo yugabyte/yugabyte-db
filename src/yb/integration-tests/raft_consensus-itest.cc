@@ -295,13 +295,13 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
       int inserted = last_row_in_batch - first_row_in_batch;
 
-      Status s = session->Flush();
+      const auto flush_status = session->FlushAndGetOpsErrors();
+      const auto& s = flush_status.status;
       if (PREDICT_FALSE(!s.ok())) {
-        client::CollectedErrors errors = session->GetAndClearPendingErrors();
-        for (const auto& e : errors) {
+        for (const auto& e : flush_status.errors) {
           ASSERT_TRUE(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status();
         }
-        inserted -= errors.size();
+        inserted -= flush_status.errors.size();
       }
 
       for (CountDownLatch* latch : latches) {
