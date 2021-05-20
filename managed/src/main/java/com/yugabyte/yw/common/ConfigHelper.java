@@ -2,8 +2,12 @@
 
 package com.yugabyte.yw.common;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
 import org.yaml.snakeyaml.Yaml;
@@ -12,11 +16,17 @@ import play.Application;
 import play.libs.Json;
 
 import javax.inject.Singleton;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.UUID;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 
 @Singleton
 public class ConfigHelper {
+  public static final Logger LOG = LoggerFactory.getLogger(ConfigHelper.class);
 
   public enum ConfigType {
     // TODO: investigate why many of these are null description. Is it intended or a bug?
@@ -66,6 +76,33 @@ public class ConfigHelper {
 
   public Map<String, Object> getRegionMetadata(Common.CloudType type) {
     return type.getRegionMetadataConfigType().map(this::getConfig).orElse(Collections.emptyMap());
+  }
+
+  public void loadSoftwareVersiontoDB(Application app) {
+    String configFile = "version_metadata.json";
+    InputStream inputStream = app.resourceAsStream(configFile);
+    if (inputStream == null) { // version_metadata.json not found
+      LOG.info("{} file not found. Reading version from version.txt file",
+        FilenameUtils.getName(configFile));
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
+      String version = yaml.load(app.resourceAsStream("version.txt"));
+      loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
+      return;
+    }
+    JsonNode jsonNode = Json.parse(inputStream);
+    String buildNumber = jsonNode.get("build_number").asText();
+    String version = jsonNode.get("version_number").asText() + "-" +
+      (NumberUtils.isDigits(buildNumber) ? "b" : "") + buildNumber;
+    loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
+
+    // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
+    Map <String, Object> ywMetadata = new HashMap<>();
+    // Assign a new Yugaware UUID if not already present in the DB i.e. first install
+    Object ywUUID = getConfig(ConfigType.YugawareMetadata)
+      .getOrDefault("yugaware_uuid", UUID.randomUUID());
+    ywMetadata.put("yugaware_uuid", ywUUID);
+    ywMetadata.put("version", version);
+    loadConfigToDB(ConfigType.YugawareMetadata, ywMetadata);
   }
 
   public void loadConfigsToDB(Application app) {
