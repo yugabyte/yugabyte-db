@@ -127,7 +127,7 @@ public class TablesController extends AuthenticatedController {
       // TODO: This should be temporary unavailable error and not a success!!
       return YWResults.YWSuccess.withMessage(errMsg);
     }
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       client = ybService.getClient(masterAddresses, certificate);
@@ -221,7 +221,7 @@ public class TablesController extends AuthenticatedController {
           e);
     }
 
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       client = ybService.getClient(masterAddresses, certificate);
@@ -273,7 +273,7 @@ public class TablesController extends AuthenticatedController {
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
     try {
-      String certificate = universe.getCertificate();
+      String certificate = universe.getCertificateNodetoNode();
       if (masterAddresses.isEmpty()) {
         LOG.warn("Expected error. Masters are not currently queryable.");
         return ok("Expected error. Masters are not currently queryable.");
@@ -548,7 +548,7 @@ public class TablesController extends AuthenticatedController {
       LOG.warn(errMsg);
       return false;
     }
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
 
     try {
