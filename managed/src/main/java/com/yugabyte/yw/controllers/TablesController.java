@@ -44,47 +44,54 @@ import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse
 public class TablesController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
 
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
-  @Inject
-  Commissioner commissioner;
+  @Inject Commissioner commissioner;
 
   // The YB client to use.
   public YBClientService ybService;
 
-  @Inject
-  MetricQueryHelper metricQueryHelper;
+  @Inject MetricQueryHelper metricQueryHelper;
 
   @Inject
-  public TablesController(YBClientService service) { this.ybService = service; }
+  public TablesController(YBClientService service) {
+    this.ybService = service;
+  }
 
   public Result create(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID and universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     try {
-      Form<TableDefinitionTaskParams> formData = formFactory.form(TableDefinitionTaskParams.class)
-        .bindFromRequest();
+      Form<TableDefinitionTaskParams> formData =
+          formFactory.form(TableDefinitionTaskParams.class).bindFromRequest();
       TableDefinitionTaskParams taskParams = formData.get();
 
       // Submit the task to create the table.
       TableDetails tableDetails = taskParams.tableDetails;
       UUID taskUUID = commissioner.submit(TaskType.CreateCassandraTable, taskParams);
-      LOG.info("Submitted create table for {}:{}, task uuid = {}.",
-        taskParams.tableUUID, tableDetails.tableName, taskUUID);
+      LOG.info(
+          "Submitted create table for {}:{}, task uuid = {}.",
+          taskParams.tableUUID,
+          tableDetails.tableName,
+          taskUUID);
 
       // Add this task uuid to the user universe.
       // TODO: check as to why we aren't populating the tableUUID from middleware
       // Which means all the log statements above and below are basically logging null?
-      CustomerTask.create(customer,
-        universe.universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Table,
-        CustomerTask.TaskType.Create,
-        tableDetails.tableName);
-      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-          taskParams.tableUUID, tableDetails.keyspace, tableDetails.tableName);
+      CustomerTask.create(
+          customer,
+          universe.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Table,
+          CustomerTask.TaskType.Create,
+          tableDetails.tableName);
+      LOG.info(
+          "Saved task uuid {} in customer tasks table for table {}:{}.{}",
+          taskUUID,
+          taskParams.tableUUID,
+          tableDetails.keyspace,
+          tableDetails.tableName);
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
@@ -124,8 +131,8 @@ public class TablesController extends AuthenticatedController {
     YBClient client = null;
     try {
       client = ybService.getClient(masterAddresses, certificate);
-      GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
-          tableUUID.toString().replace("-", ""));
+      GetTableSchemaResponse schemaResponse =
+          client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
       ybService.closeClient(client, masterAddresses);
       if (schemaResponse == null) {
         String errMsg = "No table for UUID: " + tableUUID;
@@ -142,17 +149,24 @@ public class TablesController extends AuthenticatedController {
       taskParams.masterAddresses = masterAddresses;
 
       UUID taskUUID = commissioner.submit(TaskType.DeleteTable, taskParams);
-      LOG.info("Submitted delete table for {}:{}, task uuid = {}.", taskParams.tableUUID,
-          taskParams.getFullName(), taskUUID);
+      LOG.info(
+          "Submitted delete table for {}:{}, task uuid = {}.",
+          taskParams.tableUUID,
+          taskParams.getFullName(),
+          taskUUID);
 
-      CustomerTask.create(customer,
+      CustomerTask.create(
+          customer,
           universeUUID,
           taskUUID,
           CustomerTask.TargetType.Table,
           CustomerTask.TaskType.Delete,
           taskParams.getFullName());
-      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}", taskUUID,
-          taskParams.tableUUID, taskParams.getFullName());
+      LOG.info(
+          "Saved task uuid {} in customer tasks table for table {}:{}",
+          taskUUID,
+          taskParams.tableUUID,
+          taskParams.getFullName());
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
@@ -202,9 +216,9 @@ public class TablesController extends AuthenticatedController {
       tableSizes = queryTableSizes(universe.getUniverseDetails().nodePrefix);
     } catch (Exception e) {
       LOG.error(
-        "Error querying for table sizes for universe {} from prometheus",
-        universe.getUniverseDetails().nodePrefix, e
-      );
+          "Error querying for table sizes for universe {} from prometheus",
+          universe.getUniverseDetails().nodePrefix,
+          e);
     }
 
     String certificate = universe.getCertificate();
@@ -216,10 +230,10 @@ public class TablesController extends AuthenticatedController {
       ArrayNode resultNode = Json.newArray();
       for (TableInfo table : tableInfoList) {
         String tableKeySpace = table.getNamespace().getName();
-        if (!tableKeySpace.toLowerCase().equals("system") &&
-            !tableKeySpace.toLowerCase().equals("system_schema") &&
-            !tableKeySpace.toLowerCase().equals("system_auth") &&
-            !tableKeySpace.toLowerCase().equals("system_platform")) {
+        if (!tableKeySpace.toLowerCase().equals("system")
+            && !tableKeySpace.toLowerCase().equals("system_schema")
+            && !tableKeySpace.toLowerCase().equals("system_auth")
+            && !tableKeySpace.toLowerCase().equals("system_platform")) {
           ObjectNode node = Json.newObject();
           node.put("keySpace", tableKeySpace);
           node.put("tableType", table.getTableType().toString());
@@ -265,8 +279,8 @@ public class TablesController extends AuthenticatedController {
         return ok("Expected error. Masters are not currently queryable.");
       }
       client = ybService.getClient(masterAddresses, certificate);
-      GetTableSchemaResponse response = client.getTableSchemaByUUID(
-        tableUUID.toString().replace("-", ""));
+      GetTableSchemaResponse response =
+          client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
 
       return ok(Json.toJson(createFromResponse(universe, tableUUID, response)));
     } catch (IllegalArgumentException e) {
@@ -286,9 +300,8 @@ public class TablesController extends AuthenticatedController {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    Form<MultiTableBackup.Params> formData = formFactory
-        .form(MultiTableBackup.Params.class)
-        .bindFromRequest();
+    Form<MultiTableBackup.Params> formData =
+        formFactory.form(MultiTableBackup.Params.class).bindFromRequest();
 
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
@@ -304,11 +317,12 @@ public class TablesController extends AuthenticatedController {
       String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    if (universe.getUniverseDetails().updateInProgress ||
-        universe.getUniverseDetails().backupInProgress) {
-      String errMsg = String.format("Cannot run Backup task since the " +
-                                    "universe %s is currently in a locked state.",
-                                    universeUUID.toString());
+    if (universe.getUniverseDetails().updateInProgress
+        || universe.getUniverseDetails().backupInProgress) {
+      String errMsg =
+          String.format(
+              "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
+              universeUUID.toString());
       LOG.error(errMsg);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
@@ -322,26 +336,31 @@ public class TablesController extends AuthenticatedController {
     }
     ObjectNode resultNode = Json.newObject();
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
-      Schedule schedule = Schedule.create(customerUUID, taskParams,
-          TaskType.MultiTableBackup, taskParams.schedulingFrequency,
-          taskParams.cronExpression);
+      Schedule schedule =
+          Schedule.create(
+              customerUUID,
+              taskParams,
+              TaskType.MultiTableBackup,
+              taskParams.schedulingFrequency,
+              taskParams.cronExpression);
       UUID scheduleUUID = schedule.getScheduleUUID();
-      LOG.info("Submitted universe backup to be scheduled {}, schedule uuid = {}.",
-          universeUUID, scheduleUUID);
+      LOG.info(
+          "Submitted universe backup to be scheduled {}, schedule uuid = {}.",
+          universeUUID,
+          scheduleUUID);
       resultNode.put("scheduleUUID", scheduleUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
-      LOG.info("Submitted task to universe {}, task uuid = {}.",
-          universe.name, taskUUID);
-      CustomerTask.create(customer,
+      LOG.info("Submitted task to universe {}, task uuid = {}.", universe.name, taskUUID);
+      CustomerTask.create(
+          customer,
           taskParams.universeUUID,
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Create,
           universe.name);
-      LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID,
-          universe.name);
+      LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.name);
       resultNode.put("taskUUID", taskUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     }
@@ -359,8 +378,7 @@ public class TablesController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
-    Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class)
-        .bindFromRequest();
+    Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class).bindFromRequest();
 
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
@@ -372,11 +390,12 @@ public class TablesController extends AuthenticatedController {
       String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    if (universe.getUniverseDetails().updateInProgress ||
-        universe.getUniverseDetails().backupInProgress) {
-      String errMsg = String.format("Cannot run Backup task since the " +
-                                    "universe %s is currently in a locked state.",
-                                    universeUUID.toString());
+    if (universe.getUniverseDetails().updateInProgress
+        || universe.getUniverseDetails().backupInProgress) {
+      String errMsg =
+          String.format(
+              "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
+              universeUUID.toString());
       LOG.error(errMsg);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
@@ -386,28 +405,43 @@ public class TablesController extends AuthenticatedController {
 
     ObjectNode resultNode = Json.newObject();
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
-      Schedule schedule = Schedule.create(customerUUID, taskParams,
-          TaskType.BackupUniverse, taskParams.schedulingFrequency,
-          taskParams.cronExpression);
+      Schedule schedule =
+          Schedule.create(
+              customerUUID,
+              taskParams,
+              TaskType.BackupUniverse,
+              taskParams.schedulingFrequency,
+              taskParams.cronExpression);
       UUID scheduleUUID = schedule.getScheduleUUID();
-      LOG.info("Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
-          tableUUID, taskParams.getTableName(), scheduleUUID);
+      LOG.info(
+          "Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
+          tableUUID,
+          taskParams.getTableName(),
+          scheduleUUID);
       resultNode.put("scheduleUUID", scheduleUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     } else {
       Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
-      LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
-          tableUUID, taskParams.getTableName(), taskUUID);
+      LOG.info(
+          "Submitted task to backup table {}:{}, task uuid = {}.",
+          tableUUID,
+          taskParams.getTableName(),
+          taskUUID);
       backup.setTaskUUID(taskUUID);
-      CustomerTask.create(customer,
+      CustomerTask.create(
+          customer,
           taskParams.universeUUID,
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Create,
           taskParams.getTableName());
-      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-          tableUUID, taskParams.getTableNames(), taskParams.getTableName());
+      LOG.info(
+          "Saved task uuid {} in customer tasks table for table {}:{}.{}",
+          taskUUID,
+          tableUUID,
+          taskParams.getTableNames(),
+          taskParams.getTableName());
       resultNode.put("taskUUID", taskUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     }
@@ -433,7 +467,8 @@ public class TablesController extends AuthenticatedController {
       }
 
       // TODO: undo hardcode to AWS (required right now due to using EMR).
-      Common.CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+      Common.CloudType cloudType =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
       if (cloudType != aws) {
         String errMsg = "Bulk Import is currently only supported for AWS.";
         LOG.error(errMsg);
@@ -442,9 +477,12 @@ public class TablesController extends AuthenticatedController {
 
       Provider provider = null;
       try {
-        provider = Provider.get(customerUUID,
-          UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
-      } catch(IllegalArgumentException ex) {
+        provider =
+            Provider.get(
+                customerUUID,
+                UUID.fromString(
+                    universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+      } catch (IllegalArgumentException ex) {
         String errMsg = "Could not find AWS provider for customer UUID: " + customerUUID;
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
@@ -457,8 +495,7 @@ public class TablesController extends AuthenticatedController {
       }
 
       // Get form data and validate it.
-      Form<BulkImportParams> formData = formFactory.form(BulkImportParams.class)
-          .bindFromRequest();
+      Form<BulkImportParams> formData = formFactory.form(BulkImportParams.class).bindFromRequest();
       BulkImportParams taskParams = formData.get();
       if (taskParams.s3Bucket == null || !taskParams.s3Bucket.startsWith("s3://")) {
         String errMsg = "Invalid S3 Bucket provided: " + taskParams.s3Bucket;
@@ -468,25 +505,33 @@ public class TablesController extends AuthenticatedController {
       taskParams.universeUUID = universeUUID;
 
       UUID taskUUID = commissioner.submit(TaskType.ImportIntoTable, taskParams);
-      LOG.info("Submitted import into table for {}:{}, task uuid = {}.",
-          tableUUID, taskParams.getTableName(), taskUUID);
+      LOG.info(
+          "Submitted import into table for {}:{}, task uuid = {}.",
+          tableUUID,
+          taskParams.getTableName(),
+          taskUUID);
 
-      CustomerTask.create(customer,
+      CustomerTask.create(
+          customer,
           universe.universeUUID,
           taskUUID,
           CustomerTask.TargetType.Table,
           CustomerTask.TaskType.BulkImportData,
           taskParams.getTableName());
-      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-          tableUUID, taskParams.getTableName(), taskParams.getTableName());
+      LOG.info(
+          "Saved task uuid {} in customer tasks table for table {}:{}.{}",
+          taskUUID,
+          tableUUID,
+          taskParams.getTableName(),
+          taskParams.getTableName());
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
       return ApiResponse.success(resultNode);
     } catch (Exception e) {
-      String errMsg = "Failed to bulk import data into table " + tableUUID + " in universe "
-          + universeUUID;
+      String errMsg =
+          "Failed to bulk import data into table " + tableUUID + " in universe " + universeUUID;
       LOG.error(errMsg, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
@@ -511,13 +556,16 @@ public class TablesController extends AuthenticatedController {
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       // Match if the table is an index or ysql table.
-      return tableInfoList.stream().anyMatch(tableInfo ->
-              tableUuids.contains(
-                      getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", ""))) &&
-                      ((tableInfo.hasRelationType() && tableInfo.getRelationType() ==
-                              RelationType.INDEX_TABLE_RELATION) ||
-                      (tableInfo.hasTableType() && tableInfo.getTableType() ==
-                              TableType.PGSQL_TABLE_TYPE)));
+      return tableInfoList
+          .stream()
+          .anyMatch(
+              tableInfo ->
+                  tableUuids.contains(
+                          getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", "")))
+                      && ((tableInfo.hasRelationType()
+                              && tableInfo.getRelationType() == RelationType.INDEX_TABLE_RELATION)
+                          || (tableInfo.hasTableType()
+                              && tableInfo.getTableType() == TableType.PGSQL_TABLE_TYPE)));
     } catch (Exception e) {
       LOG.warn(e.toString());
       return false;
@@ -528,21 +576,23 @@ public class TablesController extends AuthenticatedController {
 
   private HashMap<String, Double> queryTableSizes(String nodePrefix) {
     // Execute query and check for errors.
-    ArrayList<MetricQueryResponse.Entry> values = metricQueryHelper.queryDirect(
-      "sum by (table_id) (rocksdb_current_version_sst_files_size{node_prefix=\""
-      + nodePrefix + "\"})"
-    );
+    ArrayList<MetricQueryResponse.Entry> values =
+        metricQueryHelper.queryDirect(
+            "sum by (table_id) (rocksdb_current_version_sst_files_size{node_prefix=\""
+                + nodePrefix
+                + "\"})");
 
-   HashMap<String, Double> result = new HashMap<String, Double>();
-   for (final MetricQueryResponse.Entry entry : values) {
+    HashMap<String, Double> result = new HashMap<String, Double>();
+    for (final MetricQueryResponse.Entry entry : values) {
       String tableID = entry.labels.get("table_id");
-      if (tableID == null || tableID.isEmpty() ||
-          entry.values == null || entry.values.size() == 0) {
+      if (tableID == null
+          || tableID.isEmpty()
+          || entry.values == null
+          || entry.values.size() == 0) {
         continue;
       }
       result.put(tableID, entry.values.get(0).getRight());
     }
     return result;
-
   }
 }

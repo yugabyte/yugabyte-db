@@ -46,7 +46,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -65,58 +65,55 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
-      final byte[] universeKeyRef = keyManager.generateUniverseKey(
+      final byte[] universeKeyRef =
+          keyManager.generateUniverseKey(
               taskParams().encryptionAtRestConfig.kmsConfigUUID,
               taskParams().universeUUID,
-              taskParams().encryptionAtRestConfig
-      );
+              taskParams().encryptionAtRestConfig);
 
       if (universeKeyRef == null || universeKeyRef.length == 0) {
         throw new RuntimeException("Error occurred creating universe key");
       }
 
-      final byte[] universeKeyVal = keyManager.getUniverseKey(
+      final byte[] universeKeyVal =
+          keyManager.getUniverseKey(
               taskParams().universeUUID,
               taskParams().encryptionAtRestConfig.kmsConfigUUID,
               universeKeyRef,
-              taskParams().encryptionAtRestConfig
-      );
+              taskParams().encryptionAtRestConfig);
 
       if (universeKeyVal == null || universeKeyVal.length == 0) {
         throw new RuntimeException("Error occurred retrieving universe key from ref");
       }
 
       final String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef);
-      List<HostAndPort> masterAddrs = Arrays
-              .stream(hostPorts.split(","))
+      List<HostAndPort> masterAddrs =
+          Arrays.stream(hostPorts.split(","))
               .map(addr -> HostAndPort.fromString(addr))
               .collect(Collectors.toList());
       for (HostAndPort hp : masterAddrs) {
         client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, universeKeyVal), hp);
       }
       for (HostAndPort hp : masterAddrs) {
-        if (!client
-                .waitForMasterHasUniverseKeyInMemory(KEY_IN_MEMORY_TIMEOUT, encodedKeyRef, hp)) {
+        if (!client.waitForMasterHasUniverseKeyInMemory(KEY_IN_MEMORY_TIMEOUT, encodedKeyRef, hp)) {
           throw new RuntimeException(
-                  "Timeout occurred waiting for universe encryption key to be set in memory"
-          );
+              "Timeout occurred waiting for universe encryption key to be set in memory");
         }
       }
 
       client.enableEncryptionAtRestInMemory(encodedKeyRef);
       Pair<Boolean, String> isEncryptionEnabled = client.isEncryptionEnabled();
-      if (!isEncryptionEnabled.getFirst() ||
-              !isEncryptionEnabled.getSecond().equals(encodedKeyRef)) {
+      if (!isEncryptionEnabled.getFirst()
+          || !isEncryptionEnabled.getSecond().equals(encodedKeyRef)) {
         throw new RuntimeException("Error occurred enabling encryption at rest");
       }
 
       universe.incrementVersion();
 
       EncryptionAtRestUtil.activateKeyRef(
-              taskParams().universeUUID,
-              taskParams().encryptionAtRestConfig.kmsConfigUUID,
-              universeKeyRef
-      );
+          taskParams().universeUUID,
+          taskParams().encryptionAtRestConfig.kmsConfigUUID,
+          universeKeyRef);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);

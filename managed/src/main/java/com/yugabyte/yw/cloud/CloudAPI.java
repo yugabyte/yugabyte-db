@@ -34,16 +34,14 @@ public interface CloudAPI {
    * Use supplied instanceTypesFilter and availabilityZones (azByRegionMap) as filter for this
    * describe call.
    *
-   * @param provider            the cloud provider bean for the AWS provider.
-   * @param azByRegionMap       user selected availabilityZone codes by their parent region.
+   * @param provider the cloud provider bean for the AWS provider.
+   * @param azByRegionMap user selected availabilityZone codes by their parent region.
    * @param instanceTypesFilter list of instanceTypes we want to list the offerings for
    * @return a map. Key of this map is instance type like "c5.xlarge" and value is all the
-   * availabilityZones for which the instance type is being offered.
+   *     availabilityZones for which the instance type is being offered.
    */
   Map<String, Set<String>> offeredZonesByInstanceType(
-    Provider provider,
-    Map<Region, Set<String>> azByRegionMap,
-    Set<String> instanceTypesFilter);
+      Provider provider, Map<Region, Set<String>> azByRegionMap, Set<String> instanceTypesFilter);
 
   /**
    * Check whether cloud provider's credentials are valid or not.

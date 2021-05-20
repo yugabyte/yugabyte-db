@@ -146,8 +146,9 @@ public abstract class CommissionerBaseTest extends WithApplication {
     try {
       // PlacementUtil mock.
       Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(version);
-      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
+          Master.SysClusterConfigEntryPB.newBuilder().setVersion(version);
+      GetMasterClusterConfigResponse gcr =
+          new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
       when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
     } catch (Exception e) {
       e.printStackTrace();
@@ -158,14 +159,14 @@ public abstract class CommissionerBaseTest extends WithApplication {
     int numRetries = 0;
     while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
-      if (taskInfo.getTaskState() == TaskInfo.State.Success ||
-          taskInfo.getTaskState() == TaskInfo.State.Failure) {
+      if (taskInfo.getTaskState() == TaskInfo.State.Success
+          || taskInfo.getTaskState() == TaskInfo.State.Failure) {
         return taskInfo;
       }
       Thread.sleep(1000);
       numRetries++;
     }
-    throw new RuntimeException("WaitFor task exceeded maxRetries! Task state is " +
-                               TaskInfo.get(taskUUID).getTaskState());
+    throw new RuntimeException(
+        "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }
 }

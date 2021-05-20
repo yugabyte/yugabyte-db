@@ -57,7 +57,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
   @Override
   protected UpgradeParams taskParams() {
-    return (UpgradeParams)taskParams;
+    return (UpgradeParams) taskParams;
   }
 
   private void verifyParams(Universe universe, UserIntent primIntent) {
@@ -66,14 +66,13 @@ public class UpgradeUniverse extends UniverseTaskBase {
         if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
           throw new IllegalArgumentException("Software upgrade cannot be non restart.");
         }
-        if (taskParams().ybSoftwareVersion == null ||
-          taskParams().ybSoftwareVersion.isEmpty()) {
-        throw new IllegalArgumentException("Invalid yugabyte software version: " +
-                                           taskParams().ybSoftwareVersion);
+        if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
+          throw new IllegalArgumentException(
+              "Invalid yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
         if (taskParams().ybSoftwareVersion.equals(primIntent.ybSoftwareVersion)) {
-          throw new IllegalArgumentException("Software version is already: " +
-                                             taskParams().ybSoftwareVersion);
+          throw new IllegalArgumentException(
+              "Software version is already: " + taskParams().ybSoftwareVersion);
         }
         break;
       case Restart:
@@ -82,14 +81,13 @@ public class UpgradeUniverse extends UniverseTaskBase {
               "Rolling restart operation of a universe needs to be of type rolling upgrade.");
         }
         break;
-      // TODO: we need to fix this, right now if the gflags is empty on both master and tserver
-      // we don't update the nodes properly but we do wipe the data from the backend (postgres).
-      // JIRA ENG-2519 would track this.
+        // TODO: we need to fix this, right now if the gflags is empty on both master and tserver
+        // we don't update the nodes properly but we do wipe the data from the backend (postgres).
+        // JIRA ENG-2519 would track this.
       case GFlags:
-        if (taskParams().masterGFlags.equals(primIntent.masterGFlags) &&
-            taskParams().tserverGFlags.equals(primIntent.tserverGFlags)) {
-          throw new IllegalArgumentException(
-              "No gflags to change.");
+        if (taskParams().masterGFlags.equals(primIntent.masterGFlags)
+            && taskParams().tserverGFlags.equals(primIntent.tserverGFlags)) {
+          throw new IllegalArgumentException("No gflags to change.");
         }
         break;
       case Certs:
@@ -104,25 +102,25 @@ public class UpgradeUniverse extends UniverseTaskBase {
         if (universe.getUniverseDetails().rootCA.equals(taskParams().certUUID)) {
           throw new IllegalArgumentException("Cluster already has the same cert.");
         }
-        if (!taskParams().rotateRoot &&
-            CertificateHelper.areCertsDiff(universe.getUniverseDetails().rootCA,
-                                           taskParams().certUUID)) {
+        if (!taskParams().rotateRoot
+            && CertificateHelper.areCertsDiff(
+                universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
           throw new IllegalArgumentException("CA certificates cannot be different.");
         }
-        if (CertificateHelper.arePathsSame(universe.getUniverseDetails().rootCA,
-                                           taskParams().certUUID)) {
+        if (CertificateHelper.arePathsSame(
+            universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
           throw new IllegalArgumentException("The node cert/key paths cannot be same.");
         }
         if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
           throw new IllegalArgumentException("Cert update cannot be non restart.");
         }
-      }
+    }
   }
 
-  private ImmutablePair<List<NodeDetails>, List<NodeDetails>> nodesToUpgrade(Universe universe,
-                                                                             UserIntent intent) {
+  private ImmutablePair<List<NodeDetails>, List<NodeDetails>> nodesToUpgrade(
+      Universe universe, UserIntent intent) {
     List<NodeDetails> tServerNodes = new ArrayList<>();
-    List<NodeDetails> masterNodes  = new ArrayList<>();
+    List<NodeDetails> masterNodes = new ArrayList<>();
     // Check the nodes that need to be upgraded.
     if (taskParams().taskType != UpgradeTaskType.GFlags) {
       tServerNodes = universe.getTServers();
@@ -184,7 +182,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // so we enable it again in case of errors.
       if (loadbalancerOff) {
         createLoadBalancerStateChangeTask(true /*enable*/)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
       subTaskGroupQueue.run();
       throw t;
@@ -195,51 +193,57 @@ public class UpgradeUniverse extends UniverseTaskBase {
   }
 
   // Find the master leader and move it to the end of the list.
-  private List<NodeDetails> sortMastersInRestartOrder(String leaderMasterAddress,
-                                                      List<NodeDetails> nodes) {
+  private List<NodeDetails> sortMastersInRestartOrder(
+      String leaderMasterAddress, List<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
       return nodes;
     }
-    return nodes.stream()
-      .sorted(Comparator.<NodeDetails, Boolean>comparing(
-        node -> leaderMasterAddress.equals(node.cloudInfo.private_ip)
-      ).thenComparing(NodeDetails::getNodeIdx))
-      .collect(Collectors.toList());
+    return nodes
+        .stream()
+        .sorted(
+            Comparator.<NodeDetails, Boolean>comparing(
+                    node -> leaderMasterAddress.equals(node.cloudInfo.private_ip))
+                .thenComparing(NodeDetails::getNodeIdx))
+        .collect(Collectors.toList());
   }
 
   // Find the master leader and move it to the end of the list.
-  private List<NodeDetails> sortTServersInRestartOrder(Universe universe,
-                                                       List<NodeDetails> nodes) {
+  private List<NodeDetails> sortTServersInRestartOrder(Universe universe, List<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
       return nodes;
     }
 
     Map<UUID, Map<UUID, PlacementInfo.PlacementAZ>> placementAZMapPerCluster =
-      PlacementInfoUtil.getPlacementAZMapPerCluster(universe);
+        PlacementInfoUtil.getPlacementAZMapPerCluster(universe);
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    return nodes.stream()
-      .sorted(Comparator.<NodeDetails, Boolean>comparing(
-        // Fully upgrade primary cluster first
-        node -> !node.placementUuid.equals(primaryClusterUuid)
-      ).thenComparing(node -> {
-        Map<UUID, PlacementInfo.PlacementAZ> placementAZMap =
-          placementAZMapPerCluster.get(node.placementUuid);
-        if (placementAZMap == null) {
-          // Well, this shouldn't happen - but just to make sure we'll not fail - sort to the end
-          return true;
-        }
-        PlacementInfo.PlacementAZ placementAZ = placementAZMap.get(node.azUuid);
-        if (placementAZ == null) {
-          return true;
-        }
-        // Primary zones go first
-        return !placementAZ.isAffinitized;
-      }).thenComparing(NodeDetails::getNodeIdx))
-      .collect(Collectors.toList());
+    return nodes
+        .stream()
+        .sorted(
+            Comparator.<NodeDetails, Boolean>comparing(
+                    // Fully upgrade primary cluster first
+                    node -> !node.placementUuid.equals(primaryClusterUuid))
+                .thenComparing(
+                    node -> {
+                      Map<UUID, PlacementInfo.PlacementAZ> placementAZMap =
+                          placementAZMapPerCluster.get(node.placementUuid);
+                      if (placementAZMap == null) {
+                        // Well, this shouldn't happen - but just to make sure we'll not fail - sort
+                        // to the end
+                        return true;
+                      }
+                      PlacementInfo.PlacementAZ placementAZ = placementAZMap.get(node.azUuid);
+                      if (placementAZ == null) {
+                        return true;
+                      }
+                      // Primary zones go first
+                      return !placementAZ.isAffinitized;
+                    })
+                .thenComparing(NodeDetails::getNodeIdx))
+        .collect(Collectors.toList());
   }
 
-  private void createServerUpgradeTasks(List<NodeDetails> masterNodes,
-                                        List<NodeDetails> tServerNodes) {
+  private void createServerUpgradeTasks(
+      List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
     // Setup subtasks for the taskTypes.
     if (taskParams().taskType == UpgradeTaskType.Software) {
       // TODO: This is assuming that master nodes is a subset of tserver node,
@@ -267,13 +271,11 @@ public class UpgradeUniverse extends UniverseTaskBase {
       updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
           .setSubTaskGroupType(getTaskSubGroupType());
     } else if (taskParams().taskType == UpgradeTaskType.Certs) {
-      createUnivSetCertTask(taskParams().certUUID)
-          .setSubTaskGroupType(getTaskSubGroupType());
+      createUnivSetCertTask(taskParams().certUUID).setSubTaskGroupType(getTaskSubGroupType());
     }
   }
 
-  private void createAllUpgradeTasks(List<NodeDetails> nodes,
-                                     ServerType processType) {
+  private void createAllUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         // For a rolling upgrade, we need the data to not move, so
@@ -294,7 +296,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
       case NON_ROLLING_UPGRADE:
         createMultipleNonRollingNodeUpgradeTasks(nodes, processType);
         createWaitForServersTasks(nodes, processType)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         break;
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTasks(nodes, processType);
@@ -346,9 +348,11 @@ public class UpgradeUniverse extends UniverseTaskBase {
     createSetNodeStateTasks(nodes, UpdateGFlags).setSubTaskGroupType(subGroupType);
 
     createSetFlagInMemoryTasks(
-            nodes, processType, true /* force */, processType == ServerType.MASTER ?
-            taskParams().masterGFlags : taskParams().tserverGFlags,
-            false /* updateMasterAddrs */);
+        nodes,
+        processType,
+        true /* force */,
+        processType == ServerType.MASTER ? taskParams().masterGFlags : taskParams().tserverGFlags,
+        false /* updateMasterAddrs */);
 
     createSetNodeStateTasks(nodes, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
   }
@@ -356,7 +360,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
   // This is used for non-rolling upgrade, where each operation is done in parallel across all
   // the provided nodes per given process type.
   private void createMultipleNonRollingNodeUpgradeTasks(
-          List<NodeDetails> nodes, ServerType processType) {
+      List<NodeDetails> nodes, ServerType processType) {
     if (taskParams().taskType == UpgradeTaskType.GFlags) {
       createServerConfFileUpdateTasks(nodes, processType);
     }
@@ -398,24 +402,30 @@ public class UpgradeUniverse extends UniverseTaskBase {
   }
 
   private void createDownloadTasks(List<NodeDetails> nodes) {
-    String subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
-        SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
     SubTaskGroup downloadTaskGroup = new SubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      downloadTaskGroup.addTask(getConfigureTask(node, ServerType.TSERVER,
-                                UpgradeTaskType.Software, UpgradeTaskSubType.Download));
+      downloadTaskGroup.addTask(
+          getConfigureTask(
+              node, ServerType.TSERVER, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
     subTaskGroupQueue.add(downloadTaskGroup);
   }
 
   private void createCertUpdateTasks(List<NodeDetails> nodes) {
-    String subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
-        SubTaskGroupType.RotatingCert, taskParams().nodePrefix);
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.RotatingCert, taskParams().nodePrefix);
     SubTaskGroup rotateCertGroup = new SubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      rotateCertGroup.addTask(getConfigureTask(node, ServerType.TSERVER,
-                              UpgradeTaskType.Certs, UpgradeTaskSubType.None));
+      rotateCertGroup.addTask(
+          getConfigureTask(
+              node, ServerType.TSERVER, UpgradeTaskType.Certs, UpgradeTaskSubType.None));
     }
     rotateCertGroup.setSubTaskGroupType(SubTaskGroupType.RotatingCert);
     subTaskGroupQueue.add(rotateCertGroup);
@@ -426,12 +436,14 @@ public class UpgradeUniverse extends UniverseTaskBase {
     if (nodes.isEmpty()) {
       return;
     }
-    String subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
-        SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
     SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags,
-                                         UpgradeTaskSubType.None));
+      taskGroup.addTask(
+          getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
     }
     taskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     subTaskGroupQueue.add(taskGroup);
@@ -443,29 +455,37 @@ public class UpgradeUniverse extends UniverseTaskBase {
       return;
     }
 
-    String subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
-        SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
     SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software,
-                                         UpgradeTaskSubType.Install));
+      taskGroup.addTask(
+          getConfigureTask(
+              node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
     }
     taskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
     subTaskGroupQueue.add(taskGroup);
   }
 
   private int getSleepTimeForProcess(ServerType processType) {
-    return processType == ServerType.MASTER ?
-        taskParams().sleepAfterMasterRestartMillis : taskParams().sleepAfterTServerRestartMillis;
+    return processType == ServerType.MASTER
+        ? taskParams().sleepAfterMasterRestartMillis
+        : taskParams().sleepAfterTServerRestartMillis;
   }
 
-  private AnsibleConfigureServers getConfigureTask(NodeDetails node,
-                                                   ServerType processType,
-                                                   UpgradeTaskType type,
-                                                   UpgradeTaskSubType taskSubType) {
+  private AnsibleConfigureServers getConfigureTask(
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskType type,
+      UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent = Universe.getOrBadRequest(taskParams().universeUUID).getUniverseDetails()
-        .getClusterByUuid(node.placementUuid).userIntent;
+    UserIntent userIntent =
+        Universe.getOrBadRequest(taskParams().universeUUID)
+            .getUniverseDetails()
+            .getClusterByUuid(node.placementUuid)
+            .userIntent;
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;
     // Add the node name.
@@ -488,12 +508,22 @@ public class UpgradeUniverse extends UniverseTaskBase {
     } else if (type == UpgradeTaskType.GFlags) {
       if (processType.equals(ServerType.MASTER)) {
         params.gflags = taskParams().masterGFlags;
-        params.gflagsToRemove = userIntent.masterGFlags.keySet().stream().filter(
-                flag -> !taskParams().masterGFlags.containsKey(flag)).collect(Collectors.toSet());
+        params.gflagsToRemove =
+            userIntent
+                .masterGFlags
+                .keySet()
+                .stream()
+                .filter(flag -> !taskParams().masterGFlags.containsKey(flag))
+                .collect(Collectors.toSet());
       } else {
         params.gflags = taskParams().tserverGFlags;
-        params.gflagsToRemove = userIntent.tserverGFlags.keySet().stream().filter(
-                flag -> !taskParams().tserverGFlags.containsKey(flag)).collect(Collectors.toSet());
+        params.gflagsToRemove =
+            userIntent
+                .tserverGFlags
+                .keySet()
+                .stream()
+                .filter(flag -> !taskParams().tserverGFlags.containsKey(flag))
+                .collect(Collectors.toSet());
       }
     } else if (type == UpgradeTaskType.Certs) {
       params.rootCA = taskParams().certUUID;

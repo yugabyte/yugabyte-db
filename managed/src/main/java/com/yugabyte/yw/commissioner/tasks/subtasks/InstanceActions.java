@@ -28,26 +28,28 @@ public class InstanceActions extends NodeTaskBase {
     public String deleteTags = "";
   }
 
-  public InstanceActions(){
+  public InstanceActions() {
     this(NodeManager.NodeCommandType.Tags);
   }
 
-  public InstanceActions(NodeManager.NodeCommandType tasktype){
+  public InstanceActions(NodeManager.NodeCommandType tasktype) {
     type = tasktype;
   }
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
-    LOG.info("Running Instance action {} type {} against node {}",
-            getName(), this.type.toString(), taskParams().nodeName);
+    LOG.info(
+        "Running Instance action {} type {} against node {}",
+        getName(),
+        this.type.toString(),
+        taskParams().nodeName);
 
-    ShellResponse response = getNodeManager().nodeCommand(
-        type, taskParams());
+    ShellResponse response = getNodeManager().nodeCommand(type, taskParams());
     processShellResponse(response);
   }
 }
