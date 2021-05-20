@@ -22,6 +22,7 @@ import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
+import play.mvc.Results;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -63,7 +64,8 @@ public class HAController extends AuthenticatedController {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
 
       if (!config.isPresent()) {
-        return ApiResponse.error(NOT_FOUND, "No HA config exists");
+        LOG.info("No HA config exists");
+        return Results.status(NOT_FOUND, "No HA config exists");
       }
 
       return ApiResponse.success(config.get());
