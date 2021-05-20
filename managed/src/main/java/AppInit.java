@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -15,13 +14,9 @@ import play.Configuration;
 import play.Environment;
 import play.Logger;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareVersion;
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.YugawareMetadata;
 
 /** We will use this singleton to do actions specific to the app environment, like db seed etc. */
 @Singleton
@@ -67,18 +62,6 @@ public class AppInit {
         }
       }
 
-      // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
-      String version =
-          yaml.load(environment.resourceAsStream("version.txt"), application.classloader());
-      configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
-      Map<String, Object> ywMetadata = new HashMap<>();
-      // Assign a new Yugaware UUID if not already present in the DB i.e. first install
-      Object ywUUID =
-          configHelper.getConfig(YugawareMetadata).getOrDefault("yugaware_uuid", UUID.randomUUID());
-      ywMetadata.put("yugaware_uuid", ywUUID);
-      ywMetadata.put("version", version);
-      configHelper.loadConfigToDB(YugawareMetadata, ywMetadata);
-
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
@@ -103,6 +86,7 @@ public class AppInit {
       // Enter all the configuration data. This is the first thing that should be
       // done as the other init steps may depend on this data.
       configHelper.loadConfigsToDB(application);
+      configHelper.loadSoftwareVersiontoDB(application);
 
       // Run and delete any extra migrations.
       for (ExtraMigration m : ExtraMigration.getAll()) {
