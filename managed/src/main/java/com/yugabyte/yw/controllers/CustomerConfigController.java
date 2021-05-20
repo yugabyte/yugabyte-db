@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
@@ -85,7 +84,7 @@ public class CustomerConfigController extends AuthenticatedController {
     JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
     config.data = Json.toJson(updatedData);
     config.update();
-    Audit.createAuditEntry(ctx(), request());
+    auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success(config);
   }
 }
