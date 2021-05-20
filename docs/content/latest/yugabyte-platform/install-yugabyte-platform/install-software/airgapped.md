@@ -86,7 +86,7 @@ Extract the `replicated` binary, as follows:
 $ tar xzvf replicated.tar.gz
 ```
 
-Install Replicated. If multiple options appear, select the `eth0` network interface, as follows. 
+Install Replicated. If multiple options appear, select the `eth0` network interface. 
 
 ```sh
 $ cat ./install.sh | sudo bash -s airgap
