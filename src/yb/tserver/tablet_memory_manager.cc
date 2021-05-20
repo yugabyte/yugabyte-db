@@ -47,10 +47,6 @@ DEFINE_int64(global_memstore_size_mb_max, 2048,
              "Global memstore size is determined as a percentage of the available "
              "memory. However, this flag limits it in absolute size. Value of 0 "
              "means no limit on the value obtained by the percentage. Default is 2048.");
-DEFINE_int32(flush_background_task_interval_msec, 0,
-             "The tick interval time for the flush background task. "
-             "This defaults to 0, which means disable the background task "
-             "And only use callbacks on memstore allocations. ");
 
 namespace {
   constexpr int kDbCacheSizeUsePercentage = -1;
@@ -234,8 +230,7 @@ void TabletMemoryManager::ConfigureBackgroundTask(tablet::TabletOptions* options
     background_task_.reset(new BackgroundTask(
       std::function<void()>([this]() { FlushTabletIfLimitExceeded(); }),
       "tablet manager",
-      "flush scheduler bgtask",
-      std::chrono::milliseconds(FLAGS_flush_background_task_interval_msec)));
+      "flush scheduler bgtask"));
     options->memory_monitor = std::make_shared<rocksdb::MemoryMonitor>(
         memstore_size_bytes,
         std::function<void()>([this](){
