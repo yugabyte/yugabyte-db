@@ -13,4 +13,32 @@ menu:
     weight: 800
 ---
 
-Info pending
+
+<div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link">
+      <div class="head">
+      <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Indexes</div>
+      </div>
+      <div class="body">
+          Use indexes to enhance database performance.
+      </div>
+    </a>
+  </div>
+  
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link">
+      <div class="head">
+      <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Constraints</div>
+      </div>
+      <div class="body">
+          Use constraints.
+      </div>
+    </a>
+  </div>
+  
+  
+</div>
