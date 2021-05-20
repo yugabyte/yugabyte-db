@@ -53,6 +53,24 @@ N/A
 
 #### Yugabyte Platform
 
+* [5041] Added a health check for total memory(RAM) usage. 
+* [6555] Similar to scheduled backups, added an ability to provide retention duration for manual backups as well.
+* [6913] For slow query monitoring, added an ability to reset stats with the new ‘Reset Stats’ button.
+* [6913] [6914] Add ability to reset slow query data and hide slow queries.
+* [6914] Added an ability to turn on query monitoring for slow queries. By default, query monitoring is turned off.
+* [6980] Added a mechanism to configure platform runtime settings.
+* [7215] Added an ability to select multiple backups for deletion rather than deleting individual backups. 
+* [7223] [7224] Added a new “Show Universes” action in the Actions menu. This provides a way for users to see all the associated universes that are using a particular KMS config. We are now also showing the list of universes as a modal dialog box associated with the certificate. 
+* [7278] [7446] Improved search usability for Live and Slow queries by adding autocomplete suggestions, better filtering and navigation.
+* [7474] Added support for creating more than one instance of the same cloud provider type (viz. AWS, GCP, Azure)
+* [7726] Health check now runs in parallel on all the universes rather than sequential.
+* [7799] Added support for AWS GP3 volumes during universe creation from the Platform. The disk size and IOPS configuration for GP3 drives are configurable, whereas throughput is not configurable and is set to default value of 125MiB/sec.
+* [7913] When upgrading a universe with read replica clusters, nodes in primary clusters are now always upgraded first, then read replica cluster nodes. 
+* [7967] Added ‘Download logs’ action under Nodes tab.
+* [7970] Added a new ‘Backup Type’ label to distinguish YSQL and YCQL scheduled backups. For Yedis back type this field will be an empty string.
+* [8038] Default metrics button now points to the Prometheus metrics endpoint.
+* [8081] Added support for searching certificates by universe name in the Encryption-at-Rest. If there are more than 10 certificates, the user has to use pagination to search one page at a time to find the right certificate.
+
 #### Core Database
 
 **Point-in-time restore progress**
@@ -153,6 +171,61 @@ N/A
 ### Bug Fixes
 
 #### Yugabyte Platform
+
+* [5246] Fixed cluster_health to examine only local volumes and exclude nfs from consideration so that false alerts are not generated.
+* [5733] Disabled "stop process" and "remove node" for a single node universe
+* [5946] Clock sync is now checked while creating or expanding the universe. Clock sync is added to health checks now.
+* [6019] Added an init container to yugabyte helm charts to wait for container to be ready
+* [6460] Added pre-flight checks for cloud provider configuration like ssh key and cloud credentials. In the case of validation failure, user is notified via the Task window, and disables universe creation for that cloud provider.
+* [6924] When a node is removed/released from a universe, hide the "Show Live Queries" button.
+* [7007] Fixed an issue where Restore backup dialog allowed empty/no universe name selected.
+* [7171] Added a validation that on-prem instance type name cannot be same for different customers on the same platform.
+* [7172] Added visual feedback for certain universe creation failures such as pre-flight validation failures or bad request response from API, etc.
+* [7193] Fixed issues with Run sample apps to have the deterministic payload and unify behaviour of YCQL and YSQL app. 
+* [7311] Added appropriate warnings while using ephemeral storage for the cases like stopping a VM or pausing an universe as it will potentially lead to data loss.
+* [7408] Retry Task button should not be visible for tasks other than "Create Universe" Task, as it’s the only task that supports retry.
+* [7412] Make footer link buttons clickable
+* [7415] Made secure the default configuration of SSH daemon by avoiding password authentication and PermitRootLogin in VMs
+* [7416] Platform: Changed default port of On-Prem provider to 22 (#7599)
+* [7421] Encryption is enabled by default for both client to node and node to node cases.
+* [7432] In the case of the AWS provider, fixing an issue of ssh key name and private key were getting ignored.
+* [7437] Since Kubernetes currently doesn't support read replicas, disabled it from the UI; k8s providers are also not shown when configuring a read-replica.
+* [7441] Added field-level validation for User Tags to disallow "Name" as a key for a tag
+* [7442] Only include the queries run by the user under slow queries
+* [7444] Fixed an issue in Edit Universe, as user was able to edit User Tags but not save them
+* [7447] When universe creation is in progress, other operations which require the Universe in "ready" state should be disabled like "Edit universe", "Read replicas", "Run sample apps", etc.
+* [7536] You can now specify an SSH username even when not using a custom key-pair.
+* [7554] Fixed an issue where error toaster appears even when the Provider is added successfully
+* [7561] [7699] [7717] Fixed an issue in trying to force-delete a universe and you will be redirected to an error page on success.
+* [7562] In case of Encryption at rest configuration fixed an error in configuring KMS provider. 
+* [7591] Added labeling for the Azure Instance Type dropdown similar to GCP/AWS.
+* [7624] Removed refetch on window focus for slow queries
+* [7656] After manually provisioning an on-premises node, create universe tries to use "centos" user, not "yugabyte"
+* [7659] Non-replicated flow fails due to package requiring python3
+* [7672] Cannot read property 'data' of undefined on Tasks -> Retry Task
+* [7687] YSQL health check fails when YSQL auth is enabled
+* [7698] Custom SMTP Configuration API returns unmasked SMTP password
+* [7703] Can't send email for custom SMTP settings without authentication (empty username)
+* [7704] Backup to S3 fails using Yugaware instance's IAM role
+* [7727] [7728] Fix UI issues with k8s provider creation and deletion
+* [7736] Change the username help info for certificate based authentication
+* [7740] Prometheus going down silently after YW upgrade thru replicated
+* [7769] Prevent adding on-prem node instance with duplicate IP
+* [7779] Health check fails on k8s portal for all the universes on clock synchronization with FailedClock synchronization and Error getting NTP state 
+* [7780] Fixed an issue causing old backups to not get deleted by a schedule.
+* [7810] Health check emails not working with default SMTP configuration
+* [7811] Slow queries is not displaying all queries on k8s universe pods
+* [7841] Resume Universe Failure.Cannot replace a node until follower_unavailable_considered_failed_sec is past
+* [7908] Added a fix caused while deleting a universe with a stopped node
+* [7909] Fix issue with signature could not be verified for google-cloud-sdk for GCP VMs
+* [7950] Navigating to a universe with KMS enabled will show this error due if something has been misconfigured
+* [7959] Disabling Node-to-Node TLS during universe creation causes universe creation to fail
+* [7988] Backup deletion failure should not cause retries
+* [8020] To handle auth token expiration, added a global interceptor to catch all 403-code responses and redirect to the login page with a session expiration message in error toast. So when auth token expires background API calls won't fail silently anymore.
+* [8051] Redact sensitive data and secrets from audit logs
+* [8176] Fixed an issue of setting the max number of processes properly when deploying universes in GCP 
+* [8189] Make sure AWS instances with no EBS volume do not pass "Scratch" as default value
+* [8243] Make Persistent storage default for GCP universe
 
 #### Core Database
 
