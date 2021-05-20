@@ -37,6 +37,8 @@ DEFINE_bool(use_node_hostname_for_local_tserver, false,
     VLOG(vlog_level) << __func__ << ": " << TxnStateDebugStr() \
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
+DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
+
 namespace {
 
 constexpr uint64_t txn_priority_highpri_upper_bound = yb::kHighPriTxnUpperBound;
