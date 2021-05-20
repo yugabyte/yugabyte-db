@@ -950,7 +950,7 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
     Universe universe = mock(Universe.class);
     when(universe.getMasterAddresses(anyBoolean())).thenReturn("fake_address");
-    when(universe.getCertificate()).thenReturn("fake_certificate");
+    when(universe.getCertificateNodetoNode()).thenReturn("fake_certificate");
 
     // Disallow on Index Table.
     List<UUID> uuids = Arrays.asList(table1Uuid, table2Uuid, indexUuid);
