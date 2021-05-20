@@ -34,7 +34,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
   @Override
   protected UpgradeParams taskParams() {
-    return (UpgradeParams)taskParams;
+    return (UpgradeParams) taskParams;
   }
 
   @Override
@@ -54,21 +54,22 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
 
       if (taskParams().taskType == UpgradeTaskType.Software) {
-        if (taskParams().ybSoftwareVersion == null ||
-            taskParams().ybSoftwareVersion.isEmpty()) {
-          throw new IllegalArgumentException("Invalid yugabyte software version: " +
-                                             taskParams().ybSoftwareVersion);
+        if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
+          throw new IllegalArgumentException(
+              "Invalid yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
         if (taskParams().ybSoftwareVersion.equals(userIntent.ybSoftwareVersion)) {
-          throw new IllegalArgumentException("Cluster is already on yugabyte software version: " +
-                                             taskParams().ybSoftwareVersion);
+          throw new IllegalArgumentException(
+              "Cluster is already on yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
       }
 
       switch (taskParams().taskType) {
         case Software:
-          LOG.info("Upgrading software version to {} in universe {}",
-                   taskParams().ybSoftwareVersion, universe.name);
+          LOG.info(
+              "Upgrading software version to {} in universe {}",
+              taskParams().ybSoftwareVersion,
+              universe.name);
 
           createUpgradeTask(userIntent, universe, pi);
 
@@ -96,8 +97,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // If the task failed, we don't want the loadbalancer to be disabled,
       // so we enable it again in case of errors.
-      createLoadBalancerStateChangeTask(true /*enable*/)
-          .setSubTaskGroupType(getTaskSubGroupType());
+      createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
 
       subTaskGroupQueue.run();
 
@@ -140,32 +140,47 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
     KubernetesPlacement placement = new KubernetesPlacement(pi);
 
-    Provider provider = Provider.get(UUID.fromString(
-          taskParams().getPrimaryCluster().userIntent.provider));
+    Provider provider =
+        Provider.get(UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
-    String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, placement.masters,
-        taskParams().nodePrefix, provider, universeDetails.communicationPorts.masterRpcPort);
+    String masterAddresses =
+        PlacementInfoUtil.computeMasterAddresses(
+            pi,
+            placement.masters,
+            taskParams().nodePrefix,
+            provider,
+            universeDetails.communicationPorts.masterRpcPort);
 
     if (masterChanged) {
       userIntent.masterGFlags = taskParams().masterGFlags;
-      upgradePodsTask(placement, masterAddresses, null, ServerType.MASTER,
-                      version, taskParams().sleepAfterMasterRestartMillis, masterChanged,
-                      tserverChanged);
+      upgradePodsTask(
+          placement,
+          masterAddresses,
+          null,
+          ServerType.MASTER,
+          version,
+          taskParams().sleepAfterMasterRestartMillis,
+          masterChanged,
+          tserverChanged);
     }
     if (tserverChanged) {
       createLoadBalancerStateChangeTask(false /*enable*/)
           .setSubTaskGroupType(getTaskSubGroupType());
 
       userIntent.tserverGFlags = taskParams().tserverGFlags;
-      upgradePodsTask(placement, masterAddresses, null, ServerType.TSERVER,
-                      version, taskParams().sleepAfterTServerRestartMillis,
-                      false /* master change is false since it has already been upgraded.*/,
-                      tserverChanged);
+      upgradePodsTask(
+          placement,
+          masterAddresses,
+          null,
+          ServerType.TSERVER,
+          version,
+          taskParams().sleepAfterTServerRestartMillis,
+          false /* master change is false since it has already been upgraded.*/,
+          tserverChanged);
 
-      createLoadBalancerStateChangeTask(true /*enable*/)
-          .setSubTaskGroupType(getTaskSubGroupType());
+      createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
     }
   }
 }

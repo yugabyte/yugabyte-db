@@ -13,8 +13,7 @@ import play.data.validation.Constraints;
 @JsonDeserialize(converter = UpgradeParams.Converter.class)
 public class UpgradeParams extends UniverseDefinitionTaskParams {
   // Rolling Restart task type
-  @Constraints.Required()
-  public UpgradeUniverse.UpgradeTaskType taskType;
+  @Constraints.Required() public UpgradeUniverse.UpgradeTaskType taskType;
 
   // The software version to install. Do not set this value if no software needs to be installed.
   public String ybSoftwareVersion = null;
@@ -27,13 +26,15 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   @Deprecated
   // This is deprecated use cluster.userIntent.masterGFlags
   public Map<String, String> masterGFlags = new HashMap<String, String>();
+
   @Deprecated
   // This is deprecated use cluster.userIntent.tserverGFlags
   public Map<String, String> tserverGFlags = new HashMap<String, String>();
 
   public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 240000;
 
-  // Time to sleep after a server restart, if there is no way to check/rpc if it is ready to server requests.
+  // Time to sleep after a server restart, if there is no way to check/rpc if it is ready to server
+  // requests.
   public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
   public Integer sleepAfterTServerRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
 
@@ -48,7 +49,5 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
 
-  public static class Converter
-    extends BaseConverter<UpgradeParams> {
-  }
+  public static class Converter extends BaseConverter<UpgradeParams> {}
 }

@@ -23,12 +23,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 public class EncryptionAtRestKeyParams extends UniverseTaskParams {
 
   public static EncryptionAtRestKeyParams bindFromFormData(
-    UUID universeUUID, Http.Request request) {
+      UUID universeUUID, Http.Request request) {
     EncryptionAtRestKeyParams taskParams = new EncryptionAtRestKeyParams();
     taskParams.universeUUID = universeUUID;
     try {
       taskParams.encryptionAtRestConfig =
-        Json.mapper().treeToValue(request.body().asJson(), EncryptionAtRestConfig.class);
+          Json.mapper().treeToValue(request.body().asJson(), EncryptionAtRestConfig.class);
     } catch (JsonProcessingException e) {
       throw new YWServiceException(BAD_REQUEST, e.getMessage());
     }

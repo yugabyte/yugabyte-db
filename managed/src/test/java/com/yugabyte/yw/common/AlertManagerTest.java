@@ -38,11 +38,9 @@ public class AlertManagerTest extends FakeDBApplication {
 
   private Customer defaultCustomer;
 
-  @Mock
-  private EmailHelper emailHelper;
+  @Mock private EmailHelper emailHelper;
 
-  @InjectMocks
-  private AlertManager am;
+  @InjectMocks private AlertManager am;
 
   @Before
   public void setUp() {
@@ -51,40 +49,64 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Test
   public void testSendEmail_DoesntFail_UniverseRemoved() throws MessagingException {
-    doTestSendEmail(UUID.randomUUID(),
-        String.format("Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
+    doTestSendEmail(
+        UUID.randomUUID(),
+        String.format(
+            "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
             defaultCustomer.name, TEST_STATE, ALERT_TEST_MESSAGE));
   }
 
   @Test
   public void testSendEmail_UniverseExists() throws MessagingException {
     Universe u = ModelFactory.createUniverse();
-    doTestSendEmail(u.universeUUID,
-        String.format("Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
+    doTestSendEmail(
+        u.universeUUID,
+        String.format(
+            "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
             u.name, TEST_STATE, ALERT_TEST_MESSAGE));
   }
 
   private void doTestSendEmail(UUID universeUUID, String expectedContent)
       throws MessagingException {
-    Alert alert = Alert.create(defaultCustomer.uuid, universeUUID, Alert.TargetType.UniverseType,
-        "errorCode", "Warning", ALERT_TEST_MESSAGE);
+    Alert alert =
+        Alert.create(
+            defaultCustomer.uuid,
+            universeUUID,
+            Alert.TargetType.UniverseType,
+            "errorCode",
+            "Warning",
+            ALERT_TEST_MESSAGE);
     alert.sendEmail = true;
 
     SmtpData smtpData = configureSmtp();
     am.sendEmail(alert, TEST_STATE);
 
-    verify(emailHelper, times(1)).sendEmail(eq(defaultCustomer), anyString(), anyString(),
-        eq(smtpData),
-        eq(Collections.singletonMap("text/plain; charset=\"us-ascii\"", expectedContent)));
+    verify(emailHelper, times(1))
+        .sendEmail(
+            eq(defaultCustomer),
+            anyString(),
+            anyString(),
+            eq(smtpData),
+            eq(Collections.singletonMap("text/plain; charset=\"us-ascii\"", expectedContent)));
   }
 
   @Test
   public void testResolveAlerts_ExactErrorCode() {
     UUID universeUuid = UUID.randomUUID();
-    Alert.create(defaultCustomer.uuid, universeUuid, Alert.TargetType.UniverseType, "errorCode",
-        "Warning", ALERT_TEST_MESSAGE);
-    Alert.create(defaultCustomer.uuid, universeUuid, Alert.TargetType.UniverseType, "errorCode2",
-        "Warning", ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        universeUuid,
+        Alert.TargetType.UniverseType,
+        "errorCode",
+        "Warning",
+        ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        universeUuid,
+        Alert.TargetType.UniverseType,
+        "errorCode2",
+        "Warning",
+        ALERT_TEST_MESSAGE);
 
     assertEquals(Alert.State.CREATED, Alert.list(defaultCustomer.uuid, "errorCode").get(0).state);
     am.resolveAlerts(defaultCustomer.uuid, universeUuid, "errorCode");
@@ -99,10 +121,20 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testResolveAlerts_AllErrorCodes() {
     UUID universeUuid = UUID.randomUUID();
-    Alert.create(defaultCustomer.uuid, universeUuid, Alert.TargetType.UniverseType, "errorCode",
-        "Warning", ALERT_TEST_MESSAGE);
-    Alert.create(defaultCustomer.uuid, universeUuid, Alert.TargetType.UniverseType, "errorCode2",
-        "Warning", ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        universeUuid,
+        Alert.TargetType.UniverseType,
+        "errorCode",
+        "Warning",
+        ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        universeUuid,
+        Alert.TargetType.UniverseType,
+        "errorCode2",
+        "Warning",
+        ALERT_TEST_MESSAGE);
 
     List<Alert> alerts = Alert.list(defaultCustomer.uuid);
     assertEquals(Alert.State.CREATED, alerts.get(0).state);
@@ -118,11 +150,22 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendEmail_OwnAlertsReseted() {
     SmtpData smtpData = configureSmtp();
-    Alert.create(defaultCustomer.uuid, smtpData.configUUID, Alert.TargetType.CustomerConfigType,
-        AlertManager.ALERT_MANAGER_ERROR_CODE, "Warning", ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        smtpData.configUUID,
+        Alert.TargetType.CustomerConfigType,
+        AlertManager.ALERT_MANAGER_ERROR_CODE,
+        "Warning",
+        ALERT_TEST_MESSAGE);
 
-    Alert alert = Alert.create(defaultCustomer.uuid, UUID.randomUUID(),
-        Alert.TargetType.UniverseType, "errorCode", "Warning", ALERT_TEST_MESSAGE);
+    Alert alert =
+        Alert.create(
+            defaultCustomer.uuid,
+            UUID.randomUUID(),
+            Alert.TargetType.UniverseType,
+            "errorCode",
+            "Warning",
+            ALERT_TEST_MESSAGE);
     alert.sendEmail = true;
 
     List<Alert> alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
@@ -139,16 +182,23 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendEmail_OwnAlertGenerated() throws MessagingException {
     SmtpData smtpData = configureSmtp();
-    Alert alert = Alert.create(defaultCustomer.uuid, UUID.randomUUID(),
-        Alert.TargetType.UniverseType, "errorCode", "Warning", ALERT_TEST_MESSAGE);
+    Alert alert =
+        Alert.create(
+            defaultCustomer.uuid,
+            UUID.randomUUID(),
+            Alert.TargetType.UniverseType,
+            "errorCode",
+            "Warning",
+            ALERT_TEST_MESSAGE);
     alert.sendEmail = true;
 
     List<Alert> alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
     assertEquals(0, alerts.size());
 
     // EmailHelper.sendEmail should fail.
-    doThrow(new MessagingException("test")).when(emailHelper).sendEmail(eq(defaultCustomer),
-        anyString(), anyString(), eq(smtpData), any());
+    doThrow(new MessagingException("test"))
+        .when(emailHelper)
+        .sendEmail(eq(defaultCustomer), anyString(), anyString(), eq(smtpData), any());
 
     am.sendEmail(alert, TEST_STATE);
 

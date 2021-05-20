@@ -23,11 +23,16 @@ public class NodeDetailsTest {
 
   @Test
   public void testToString() {
-    assertThat(nd.toString(), allOf(notNullValue(),
-                                    equalTo("name: host-n1, cloudInfo: az-1.test-region.aws, type: "
-                                            + ApiUtils.UTIL_INST_TYPE + ", ip: host-n1, " +
-                                            "isMaster: false, isTserver: true, state: Live, " +
-                                            "azUuid: null, placementUuid: null")));
+    assertThat(
+        nd.toString(),
+        allOf(
+            notNullValue(),
+            equalTo(
+                "name: host-n1, cloudInfo: az-1.test-region.aws, type: "
+                    + ApiUtils.UTIL_INST_TYPE
+                    + ", ip: host-n1, "
+                    + "isMaster: false, isTserver: true, state: Live, "
+                    + "azUuid: null, placementUuid: null")));
   }
 
   @Test
