@@ -121,7 +121,7 @@ function validateSession(store, replacePath, callback) {
   const userId = Cookies.get('userId') || localStorage.getItem('userId');
   const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
-    var location = window.location.pathname;
+    let location = window.location.pathname;
     if (location !== '/') {
       localStorage.setItem('pathToRedirect', location);
     }
