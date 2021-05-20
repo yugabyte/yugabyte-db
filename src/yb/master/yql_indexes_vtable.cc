@@ -39,11 +39,10 @@ const string& ColumnName(const Schema& schema, const ColumnId id) {
 Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo>> tables;
   CatalogManager* catalog_manager = master_->catalog_manager();
-  catalog_manager->GetAllTables(&tables, true);
-  for (scoped_refptr<TableInfo> table : tables) {
 
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  for (const auto& table : tables) {
     const auto indexed_table_id = table->indexed_table_id();
     if (indexed_table_id.empty()) {
       continue;

@@ -128,7 +128,8 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
       }
     }
     return foundReplica;
-  }, MonoDelta::FromMilliseconds(test_bg_task_wait_ms * 2), "WaitForAddTaskToBeProcessed"));
+  }, MonoDelta::FromMilliseconds(test_bg_task_wait_ms * 2 * kTimeMultiplier),
+      "WaitForAddTaskToBeProcessed"));
 
   // Modify GetAllReportedDescriptors so that it does not report the new tserver
   // (this could happen normally from a late heartbeat).
@@ -210,6 +211,29 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
     }
     return false;
   }, kDefaultTimeout, "IsLBSkippingDeletedTables"));
+}
+
+// Check flow tablet size data from tserver to master
+TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    scoped_refptr<master::TableInfo> tbl_info =
+      mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+          GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
+                                                    table_name().namespace_name(),
+                                                    table_name().table_name());
+    vector<scoped_refptr<master::TabletInfo>> tablets;
+    tbl_info->GetAllTablets(&tablets);
+
+    for (const auto& tablet : tablets) {
+      auto replica_map = tablet->GetReplicaLocations();
+      for (const auto& replica : *replica_map.get()) {
+        if (!replica.second.drive_info.ts_path.empty()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, MonoDelta::FromMilliseconds(10000), "WaitForTabletDataSize"));
 }
 
 } // namespace integration_tests

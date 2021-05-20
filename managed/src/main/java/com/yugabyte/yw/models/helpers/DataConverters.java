@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.helpers;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.TargetType;
 
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.CustomerTask;
 
 public class DataConverters {
@@ -27,6 +28,15 @@ public class DataConverters {
         return TargetType.KMSConfigurationType;
       default:
         return TargetType.TaskType;
+    }
+  }
+
+  public static Alert.TargetType definitionToAlertTargetType(AlertDefinition.TargetType srcType) {
+    switch (srcType) {
+      case Universe:
+        return TargetType.UniverseType;
+      default:
+        throw new IllegalArgumentException("Unexpected definition type " + srcType.name());
     }
   }
 

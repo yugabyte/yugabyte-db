@@ -598,6 +598,11 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
                           << last_committed_op_id_;
     NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm,
                                       nullptr /* applied_op_ids */);
+    if (OpId::FromPB(round->replicate_msg()->id()) == split_op_info_.op_id) {
+      // If we abort split operation in Raft log designateid for this Raft group - we need to reset
+      // split_op_info_.
+      split_op_info_ = SplitOpInfo();
+    }
   }
 
   // Clear entries from pending operations.

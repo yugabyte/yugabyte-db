@@ -154,6 +154,7 @@ public class NodeManagerTest extends FakeDBApplication {
     params.nodeName = testData.node.getNodeName();
     params.universeUUID = universe.universeUUID;
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    params.currentClusterType = ClusterType.PRIMARY;
   }
 
   private void addValidDeviceInfo(TestData testData, NodeTaskParams params) {
@@ -201,17 +202,15 @@ public class NodeManagerTest extends FakeDBApplication {
     customCertInfo.rootCertPath = "/path/to/cert.crt";
     customCertInfo.nodeCertPath = "/path/to/rootcert.crt";
     customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
-    String clientCertPath = "/path/to/clientcert.crt";
-    String clientKeyPath = "/path/to/clientkey.crt";
     if (t.privateKey == null) {
       cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID, params.nodePrefix,
                                     today, nextYear, TestHelper.TMP_PATH + "/ca.crt",
-                                    customCertInfo, clientCertPath, clientKeyPath);
+                                    customCertInfo);
     } else {
       cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID,
-                                    params.nodePrefix, today, nextYear,
-                                    TestHelper.TMP_PATH + "/ca.crt", t.privateKey,
-                                    clientCertPath, clientKeyPath);
+                                    params.nodePrefix, today, nextYear, t.privateKey,
+                                    TestHelper.TMP_PATH + "/ca.crt",
+                                    CertificateInfo.Type.SelfSigned);
     }
 
     Universe u = createUniverse();
@@ -384,14 +383,12 @@ public class NodeManagerTest extends FakeDBApplication {
             if (configureParams.enableClientToNodeEncrypt) {
               gflags.put("use_client_to_server_encryption", "true");
             }
-            if (configureParams.enableNodeToNodeClientVerification) {
-              gflags.put("node_to_node_encryption_use_client_certificates", "true");
-            }
             gflags.put(
               "allow_insecure_connections",
               configureParams.allowInsecure ? "true" : "false"
             );
             gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+            gflags.put("cert_node_filename", params.nodeName);
             expectedCommand.add("--certs_node_dir");
             expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
 
@@ -1142,7 +1139,6 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
-      params.enableNodeToNodeClientVerification = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;
@@ -1167,7 +1163,6 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
-      params.enableNodeToNodeClientVerification = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;
@@ -1207,7 +1202,6 @@ public class NodeManagerTest extends FakeDBApplication {
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
       params.enableClientToNodeEncrypt = true;
-      params.enableNodeToNodeClientVerification = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;

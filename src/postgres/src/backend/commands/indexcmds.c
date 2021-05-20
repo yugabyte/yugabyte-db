@@ -564,7 +564,31 @@ DefineIndex(Oid relationId,
 	 * Select tablespace to use.  If not specified, use default tablespace
 	 * (which may in turn default to database's default).
 	 */
-	if (stmt->tableSpace)
+	if (IsYBRelation(rel) && stmt->primary)
+	{
+		/*
+		 * For Yugabyte enabled clusters, the primary key index is an intrinsic
+		 * part of the table itself. In that case, the tablespace for a primary
+		 * index must always be the same as that of the table.
+		 */
+		tablespaceId = rel->rd_rel->reltablespace;
+
+		/*
+		 * Fail if the user specified a custom tablespace for a primary key
+		 * index and it does not match the tablespace of the indexed table.
+		 */
+		if (stmt->tableSpace)
+		{
+			Oid stmtTablespace = get_tablespace_oid(stmt->tableSpace, false);
+			if (stmtTablespace != tablespaceId)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						errmsg("Tablespace for a primary key index must "
+							   " always match the tablespace of the "
+							   " indexed table.")));
+		}
+	}
+	else if (stmt->tableSpace)
 	{
 		tablespaceId = get_tablespace_oid(stmt->tableSpace, false);
 	}
@@ -735,6 +759,11 @@ DefineIndex(Oid relationId,
 						accessMethodName),
 				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
 						 "Click '+' on the description to raise its priority")));
+	if (!IsYBRelation(rel) && accessMethodId == LSM_AM_OID)
+		ereport(ERROR,
+				(errmsg("access method \"%s\" only supported for indexes"
+						" using Yugabyte storage",
+						accessMethodName)));
 
 	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
 	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);

@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.*;
@@ -87,7 +88,7 @@ public class TablesController extends AuthenticatedController {
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
       LOG.error("Error creating table", e);
@@ -116,13 +117,13 @@ public class TablesController extends AuthenticatedController {
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);
-      return ApiResponse.success(errMsg);
+      // TODO: This should be temporary unavailable error and not a success!!
+      return YWResults.YWSuccess.withMessage(errMsg);
     }
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
           tableUUID.toString().replace("-", ""));
       ybService.closeClient(client, masterAddresses);
@@ -155,7 +156,7 @@ public class TablesController extends AuthenticatedController {
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), taskUUID);
       return ok(resultNode);
     } catch (Exception e) {
       LOG.error("Failed to get list of tables in universe " + universeUUID, e);
@@ -206,11 +207,10 @@ public class TablesController extends AuthenticatedController {
       );
     }
 
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
@@ -259,13 +259,12 @@ public class TablesController extends AuthenticatedController {
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
     try {
-      String certificate = universe.getCertificateNodeToNode();
-      String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+      String certificate = universe.getCertificate();
       if (masterAddresses.isEmpty()) {
         LOG.warn("Expected error. Masters are not currently queryable.");
         return ok("Expected error. Masters are not currently queryable.");
       }
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse response = client.getTableSchemaByUUID(
         tableUUID.toString().replace("-", ""));
 
@@ -330,7 +329,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Submitted universe backup to be scheduled {}, schedule uuid = {}.",
           universeUUID, scheduleUUID);
       resultNode.put("scheduleUUID", scheduleUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
       LOG.info("Submitted task to universe {}, task uuid = {}.",
@@ -344,7 +343,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID,
           universe.name);
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     }
     return ApiResponse.success(resultNode);
   }
@@ -394,7 +393,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
           tableUUID, taskParams.getTableName(), scheduleUUID);
       resultNode.put("scheduleUUID", scheduleUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     } else {
       Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
@@ -410,7 +409,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
           tableUUID, taskParams.getTableNames(), taskParams.getTableName());
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     }
     return ApiResponse.success(resultNode);
   }
@@ -483,7 +482,7 @@ public class TablesController extends AuthenticatedController {
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
       return ApiResponse.success(resultNode);
     } catch (Exception e) {
       String errMsg = "Failed to bulk import data into table " + tableUUID + " in universe "
@@ -504,12 +503,11 @@ public class TablesController extends AuthenticatedController {
       LOG.warn(errMsg);
       return false;
     }
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificate();
     YBClient client = null;
 
     try {
-      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       // Match if the table is an index or ysql table.

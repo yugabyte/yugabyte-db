@@ -79,5 +79,4 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
     LOG.trace("After setValue {}", delegate());
     return this;
   }
-
 }

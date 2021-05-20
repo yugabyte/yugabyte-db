@@ -17,15 +17,19 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.config.ConfigSubstitutor;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.forms.AlertFormData;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -36,7 +40,7 @@ public class AlertController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AlertController.class);
 
   @Inject
-  FormFactory formFactory;
+  ValidatingFormFactory formFactory;
 
   @Inject
   private SettableRuntimeConfigFactory configFactory;
@@ -45,9 +49,7 @@ public class AlertController extends AuthenticatedController {
    * Lists alerts for given customer.
    */
   public Result list(UUID customerUUID) {
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
     ArrayNode alerts = Json.newArray();
     for (Alert alert : Alert.list(customerUUID)) {
@@ -58,20 +60,13 @@ public class AlertController extends AuthenticatedController {
   }
 
   public Result listActive(UUID customerUUID) {
-    try {
-      if (Customer.get(customerUUID) == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-      }
+    Customer.getOrBadRequest(customerUUID);
 
-      ArrayNode alerts = Json.newArray();
-      for (Alert alert : Alert.listActive(customerUUID)) {
-        alerts.add(alert.toJson());
-      }
-
-      return ok(alerts);
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    ArrayNode alerts = Json.newArray();
+    for (Alert alert : Alert.listActive(customerUUID)) {
+      alerts.add(alert.toJson());
     }
+    return ok(alerts);
   }
 
   /**
@@ -82,14 +77,9 @@ public class AlertController extends AuthenticatedController {
    * the previously created alert.
    */
   public Result upsert(UUID customerUUID) {
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
-    Form<AlertFormData> formData = formFactory.form(AlertFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Form<AlertFormData> formData = formFactory.getFormDataOrBadRequest(AlertFormData.class);
 
     AlertFormData data = formData.get();
     List<Alert> alerts = Alert.list(customerUUID, data.errCode);
@@ -102,7 +92,7 @@ public class AlertController extends AuthenticatedController {
     } else {
       Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
     }
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
   }
 
@@ -110,17 +100,13 @@ public class AlertController extends AuthenticatedController {
    * Creates new alert.
    */
   public Result create(UUID customerUUID) {
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
-    Form<AlertFormData> formData = formFactory.form(AlertFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Form<AlertFormData> formData = formFactory.getFormDataOrBadRequest(AlertFormData.class);
+
     AlertFormData data = formData.get();
     Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
   }
 
@@ -138,45 +124,31 @@ public class AlertController extends AuthenticatedController {
   }
 
   public Result createDefinition(UUID customerUUID, UUID universeUUID) {
-    try {
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-      }
 
-      Form<AlertDefinitionFormData> formData =
-        formFactory.form(AlertDefinitionFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+    Customer.getOrBadRequest(customerUUID);
 
-      AlertDefinitionFormData data = formData.get();
-      Universe universe = Universe.getOrBadRequest(universeUUID);
-      updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-      AlertDefinition definition = AlertDefinition.create(
-        customerUUID,
-        universeUUID,
-        data.name,
-        data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-        data.isActive
-      );
+    Form<AlertDefinitionFormData> formData = formFactory.getFormDataOrBadRequest(
+        AlertDefinitionFormData.class);
 
-      return ok(Json.toJson(definition));
-    } catch (Exception e) {
-      LOG.error("Error creating alert definition", e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
+    AlertDefinitionFormData data = formData.get();
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
+    AlertDefinition definition = AlertDefinition.create(
+      customerUUID,
+      AlertDefinition.TargetType.Universe,
+      data.name,
+      data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
+      data.isActive,
+      AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get()
+    );
+
+    return ok(Json.toJson(definition));
   }
 
   public Result getAlertDefinition(UUID customerUUID, UUID universeUUID, String name) {
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinition definition = AlertDefinition.get(customerUUID, universeUUID, name);
-    if (definition == null) {
-      return ApiResponse.error(BAD_REQUEST, "Could not find Alert Definition");
-    }
+    AlertDefinition definition = AlertDefinition.getOrBadRequest(customerUUID, universeUUID, name);
 
     Universe universe = Universe.getOrBadRequest(universeUUID);
     definition.query = new ConfigSubstitutor(configFactory.forUniverse(universe))
@@ -185,36 +157,34 @@ public class AlertController extends AuthenticatedController {
   }
 
   public Result updateAlertDefinition(UUID customerUUID, UUID alertDefinitionUUID) {
-    try {
-      if (Customer.get(customerUUID) == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-      }
 
-      AlertDefinition definition = AlertDefinition.get(alertDefinitionUUID);
-      if (definition == null) {
-        return ApiResponse.error(BAD_REQUEST,
-          "Invalid Alert Definition UUID: " + alertDefinitionUUID);
-      }
+    Customer.getOrBadRequest(customerUUID);
 
-      Form<AlertDefinitionFormData> formData =
-        formFactory.form(AlertDefinitionFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+    AlertDefinition definition = AlertDefinition.getOrBadRequest(alertDefinitionUUID);
 
-      AlertDefinitionFormData data = formData.get();
-      Universe universe = Universe.getOrBadRequest(definition.universeUUID);
-      updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-      definition = AlertDefinition.update(
-        definition.uuid,
-        data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-        data.isActive
-      );
+    Form<AlertDefinitionFormData> formData = formFactory.getFormDataOrBadRequest(
+        AlertDefinitionFormData.class);
 
-      return ok(Json.toJson(definition));
-    } catch (Exception e) {
-      LOG.error("Error updating alert definition", e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    AlertDefinitionFormData data = formData.get();
+
+    AlertDefinition updatedDefinition;
+    switch (definition.targetType) {
+      // TODO Need to store threshold and duration in definition itself - this way custom
+      // logic will not be needed for each definition target type
+      case Universe:
+        Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
+        updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
+        updatedDefinition = AlertDefinition.update(
+          definition.uuid,
+          data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
+          data.isActive,
+          AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get()
+        );
+        break;
+      default:
+        throw new IllegalStateException(
+          "Unexpected definition type " + definition.targetType.name());
     }
+    return ok(Json.toJson(updatedDefinition));
   }
 }

@@ -771,7 +771,14 @@ void TSTabletManager::CreatePeerAndOpenTablet(
     const scoped_refptr<TransitionInProgressDeleter>& deleter) {
   Status s = ResultToStatus(CreateAndRegisterTabletPeer(meta, NEW_PEER));
   if (!s.ok()) {
-    LOG(DFATAL) << "Failed to create and register tablet peer: " << s;
+    s = s.CloneAndPrepend("Failed to create and register tablet peer");
+    if (s.IsShutdownInProgress()) {
+      // If shutdown is in progress, it is not a failure to not being able to create and register
+      // tablet peer.
+      LOG_WITH_PREFIX(WARNING) << s;
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << s;
+    }
     return;
   }
   s = open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter));
@@ -1136,6 +1143,7 @@ Status TSTabletManager::DeleteTablet(
     const string& tablet_id,
     TabletDataState delete_type,
     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
+    bool hide_only,
     boost::optional<TabletServerErrorPB::Code>* error_code) {
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
@@ -1200,12 +1208,15 @@ Status TSTabletManager::DeleteTablet(
   }
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
+  if (hide_only) {
+    return meta->SetHiddenAndFlush(true);
+  }
   // No matter if the tablet was deleted (drop table), or tombstoned (potentially moved to a
   // different TS), we do not need to flush rocksdb anymore, as this data is irrelevant.
   //
   // Note: This might change for PITR.
   bool delete_data = delete_type == TABLET_DATA_DELETED || delete_type == TABLET_DATA_TOMBSTONED;
-  tablet_peer->Shutdown(tablet::IsDropTable(delete_data));
+  RETURN_NOT_OK(tablet_peer->Shutdown(tablet::IsDropTable(delete_data)));
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
@@ -1566,7 +1577,7 @@ Status TSTabletManager::RegisterTablet(const TabletId& tablet_id,
   std::lock_guard<RWMutex> lock(mutex_);
   if (ClosingUnlocked()) {
     auto result = STATUS_FORMAT(
-        IllegalState, "Unable to register tablet peer: $0: closing", tablet_id);
+        ShutdownInProgress, "Unable to register tablet peer: $0: closing", tablet_id);
     LOG(WARNING) << result;
     return result;
   }

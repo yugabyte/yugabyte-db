@@ -3,6 +3,11 @@
 @import '../../../../_style/colors';
 
 .bs-table-certs {
+  .form-group.react-bs-table-search-form {
+    margin-right: 165px;
+    margin-top: -89px;
+  }
+
   tr.tr-cert-name {
     td {
       vertical-align: middle;

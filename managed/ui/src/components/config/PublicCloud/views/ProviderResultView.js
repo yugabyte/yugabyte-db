@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Field, reduxForm } from 'redux-form';
+import { reduxForm } from 'redux-form';
 import { Row, Col } from 'react-bootstrap';
 import { YBButton } from '../../../common/forms/fields';
 import { DescriptionList } from '../../../common/descriptors';
@@ -125,14 +125,13 @@ class ProviderResultView extends Component {
                 disabled={refreshing}
                 onClick={this.refreshPricingData.bind(this, currentProvider)}
               />
-              <YBButton
-                btnText="Edit Configuration"
-                onClick={this.editProviderView.bind(this, currentProvider)}
-              />
+              <YBButton btnText="Edit Configuration" onClick={this.editProviderView} />
               <YBConfirmModal
                 name="deleteProvider"
                 title={'Confirm Delete'}
-                onConfirm={handleSubmit((() => { handleDeleteProviderConfig(currentProvider.uuid) }))}
+                onConfirm={handleSubmit(() => {
+                  handleDeleteProviderConfig(currentProvider.uuid);
+                })}
                 currentModal={currentModal}
                 visibleModal={this.props.visibleModal}
                 hideConfirmModal={this.props.hideDeleteProviderModal}

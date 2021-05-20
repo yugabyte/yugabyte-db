@@ -1,4 +1,4 @@
-# <img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/images/ybDB_horizontal.jpg" align="center" alt="YugabyteDB"/> CONTRIBUTORS
+# <img src="https://www.yugabyte.com/wp-content/uploads/2021/05/yb_horizontal_alt_color_RGB.png" align="top" alt="YugabyteDB" height="51"/> CONTRIBUTORS
 
 ## New Contributors
 
@@ -137,3 +137,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [mrajcevic01](https://github.com/mrajcevic01)
 * [YintongMa](https://github.com/YintongMa)
 * [jackstenglein](https://github.com/jackstenglein)
+* [pkj415](https://github.com/pkj415)

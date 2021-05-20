@@ -10,10 +10,13 @@
 
 package com.yugabyte.yw.forms;
 
+// TODO: Move this as inner class of YWResults
 public class YWError {
-  public final Object error;
+  public final boolean success = false;
 
-  public YWError(Object error) {
+  public final String error;
+
+  public YWError(String error) {
     this.error = error;
   }
 }

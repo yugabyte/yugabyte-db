@@ -11,8 +11,6 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -21,28 +19,20 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.KmsHistory;
-import com.yugabyte.yw.models.KmsHistoryId;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
-
-import java.util.Base64;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
-import play.mvc.Results;
 
-import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.util.Base64;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 public class EncryptionAtRestController extends AuthenticatedController {
     public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
@@ -81,10 +71,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
             LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
                     customerUUID);
 
-            ObjectNode resultNode = Json.newObject();
-            resultNode.put("taskUUID", taskUUID.toString());
-            Audit.createAuditEntry(ctx(), request(), formData);
-            return Results.status(OK, resultNode);
+            auditService().createAuditEntry(ctx(), request(), formData);
+            return new YWResults.YWTask(taskUUID).asResult();
         } catch (Exception e) {
             final String errMsg = "Error caught attempting to create KMS configuration";
             LOG.error(errMsg, e);
@@ -172,10 +160,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
             LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
                     customerUUID);
 
-            ObjectNode resultNode = Json.newObject();
-            resultNode.put("taskUUID", taskUUID.toString());
-            Audit.createAuditEntry(ctx(), request());
-            return Results.status(OK, resultNode);
+            auditService().createAuditEntry(ctx(), request());
+            return new YWResults.YWTask(taskUUID).asResult();
         } catch (Exception e) {
             final String errMsg = "Error caught attempting to delete KMS configuration";
             LOG.error(errMsg, e);
@@ -206,7 +192,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             ObjectNode result = Json.newObject()
                     .put("reference", keyRef)
                     .put("value", Base64.getEncoder().encodeToString(recoveredKey));
-            Audit.createAuditEntry(ctx(), request(), formData);
+            auditService().createAuditEntry(ctx(), request(), formData);
             return ApiResponse.success(result);
         } catch (Exception e) {
             final String errMsg = String.format(
@@ -250,8 +236,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         ));
         try {
             keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
-            Audit.createAuditEntry(ctx(), request());
-            return ApiResponse.success("Key ref was successfully removed");
+            auditService().createAuditEntry(ctx(), request());
+          return YWResults.YWSuccess.withMessage("Key ref was successfully removed");
         } catch (Exception e) {
             return ApiResponse.error(BAD_REQUEST, e.getMessage());
         }

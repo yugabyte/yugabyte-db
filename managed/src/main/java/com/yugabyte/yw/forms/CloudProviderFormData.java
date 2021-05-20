@@ -24,4 +24,6 @@ public class CloudProviderFormData {
     // We would store credentials and other environment
     // settings specific to the provider as a key-value map.
     public Map<String, String> config;
+
+    public String region = null;
 }

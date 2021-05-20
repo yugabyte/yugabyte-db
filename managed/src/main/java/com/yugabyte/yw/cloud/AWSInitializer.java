@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
@@ -31,7 +32,10 @@ import play.mvc.Result;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.cloud.PublicCloudConstants.*;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -121,7 +125,7 @@ public class AWSInitializer extends AbstractInitializer {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
-    return ApiResponse.success("AWS Initialized.");
+    return YWResults.YWSuccess.withMessage("AWS Initialized.");
   }
 
   /**

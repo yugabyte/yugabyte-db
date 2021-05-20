@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUni
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -26,18 +27,21 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.YBClient;
 import org.yb.client.AbstractModifyMasterClusterConfig;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.YBClient;
 import play.libs.Json;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
 
@@ -82,7 +86,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
     ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
@@ -111,7 +115,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     readOnlyCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(readOnlyCluster);
     PlacementInfoUtil.updateUniverseDefinition(taskParams, defaultCustomer.getCustomerId(),
-        taskParams.clusters.get(0).uuid, UniverseDefinitionTaskParams.ClusterOperationType.CREATE);
+        taskParams.clusters.get(0).uuid, UniverseConfigureTaskParams.ClusterOperationType.CREATE);
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {
       node.cloudInfo.private_ip = "10.9.22." + iter;
@@ -158,6 +162,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams univUTP =
         Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.clusterUUID = readOnlyCluster.uuid;
@@ -169,6 +174,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     assertClusterDeleteSequence(subTasksByPosition, false);
     univUTP = Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
+    assertEquals(3, univUTP.nodeDetailsSet.size());
   }
 
   @Test
@@ -176,10 +182,12 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams univUTP =
       Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.clusterUUID = UUID.randomUUID();
     TaskInfo taskInfo = submitTask(taskParams,TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(4, univUTP.nodeDetailsSet.size());
   }
 }

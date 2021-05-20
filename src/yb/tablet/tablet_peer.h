@@ -180,7 +180,10 @@ class TabletPeer : public consensus::ConsensusContext,
   // Completes shutdown process and waits for it's completeness.
   void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
-  void Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  // Abort active transactions on the tablet after shutdown is initiated.
+  CHECKED_STATUS AbortSQLTransactions();
+
+  CHECKED_STATUS Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
   // Check that the tablet is in a RUNNING state.
   CHECKED_STATUS CheckRunning() const;
@@ -234,7 +237,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
 
-  Tablet* tablet() const {
+  Tablet* tablet() const EXCLUDES(lock_) {
     std::lock_guard<simple_spinlock> lock(lock_);
     return tablet_.get();
   }
@@ -386,9 +389,6 @@ class TabletPeer : public consensus::ConsensusContext,
 
   TableType table_type();
 
-  // Return granular types of on-disk size of this tablet replica, in bytes.
-  TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
-
   // Returns the number of segments in log_.
   int GetNumLogSegments() const;
 
@@ -494,6 +494,9 @@ class TabletPeer : public consensus::ConsensusContext,
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
   rpc::Scheduler& scheduler() const override;
+
+  // Return granular types of on-disk size of this tablet replica, in bytes.
+  TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
 
   MetricRegistry* metric_registry_;
 
