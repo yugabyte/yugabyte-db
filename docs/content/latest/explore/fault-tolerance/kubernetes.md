@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: fault-tolerance-4-kubernetes
     parent: explore
-    weight: 215
+    weight: 500
 isTocNested: true
 showAsideToc: true
 ---

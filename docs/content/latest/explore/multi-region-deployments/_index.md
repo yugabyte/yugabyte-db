@@ -1,7 +1,7 @@
 ---
 title: Multi-Region Deployments
 headerTitle: Multi-Region Deployments
-linkTitle: Multi-Region Deployments
+linkTitle: Multi-region deployments
 description: Multi-Region Deployments in YugabyteDB.
 headcontent: Multi-Region Deployments in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: explore-multi-region-deployments
     parent: explore
-    weight: 234
+    weight: 270
 ---
 
 YugabyteDB supports a rich set of multi-region deployment topologies. This section explains some of these deployments. The predominant deployments include:

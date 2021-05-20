@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: fault-tolerance-2-linux
     parent: explore
-    weight: 215
+    weight: 500
 isTocNested: true
 showAsideToc: true
 ---

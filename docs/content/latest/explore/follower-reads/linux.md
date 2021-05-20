@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: follower-reads-2-linux
     parent: explore
-    weight: 237
+    weight: 510
 isTocNested: true
 showAsideToc: true
 ---

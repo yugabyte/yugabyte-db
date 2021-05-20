@@ -1,7 +1,7 @@
 ---
 title: Horizontal Scalability
 headerTitle: Horizontal Scalability
-linkTitle: Horizontal Scalability
+linkTitle: Horizontal scalability
 description: Horizontal Scalability in YugabyteDB.
 headcontent: Horizontal Scalability in YugabyteDB.
 aliases:

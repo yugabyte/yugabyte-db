@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: colocated-tables-1-macos
     parent: explore
-    weight: 245
+    weight: 600
 isTocNested: true
 showAsideToc: true
 ---

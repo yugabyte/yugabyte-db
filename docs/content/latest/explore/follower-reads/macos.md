@@ -13,7 +13,7 @@ menu:
   latest:
     identifier: follower-reads-1-macos
     parent: explore
-    weight: 240
+    weight: 510
 isTocNested: true
 showAsideToc: true
 ---
