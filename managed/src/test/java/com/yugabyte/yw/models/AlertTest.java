@@ -117,8 +117,8 @@ public class AlertTest extends FakeDBApplication {
   @Test
   @Parameters(method = "parametersToTestAlertsTypes")
   public void testAlertsTypes(Alert.TargetType alertType, UUID uuid, Class<?> claz) {
-    Alert alert = Alert.create(cust1.uuid, uuid, alertType,
-        TEST_ALERT_CODE, "Warning", "Testing alert.");
+    Alert alert =
+        Alert.create(cust1.uuid, uuid, alertType, TEST_ALERT_CODE, "Warning", "Testing alert.");
     assertNotNull(alert.uuid);
     assertEquals(cust1.uuid, alert.customerUUID);
     assertEquals(uuid, alert.targetUUID);
@@ -130,8 +130,8 @@ public class AlertTest extends FakeDBApplication {
   private Object[] parametersToTestAlertsTypes() {
     // @formatter:off
     return new Object[] {
-        new Object[] { Alert.TargetType.TaskType, UUID.randomUUID(), AbstractTaskBase.class },
-        new Object[] { Alert.TargetType.UniverseType, UUID.randomUUID(), Universe.class },
+      new Object[] {Alert.TargetType.TaskType, UUID.randomUUID(), AbstractTaskBase.class},
+      new Object[] {Alert.TargetType.UniverseType, UUID.randomUUID(), Universe.class},
     };
     // @formatter:on
   }
@@ -155,23 +155,55 @@ public class AlertTest extends FakeDBApplication {
     UUID targetUUID = UUID.randomUUID();
     assertEquals(0, Alert.list(cust1.uuid, TEST_ALERT_CODE, targetUUID).size());
 
-    Alert alert1 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
-        "Warning", "Testing alert 1.");
+    Alert alert1 =
+        Alert.create(
+            cust1.uuid,
+            targetUUID,
+            TargetType.UniverseType,
+            TEST_ALERT_CODE,
+            "Warning",
+            "Testing alert 1.");
     // One sec pause to have alert2.createTime > alert1.createTime.
     try {
       Thread.sleep(1000);
     } catch (InterruptedException e) {
     }
-    Alert alert2 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
-        "Warning", "Testing alert 1.");
+    Alert alert2 =
+        Alert.create(
+            cust1.uuid,
+            targetUUID,
+            TargetType.UniverseType,
+            TEST_ALERT_CODE,
+            "Warning",
+            "Testing alert 1.");
 
-    Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE_2, "Warning",
+    Alert.create(
+        cust1.uuid,
+        targetUUID,
+        TargetType.UniverseType,
+        TEST_ALERT_CODE_2,
+        "Warning",
         "Testing alert 2.");
-    Alert.create(cust2.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE, "Warning",
+    Alert.create(
+        cust2.uuid,
+        targetUUID,
+        TargetType.UniverseType,
+        TEST_ALERT_CODE,
+        "Warning",
         "Testing alert 3.");
-    Alert.create(cust2.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE_2, "Warning",
+    Alert.create(
+        cust2.uuid,
+        targetUUID,
+        TargetType.UniverseType,
+        TEST_ALERT_CODE_2,
+        "Warning",
         "Testing alert 4.");
-    Alert.create(cust1.uuid, UUID.randomUUID(), TargetType.UniverseType, TEST_ALERT_CODE, "Warning",
+    Alert.create(
+        cust1.uuid,
+        UUID.randomUUID(),
+        TargetType.UniverseType,
+        TEST_ALERT_CODE,
+        "Warning",
         "Testing alert 5.");
 
     List<Alert> list = Alert.list(cust1.uuid, TEST_ALERT_CODE, targetUUID);
@@ -184,18 +216,34 @@ public class AlertTest extends FakeDBApplication {
   public void testGetActiveCustomerAlerts() {
     UUID targetUUID = UUID.randomUUID();
     Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
-    AlertDefinition definition = AlertDefinition.create(cust1.uuid,
-      AlertDefinition.TargetType.Universe,
-      "alertDefinition", "query {{ test.parameter }}", true,
-      ImmutableList.of());
+    AlertDefinition definition =
+        AlertDefinition.create(
+            cust1.uuid,
+            AlertDefinition.TargetType.Universe,
+            "alertDefinition",
+            "query {{ test.parameter }}",
+            true,
+            ImmutableList.of());
 
-    Alert alert1 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
-        "Warning", "Testing alert 1.");
+    Alert alert1 =
+        Alert.create(
+            cust1.uuid,
+            targetUUID,
+            TargetType.UniverseType,
+            TEST_ALERT_CODE,
+            "Warning",
+            "Testing alert 1.");
     alert1.definitionUUID = definition.uuid;
     alert1.save();
 
-    Alert alert2 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
-        "Warning", "Testing alert 2.");
+    Alert alert2 =
+        Alert.create(
+            cust1.uuid,
+            targetUUID,
+            TargetType.UniverseType,
+            TEST_ALERT_CODE,
+            "Warning",
+            "Testing alert 2.");
     alert2.state = State.ACTIVE;
     alert2.definitionUUID = definition.uuid;
     alert2.save();
@@ -206,16 +254,33 @@ public class AlertTest extends FakeDBApplication {
   @Test
   public void testGetActiveCustomerAlertsByTargetUuid() {
     UUID targetUUID = UUID.randomUUID();
-    Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
-        "Warning", "Testing alert 1.");
+    Alert.create(
+        cust1.uuid,
+        targetUUID,
+        TargetType.UniverseType,
+        TEST_ALERT_CODE,
+        "Warning",
+        "Testing alert 1.");
 
-    Alert alert2 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
-        "Warning", "Testing alert 2.");
+    Alert alert2 =
+        Alert.create(
+            cust1.uuid,
+            targetUUID,
+            TargetType.UniverseType,
+            TEST_ALERT_CODE,
+            "Warning",
+            "Testing alert 2.");
     alert2.state = State.ACTIVE;
     alert2.save();
 
-    Alert alert3 = Alert.create(cust1.uuid, UUID.randomUUID(), TargetType.UniverseType,
-        TEST_ALERT_CODE, "Warning", "Testing alert 3.");
+    Alert alert3 =
+        Alert.create(
+            cust1.uuid,
+            UUID.randomUUID(),
+            TargetType.UniverseType,
+            TEST_ALERT_CODE,
+            "Warning",
+            "Testing alert 3.");
     alert3.state = State.ACTIVE;
     alert3.save();
 
@@ -228,36 +293,32 @@ public class AlertTest extends FakeDBApplication {
   public AlertDefinition createDefinition() {
     Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
     return AlertDefinition.create(
-      cust1.getUuid(),
-      AlertDefinition.TargetType.Universe,
-      "name",
-      "query",
-      true,
-      AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get()
-    );
+        cust1.getUuid(),
+        AlertDefinition.TargetType.Universe,
+        "name",
+        "query",
+        true,
+        AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
   }
 
   public Alert createTestAlert(AlertDefinition definition) {
     AlertLabel label = new AlertLabel(TEST_LABEL, TEST_LABEL_VALUE);
     AlertLabel label2 = new AlertLabel(TEST_LABEL_2, TEST_LABEL_VALUE_2);
     return Alert.create(
-      cust1.uuid,
-      definition.getUniverseUUID(),
-      TargetType.UniverseType,
-      TEST_ALERT_CODE,
-      "Warning",
-      "Testing alert 1.",
-      true,
-      definition.uuid,
-      ImmutableList.of(label, label2)
-    );
+        cust1.uuid,
+        definition.getUniverseUUID(),
+        TargetType.UniverseType,
+        TEST_ALERT_CODE,
+        "Warning",
+        "Testing alert 1.",
+        true,
+        definition.uuid,
+        ImmutableList.of(label, label2));
   }
 
   private void assertTestAlert(Alert alert, AlertDefinition definition) {
-    AlertLabel label = new AlertLabel(
-      alert, TEST_LABEL, TEST_LABEL_VALUE);
-    AlertLabel label2 = new AlertLabel(
-      alert, TEST_LABEL_2, TEST_LABEL_VALUE_2);
+    AlertLabel label = new AlertLabel(alert, TEST_LABEL, TEST_LABEL_VALUE);
+    AlertLabel label2 = new AlertLabel(alert, TEST_LABEL_2, TEST_LABEL_VALUE_2);
     assertThat(alert.customerUUID, is(cust1.uuid));
     assertThat(alert.targetUUID, is(definition.getUniverseUUID()));
     assertThat(alert.targetType, is(TargetType.UniverseType));

@@ -5,9 +5,8 @@ package com.yugabyte.yw.models.helpers;
 /**
  * Represents all the details of a node that are got from the cloud provider.
  *
- * NOTE: the names of fields in this class MUST correspond to the output field names of the script
- * 'yb_inventory.py' which is in the 'devops' repository.
- *
+ * <p>NOTE: the names of fields in this class MUST correspond to the output field names of the
+ * script 'yb_inventory.py' which is in the 'devops' repository.
  */
 public class CloudSpecificInfo {
   // The private ip address
@@ -35,8 +34,7 @@ public class CloudSpecificInfo {
 
   public String mount_roots;
 
-  public CloudSpecificInfo() {
-  }
+  public CloudSpecificInfo() {}
 
   @Override
   public CloudSpecificInfo clone() {
@@ -59,11 +57,15 @@ public class CloudSpecificInfo {
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("cloudInfo: ")
-      .append(az)
-      .append(".").append(region)
-      .append(".").append(cloud)
-      .append(", type: ").append(instance_type)
-      .append(", ip: ").append(private_ip);
+        .append(az)
+        .append(".")
+        .append(region)
+        .append(".")
+        .append(cloud)
+        .append(", type: ")
+        .append(instance_type)
+        .append(", ip: ")
+        .append(private_ip);
     if (mount_roots != null && !mount_roots.isEmpty()) {
       sb.append(", mountRoots: ").append(mount_roots);
     }

@@ -19,7 +19,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
 
-
 public class CloudSetup extends CloudTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudRegionSetup.class);
 
@@ -29,7 +28,7 @@ public class CloudSetup extends CloudTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -37,10 +36,8 @@ public class CloudSetup extends CloudTaskBase {
     NetworkManager networkManager = Play.current().injector().instanceOf(NetworkManager.class);
     // TODO(bogdan): we do not actually do anything with this response, so can NOOP if not
     // creating any elements?
-    JsonNode response = networkManager.bootstrap(
-        null,
-        taskParams().providerUUID,
-        taskParams().customPayload);
+    JsonNode response =
+        networkManager.bootstrap(null, taskParams().providerUUID, taskParams().customPayload);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }

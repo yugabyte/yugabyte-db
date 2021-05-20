@@ -21,8 +21,8 @@ import static play.libs.Json.toJson;
 @Singleton
 public class YcqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YcqlQueryExecutor.class);
-  private final static String DEFAULT_DB_USER = "cassandra";
-  private final static String DEFAULT_DB_PASSWORD = "cassandra";
+  private static final String DEFAULT_DB_USER = "cassandra";
+  private static final String DEFAULT_DB_PASSWORD = "cassandra";
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
     // Create user for customer CQL.
@@ -31,13 +31,12 @@ public class YcqlQueryExecutor {
     // --use_cassandra_authentication=true
     // This is always true if the universe was created via cloud.
     RunQueryFormData ycqlQuery = new RunQueryFormData();
-    ycqlQuery.query = String.format(
-      "CREATE ROLE '%s' WITH SUPERUSER=true AND LOGIN=true AND PASSWORD='%s'",
-      Util.escapeSingleQuotesOnly(data.username),
-      Util.escapeSingleQuotesOnly(data.password));
-    JsonNode ycqlResponse = executeQuery(universe, ycqlQuery, true,
-      data.ycqlAdminUsername,
-      data.ycqlAdminPassword);
+    ycqlQuery.query =
+        String.format(
+            "CREATE ROLE '%s' WITH SUPERUSER=true AND LOGIN=true AND PASSWORD='%s'",
+            Util.escapeSingleQuotesOnly(data.username), Util.escapeSingleQuotesOnly(data.password));
+    JsonNode ycqlResponse =
+        executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
     LOG.info("Creating YCQL user, result: " + ycqlResponse.toString());
     if (ycqlResponse.has("error")) {
       throw new YWServiceException(Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
@@ -51,11 +50,13 @@ public class YcqlQueryExecutor {
     // --use_cassandra_authentication=true
     // This is always true if the universe was created via cloud.
     RunQueryFormData ycqlQuery = new RunQueryFormData();
-    ycqlQuery.query = String.format("ALTER ROLE '%s' WITH PASSWORD='%s'",
-      Util.escapeSingleQuotesOnly(data.ycqlAdminUsername),
-      Util.escapeSingleQuotesOnly(data.ycqlAdminPassword));
-    JsonNode ycqlResponse = executeQuery(universe, ycqlQuery, true,
-      data.ycqlAdminUsername, data.ycqlCurrAdminPassword);
+    ycqlQuery.query =
+        String.format(
+            "ALTER ROLE '%s' WITH PASSWORD='%s'",
+            Util.escapeSingleQuotesOnly(data.ycqlAdminUsername),
+            Util.escapeSingleQuotesOnly(data.ycqlAdminPassword));
+    JsonNode ycqlResponse =
+        executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlCurrAdminPassword);
     LOG.info("Updating YCQL user, result: " + ycqlResponse.toString());
     if (ycqlResponse.has("error")) {
       throw new YWServiceException(Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
@@ -67,15 +68,14 @@ public class YcqlQueryExecutor {
     Session session = null;
   }
 
-  private CassandraConnection createCassandraConnection(UUID universeUUID, Boolean authEnabled,
-                                                        String username, String password) {
+  private CassandraConnection createCassandraConnection(
+      UUID universeUUID, Boolean authEnabled, String username, String password) {
     CassandraConnection cc = new CassandraConnection();
     List<InetSocketAddress> addresses = Util.getNodesAsInet(universeUUID);
     if (addresses.isEmpty()) {
       return cc;
     }
-    Cluster.Builder builder = Cluster.builder()
-                              .addContactPointsWithPorts(addresses);
+    Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(addresses);
     if (authEnabled) {
       builder.withCredentials(username.trim(), password.trim());
     }
@@ -115,16 +115,20 @@ public class YcqlQueryExecutor {
     return command;
   }
 
-  public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams,
-                               Boolean authEnabled) {
+  public JsonNode executeQuery(
+      Universe universe, RunQueryFormData queryParams, Boolean authEnabled) {
     return executeQuery(universe, queryParams, authEnabled, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD);
   }
 
-  public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams,
-                               Boolean authEnabled, String username, String password) {
+  public JsonNode executeQuery(
+      Universe universe,
+      RunQueryFormData queryParams,
+      Boolean authEnabled,
+      String username,
+      String password) {
     ObjectNode response = newObject();
-    CassandraConnection cc = createCassandraConnection(universe.universeUUID, authEnabled,
-                                                       username, password);
+    CassandraConnection cc =
+        createCassandraConnection(universe.universeUUID, authEnabled, username, password);
     try {
       ResultSet rs = cc.session.execute(queryParams.query);
       if (rs.iterator().hasNext()) {

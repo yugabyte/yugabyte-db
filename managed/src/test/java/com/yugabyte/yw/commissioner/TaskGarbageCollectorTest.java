@@ -26,42 +26,41 @@ import static org.mockito.Mockito.*;
 @RunWith(MockitoJUnitRunner.class)
 public class TaskGarbageCollectorTest extends TestCase {
 
-  private void checkCounters(UUID customerUuid, Double expectedNumRuns, Double expectedErrors,
-                             Double expectedCustomerTaskGC, Double expectedTaskInfoGC) {
+  private void checkCounters(
+      UUID customerUuid,
+      Double expectedNumRuns,
+      Double expectedErrors,
+      Double expectedCustomerTaskGC,
+      Double expectedTaskInfoGC) {
     assertEquals(expectedNumRuns, testRegistry.getSampleValue(NUM_TASK_GC_RUNS));
     assertEquals(expectedErrors, testRegistry.getSampleValue(NUM_TASK_GC_ERRORS));
-    assertEquals(expectedCustomerTaskGC,
-      testRegistry.getSampleValue(
-        CUSTOMER_TASK_METRIC_NAME,
-        new String[]{CUSTOMER_UUID_LABEL},
-        new String[]{customerUuid.toString()}));
-    assertEquals(expectedTaskInfoGC,
-      testRegistry.getSampleValue(
-        TASK_INFO_METRIC_NAME,
-        new String[]{CUSTOMER_UUID_LABEL},
-        new String[]{customerUuid.toString()}));
+    assertEquals(
+        expectedCustomerTaskGC,
+        testRegistry.getSampleValue(
+            CUSTOMER_TASK_METRIC_NAME,
+            new String[] {CUSTOMER_UUID_LABEL},
+            new String[] {customerUuid.toString()}));
+    assertEquals(
+        expectedTaskInfoGC,
+        testRegistry.getSampleValue(
+            TASK_INFO_METRIC_NAME,
+            new String[] {CUSTOMER_UUID_LABEL},
+            new String[] {customerUuid.toString()}));
   }
 
-  @Mock
-  ActorSystem mockActorSystem;
+  @Mock ActorSystem mockActorSystem;
 
-  @Mock
-  Scheduler mockScheduler;
+  @Mock Scheduler mockScheduler;
 
-  @Mock
-  Config mockAppConfig;
+  @Mock Config mockAppConfig;
 
-  @Mock
-  RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
-  @Mock
-  ExecutionContext mockExecutionContext;
+  @Mock ExecutionContext mockExecutionContext;
 
-  @Mock
-  Customer mockCustomer;
+  @Mock Customer mockCustomer;
 
-  @Mock
-  CustomerTask mockCustomerTask;
+  @Mock CustomerTask mockCustomerTask;
 
   CollectorRegistry testRegistry;
 
@@ -76,8 +75,8 @@ public class TaskGarbageCollectorTest extends TestCase {
   public void testIgnorePromError() {
     CollectorRegistry mockCollectorRegistry = mock(CollectorRegistry.class);
     doThrow(IllegalArgumentException.class).when(mockCollectorRegistry).register(any());
-    new TaskGarbageCollector(mockScheduler, mockRuntimeConfigFactory, mockExecutionContext,
-      mockCollectorRegistry);
+    new TaskGarbageCollector(
+        mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, mockCollectorRegistry);
   }
 
   @Test
@@ -88,35 +87,32 @@ public class TaskGarbageCollectorTest extends TestCase {
 
   @Test
   public void testStart_disabled() {
-    when(mockAppConfig.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL))
-      .thenReturn(Duration.ZERO);
-    TaskGarbageCollector gc = new TaskGarbageCollector(mockScheduler, mockRuntimeConfigFactory,
-      mockExecutionContext, testRegistry);
+    when(mockAppConfig.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL)).thenReturn(Duration.ZERO);
+    TaskGarbageCollector gc =
+        new TaskGarbageCollector(
+            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
     gc.start();
     verifyZeroInteractions(mockScheduler);
   }
 
   @Test
   public void testStart_enabled() {
-    when(mockAppConfig.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL))
-      .thenReturn(Duration.ofDays(1));
-    TaskGarbageCollector gc = new TaskGarbageCollector(mockScheduler,
-      mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
+    when(mockAppConfig.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL)).thenReturn(Duration.ofDays(1));
+    TaskGarbageCollector gc =
+        new TaskGarbageCollector(
+            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
     gc.start();
     verify(mockScheduler, times(1))
-      .schedule(eq(Duration.ZERO),
-        eq(Duration.ofDays(1)),
-        any(),
-        eq(mockExecutionContext));
+        .schedule(eq(Duration.ZERO), eq(Duration.ofDays(1)), any(), eq(mockExecutionContext));
   }
-
 
   @Test
   public void testPurge_noneStale() {
     UUID customerUuid = UUID.randomUUID();
 
-    TaskGarbageCollector gc = new TaskGarbageCollector(
-      mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
+    TaskGarbageCollector gc =
+        new TaskGarbageCollector(
+            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
     gc.purgeStaleTasks(mockCustomer, Collections.emptyList());
 
     checkCounters(customerUuid, 1.0, 0.0, null, null);
@@ -129,8 +125,9 @@ public class TaskGarbageCollectorTest extends TestCase {
     // Pretend we deleted 5 rows in all:
     when(mockCustomerTask.cascadeDeleteCompleted()).thenReturn(5);
 
-    TaskGarbageCollector gc = new TaskGarbageCollector(
-      mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
+    TaskGarbageCollector gc =
+        new TaskGarbageCollector(
+            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
     gc.purgeStaleTasks(mockCustomer, Collections.singletonList(mockCustomerTask));
 
     checkCounters(customerUuid, 1.0, 0.0, 1.0, 4.0);
@@ -144,8 +141,9 @@ public class TaskGarbageCollectorTest extends TestCase {
     // Pretend we deleted 5 rows in all:
     when(mockCustomerTask.cascadeDeleteCompleted()).thenReturn(0);
 
-    TaskGarbageCollector gc = new TaskGarbageCollector(
-      mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
+    TaskGarbageCollector gc =
+        new TaskGarbageCollector(
+            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
     gc.purgeStaleTasks(mockCustomer, Collections.singletonList(mockCustomerTask));
 
     checkCounters(customerUuid, 1.0, 1.0, null, null);

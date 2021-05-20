@@ -22,7 +22,6 @@ import play.api.Play;
 
 import java.util.Map;
 
-
 public abstract class CloudTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudTaskBase.class);
 
