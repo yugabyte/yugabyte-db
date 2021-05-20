@@ -116,17 +116,17 @@ class OnPremNodesList extends Component {
       Object.keys(vals.instances).forEach(region => {
         vals.instances[region].forEach((az, index) => {
           // Check if IP address is already in use by other node instance
-          if (existingNodeIps.has(az.instanceTypeIP.trim())) {
+          if (existingNodeIps.has(az?.instanceTypeIP?.trim())) {
             // If array exists then there are multiple errors
             if (!Array.isArray(errors.instances[region])) {
               errors.instances[region] = [];
             }
             errors.instances[region][index] = {
-              instanceTypeIP: `Duplicate IP error: ${az.instanceTypeIP}`
+              instanceTypeIP: `Duplicate IP error: ${az?.instanceTypeIP}`
             };
           } else {
             // Add node instance to Set
-            existingNodeIps.add(az.instanceTypeIP.trim());
+            existingNodeIps.add(az?.instanceTypeIP?.trim());
           }
         });
       });
