@@ -343,7 +343,7 @@ void ServerBaseOptions::SetPlacement(std::string cloud, std::string region, std:
   placement_zone_ = std::move(zone);
 }
 
-static inline bool CheckSpaces(std::string str) {
+bool CheckSpaces(std::string str) {
   if (str.empty()) return false;
   size_t start = 0;
   size_t end = str.size() - 1;

@@ -131,6 +131,8 @@ std::string MasterAddressesToString(const MasterAddresses& addresses);
 CHECKED_STATUS ResolveMasterAddresses(
     MasterAddressesPtr master_addresses, std::vector<Endpoint>* resolved_addresses);
 
+bool CheckSpaces(std::string str);
+
 } // namespace server
 } // namespace yb
 
