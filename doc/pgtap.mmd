@@ -4459,7 +4459,7 @@ which to use:
 
     SELECT col_default_is(
         'widgets', 'created_by',
-        CASE WHEN pg_version_num() >= 100000 THEN 'CURRENT_USER ELSE '"current_user"()' END
+        CASE WHEN pg_version_num() >= 100000 THEN 'CURRENT_USER' ELSE '"current_user"()' END
     );
 
 See the note in the
