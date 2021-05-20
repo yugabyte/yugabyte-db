@@ -58,7 +58,6 @@ N/A
 * [6913] For slow query monitoring, added an ability to reset stats with the new ‘Reset Stats’ button.
 * [6913] [6914] Add ability to reset slow query data and hide slow queries.
 * [6914] Added an ability to turn on query monitoring for slow queries. By default, query monitoring is turned off.
-* [6980] Added a mechanism to configure platform runtime settings.
 * [7215] Added an ability to select multiple backups for deletion rather than deleting individual backups. 
 * [7223] [7224] Added a new “Show Universes” action in the Actions menu. This provides a way for users to see all the associated universes that are using a particular KMS config. We are now also showing the list of universes as a modal dialog box associated with the certificate. 
 * [7278] [7446] Improved search usability for Live and Slow queries by adding autocomplete suggestions, better filtering and navigation.
