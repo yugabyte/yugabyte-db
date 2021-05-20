@@ -4,7 +4,6 @@ package com.yugabyte.yw.forms;
 
 import play.data.validation.Constraints;
 
-
 public class DatabaseSecurityFormData {
 
   public String ycqlAdminUsername;

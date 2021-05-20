@@ -23,7 +23,6 @@ import play.libs.Json;
 
 import java.util.Map;
 
-
 public class BackupTable extends AbstractTaskBase {
 
   Backup backup;

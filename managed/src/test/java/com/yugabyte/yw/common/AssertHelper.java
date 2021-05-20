@@ -20,8 +20,8 @@ import static play.test.Helpers.contentAsString;
 
 public class AssertHelper {
   public static void assertOk(Result result) {
-        assertEquals(OK, result.status());
-    }
+    assertEquals(OK, result.status());
+  }
 
   public static void assertBadRequest(Result result, String errorStr) {
     assertEquals(BAD_REQUEST, result.status());
@@ -50,8 +50,8 @@ public class AssertHelper {
 
   public static void assertErrorResponse(Result result, String errorStr) {
     if (errorStr != null) {
-        JsonNode json = Json.parse(contentAsString(result));
-        assertThat(json.get("error").toString(), allOf(notNullValue(), containsString(errorStr)));
+      JsonNode json = Json.parse(contentAsString(result));
+      assertThat(json.get("error").toString(), allOf(notNullValue(), containsString(errorStr)));
     }
   }
 
@@ -83,7 +83,7 @@ public class AssertHelper {
 
   public static void assertArrayNode(JsonNode json, String key, List<String> expectedValues) {
     assertTrue(json.get(key).isArray());
-    json.get(key).forEach( (value) -> assertTrue(expectedValues.contains(value.asText())));
+    json.get(key).forEach((value) -> assertTrue(expectedValues.contains(value.asText())));
   }
 
   public static void assertErrorNodeValue(JsonNode json, String key, String value) {
@@ -101,9 +101,9 @@ public class AssertHelper {
   }
 
   public static void assertJsonEqual(JsonNode expectedJson, JsonNode actualJson) {
-    expectedJson.fieldNames().forEachRemaining( field ->
-            assertEquals(expectedJson.get(field), actualJson.get(field))
-    );
+    expectedJson
+        .fieldNames()
+        .forEachRemaining(field -> assertEquals(expectedJson.get(field), actualJson.get(field)));
   }
 
   public static void assertAuditEntry(int numEntries, UUID uuid) {

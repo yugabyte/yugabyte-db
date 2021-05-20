@@ -44,7 +44,8 @@ public class ScheduleController extends AuthenticatedController {
     try {
       schedule.stopSchedule();
     } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Schedule UUID: " + scheduleUUID);
+      return ApiResponse.error(
+          INTERNAL_SERVER_ERROR, "Unable to delete Schedule UUID: " + scheduleUUID);
     }
 
     ObjectNode responseJson = Json.newObject();

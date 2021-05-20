@@ -8,7 +8,6 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-
 package com.yugabyte.yw.cloud;
 
 import java.time.Instant;
@@ -44,34 +43,16 @@ public class GCPInitializer extends AbstractInitializer {
 
   /**
    * This will construct and store a PriceComponent object for the InstanceType in each Region.
-   * Price for the Instance will be normalized to pricePerHour, which is the pricePerUnit.
-   * Expected format of instanceTypeToDetailsMap json:
-   *   {
-   *     "prices": {
-   *       "us-west1": [
-   *         {
-   *           "price": 1.52,
-   *           "os": "Linux"
-   *         }
-   *       ],
-   *       "us-east1": [
-   *         {
-   *           "price": 1.52,
-   *           "os": "Linux"
-   *         }
-   *       ]
-   *     },
-   *     "numCores": 32,
-   *     "description": "32 vCPUs, 120 GB RAM",
-   *     "memSizeGb": 120,
-   *     "isShared": false
-   *   }
+   * Price for the Instance will be normalized to pricePerHour, which is the pricePerUnit. Expected
+   * format of instanceTypeToDetailsMap json: { "prices": { "us-west1": [ { "price": 1.52, "os":
+   * "Linux" } ], "us-east1": [ { "price": 1.52, "os": "Linux" } ] }, "numCores": 32, "description":
+   * "32 vCPUs, 120 GB RAM", "memSizeGb": 120, "isShared": false }
    *
    * @param instanceTypeCode Code of the instanceType (e.g. n1-standard-32).
    * @param instanceTypeToDetailsMap Json map of instanceType details for each region we care about.
    */
-  private void storeInstancePriceComponents(String instanceTypeCode,
-                                           JsonNode instanceTypeToDetailsMap) {
+  private void storeInstancePriceComponents(
+      String instanceTypeCode, JsonNode instanceTypeToDetailsMap) {
     JsonNode regionToPriceMap = instanceTypeToDetailsMap.get("prices");
     String now = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
 
@@ -80,7 +61,7 @@ public class GCPInitializer extends AbstractInitializer {
       String regionCode = regionCodeItr.next();
 
       JsonNode osToPriceList = regionToPriceMap.get(regionCode);
-      for (JsonNode osJson: osToPriceList) {
+      for (JsonNode osJson : osToPriceList) {
         PriceDetails priceDetails = new PriceDetails();
         priceDetails.unit = PriceDetails.Unit.Hours;
         priceDetails.pricePerUnit = osJson.get("price").asDouble();
@@ -121,8 +102,9 @@ public class GCPInitializer extends AbstractInitializer {
       List<Region> regionList = Region.fetchValidRegions(customerUUID, providerUUID, 0);
       Common.CloudType cloudType = Common.CloudType.valueOf(provider.code);
 
-      JsonNode instanceTypes = cloudQueryHelper.getInstanceTypes(
-        regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
+      JsonNode instanceTypes =
+          cloudQueryHelper.getInstanceTypes(
+              regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
 
       // Iterate through each instance type and store their details in the db.
       Iterator<String> itr = instanceTypes.fieldNames();
@@ -139,11 +121,12 @@ public class GCPInitializer extends AbstractInitializer {
         }
 
         // Store instanceType and corresponding priceComponents in the db.
-        InstanceType.upsert(provider.uuid,
-                            instanceTypeCode,
-                            instanceTypeToDetailsMap.get("numCores").asInt(),
-                            instanceTypeToDetailsMap.get("memSizeGb").asDouble(),
-                            instanceTypeDetails);
+        InstanceType.upsert(
+            provider.uuid,
+            instanceTypeCode,
+            instanceTypeToDetailsMap.get("numCores").asInt(),
+            instanceTypeToDetailsMap.get("memSizeGb").asDouble(),
+            instanceTypeDetails);
         storeInstancePriceComponents(instanceTypeCode, instanceTypeToDetailsMap);
       }
     } catch (Exception e) {

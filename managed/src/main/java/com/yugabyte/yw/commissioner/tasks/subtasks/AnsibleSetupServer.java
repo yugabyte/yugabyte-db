@@ -23,7 +23,6 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 
 import java.util.List;
 
-
 public class AnsibleSetupServer extends NodeTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleSetupServer.class);
@@ -49,7 +48,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -67,8 +66,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
       LOG.info("Skipping ansible provision.");
     } else {
       // Execute the ansible command.
-      ShellResponse response = getNodeManager().nodeCommand(
-          NodeManager.NodeCommandType.Provision, taskParams());
+      ShellResponse response =
+          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Provision, taskParams());
       processShellResponse(response);
     }
   }

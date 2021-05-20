@@ -28,7 +28,7 @@ public class CloudRegionCleanup extends CloudTaskBase {
 
   @Override
   protected CloudRegionCleanup.Params taskParams() {
-    return (CloudRegionCleanup.Params)taskParams;
+    return (CloudRegionCleanup.Params) taskParams;
   }
 
   @Override
@@ -36,7 +36,7 @@ public class CloudRegionCleanup extends CloudTaskBase {
     String regionCode = taskParams().regionCode;
     Region region = Region.getByCode(getProvider(), regionCode);
     if (region == null) {
-      throw new RuntimeException("Region " +  regionCode + " doesn't exists.");
+      throw new RuntimeException("Region " + regionCode + " doesn't exists.");
     }
     NetworkManager networkManager = Play.current().injector().instanceOf(NetworkManager.class);
 

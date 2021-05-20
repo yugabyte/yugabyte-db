@@ -16,9 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 // Note: Moved from RuntimeConfig.apply() written by @spotachev
-/**
- * Replace string template config keys by values from the config.
- */
+/** Replace string template config keys by values from the config. */
 public class ConfigSubstitutor {
   private static final Logger LOG = LoggerFactory.getLogger(ConfigSubstitutor.class);
 
@@ -37,12 +35,11 @@ public class ConfigSubstitutor {
   }
 
   /**
-   * Substitutes all parameters of format '{{ config-path }}' with corresponding
-   * values from the configuration.<br>
-   * If the parameter doesn't exist in the configuration, it is simply removed
-   * from the string.
-   * <p>
-   * <b>Usage example:</b> <br>
+   * Substitutes all parameters of format '{{ config-path }}' with corresponding values from the
+   * configuration.<br>
+   * If the parameter doesn't exist in the configuration, it is simply removed from the string.
+   *
+   * <p><b>Usage example:</b> <br>
    * "database name is: {{ db.default.dbname }}" => "database name is: yugaware"
    *
    * @return String with substituted values
@@ -56,14 +53,14 @@ public class ConfigSubstitutor {
     int position = 0;
     int prefixPosition;
     while ((prefixPosition = templateStr.indexOf(parameterPrefix, position)) >= 0) {
-      int suffixPosition = templateStr.indexOf(parameterSuffix,
-        prefixPosition + parameterPrefix.length());
+      int suffixPosition =
+          templateStr.indexOf(parameterSuffix, prefixPosition + parameterPrefix.length());
       if (suffixPosition == -1) {
         break;
       }
       result.append(templateStr, position, prefixPosition);
-      String parameter = templateStr.substring(prefixPosition + parameterPrefix.length(),
-        suffixPosition);
+      String parameter =
+          templateStr.substring(prefixPosition + parameterPrefix.length(), suffixPosition);
       parameter = parameter.trim();
       try {
         result.append(config.getString(parameter));

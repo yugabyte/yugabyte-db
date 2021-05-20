@@ -34,14 +34,11 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceController.class);
 
-  @Inject
-  private PlatformReplicationManager replicationManager;
+  @Inject private PlatformReplicationManager replicationManager;
 
-  @Inject
-  private FormFactory formFactory;
+  @Inject private FormFactory formFactory;
 
-  @Inject
-  CustomerTaskManager taskManager;
+  @Inject CustomerTaskManager taskManager;
 
   public Result createInstance(UUID configUUID) {
     try {
@@ -51,7 +48,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       }
 
       Form<PlatformInstanceFormData> formData =
-        formFactory.form(PlatformInstanceFormData.class).bindFromRequest();
+          formFactory.form(PlatformInstanceFormData.class).bindFromRequest();
       if (formData.hasErrors()) {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
@@ -59,29 +56,27 @@ public class PlatformInstanceController extends AuthenticatedController {
       // Cannot create a remote instance before creating a local instance.
       if (!formData.get().is_local && !config.get().getLocal().isPresent()) {
         return ApiResponse.error(
-          BAD_REQUEST,
-          "Cannot create a remote platform instance before creating local platform instance"
-        );
-      // Cannot create a remote instance if local instance is follower.
+            BAD_REQUEST,
+            "Cannot create a remote platform instance before creating local platform instance");
+        // Cannot create a remote instance if local instance is follower.
       } else if (!formData.get().is_local && !config.get().isLocalLeader()) {
         return ApiResponse.error(
-          BAD_REQUEST,
-          "Cannot create a remote platform instance on a follower platform instance"
-        );
-      // Cannot create multiple local platform instances.
+            BAD_REQUEST,
+            "Cannot create a remote platform instance on a follower platform instance");
+        // Cannot create multiple local platform instances.
       } else if (formData.get().is_local && config.get().getLocal().isPresent()) {
         return ApiResponse.error(BAD_REQUEST, "Local platform instance already exists");
-      // Cannot create multiple leader platform instances.
+        // Cannot create multiple leader platform instances.
       } else if (formData.get().is_leader && config.get().isLocalLeader()) {
         return ApiResponse.error(BAD_REQUEST, "Leader platform instance already exists");
       }
 
-      PlatformInstance instance = PlatformInstance.create(
-        config.get(),
-        formData.get().address,
-        formData.get().is_leader,
-        formData.get().is_local
-      );
+      PlatformInstance instance =
+          PlatformInstance.create(
+              config.get(),
+              formData.get().address,
+              formData.get().is_leader,
+              formData.get().is_local);
 
       // Mark this instance as "failed over to" initially since it is a leader instance.
       if (instance.getIsLeader()) {
@@ -105,9 +100,13 @@ public class PlatformInstanceController extends AuthenticatedController {
 
       Optional<PlatformInstance> instanceToDelete = PlatformInstance.get(instanceUUID);
 
-      boolean instanceUUIDValid = instanceToDelete.isPresent() && config.get().getInstances()
-        .stream()
-        .anyMatch(i -> i.getUUID().equals(instanceUUID));
+      boolean instanceUUIDValid =
+          instanceToDelete.isPresent()
+              && config
+                  .get()
+                  .getInstances()
+                  .stream()
+                  .anyMatch(i -> i.getUUID().equals(instanceUUID));
 
       if (!instanceUUIDValid) {
         return ApiResponse.error(NOT_FOUND, "Invalid instance UUID");
@@ -115,9 +114,7 @@ public class PlatformInstanceController extends AuthenticatedController {
 
       if (!config.get().isLocalLeader()) {
         return ApiResponse.error(
-          BAD_REQUEST,
-          "Follower platform instance cannot delete platform instances"
-        );
+            BAD_REQUEST, "Follower platform instance cannot delete platform instances");
       }
 
       if (instanceToDelete.get().getIsLocal()) {
@@ -151,9 +148,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       LOG.error("Error retrieving local platform instance for config", e);
 
       return ApiResponse.error(
-        INTERNAL_SERVER_ERROR,
-        "Error retrieving local platform instance for config"
-      );
+          INTERNAL_SERVER_ERROR, "Error retrieving local platform instance for config");
     }
   }
 
@@ -166,9 +161,13 @@ public class PlatformInstanceController extends AuthenticatedController {
 
       Optional<PlatformInstance> instance = PlatformInstance.get(instanceUUID);
 
-      boolean instanceUUIDValid = instance.isPresent() && config.get().getInstances()
-        .stream()
-        .anyMatch(i -> i.getUUID().equals(instanceUUID));
+      boolean instanceUUIDValid =
+          instance.isPresent()
+              && config
+                  .get()
+                  .getInstances()
+                  .stream()
+                  .anyMatch(i -> i.getUUID().equals(instanceUUID));
 
       if (!instanceUUIDValid) {
         return ApiResponse.error(NOT_FOUND, "Invalid platform instance UUID");
@@ -183,7 +182,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       }
 
       Form<RestorePlatformBackupFormData> formData =
-        formFactory.form(RestorePlatformBackupFormData.class).bindFromRequest();
+          formFactory.form(RestorePlatformBackupFormData.class).bindFromRequest();
       if (formData.hasErrors()) {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
@@ -198,10 +197,12 @@ public class PlatformInstanceController extends AuthenticatedController {
       }
 
       // Make sure the backup file provided exists.
-      Optional<File> backup = replicationManager.listBackups(new URL(curLeaderAddr))
-        .stream()
-        .filter(f -> f.getName().equals(formData.get().backup_file))
-        .findFirst();
+      Optional<File> backup =
+          replicationManager
+              .listBackups(new URL(curLeaderAddr))
+              .stream()
+              .filter(f -> f.getName().equals(formData.get().backup_file))
+              .findFirst();
       if (!backup.isPresent()) {
         return ApiResponse.error(BAD_REQUEST, "Could not find backup file");
       }
@@ -217,7 +218,7 @@ public class PlatformInstanceController extends AuthenticatedController {
 
       // Promote the local instance.
       PlatformInstance.getByAddress(localInstanceAddr)
-        .ifPresent(replicationManager::promoteLocalInstance);
+          .ifPresent(replicationManager::promoteLocalInstance);
 
       // Start the new backup schedule.
       replicationManager.start();

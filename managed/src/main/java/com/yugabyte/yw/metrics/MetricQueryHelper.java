@@ -25,20 +25,17 @@ public class MetricQueryHelper {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryHelper.class);
   public static final Integer STEP_SIZE = 100;
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
 
-  @Inject
-  ApiHelper apiHelper;
+  @Inject ApiHelper apiHelper;
 
-  @Inject
-  YBMetricQueryComponent ybMetricQueryComponent;
+  @Inject YBMetricQueryComponent ybMetricQueryComponent;
 
   /**
    * Query prometheus for a given metricType and query params
    *
    * @param params, Query params like start, end timestamps, even filters Ex: {"metricKey":
-   *                "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
+   *     "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
    * @return MetricQueryResponse Object
    */
   public JsonNode query(List<String> metricKeys, Map<String, String> params) {
@@ -50,13 +47,13 @@ public class MetricQueryHelper {
    * Query prometheus for a given metricType and query params
    *
    * @param params, Query params like start, end timestamps, even filters Ex: {"metricKey":
-   *                "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
+   *     "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
    * @return MetricQueryResponse Object
    */
   public JsonNode query(
-    List<String> metricKeys,
-    Map<String, String> params,
-    Map<String, Map<String, String>> filterOverrides) {
+      List<String> metricKeys,
+      Map<String, String> params,
+      Map<String, Map<String, String>> filterOverrides) {
     if (metricKeys.isEmpty()) {
       throw new YWServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
     }
@@ -83,7 +80,7 @@ public class MetricQueryHelper {
         additionalFilters = new ObjectMapper().readValue(params.get("filters"), HashMap.class);
       } catch (IOException e) {
         throw new YWServiceException(
-          BAD_REQUEST, "Invalid filter params provided, it should be a hash.");
+            BAD_REQUEST, "Invalid filter params provided, it should be a hash.");
       }
     }
 
@@ -106,8 +103,8 @@ public class MetricQueryHelper {
       }
 
       Callable<JsonNode> callable =
-        new MetricQueryExecutor(
-          appConfig, apiHelper, queryParams, additionalFilters, ybMetricQueryComponent);
+          new MetricQueryExecutor(
+              appConfig, apiHelper, queryParams, additionalFilters, ybMetricQueryComponent);
       Future<JsonNode> future = threadPool.submit(callable);
       futures.add(future);
     }
@@ -152,9 +149,9 @@ public class MetricQueryHelper {
     HashMap<String, String> getParams = new HashMap<>();
     getParams.put("query", promQueryExpression);
     final JsonNode responseJson =
-      apiHelper.getRequest(queryUrl, new HashMap<>(), /*headers*/ getParams);
+        apiHelper.getRequest(queryUrl, new HashMap<>(), /*headers*/ getParams);
     final MetricQueryResponse metricResponse =
-      Json.fromJson(responseJson, MetricQueryResponse.class);
+        Json.fromJson(responseJson, MetricQueryResponse.class);
     if (metricResponse.error != null || metricResponse.data == null) {
       throw new RuntimeException("Error querying prometheus metrics: " + responseJson.toString());
     }

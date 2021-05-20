@@ -24,17 +24,19 @@ import java.util.*;
 
 public class CustomerTaskController extends AuthenticatedController {
 
-  @Inject
-  Commissioner commissioner;
+  @Inject Commissioner commissioner;
 
   protected static final int TASK_HISTORY_LIMIT = 6;
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
-    Query<TaskInfo> subTaskQuery = TaskInfo.find.query().where()
-      .eq("parent_uuid", parentUUID)
-      .eq("task_state", TaskInfo.State.Failure.name())
-      .orderBy("position desc");
+    Query<TaskInfo> subTaskQuery =
+        TaskInfo.find
+            .query()
+            .where()
+            .eq("parent_uuid", parentUUID)
+            .eq("task_state", TaskInfo.State.Failure.name())
+            .orderBy("position desc");
     Set<TaskInfo> result = subTaskQuery.findSet();
     List<SubTaskFormData> subTasks = new ArrayList<>();
     for (TaskInfo taskInfo : result) {
@@ -51,9 +53,12 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .orderBy("create_time desc");
+    Query<CustomerTask> customerTaskQuery =
+        CustomerTask.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .orderBy("create_time desc");
 
     if (targetUUID != null) {
       customerTaskQuery.where().eq("target_uuid", targetUUID);
@@ -71,8 +76,11 @@ public class CustomerTaskController extends AuthenticatedController {
         // If the task progress API returns error, we will log it and not add that task
         // to the task list for UI rendering.
         if (taskProgress.has("error")) {
-          LOG.error("Error fetching Task Progress for " + task.getTaskUUID() +
-            ", Error: " + taskProgress.get("error"));
+          LOG.error(
+              "Error fetching Task Progress for "
+                  + task.getTaskUUID()
+                  + ", Error: "
+                  + taskProgress.get("error"));
         } else {
           taskData.percentComplete = taskProgress.get("percent").asInt();
           taskData.status = taskProgress.get("status").asText();
@@ -84,14 +92,16 @@ public class CustomerTaskController extends AuthenticatedController {
           taskData.type = task.getType().getFriendlyName();
           taskData.targetUUID = task.getTargetUUID();
 
-          List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getTargetUUID(),
-            new ArrayList<>());
+          List<CustomerTaskFormData> taskList =
+              taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
           taskList.add(taskData);
           taskListMap.put(task.getTargetUUID(), taskList);
         }
       } catch (RuntimeException e) {
-        LOG.error("Error fetching Task Progress for " + task.getTaskUUID() +
-          ", TaskInfo with that taskUUID not found");
+        LOG.error(
+            "Error fetching Task Progress for "
+                + task.getTaskUUID()
+                + ", TaskInfo with that taskUUID not found");
       }
     }
     return taskListMap;
@@ -116,8 +126,8 @@ public class CustomerTaskController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID,
-      universe.universeUUID);
+    Map<UUID, List<CustomerTaskFormData>> taskList =
+        fetchTasks(customerUUID, universe.universeUUID);
     return ApiResponse.success(taskList);
   }
 
@@ -127,10 +137,13 @@ public class CustomerTaskController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
-    CustomerTask customerTask = CustomerTask.find.query().where()
-      .eq("customer_uuid", customer.uuid)
-      .eq("task_uuid", taskUUID)
-      .findOne();
+    CustomerTask customerTask =
+        CustomerTask.find
+            .query()
+            .where()
+            .eq("customer_uuid", customer.uuid)
+            .eq("task_uuid", taskUUID)
+            .findOne();
 
     if (customerTask == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
@@ -150,10 +163,13 @@ public class CustomerTaskController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
-    CustomerTask customerTask = CustomerTask.find.query().where()
-      .eq("customer_uuid", customer.uuid)
-      .eq("task_uuid", taskUUID)
-      .findOne();
+    CustomerTask customerTask =
+        CustomerTask.find
+            .query()
+            .where()
+            .eq("customer_uuid", customer.uuid)
+            .eq("task_uuid", taskUUID)
+            .findOne();
     if (customerTask == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
     }
@@ -181,31 +197,41 @@ public class CustomerTaskController extends AuthenticatedController {
     if (taskInfo == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
     } else if (taskInfo.getTaskType() != TaskType.CreateUniverse) {
-      String errMsg = String.format(
-        "Invalid task type: %s. Only 'Create Universe' task retries are supported.",
-        taskInfo.getTaskType().toString());
+      String errMsg =
+          String.format(
+              "Invalid task type: %s. Only 'Create Universe' task retries are supported.",
+              taskInfo.getTaskType().toString());
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
     JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
-    UniverseDefinitionTaskParams params = Json.fromJson(
-      oldTaskParams, UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams params =
+        Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
     params.firstTry = false;
     Universe universe = Universe.getOrBadRequest(params.universeUUID);
 
     UUID newTaskUUID = commissioner.submit(taskInfo.getTaskType(), params);
-    LOG.info("Submitted retry task to create universe for {}:{}, task uuid = {}.",
-      universe.universeUUID, universe.name, newTaskUUID);
+    LOG.info(
+        "Submitted retry task to create universe for {}:{}, task uuid = {}.",
+        universe.universeUUID,
+        universe.name,
+        newTaskUUID);
 
     // Add this task uuid to the user universe.
-    CustomerTask.create(customer,
-      universe.universeUUID,
-      newTaskUUID,
-      CustomerTask.TargetType.Universe,
-      CustomerTask.TaskType.Create,
-      universe.name);
-    LOG.info("Saved task uuid " + newTaskUUID + " in customer tasks table for universe " +
-      universe.universeUUID + ":" + universe.name);
+    CustomerTask.create(
+        customer,
+        universe.universeUUID,
+        newTaskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Create,
+        universe.name);
+    LOG.info(
+        "Saved task uuid "
+            + newTaskUUID
+            + " in customer tasks table for universe "
+            + universe.universeUUID
+            + ":"
+            + universe.name);
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
     return ApiResponse.success(new UniverseResp(universe, newTaskUUID));

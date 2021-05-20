@@ -45,8 +45,9 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testNotNullConfig() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
-        "Amazon", ImmutableMap.of("Foo", "Bar"));
+    Provider provider =
+        Provider.create(
+            defaultCustomer.uuid, Common.CloudType.aws, "Amazon", ImmutableMap.of("Foo", "Bar"));
     assertNotNull(provider.uuid);
     assertNotNull(provider.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
@@ -63,8 +64,12 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testGetMaskedConfigWithSensitiveData() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
-            "Amazon", ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
+    Provider provider =
+        Provider.create(
+            defaultCustomer.uuid,
+            Common.CloudType.aws,
+            "Amazon",
+            ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
     assertValue(provider.getMaskedConfig(), "AWS_ACCESS_KEY_ID", "Ba********ar");
     assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_KEY_ID"));
@@ -72,8 +77,12 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testGetMaskedConfigWithoutSensitiveData() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
-        "Amazon", ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
+    Provider provider =
+        Provider.create(
+            defaultCustomer.uuid,
+            Common.CloudType.aws,
+            "Amazon",
+            ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
     assertValue(provider.getMaskedConfig(), "AWS_ACCESS_ID", "BarBarBarBar");
     assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_ID"));
@@ -133,8 +142,8 @@ public class ProviderTest extends FakeDBApplication {
     try {
       Provider.get(defaultCustomer.uuid, Common.CloudType.aws);
     } catch (RuntimeException re) {
-      assertThat(re.getMessage(), allOf(notNullValue(),
-              equalTo("Found 2 providers with name: Amazon")));
+      assertThat(
+          re.getMessage(), allOf(notNullValue(), equalTo("Found 2 providers with name: Amazon")));
     }
   }
 
@@ -150,8 +159,12 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testGetAwsHostedZoneWithData() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon",
-        ImmutableMap.of("HOSTED_ZONE_ID", "some_id", "HOSTED_ZONE_NAME", "some_name"));
+    Provider provider =
+        Provider.create(
+            defaultCustomer.uuid,
+            Common.CloudType.aws,
+            "Amazon",
+            ImmutableMap.of("HOSTED_ZONE_ID", "some_id", "HOSTED_ZONE_NAME", "some_name"));
     assertNotNull(provider.uuid);
     assertEquals("some_id", provider.getHostedZoneId());
     assertEquals("some_name", provider.getHostedZoneName());

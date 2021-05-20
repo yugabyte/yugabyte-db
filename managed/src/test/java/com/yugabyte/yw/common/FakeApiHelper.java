@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-
 import akka.stream.Materializer;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
@@ -38,26 +37,24 @@ public class FakeApiHelper {
   }
 
   public static Result doRequestWithAuthToken(String method, String url, String authToken) {
-    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
-            .header("X-AUTH-TOKEN", authToken);
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url).header("X-AUTH-TOKEN", authToken);
     return route(request);
   }
 
   public static Result doRequestWithHAToken(String method, String url, String haToken) {
-    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
-      .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, haToken);
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url)
+            .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, haToken);
     return route(request);
   }
 
   public static Result doRequestWithHATokenAndBody(
-    String method,
-    String url,
-    String haToken,
-    JsonNode body
-  ) {
-    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
-      .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, haToken)
-      .bodyJson(body);
+      String method, String url, String haToken, JsonNode body) {
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url)
+            .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, haToken)
+            .bodyJson(body);
     return route(request);
   }
 
@@ -65,16 +62,18 @@ public class FakeApiHelper {
     return doRequestWithAuthTokenAndBody(method, url, getAuthToken(), body);
   }
 
-  public static Result doRequestWithAuthTokenAndBody(String method, String url, String authToken, JsonNode body) {
-    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
-            .header("X-AUTH-TOKEN", authToken)
-            .bodyJson(body);
+  public static Result doRequestWithAuthTokenAndBody(
+      String method, String url, String authToken, JsonNode body) {
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url).header("X-AUTH-TOKEN", authToken).bodyJson(body);
     return route(request);
   }
 
-  public static Result doRequestWithMultipartData(String method, String url,
-                                                  List<Http.MultipartFormData.Part<Source<ByteString, ?>>> data,
-                                                  Materializer mat) {
+  public static Result doRequestWithMultipartData(
+      String method,
+      String url,
+      List<Http.MultipartFormData.Part<Source<ByteString, ?>>> data,
+      Materializer mat) {
     return doRequestWithAuthTokenAndMultipartData(method, url, getAuthToken(), data, mat);
   }
 
@@ -83,11 +82,11 @@ public class FakeApiHelper {
       String url,
       String authToken,
       List<Http.MultipartFormData.Part<Source<ByteString, ?>>> data,
-      Materializer mat
-  ) {
-    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
-        .header("X-AUTH-TOKEN", authToken)
-        .bodyMultipart(data, Files.singletonTemporaryFileCreator(), mat);
+      Materializer mat) {
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url)
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyMultipart(data, Files.singletonTemporaryFileCreator(), mat);
     return route(request);
   }
 }

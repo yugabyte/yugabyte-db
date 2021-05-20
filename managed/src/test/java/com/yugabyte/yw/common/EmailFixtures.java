@@ -21,12 +21,12 @@ public class EmailFixtures {
   public static final int EMAIL_TEST_PORT_SSL = ServerSetup.PORT_SMTPS;
 
   public static GreenMail setupMailServer(String smtpHost, int smtpPort) {
-    return setupMailServer(smtpHost, smtpPort, EMAIL_USER_ADDRESS, EMAIL_USER_NAME,
-        EMAIL_USER_PASSWORD);
+    return setupMailServer(
+        smtpHost, smtpPort, EMAIL_USER_ADDRESS, EMAIL_USER_NAME, EMAIL_USER_PASSWORD);
   }
 
-  public static GreenMail setupMailServer(String smtpHost, int smtpPort, String EmailFrom,
-      String userName, String userPassword) {
+  public static GreenMail setupMailServer(
+      String smtpHost, int smtpPort, String EmailFrom, String userName, String userPassword) {
     GreenMail mailServer = new GreenMail(new ServerSetup(smtpPort, smtpHost, "smtp"));
     mailServer.start();
     mailServer.setUser(EmailFrom, userName, userPassword);

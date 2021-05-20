@@ -33,8 +33,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
   private static final String ALERT_TEST_MESSAGE = "Test message";
 
-  @InjectMocks
-  private Commissioner commissioner;
+  @InjectMocks private Commissioner commissioner;
 
   private Universe defaultUniverse;
   private ShellResponse dummyShellResponse;
@@ -53,7 +52,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.uuid);
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
 
     dummyShellResponse = new ShellResponse();
@@ -68,10 +68,20 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.isForceDelete = Boolean.FALSE;
 
-    Alert.create(defaultCustomer.uuid, defaultUniverse.universeUUID, Alert.TargetType.UniverseType,
-        "errorCode", "Warning", ALERT_TEST_MESSAGE);
-    Alert.create(defaultCustomer.uuid, defaultUniverse.universeUUID, Alert.TargetType.UniverseType,
-        "errorCode2", "Warning", ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        defaultUniverse.universeUUID,
+        Alert.TargetType.UniverseType,
+        "errorCode",
+        "Warning",
+        ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        defaultUniverse.universeUUID,
+        Alert.TargetType.UniverseType,
+        "errorCode2",
+        "Warning",
+        ALERT_TEST_MESSAGE);
 
     submitTask(taskParams, 4);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));

@@ -57,17 +57,13 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private Universe universe;
 
-  @Mock
-  private SettableRuntimeConfigFactory configFactory;
+  @Mock private SettableRuntimeConfigFactory configFactory;
 
-  @Mock
-  private FormFactory formFactory;
+  @Mock private FormFactory formFactory;
 
-  @InjectMocks
-  private AlertController controller;
+  @InjectMocks private AlertController controller;
 
-  @Mock
-  private RuntimeConfig<Universe> config;
+  @Mock private RuntimeConfig<Universe> config;
 
   @Before
   public void setUp() {
@@ -82,8 +78,8 @@ public class AlertControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAlert() {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Result result = doRequestWithAuthToken("GET",
-        "/api/customers/" + customer.uuid + "/alerts", authToken);
+    Result result =
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/alerts", authToken);
     assertEquals(OK, result.status());
     assertEquals("[]", contentAsString(result));
 
@@ -91,12 +87,13 @@ public class AlertControllerTest extends FakeDBApplication {
     params.put("errCode", "VALID_ALERT");
     params.put("type", "WARNING");
     params.put("message", "Testing add valid alert.");
-    result = doRequestWithAuthTokenAndBody("POST",
-        "/api/customers/" + customer.uuid + "/alerts", authToken, params);
+    result =
+        doRequestWithAuthTokenAndBody(
+            "POST", "/api/customers/" + customer.uuid + "/alerts", authToken, params);
     assertEquals(OK, result.status());
 
-    result = doRequestWithAuthToken("GET",
-        "/api/customers/" + customer.uuid + "/alerts", authToken);
+    result =
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/alerts", authToken);
     assertEquals(OK, result.status());
     assertAuditEntry(1, customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
@@ -110,21 +107,20 @@ public class AlertControllerTest extends FakeDBApplication {
   @Test
   public void testUpsertValid() throws ParseException, InterruptedException {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Result result = doRequestWithAuthToken("GET",
-        "/api/customers/" + customer.uuid + "/alerts", authToken);
+    Result result =
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/alerts", authToken);
     assertEquals(OK, result.status());
     assertEquals("[]", contentAsString(result));
 
     ObjectNode params = Json.newObject();
-    params.put("errCode", "VALID_ALERT")
-          .put("type", "WARNING")
-          .put("message", "First alert.");
-    result = doRequestWithAuthTokenAndBody("PUT",
-        "/api/customers/" + customer.uuid + "/alerts", authToken, params);
+    params.put("errCode", "VALID_ALERT").put("type", "WARNING").put("message", "First alert.");
+    result =
+        doRequestWithAuthTokenAndBody(
+            "PUT", "/api/customers/" + customer.uuid + "/alerts", authToken, params);
     assertEquals(OK, result.status());
 
-    result = doRequestWithAuthToken("GET",
-        "/api/customers/" + customer.uuid + "/alerts", authToken);
+    result =
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/alerts", authToken);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(1, json.size());
@@ -139,12 +135,13 @@ public class AlertControllerTest extends FakeDBApplication {
     // Sleep so that API registers the request as a different Date.
     Thread.sleep(1000);
     params.put("message", "Second alert.");
-    result = doRequestWithAuthTokenAndBody("PUT",
-        "/api/customers/" + customer.uuid + "/alerts", authToken, params);
+    result =
+        doRequestWithAuthTokenAndBody(
+            "PUT", "/api/customers/" + customer.uuid + "/alerts", authToken, params);
     assertEquals(OK, result.status());
 
-    result = doRequestWithAuthToken("GET",
-    "/api/customers/" + customer.uuid + "/alerts", authToken);
+    result =
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/alerts", authToken);
     assertEquals(OK, result.status());
     json = Json.parse(contentAsString(result));
     assertEquals(1, json.size());
@@ -154,8 +151,10 @@ public class AlertControllerTest extends FakeDBApplication {
     assertEquals(params.get("message"), alert.get("message"));
 
     Date secondDate = formatter.parse(alert.get("createTime").asText());
-    String errMsg = String.format("Expected second alert's createTime to be later than first."
-      + "First: %s. Second: %s.", firstDate, secondDate);
+    String errMsg =
+        String.format(
+            "Expected second alert's createTime to be later than first." + "First: %s. Second: %s.",
+            firstDate, secondDate);
     assertTrue(errMsg, secondDate.after(firstDate));
     assertAuditEntry(2, customer.uuid);
   }
@@ -184,7 +183,8 @@ public class AlertControllerTest extends FakeDBApplication {
   @Test
   public void testCreateDefinition_ErrorResult() {
     UUID customerUUID = UUID.randomUUID();
-    AssertHelper.assertBadRequest(controller.createDefinition(customerUUID, UUID.randomUUID()),
+    AssertHelper.assertBadRequest(
+        controller.createDefinition(customerUUID, UUID.randomUUID()),
         "Invalid Customer UUID: " + customerUUID);
 
     Form<AlertDefinitionFormData> form = mock(Form.class);
@@ -199,8 +199,9 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertDefinition_OkResult() {
     when(config.getString("config.parameter")).thenReturn("test");
 
-    AlertDefinition definition = AlertDefinition.create(customer.uuid, universe.universeUUID,
-        ALERT_NAME, "query {{ config.parameter }}", true);
+    AlertDefinition definition =
+        AlertDefinition.create(
+            customer.uuid, universe.universeUUID, ALERT_NAME, "query {{ config.parameter }}", true);
     Result result = controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_NAME);
     assertOk(result);
 
@@ -225,8 +226,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
   @Test
   public void testUpdateAlertDefinition_OkResult() {
-    AlertDefinition definition = AlertDefinition.create(customer.uuid, universe.universeUUID,
-        ALERT_NAME, "query {{ config.parameter }}", true);
+    AlertDefinition definition =
+        AlertDefinition.create(
+            customer.uuid, universe.universeUUID, ALERT_NAME, "query {{ config.parameter }}", true);
 
     // For FormData we are setting only used fields. This could be changed later.
     AlertDefinitionFormData data = new AlertDefinitionFormData();
@@ -251,10 +253,12 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testUpdateAlertDefinition_ErrorResult() {
     UUID definitionUUID = UUID.randomUUID();
     UUID customerUUID = UUID.randomUUID();
-    AssertHelper.assertBadRequest(controller.updateAlertDefinition(customerUUID, definitionUUID),
+    AssertHelper.assertBadRequest(
+        controller.updateAlertDefinition(customerUUID, definitionUUID),
         "Invalid Customer UUID: " + customerUUID);
 
-    AssertHelper.assertBadRequest(controller.updateAlertDefinition(customer.uuid, definitionUUID),
+    AssertHelper.assertBadRequest(
+        controller.updateAlertDefinition(customer.uuid, definitionUUID),
         "Invalid Alert Definition UUID: " + definitionUUID);
   }
 }

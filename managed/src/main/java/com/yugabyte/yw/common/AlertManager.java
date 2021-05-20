@@ -28,24 +28,22 @@ import java.util.stream.Collectors;
 @Singleton
 public class AlertManager {
 
-  @Inject
-  private EmailHelper emailHelper;
+  @Inject private EmailHelper emailHelper;
 
   public static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
 
   /**
-   * Sends email notification with information about the alert. Doesn't send email
-   * if:<br>
+   * Sends email notification with information about the alert. Doesn't send email if:<br>
+   *
    * <ul>
-   * <li>The alert has no flag {@link Alert#sendEmail} set;</li>
-   * <li>Destinations list (with recipients) for this customer is empty;</li>
-   * <li>SmtpData for this customer is empty/incorrect
-   * {@link CustomerRegisterFormData.SmtpData};</li>
-   * <li>The alert is related to a deleted universe.</li>
+   *   <li>The alert has no flag {@link Alert#sendEmail} set;
+   *   <li>Destinations list (with recipients) for this customer is empty;
+   *   <li>SmtpData for this customer is empty/incorrect {@link CustomerRegisterFormData.SmtpData};
+   *   <li>The alert is related to a deleted universe.
    * </ul>
    *
-   * @param alert  The alert to be processed
-   * @param state  The new state of the alert
+   * @param alert The alert to be processed
+   * @param state The new state of the alert
    */
   public void sendEmail(Alert alert, String state) {
     LOG.debug("sendEmail {}, state: {}", alert, state);
@@ -67,32 +65,39 @@ public class AlertManager {
     }
 
     String subject = String.format("Yugabyte Platform Alert - <%s>", customer.getTag());
-    AlertDefinition definition = alert.definitionUUID == null ? null
-        : AlertDefinition.get(alert.definitionUUID);
+    AlertDefinition definition =
+        alert.definitionUUID == null ? null : AlertDefinition.get(alert.definitionUUID);
     String content;
     if (definition != null) {
       // The universe should exist (otherwise the definition should not exist as
       // well).
       Universe universe = Universe.getOrBadRequest(definition.universeUUID);
-      content = String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name,
-          state);
+      content =
+          String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name, state);
     } else {
-      Universe universe = alert.targetType == Alert.TargetType.UniverseType
-          ? Universe.find.byId(alert.targetUUID)
-          : null;
+      Universe universe =
+          alert.targetType == Alert.TargetType.UniverseType
+              ? Universe.find.byId(alert.targetUUID)
+              : null;
       if (universe != null) {
-        content = String.format(
-            "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
-            universe.name, state, alert.message);
+        content =
+            String.format(
+                "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
+                universe.name, state, alert.message);
       } else {
-        content = String.format(
-            "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
-            customer.name, state, alert.message);
+        content =
+            String.format(
+                "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
+                customer.name, state, alert.message);
       }
     }
 
     try {
-      emailHelper.sendEmail(customer, subject, String.join(",", destinations), smtpData,
+      emailHelper.sendEmail(
+          customer,
+          subject,
+          String.join(",", destinations),
+          smtpData,
           Collections.singletonMap("text/plain; charset=\"us-ascii\"", content));
     } catch (MessagingException e) {
       LOG.error("Error sending email for alert {} in state '{}'", alert.uuid, state, e);
@@ -137,12 +142,14 @@ public class AlertManager {
    *
    * @param customerUUID
    * @param universeUUID
-   * @param errorCode    Error code string (LIKE wildcards allowed)
+   * @param errorCode Error code string (LIKE wildcards allowed)
    */
   public void resolveAlerts(UUID customerUUID, UUID universeUUID, String errorCode) {
-    List<Alert> activeAlerts = Alert.list(customerUUID, errorCode, universeUUID)
-        .stream().filter(alert -> alert.state == State.ACTIVE || alert.state == State.CREATED)
-        .collect(Collectors.toList());
+    List<Alert> activeAlerts =
+        Alert.list(customerUUID, errorCode, universeUUID)
+            .stream()
+            .filter(alert -> alert.state == State.ACTIVE || alert.state == State.CREATED)
+            .collect(Collectors.toList());
     LOG.debug("Resetting alerts for '{}', count {}", errorCode, activeAlerts.size());
     for (Alert alert : activeAlerts) {
       alert.setState(State.RESOLVED);
