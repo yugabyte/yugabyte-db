@@ -55,7 +55,7 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
   public void run() {
     Params params = taskParams();
     Universe universe = Universe.getOrBadRequest(params.universeUUID);
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       client = ybService.getClient(params.masterAddresses, certificate);

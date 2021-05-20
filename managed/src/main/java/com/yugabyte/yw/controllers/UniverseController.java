@@ -93,18 +93,6 @@ public class UniverseController extends AuthenticatedController {
     this.ybService = service;
   }
 
-  private boolean validateEncryption(UniverseDefinitionTaskParams taskParams) {
-    List<Cluster> clusters = taskParams.clusters;
-    for (Cluster cluster : clusters) {
-      UserIntent userIntent = cluster.userIntent;
-      if (!userIntent.enableNodeToNodeEncrypt && userIntent.enableClientToNodeEncrypt) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
   /**
    * API that checks if a Universe with a given name already exists.
    *
@@ -343,10 +331,6 @@ public class UniverseController extends AuthenticatedController {
         && !Util.isValidUniverseNameFormat(
             taskParams.getPrimaryCluster().userIntent.universeName)) {
       throw new YWServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
-    }
-    if (!validateEncryption(taskParams)) {
-      return ApiResponse.error(
-          BAD_REQUEST, "Node-to-node TLS needs to be enabled for client-to-node TLS to be enabled");
     }
 
     // Set the provider code.
@@ -1423,7 +1407,7 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     // Get and return Leader IP
     try {

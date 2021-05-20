@@ -1256,7 +1256,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
 
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddrs, certificate);
 
     HostAndPort hp =
@@ -1349,7 +1349,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private static synchronized int getClusterConfigVersion(Universe universe) {
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
-    final String certificate = universe.getCertificate();
+    final String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     int version;
     try {
@@ -1398,7 +1398,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       client = ybService.getClient(hostPorts, certificate);
