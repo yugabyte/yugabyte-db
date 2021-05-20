@@ -17,8 +17,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 
 /**
- * Always returns to application config. This should be used for older branches where there
- * is no real runtime config impl and database schemas.
+ * Always returns to application config. This should be used for older branches where there is no
+ * real runtime config impl and database schemas.
  */
 public class DummyRuntimeConfigFactoryImpl implements RuntimeConfigFactory {
   private final Config appConfig;

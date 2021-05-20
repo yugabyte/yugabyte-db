@@ -98,7 +98,9 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   @Override
-  protected Params taskParams() { return (Params) taskParams; }
+  protected Params taskParams() {
+    return (Params) taskParams;
+  }
 
   @Override
   public void run() {
@@ -108,15 +110,22 @@ public class CloudBootstrap extends CloudTaskBase {
         || p.code.equals(Common.CloudType.aws.toString())
         || p.code.equals(Common.CloudType.azu.toString())) {
       createCloudSetupTask()
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
     }
-    taskParams().perRegionMetadata.forEach((regionCode, metadata) -> {
-      createRegionSetupTask(regionCode, metadata)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
-    });
-    taskParams().perRegionMetadata.forEach((regionCode, metadata) -> {
-      createAccessKeySetupTask(regionCode).setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-    });
+    taskParams()
+        .perRegionMetadata
+        .forEach(
+            (regionCode, metadata) -> {
+              createRegionSetupTask(regionCode, metadata)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
+            });
+    taskParams()
+        .perRegionMetadata
+        .forEach(
+            (regionCode, metadata) -> {
+              createAccessKeySetupTask(regionCode)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+            });
 
     createInitializerTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
@@ -137,8 +146,7 @@ public class CloudBootstrap extends CloudTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createRegionSetupTask(
-      String regionCode, Params.PerRegionMetadata metadata) {
+  public SubTaskGroup createRegionSetupTask(String regionCode, Params.PerRegionMetadata metadata) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("Create Region task", executor);
 
     CloudRegionSetup.Params params = new CloudRegionSetup.Params();

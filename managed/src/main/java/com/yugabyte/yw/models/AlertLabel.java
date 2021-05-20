@@ -19,8 +19,7 @@ import java.util.Objects;
 @Entity
 public class AlertLabel extends Model {
 
-  @EmbeddedId
-  private AlertLabelKey key;
+  @EmbeddedId private AlertLabelKey key;
 
   @Column(nullable = false)
   private String value;
@@ -85,9 +84,6 @@ public class AlertLabel extends Model {
 
   @Override
   public String toString() {
-    return "AlertLabel{" +
-      "key=" + key +
-      ", value=" + value +
-      '}';
+    return "AlertLabel{" + "key=" + key + ", value=" + value + '}';
   }
 }

@@ -45,10 +45,7 @@ public class HealthManager extends DevopsBase {
   }
 
   public ShellResponse runCommand(
-    Provider provider,
-    List<ClusterInfo> clusters,
-    Long potentialStartTimeMs
-  ) {
+      Provider provider, List<ClusterInfo> clusters, Long potentialStartTimeMs) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -71,8 +68,8 @@ public class HealthManager extends DevopsBase {
     }
 
     // Start with a copy of the cloud config env vars.
-    HashMap<String, String> extraEnvVars = provider == null ?
-      new HashMap<>() : new HashMap<>(provider.getConfig());
+    HashMap<String, String> extraEnvVars =
+        provider == null ? new HashMap<>() : new HashMap<>(provider.getConfig());
 
     return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/, description);
   }

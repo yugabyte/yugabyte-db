@@ -25,11 +25,9 @@ import java.util.UUID;
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
 
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
 
-  @Inject
-  ValidatingFormFactory formFactory;
+  @Inject ValidatingFormFactory formFactory;
 
   public Result upload(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
@@ -49,17 +47,24 @@ public class CertificateController extends AuthenticatedController {
     } else {
       if (customCertInfo == null) {
         throw new YWServiceException(BAD_REQUEST, "Custom Cert Info must be provided.");
-      } else if (customCertInfo.nodeCertPath == null || customCertInfo.nodeKeyPath == null ||
-                 customCertInfo.rootCertPath == null) {
+      } else if (customCertInfo.nodeCertPath == null
+          || customCertInfo.nodeKeyPath == null
+          || customCertInfo.rootCertPath == null) {
         throw new YWServiceException(BAD_REQUEST, "Custom Cert Paths can't be empty.");
       }
     }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
-    UUID certUUID = CertificateHelper.uploadRootCA(
-                      label, customerUUID, appConfig.getString("yb.storage.path"),
-                      certContent, keyContent, certStart, certExpiry, certType,
-                      customCertInfo
-                    );
+    UUID certUUID =
+        CertificateHelper.uploadRootCA(
+            label,
+            customerUUID,
+            appConfig.getString("yb.storage.path"),
+            certContent,
+            keyContent,
+            certStart,
+            certExpiry,
+            certType,
+            customCertInfo);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(certUUID);
   }
@@ -72,8 +77,9 @@ public class CertificateController extends AuthenticatedController {
     Date certStart = certTimeMillis != 0L ? new Date(certTimeMillis) : null;
     Date certExpiry = certExpiryMillis != 0L ? new Date(certExpiryMillis) : null;
 
-    JsonNode result = CertificateHelper.createClientCertificate(
-        rootCA, null, formData.get().username, certStart, certExpiry);
+    JsonNode result =
+        CertificateHelper.createClientCertificate(
+            rootCA, null, formData.get().username, certStart, certExpiry);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(result);
   }
@@ -107,8 +113,7 @@ public class CertificateController extends AuthenticatedController {
   }
 
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
-    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(
-        CertificateParams.class);
+    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(rootCA, customerUUID);
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;

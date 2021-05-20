@@ -27,13 +27,12 @@ public class YWResults {
   public static class YWStructuredError {
     public final boolean success = false;
 
-    public final JsonNode  error;
+    public final JsonNode error;
 
     public YWStructuredError(JsonNode err) {
       error = err;
     }
   }
-
 
   static class OkResult {
     public Result asResult() {
@@ -79,5 +78,4 @@ public class YWResults {
       this.taskUUID = taskUUID;
     }
   }
-
 }
