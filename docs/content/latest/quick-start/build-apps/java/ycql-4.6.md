@@ -67,7 +67,7 @@ This tutorial assumes that you have:
 
 Create a file, named `pom.xml`, and then copy the following content into it. The Project Object Model (POM) includes configuration information required to build the project.
 
-```mvn
+```xml
 <?xml version="1.0"?>
 <project
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
@@ -79,12 +79,18 @@ Create a file, named `pom.xml`, and then copy the following content into it. The
   <artifactId>hello-world</artifactId>
   <version>1.0</version>
   <packaging>jar</packaging>
+  <properties>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+  </properties>
 
- <dependency>
-   <groupId>com.yugabyte</groupId>
-   <artifactId>java-driver-core</artifactId>
-   <version>4.6.0-yb-6</version>
- </dependency>
+  <dependencies>
+    <dependency>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>java-driver-core</artifactId>
+      <version>4.6.0-yb-6</version>
+    </dependency>
+  </dependencies>
 
   <build>
     <plugins>
@@ -191,7 +197,7 @@ $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YB
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created table employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
