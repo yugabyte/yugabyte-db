@@ -3,6 +3,8 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableMap;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -19,6 +21,7 @@ import play.libs.Json;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -54,6 +57,26 @@ public class ConfigHelperTest extends FakeDBApplication {
     String fileName = createTempFile("file.yml", yaml.dump(map));
     File initialFile = new File(fileName);
     return new FileInputStream(initialFile);
+  }
+
+  private InputStream asJsonStream(Map<String, Object> map) throws IOException {
+    JsonNode jsonNode = Json.toJson(map);
+    String fileName = createTempFile("file.json", jsonNode.toString());
+    File initialFile = new File(fileName);
+    return new FileInputStream(initialFile);
+  }
+
+  @Test
+  public void testloadSoftwareVersiontoDB() throws IOException {
+    String configFile = "version_metadata.json";
+    Map<String, Object> jsonMap = new HashMap();
+    jsonMap.put("version_number", "1.1.1.1");
+    jsonMap.put("build_number", "12345");
+    when(application.resourceAsStream(configFile))
+      .thenReturn(asJsonStream(jsonMap));
+    configHelper.loadSoftwareVersiontoDB(application);
+    assertEquals(ImmutableMap.of("version", "1.1.1.1-b12345"),
+      configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
   }
 
   @Test

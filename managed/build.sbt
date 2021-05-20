@@ -104,6 +104,8 @@ lazy val runPlatform = inputKey[Unit]("Run Yugabyte Platform with UI")
 
 lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
 
+lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
+
 // ------------------------------------------------------------------------------------------------
 // Main build.sbt script
 // ------------------------------------------------------------------------------------------------
@@ -244,6 +246,7 @@ externalResolvers := {
   (Compile / compile).value
   build_venv(baseDirectory.value)
   build_ui(baseDirectory.value)
+  versionGenerate.value
 }
 
 cleanPlatform := {
@@ -251,6 +254,17 @@ cleanPlatform := {
   clean_venv(baseDirectory.value)
   clean_ui(baseDirectory.value)
 }
+
+versionGenerate := {
+  val buildType = sys.env.get("BUILD_TYPE").getOrElse("release")
+  val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
+    (Compile / resourceDirectory).value / "version_metadata.json").!
+  ybLog("version_metadata.json Generated")
+  Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
+  status
+}
+
+packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
