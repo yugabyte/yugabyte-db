@@ -1137,10 +1137,10 @@ public class PlacementInfoUtil {
       .collect(Collectors.toMap(az -> az.uuid, Function.identity()));
   }
 
-  public static Map<UUID, PlacementAZ> getPlacementAZMap(Universe universe) {
+  public static Map<UUID, Map<UUID, PlacementAZ>> getPlacementAZMapPerCluster(Universe universe) {
     return universe.getUniverseDetails().clusters.stream()
-      .flatMap(cluster -> getPlacementAZStream(cluster.placementInfo))
-      .collect(Collectors.toMap(az -> az.uuid, Function.identity()));
+      .collect(Collectors.toMap(cluster -> cluster.uuid,
+        cluster -> getPlacementAZMap(cluster.placementInfo)));
   }
 
   private static Stream<PlacementAZ> getPlacementAZStream(PlacementInfo placementInfo) {
