@@ -1115,9 +1115,11 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   // Try again, this time should not have an error response (to re-insert the same row).
   session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-  ASSERT_EQ(1, session->CountBufferedOperations());
+  ASSERT_EQ(1, session->TEST_CountBufferedOperations());
+  ASSERT_EQ(1, session->GetAddedNotFlushedOperationsCount());
   flush_future = session->FlushFuture();
-  ASSERT_EQ(0, session->CountBufferedOperations());
+  ASSERT_EQ(0, session->TEST_CountBufferedOperations());
+  ASSERT_EQ(0, session->GetAddedNotFlushedOperationsCount());
   session.reset();
   ASSERT_OK(flush_future.get().status);
 }

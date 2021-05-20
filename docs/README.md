@@ -1,6 +1,6 @@
 # Contributing to the YugabyteDB Documentation
 
-This account has three sections:
+This file has three sections:
 
 &nbsp;&nbsp;&nbsp;[0. The art and craft of writing technical documentation](#0-the-art-and-craft-of-writing-technical-documentation)<br>
 &nbsp;&nbsp;&nbsp;[1. Basic usage](#1-basic-usage)<br>

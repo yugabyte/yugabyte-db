@@ -77,7 +77,9 @@ public class AlertManager {
     if (definition != null) {
       // The universe should exist (otherwise the definition should not exist as
       // well).
-      Universe universe = Universe.getOrBadRequest(definition.universeUUID);
+      // TODO notification templates should be reimplemented to base on alert message
+      // For now this code only supports definitions with Universe target type.
+      Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
       content = String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name,
           state);
     } else {
@@ -161,7 +163,7 @@ public class AlertManager {
   private void createAlert(Customer c, UUID configUUID, String details) {
     if (Alert.getActiveCustomerAlertsByTargetUuid(c.uuid, configUUID).size() == 0) {
       Alert.create(c.uuid, configUUID, Alert.TargetType.CustomerConfigType,
-          ALERT_MANAGER_ERROR_CODE, "Error", details, false, null);
+          ALERT_MANAGER_ERROR_CODE, "Error", details);
     }
   }
 }

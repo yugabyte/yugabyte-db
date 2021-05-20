@@ -317,7 +317,7 @@ public class NodeManager extends DevopsBase {
           extra_gflags.put("enable_ysql", "false");
         }
 
-        if (taskParam.currentClusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+        if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
             && taskParam.setTxnTableWaitCountFlag) {
           extra_gflags.put(
               "txn_table_wait_min_ts_count",
@@ -343,6 +343,7 @@ public class NodeManager extends DevopsBase {
           String yb_home_dir = taskParam.getProvider().getYbHome();
 
           extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+          extra_gflags.put("cert_node_filename", node.cloudInfo.private_ip);
           subcommand.add("--certs_node_dir");
           subcommand.add(yb_home_dir + "/yugabyte-tls-config");
 
