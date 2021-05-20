@@ -100,7 +100,7 @@ public class CreateTable extends AbstractTaskBase {
       throw new IllegalStateException(
           "No master host/ports for a table creation op in " + taskParams().universeUUID);
     }
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
 
     YBClient client = null;
     try {

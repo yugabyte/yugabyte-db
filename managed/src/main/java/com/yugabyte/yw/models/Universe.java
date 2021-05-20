@@ -586,16 +586,31 @@ public class Universe extends Model {
   }
 
   /**
-   * Returns the certificate in case TLS is enabled.
+   * Returns the certificate path in case node to node TLS is enabled.
    *
-   * @return certificate file if TLS is enabled, null otherwise.
+   * @return path to the certfile.
    */
-  public String getCertificate() {
-    UUID rootCA = this.getUniverseDetails().rootCA;
-    if (rootCA == null) {
-      return null;
+  public String getCertificateNodetoNode() {
+    UniverseDefinitionTaskParams details = this.getUniverseDetails();
+    if (details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
+      // This means there must be a root CA associated with it.
+      return CertificateInfo.get(details.rootCA).certificate;
     }
-    return CertificateInfo.get(rootCA).certificate;
+    return null;
+  }
+
+  /**
+   * Returns the certificate path in case client to node TLS is enabled.
+   *
+   * @return path to the certfile.
+   */
+  public String getCertificateClientToNode() {
+    UniverseDefinitionTaskParams details = this.getUniverseDetails();
+    if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
+      // This means there must be a root CA associated with it.
+      return CertificateInfo.get(details.rootCA).certificate;
+    }
+    return null;
   }
 
   /**
@@ -801,7 +816,7 @@ public class Universe extends Model {
    */
   public HostAndPort getMasterLeader() {
     final String masterAddresses = getMasterAddresses();
-    final String cert = getCertificate();
+    final String cert = getCertificateNodetoNode();
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final YBClient client = ybService.getClient(masterAddresses, cert);
     final HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();

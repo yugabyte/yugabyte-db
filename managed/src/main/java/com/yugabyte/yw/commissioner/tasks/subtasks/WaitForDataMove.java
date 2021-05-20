@@ -61,7 +61,7 @@ public class WaitForDataMove extends AbstractTaskBase {
     // Get the master addresses and certificate info.
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
     try {
