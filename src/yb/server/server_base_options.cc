@@ -39,6 +39,7 @@
 #include "yb/rpc/yb_rpc.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/string_trim.h"
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -93,7 +94,6 @@ ServerBaseOptions::ServerBaseOptions(int default_port)
       dump_info_path(FLAGS_server_dump_info_path),
       dump_info_format(FLAGS_server_dump_info_format),
       metrics_log_interval_ms(FLAGS_metrics_log_interval_ms),
-      placement_uuid(FLAGS_placement_uuid),
       server_broadcast_addresses(FLAGS_server_broadcast_addresses) {
   rpc_opts.default_port = default_port;
   if (!FLAGS_server_broadcast_addresses.empty()) {
@@ -102,6 +102,22 @@ ServerBaseOptions::ServerBaseOptions(int default_port)
     LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_server_broadcast_addresses
                                  << ": " << status;
   }
+
+  LOG_IF(INFO, CheckSpaces(FLAGS_placement_uuid)) << 
+          "FLAGS_placement_uuid has leading or trailing spaces,should trim it";
+  placement_uuid = yb::util::TrimStr(FLAGS_placement_uuid);
+
+  LOG_IF(INFO, CheckSpaces(FLAGS_placement_cloud)) << 
+          "FLAGS_placement_cloud has leading or trailing spaces,should trim it";
+  placement_cloud_ = yb::util::TrimStr(FLAGS_placement_cloud);
+
+  LOG_IF(INFO, CheckSpaces(FLAGS_placement_region)) << 
+          "FLAGS_placement_region has leading or trailing spaces,should trim it";
+  placement_region_ = yb::util::TrimStr(FLAGS_placement_region);
+
+  LOG_IF(INFO, CheckSpaces(FLAGS_placement_zone)) << 
+          "FLAGS_placement_zone has leading or trailing spaces,should trim it";
+  placement_zone_ = yb::util::TrimStr(FLAGS_placement_zone);
 }
 
 ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
@@ -325,6 +341,17 @@ void ServerBaseOptions::SetPlacement(std::string cloud, std::string region, std:
   placement_cloud_ = std::move(cloud);
   placement_region_ = std::move(region);
   placement_zone_ = std::move(zone);
+}
+
+static inline bool CheckSpaces(std::string str) {
+  if (str.empty()) return false;
+  size_t start = 0;
+  size_t end = str.size() - 1;
+  if (isspace(str[start]) != 0 || isspace(str[end]) != 0) {
+    return true;
+  }
+  //Eliminate compile warnings
+  return false;
 }
 
 } // namespace server
