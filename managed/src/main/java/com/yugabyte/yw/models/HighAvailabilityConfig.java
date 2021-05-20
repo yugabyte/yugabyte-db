@@ -26,14 +26,13 @@ import java.util.stream.Collectors;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
-@JsonPropertyOrder({ "uuid", "cluster_key", "instances" })
+@JsonPropertyOrder({"uuid", "cluster_key", "instances"})
 public class HighAvailabilityConfig extends Model {
 
   private static final Finder<UUID, HighAvailabilityConfig> find =
-    new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class){};
+      new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class) {};
 
-  @JsonIgnore
-  private final int id = 1;
+  @JsonIgnore private final int id = 1;
 
   @Id
   @Constraints.Required
@@ -46,7 +45,7 @@ public class HighAvailabilityConfig extends Model {
   @Temporal(TemporalType.TIMESTAMP)
   private Date lastFailover;
 
-  @OneToMany(mappedBy = "config", cascade= CascadeType.ALL)
+  @OneToMany(mappedBy = "config", cascade = CascadeType.ALL)
   private List<PlatformInstance> instances;
 
   public UUID getUUID() {
@@ -87,29 +86,22 @@ public class HighAvailabilityConfig extends Model {
 
   @JsonIgnore
   public List<PlatformInstance> getRemoteInstances() {
-    return this.instances.stream()
-      .filter(i -> !i.getIsLocal())
-      .collect(Collectors.toList());
+    return this.instances.stream().filter(i -> !i.getIsLocal()).collect(Collectors.toList());
   }
 
   @JsonIgnore
   public boolean isLocalLeader() {
-    return this.instances.stream()
-      .anyMatch(i -> i.getIsLeader() && i.getIsLocal());
+    return this.instances.stream().anyMatch(i -> i.getIsLeader() && i.getIsLocal());
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLocal() {
-    return this.instances.stream()
-      .filter(PlatformInstance::getIsLocal)
-      .findFirst();
+    return this.instances.stream().filter(PlatformInstance::getIsLocal).findFirst();
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLeader() {
-    return this.instances.stream()
-      .filter(PlatformInstance::getIsLeader)
-      .findFirst();
+    return this.instances.stream().filter(PlatformInstance::getIsLeader).findFirst();
   }
 
   public static HighAvailabilityConfig create(String clusterKey) {
@@ -145,9 +137,7 @@ public class HighAvailabilityConfig extends Model {
   }
 
   public static Optional<HighAvailabilityConfig> getByClusterKey(String clusterKey) {
-    return find.query().where()
-      .eq("cluster_key", clusterKey)
-      .findOneOrEmpty();
+    return find.query().where().eq("cluster_key", clusterKey).findOneOrEmpty();
   }
 
   public static void delete(UUID uuid) {
@@ -163,9 +153,6 @@ public class HighAvailabilityConfig extends Model {
   }
 
   public static boolean isFollower() {
-    return get()
-      .flatMap(HighAvailabilityConfig::getLocal)
-      .map(i -> !i.getIsLeader())
-      .orElse(false);
+    return get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.getIsLeader()).orElse(false);
   }
 }

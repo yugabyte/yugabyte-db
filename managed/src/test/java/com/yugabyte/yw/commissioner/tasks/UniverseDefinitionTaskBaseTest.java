@@ -79,8 +79,8 @@ public class UniverseDefinitionTaskBaseTest {
   }
 
   private String getTestNodeName(String tag) {
-    return getNodeName(myCluster, tag, "oldPrefix", myNode.nodeIdx,
-                       myNode.cloudInfo.region, myNode.cloudInfo.az);
+    return getNodeName(
+        myCluster, tag, "oldPrefix", myNode.nodeIdx, myNode.cloudInfo.region, myNode.cloudInfo.az);
   }
 
   @Test
@@ -119,12 +119,24 @@ public class UniverseDefinitionTaskBaseTest {
     assertEquals("my-ABCuniv!-1", getTestNodeName(tag));
 
     Cluster tempCluster = new Cluster(ClusterType.ASYNC, userIntent);
-    String name = getNodeName(tempCluster, "", "oldPrefix", myNode.nodeIdx,
-                              myNode.cloudInfo.region, myNode.cloudInfo.az);
+    String name =
+        getNodeName(
+            tempCluster,
+            "",
+            "oldPrefix",
+            myNode.nodeIdx,
+            myNode.cloudInfo.region,
+            myNode.cloudInfo.az);
     assertEquals("oldPrefix-readonly0-n1", name);
 
-    name = getNodeName(tempCluster, "${universe}-${instance-id}", "oldPrefix", myNode.nodeIdx,
-                       myNode.cloudInfo.region, myNode.cloudInfo.az);
+    name =
+        getNodeName(
+            tempCluster,
+            "${universe}-${instance-id}",
+            "oldPrefix",
+            myNode.nodeIdx,
+            myNode.cloudInfo.region,
+            myNode.cloudInfo.az);
     assertEquals("TagsTestUniverse-1-readonly0", name);
   }
 
@@ -134,61 +146,62 @@ public class UniverseDefinitionTaskBaseTest {
       checkTagPattern("");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Invalid value '' for Name")));
+      assertThat(
+          e.getMessage(), allOf(notNullValue(), containsString("Invalid value '' for Name")));
     }
 
     try {
       checkTagPattern("${universe}-${zone");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
+      assertThat(
+          e.getMessage(),
+          allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
     }
 
     try {
       checkTagPattern("universe}-${zone}-${region}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
+      assertThat(
+          e.getMessage(),
+          allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
     }
 
     try {
       checkTagPattern("${universe-${zone}}-${region}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Invalid variable universe-")));
+      assertThat(
+          e.getMessage(), allOf(notNullValue(), containsString("Invalid variable universe-")));
     }
 
     try {
       checkTagPattern("${wrongkey}-${region}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Invalid variable wrongkey")));
+      assertThat(
+          e.getMessage(), allOf(notNullValue(), containsString("Invalid variable wrongkey")));
     }
 
     try {
       checkTagPattern("${universe}.${region}-${zone}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("should be part of Name value")));
+      assertThat(
+          e.getMessage(), allOf(notNullValue(), containsString("should be part of Name value")));
     }
 
     try {
       checkTagPattern("${universe}-${universe}-test-${region}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Duplicate universe")));
+      assertThat(e.getMessage(), allOf(notNullValue(), containsString("Duplicate universe")));
     }
   }
 
   @Test
-  @Parameters({ "false, false", "true, true", "true, false", "false, true" })
+  @Parameters({"false, false", "true, true", "true, false", "false, true"})
   @TestCaseName("{method}(YSQL:{0}, YEDIS:{1})")
   public void doTestAddDefaultGFlags(boolean enableYSQL, boolean enableYEDIS) {
     UniverseDefinitionTaskBaseFake instance = new UniverseDefinitionTaskBaseFake();
@@ -214,8 +227,7 @@ public class UniverseDefinitionTaskBaseTest {
     public ITaskParams taskParams;
 
     @Override
-    public void run() {
-    }
+    public void run() {}
 
     @Override
     protected UniverseDefinitionTaskParams taskParams() {

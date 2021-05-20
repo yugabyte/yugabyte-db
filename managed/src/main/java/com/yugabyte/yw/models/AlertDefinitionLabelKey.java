@@ -20,8 +20,7 @@ import java.util.UUID;
 @Embeddable
 public class AlertDefinitionLabelKey extends Model {
 
-  @JsonIgnore
-  private UUID definitionUUID;
+  @JsonIgnore private UUID definitionUUID;
 
   private String name;
 
@@ -56,9 +55,12 @@ public class AlertDefinitionLabelKey extends Model {
 
   @Override
   public String toString() {
-    return "AlertDefinitionLabelKey{" +
-      "definitionUUID=" + definitionUUID +
-      ", name='" + name + '\'' +
-      '}';
+    return "AlertDefinitionLabelKey{"
+        + "definitionUUID="
+        + definitionUUID
+        + ", name='"
+        + name
+        + '\''
+        + '}';
   }
 }

@@ -50,8 +50,7 @@ public class Audit extends Model {
   }
 
   // The task creation time.
-  @CreatedTimestamp
-  private final Date timestamp;
+  @CreatedTimestamp private final Date timestamp;
 
   public Date getTimestamp() {
     return this.timestamp;
@@ -102,8 +101,7 @@ public class Audit extends Model {
     this.timestamp = new Date();
   }
 
-  public static final Finder<UUID, Audit> find = new Finder<UUID, Audit>(Audit.class) {
-  };
+  public static final Finder<UUID, Audit> find = new Finder<UUID, Audit>(Audit.class) {};
 
   /**
    * Create new audit entry.
@@ -111,12 +109,12 @@ public class Audit extends Model {
    * @return Newly Created Audit table entry.
    */
   public static Audit create(
-    UUID userUUID,
-    UUID customerUUID,
-    String apiCall,
-    String apiMethod,
-    JsonNode body,
-    UUID taskUUID) {
+      UUID userUUID,
+      UUID customerUUID,
+      String apiCall,
+      String apiMethod,
+      JsonNode body,
+      UUID taskUUID) {
     Audit entry = new Audit();
     entry.customerUUID = customerUUID;
     entry.userUUID = userUUID;

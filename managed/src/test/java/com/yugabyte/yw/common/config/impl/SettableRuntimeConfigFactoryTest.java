@@ -55,40 +55,32 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 
   // app config
   private static final Map<String, String> staticConfigMap =
-    ImmutableMap.of(
-      YB_STATIC_ONLY_KEY, Scope.STATIC.toString(),
-      YB_OVERRIDDEN_KEY, Scope.STATIC.toString());
+      ImmutableMap.of(
+          YB_STATIC_ONLY_KEY, Scope.STATIC.toString(),
+          YB_OVERRIDDEN_KEY, Scope.STATIC.toString());
 
   // overrides in global scope:
   private static final Set<String> globalConfigSet =
-    ImmutableSet.of(
-      YB_GLOBAL_RUNTIME_ONLY_KEY,
-      YB_OVERRIDDEN_KEY);
+      ImmutableSet.of(YB_GLOBAL_RUNTIME_ONLY_KEY, YB_OVERRIDDEN_KEY);
 
   // overrides in customer scope:
   private static final Set<String> customerConfigSet =
-    ImmutableSet.of(
-      YB_CUSTOMER_RUNTIME_ONLY_KEY,
-      YB_OVERRIDDEN_KEY);
+      ImmutableSet.of(YB_CUSTOMER_RUNTIME_ONLY_KEY, YB_OVERRIDDEN_KEY);
 
   // overrides in provider scope:
   private static final Set<String> providerConfigSet =
-    ImmutableSet.of(
-      YB_PROVIDER_RUNTIME_ONLY_KEY,
-      YB_OVERRIDDEN_KEY);
+      ImmutableSet.of(YB_PROVIDER_RUNTIME_ONLY_KEY, YB_OVERRIDDEN_KEY);
 
   // overrides in provider scope:
   private static final Set<String> universeConfigSet =
-    ImmutableSet.of(
-      YB_UNIVERSE_RUNTIME_ONLY_KEY,
-      YB_OVERRIDDEN_KEY);
+      ImmutableSet.of(YB_UNIVERSE_RUNTIME_ONLY_KEY, YB_OVERRIDDEN_KEY);
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
   private Provider defaultProvider;
 
   SettableRuntimeConfigFactory configFactory =
-    new SettableRuntimeConfigFactory(ConfigFactory.parseMap(staticConfigMap));
+      new SettableRuntimeConfigFactory(ConfigFactory.parseMap(staticConfigMap));
 
   @Before
   public void setUp() {
@@ -121,7 +113,7 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testForCustomer_empty() {
     setupGlobalConfig();
     RuntimeConfig<Customer> customerScopedRuntimeConfig =
-      configFactory.forCustomer(defaultCustomer);
+        configFactory.forCustomer(defaultCustomer);
     // Nothing set into customer scope so customer values are same as global conf values.
     validateGlobalValues(customerScopedRuntimeConfig);
   }
@@ -140,10 +132,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoCustomers() {
     Customer customer1 = ModelFactory.testCustomer();
     Customer customer2 = ModelFactory.testCustomer();
-    configFactory.forCustomer(customer1)
-      .setValue(TASK_GC_FREQUENCY, "1 day");
-    configFactory.forCustomer(customer2)
-      .setValue(TASK_GC_FREQUENCY, "2 days");
+    configFactory.forCustomer(customer1).setValue(TASK_GC_FREQUENCY, "1 day");
+    configFactory.forCustomer(customer2).setValue(TASK_GC_FREQUENCY, "2 days");
 
     assertEquals(1L, configFactory.forCustomer(customer1).getDuration(TASK_GC_FREQUENCY).toDays());
     assertEquals(2L, configFactory.forCustomer(customer2).getDuration(TASK_GC_FREQUENCY).toDays());
@@ -176,15 +166,13 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoProviders() {
     Provider awsProvider = ModelFactory.awsProvider(defaultCustomer);
     Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-    configFactory.forProvider(awsProvider)
-      .setValue(TASK_GC_FREQUENCY, "1 day");
-    configFactory.forProvider(gcpProvider)
-      .setValue(TASK_GC_FREQUENCY, "2 days");
+    configFactory.forProvider(awsProvider).setValue(TASK_GC_FREQUENCY, "1 day");
+    configFactory.forProvider(gcpProvider).setValue(TASK_GC_FREQUENCY, "2 days");
 
-    assertEquals(1L,
-      configFactory.forProvider(awsProvider).getDuration(TASK_GC_FREQUENCY).toDays());
-    assertEquals(2L,
-      configFactory.forProvider(gcpProvider).getDuration(TASK_GC_FREQUENCY).toDays());
+    assertEquals(
+        1L, configFactory.forProvider(awsProvider).getDuration(TASK_GC_FREQUENCY).toDays());
+    assertEquals(
+        2L, configFactory.forProvider(gcpProvider).getDuration(TASK_GC_FREQUENCY).toDays());
   }
 
   @Test
@@ -214,15 +202,11 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoUniverses() {
     Universe universe1 = ModelFactory.createUniverse("USA", defaultCustomer.getCustomerId());
     Universe universe2 = ModelFactory.createUniverse("Asia", defaultCustomer.getCustomerId());
-    configFactory.forUniverse(universe1)
-      .setValue(TASK_GC_FREQUENCY, "1 day");
-    configFactory.forUniverse(universe2)
-      .setValue(TASK_GC_FREQUENCY, "2 days");
+    configFactory.forUniverse(universe1).setValue(TASK_GC_FREQUENCY, "1 day");
+    configFactory.forUniverse(universe2).setValue(TASK_GC_FREQUENCY, "2 days");
 
-    assertEquals(1L,
-      configFactory.forUniverse(universe1).getDuration(TASK_GC_FREQUENCY).toDays());
-    assertEquals(2L,
-      configFactory.forUniverse(universe2).getDuration(TASK_GC_FREQUENCY).toDays());
+    assertEquals(1L, configFactory.forUniverse(universe1).getDuration(TASK_GC_FREQUENCY).toDays());
+    assertEquals(2L, configFactory.forUniverse(universe2).getDuration(TASK_GC_FREQUENCY).toDays());
   }
 
   private RuntimeConfig<Model> setupGlobalConfig() {

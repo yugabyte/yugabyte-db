@@ -137,4 +137,5 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [mrajcevic01](https://github.com/mrajcevic01)
 * [YintongMa](https://github.com/YintongMa)
 * [jackstenglein](https://github.com/jackstenglein)
+* [BozhiYou](https://github.com/bozhiyou)
 * [pkj415](https://github.com/pkj415)

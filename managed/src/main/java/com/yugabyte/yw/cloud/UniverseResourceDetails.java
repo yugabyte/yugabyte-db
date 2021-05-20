@@ -97,8 +97,8 @@ public class UniverseResourceDetails {
       if (region == null) {
         continue;
       }
-      PriceComponent instancePrice = PriceComponent.get(provider.uuid, region.code,
-        userIntent.instanceType);
+      PriceComponent instancePrice =
+          PriceComponent.get(provider.uuid, region.code, userIntent.instanceType);
       if (instancePrice == null) {
         continue;
       }
@@ -107,8 +107,8 @@ public class UniverseResourceDetails {
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
       // TODO(wesley): gcp options?
-      if (userIntent.deviceInfo.storageType != null &&
-        userIntent.providerType.equals(Common.CloudType.aws)) {
+      if (userIntent.deviceInfo.storageType != null
+          && userIntent.providerType.equals(Common.CloudType.aws)) {
         Integer numVolumes = userIntent.deviceInfo.numVolumes;
         Integer diskIops = userIntent.deviceInfo.diskIops;
         Integer volumeSize = userIntent.deviceInfo.volumeSize;
@@ -131,10 +131,9 @@ public class UniverseResourceDetails {
             piopsPrice = PriceComponent.get(provider.uuid, region.code, GP3_PIOPS);
             sizePrice = PriceComponent.get(provider.uuid, region.code, GP3_SIZE);
             mibpsPrice = PriceComponent.get(provider.uuid, region.code, GP3_THROUGHPUT);
-            billedDiskIops = diskIops > gp3FreePiops ?
-              diskIops - gp3FreePiops : null;
-            billedThroughput = throughput > gp3FreeThroughput ?
-              throughput - gp3FreeThroughput : null;
+            billedDiskIops = diskIops > gp3FreePiops ? diskIops - gp3FreePiops : null;
+            billedThroughput =
+                throughput > gp3FreeThroughput ? throughput - gp3FreeThroughput : null;
             break;
           default:
             break;
@@ -146,8 +145,8 @@ public class UniverseResourceDetails {
           hourlyEBSPrice += (numVolumes * (billedDiskIops * piopsPrice.priceDetails.pricePerHour));
         }
         if (mibpsPrice != null && billedThroughput != null) {
-          hourlyEBSPrice += (numVolumes *
-            (billedThroughput * mibpsPrice.priceDetails.pricePerHour / MIB_IN_GIB));
+          hourlyEBSPrice +=
+              (numVolumes * (billedThroughput * mibpsPrice.priceDetails.pricePerHour / MIB_IN_GIB));
         }
       }
     }
@@ -163,17 +162,15 @@ public class UniverseResourceDetails {
   }
 
   /**
-   * Create a UniverseResourceDetails object, which
-   * contains info on the various pricing and
-   * other sorts of resources used by this universe.
+   * Create a UniverseResourceDetails object, which contains info on the various pricing and other
+   * sorts of resources used by this universe.
    *
-   * @param nodes  Nodes that make up this universe.
+   * @param nodes Nodes that make up this universe.
    * @param params Parameters describing this universe.
    * @return a UniverseResourceDetails object containing info on the universe's resources.
    */
-  public static UniverseResourceDetails create(Collection<NodeDetails> nodes,
-                                               UniverseDefinitionTaskParams params,
-                                               Config config) {
+  public static UniverseResourceDetails create(
+      Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Config config) {
     UniverseResourceDetails details = new UniverseResourceDetails();
     for (Cluster cluster : params.clusters) {
       details.addNumNodes(cluster.userIntent.numNodes);
@@ -184,22 +181,25 @@ public class UniverseResourceDetails {
         if (node.placementUuid != null) {
           userIntent = params.getClusterByUuid(node.placementUuid).userIntent;
         }
-        if (userIntent.deviceInfo != null &&
-          userIntent.deviceInfo.volumeSize != null &&
-          userIntent.deviceInfo.numVolumes != null) {
+        if (userIntent.deviceInfo != null
+            && userIntent.deviceInfo.volumeSize != null
+            && userIntent.deviceInfo.numVolumes != null) {
           details.addVolumeCount(userIntent.deviceInfo.numVolumes);
           details.addVolumeSizeGB(
-            userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+              userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
         }
-        if (node.cloudInfo != null &&
-          node.cloudInfo.az != null &&
-          node.cloudInfo.instance_type != null) {
+        if (node.cloudInfo != null
+            && node.cloudInfo.az != null
+            && node.cloudInfo.instance_type != null) {
           details.addAz(node.cloudInfo.az);
-          InstanceType instanceType = InstanceType.get(UUID.fromString(userIntent.provider),
-            node.cloudInfo.instance_type);
+          InstanceType instanceType =
+              InstanceType.get(UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
           if (instanceType == null) {
-            LOG.error("Couldn't find instance type " + node.cloudInfo.instance_type +
-              " for provider " + userIntent.providerType);
+            LOG.error(
+                "Couldn't find instance type "
+                    + node.cloudInfo.instance_type
+                    + " for provider "
+                    + userIntent.providerType);
           } else {
             details.addMemSizeGB(instanceType.memSizeGB);
             details.addNumCores(instanceType.numCores);
@@ -213,6 +213,4 @@ public class UniverseResourceDetails {
     details.addPrice(params);
     return details;
   }
-
-
 }

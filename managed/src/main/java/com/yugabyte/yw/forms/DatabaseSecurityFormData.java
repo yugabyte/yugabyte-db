@@ -8,7 +8,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-
 public class DatabaseSecurityFormData {
 
   public String ycqlAdminUsername;
@@ -23,8 +22,7 @@ public class DatabaseSecurityFormData {
 
   // TODO(Shashank): Move this to use Validatable
   public void validation() {
-    if (StringUtils.isEmpty(ysqlAdminUsername)
-      && StringUtils.isEmpty(ycqlAdminUsername)) {
+    if (StringUtils.isEmpty(ysqlAdminUsername) && StringUtils.isEmpty(ycqlAdminUsername)) {
       throw new YWServiceException(BAD_REQUEST, "Need to provide YSQL and/or YCQL username.");
     }
 
@@ -32,8 +30,7 @@ public class DatabaseSecurityFormData {
     ycqlAdminUsername = Util.removeEnclosingDoubleQuotes(ycqlAdminUsername);
     if (!StringUtils.isEmpty(ysqlAdminUsername)) {
       if (dbName == null) {
-        throw new YWServiceException(BAD_REQUEST,
-          "DB needs to be specified for YSQL user change.");
+        throw new YWServiceException(BAD_REQUEST, "DB needs to be specified for YSQL user change.");
       }
 
       if (ysqlAdminUsername.contains("\"")) {
@@ -41,5 +38,4 @@ public class DatabaseSecurityFormData {
       }
     }
   }
-
 }
