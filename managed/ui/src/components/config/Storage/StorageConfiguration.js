@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
+import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
@@ -9,14 +10,11 @@ import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
-import gcsLogo from './images/gcs-logo.png';
-import nfsIcon from './images/nfs.svg';
 import {
   isNonEmptyObject,
   isEmptyObject,
