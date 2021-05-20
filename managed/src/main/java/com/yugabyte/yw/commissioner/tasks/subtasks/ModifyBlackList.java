@@ -74,7 +74,7 @@ public class ModifyBlackList extends UniverseTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);

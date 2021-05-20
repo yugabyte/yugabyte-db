@@ -70,7 +70,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
   public YBClient getClient() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     return ybService.getClient(masterAddresses, certificate);
   }
 
