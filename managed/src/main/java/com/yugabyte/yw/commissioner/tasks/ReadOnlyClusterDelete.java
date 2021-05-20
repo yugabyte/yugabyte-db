@@ -35,7 +35,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
   }
 
   public Params params() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -57,9 +57,10 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       Cluster cluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
 
       // Delete all the read-only cluster nodes.
-      createDestroyServerTasks(universe.getNodesInCluster(cluster.uuid),
-                               params().isForceDelete,
-                               true /* deleteNodeFromDB */)
+      createDestroyServerTasks(
+              universe.getNodesInCluster(cluster.uuid),
+              params().isForceDelete,
+              true /* deleteNodeFromDB */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.
@@ -70,8 +71,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Remove the DNS entry for this cluster.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                cluster.userIntent)
+      createDnsManipulationTask(
+              DnsManager.DnsCommandType.Delete, params().isForceDelete, cluster.userIntent)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.
@@ -95,8 +96,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * Creates a task to delete a read only cluster info from the universe and
-   * adds the task to the task queue.
+   * Creates a task to delete a read only cluster info from the universe and adds the task to the
+   * task queue.
    *
    * @param clusterUUID uuid of the read-only cluster to be removed.
    */

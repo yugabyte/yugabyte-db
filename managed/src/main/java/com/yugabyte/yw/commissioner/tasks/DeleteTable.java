@@ -18,7 +18,7 @@ public class DeleteTable extends UniverseTaskBase {
 
   @Override
   protected DeleteTableFromUniverse.Params taskParams() {
-    return (DeleteTableFromUniverse.Params)taskParams;
+    return (DeleteTableFromUniverse.Params) taskParams;
   }
 
   @Override

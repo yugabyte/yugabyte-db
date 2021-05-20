@@ -42,8 +42,8 @@ public class LocalYBClientService implements YBClientService {
 
   private YBClient getNewClient(String masterHPs, String certFile) {
     return new YBClient.YBClientBuilder(masterHPs)
-                       .defaultAdminOperationTimeoutMs(120000)
-                       .sslCertFile(certFile)
-                       .build();
+        .defaultAdminOperationTimeoutMs(120000)
+        .sslCertFile(certFile)
+        .build();
   }
 }

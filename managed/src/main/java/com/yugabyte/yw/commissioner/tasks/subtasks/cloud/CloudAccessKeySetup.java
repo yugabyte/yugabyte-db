@@ -31,7 +31,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -39,7 +39,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
     String regionCode = taskParams().regionCode;
     Region region = Region.getByCode(getProvider(), regionCode);
     if (region == null) {
-      throw new RuntimeException("Region " +  regionCode + " not setup.");
+      throw new RuntimeException("Region " + regionCode + " not setup.");
     }
     AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);
 
@@ -47,20 +47,33 @@ public class CloudAccessKeySetup extends CloudTaskBase {
     String accessKeyCode = taskParams().keyPairName;
     if (Strings.isNullOrEmpty(accessKeyCode)) {
       String sanitizedProviderName = getProvider().name.replaceAll("\\s+", "-").toLowerCase();
-      accessKeyCode = String.format(
-        "yb-%s-%s_%s-key", Customer.get(getProvider().customerUUID).code, sanitizedProviderName,
-        taskParams().providerUUID);
+      accessKeyCode =
+          String.format(
+              "yb-%s-%s_%s-key",
+              Customer.get(getProvider().customerUUID).code,
+              sanitizedProviderName,
+              taskParams().providerUUID);
     }
 
     if (!Strings.isNullOrEmpty(taskParams().sshPrivateKeyContent)) {
       accessManager.saveAndAddKey(
-        region.uuid, taskParams().sshPrivateKeyContent, accessKeyCode,
-        AccessManager.KeyType.PRIVATE, taskParams().sshUser, taskParams().sshPort,
-        taskParams().airGapInstall, false);
+          region.uuid,
+          taskParams().sshPrivateKeyContent,
+          accessKeyCode,
+          AccessManager.KeyType.PRIVATE,
+          taskParams().sshUser,
+          taskParams().sshPort,
+          taskParams().airGapInstall,
+          false);
     } else {
       accessManager.addKey(
-        region.uuid, accessKeyCode, null, taskParams().sshUser,
-        taskParams().sshPort, taskParams().airGapInstall, false);
-      }
+          region.uuid,
+          accessKeyCode,
+          null,
+          taskParams().sshUser,
+          taskParams().sshPort,
+          taskParams().airGapInstall,
+          false);
+    }
   }
 }

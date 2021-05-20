@@ -43,17 +43,12 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ApiHelperTest {
-  @Mock
-  WSClient mockClient;
-  @Mock
-  WSRequest mockRequest;
-  @Mock
-  WSResponse mockResponse;
-  @Mock
-  HttpURLConnection mockConnection;
+  @Mock WSClient mockClient;
+  @Mock WSRequest mockRequest;
+  @Mock WSResponse mockResponse;
+  @Mock HttpURLConnection mockConnection;
 
-  @InjectMocks
-  ApiHelper apiHelper;
+  @InjectMocks ApiHelper apiHelper;
 
   @Test
   public void testGetRequestValidJSONWithUrl() {
@@ -76,7 +71,9 @@ public class ApiHelperTest {
     doThrow(new RuntimeException("Incorrect JSON")).when(mockResponse).asJson();
     JsonNode result = apiHelper.getRequest("http://foo.com/test");
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-    assertThat(result.get("error").asText(), CoreMatchers.equalTo("java.lang.RuntimeException: Incorrect JSON"));
+    assertThat(
+        result.get("error").asText(),
+        CoreMatchers.equalTo("java.lang.RuntimeException: Incorrect JSON"));
   }
 
   @Test
@@ -107,7 +104,8 @@ public class ApiHelperTest {
 
     HashMap<String, String> params = new HashMap<>();
     params.put("param", "foo");
-    JsonNode result = apiHelper.getRequest("http://foo.com/test", new HashMap<String, String>(), params);
+    JsonNode result =
+        apiHelper.getRequest("http://foo.com/test", new HashMap<String, String>(), params);
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
     Mockito.verify(mockRequest).setQueryParameter("param", "foo");
     assertEquals(result.get("Foo").asText(), "Bar");
@@ -131,12 +129,13 @@ public class ApiHelperTest {
   }
 
   private void testGetHeaderRequestHelper(String urlPath, boolean isSuccess) {
-    final URLStreamHandler handler = new URLStreamHandler() {
-      @Override
-      protected URLConnection openConnection(final URL arg0) throws IOException {
-        return mockConnection;
-      }
-    };
+    final URLStreamHandler handler =
+        new URLStreamHandler() {
+          @Override
+          protected URLConnection openConnection(final URL arg0) throws IOException {
+            return mockConnection;
+          }
+        };
     ApiHelper mockApiHelper = spy(apiHelper);
     try {
       when(mockConnection.getResponseMessage()).thenReturn(isSuccess ? "OK" : "Not Found");

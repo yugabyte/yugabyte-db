@@ -14,7 +14,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 
-
 public class NodeInstanceTest extends FakeDBApplication {
   private Provider provider;
   private Region region;

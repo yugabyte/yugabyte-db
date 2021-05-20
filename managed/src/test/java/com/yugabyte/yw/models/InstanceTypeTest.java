@@ -34,8 +34,7 @@ public class InstanceTypeTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private InstanceType.InstanceTypeDetails defaultDetails;
 
-  @Mock
-  Config mockConfig;
+  @Mock Config mockConfig;
 
   @Before
   public void setUp() {
@@ -82,8 +81,8 @@ public class InstanceTypeTest extends FakeDBApplication {
     assertNotNull(itDetails.volumeDetailsList);
     for (int i = 0; i < InstanceType.InstanceTypeDetails.DEFAULT_VOLUME_COUNT; i++) {
       InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
-      assertEquals(InstanceType.InstanceTypeDetails.DEFAULT_GCP_VOLUME_SIZE_GB,
-        v.volumeSizeGB.intValue());
+      assertEquals(
+          InstanceType.InstanceTypeDetails.DEFAULT_GCP_VOLUME_SIZE_GB, v.volumeSizeGB.intValue());
       assertEquals(InstanceType.VolumeType.SSD, v.volumeType);
       assertEquals(String.format("/mnt/d%d", i), v.mountPath);
     }
@@ -123,7 +122,6 @@ public class InstanceTypeTest extends FakeDBApplication {
     assertNotNull(it.instanceTypeDetails);
   }
 
-
   @Test
   public void testFindByProviderWithUnSupportedInstances() {
     InstanceType.upsert(defaultProvider.uuid, "t2.medium", 3, 10.0, defaultDetails);
@@ -131,51 +129,43 @@ public class InstanceTypeTest extends FakeDBApplication {
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
     assertNotNull(instanceTypeList);
     assertEquals(1, instanceTypeList.size());
-    assertThat(instanceTypeList.get(0).getInstanceTypeCode(),
-        allOf(notNullValue(), equalTo("c3.medium")));
+    assertThat(
+        instanceTypeList.get(0).getInstanceTypeCode(), allOf(notNullValue(), equalTo("c3.medium")));
   }
 
   @Test
   public void testFindByProviderWithEmptyInstanceTypeDetails() {
-    InstanceType.upsert(defaultProvider.uuid, "c5.medium", 3, 10.0,
-      new InstanceType.InstanceTypeDetails());
-    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY))
-      .thenReturn(1);
-    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY))
-      .thenReturn(250);
+    InstanceType.upsert(
+        defaultProvider.uuid, "c5.medium", 3, 10.0, new InstanceType.InstanceTypeDetails());
+    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY)).thenReturn(1);
+    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY)).thenReturn(250);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
     assertNotNull(instanceTypeList);
-    InstanceType.VolumeDetails volumeDetails = instanceTypeList
-      .get(0)
-      .instanceTypeDetails
-      .volumeDetailsList
-      .get(0);
+    InstanceType.VolumeDetails volumeDetails =
+        instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.get(0);
     assertEquals(250, volumeDetails.volumeSizeGB.intValue());
     assertEquals(InstanceType.VolumeType.EBS, volumeDetails.volumeType);
     assertEquals(String.format("/mnt/d%d", 0), volumeDetails.mountPath);
-    assertThat(instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.size(),
-      allOf(notNullValue(), equalTo(1)));
+    assertThat(
+        instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.size(),
+        allOf(notNullValue(), equalTo(1)));
   }
 
   @Test
   public void testFindByProviderWithNullInstanceTypeDetails() {
     InstanceType.upsert(defaultProvider.uuid, "c5.medium", 3, 10.0, null);
-    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY))
-      .thenReturn(1);
-    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY))
-      .thenReturn(250);
+    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY)).thenReturn(1);
+    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY)).thenReturn(250);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
     assertNotNull(instanceTypeList);
-    InstanceType.VolumeDetails volumeDetails = instanceTypeList
-      .get(0)
-      .instanceTypeDetails
-      .volumeDetailsList
-      .get(0);
+    InstanceType.VolumeDetails volumeDetails =
+        instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.get(0);
     assertEquals(250, volumeDetails.volumeSizeGB.intValue());
     assertEquals(InstanceType.VolumeType.EBS, volumeDetails.volumeType);
     assertEquals(String.format("/mnt/d%d", 0), volumeDetails.mountPath);
-    assertThat(instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.size(),
-      allOf(notNullValue(), equalTo(1)));
+    assertThat(
+        instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.size(),
+        allOf(notNullValue(), equalTo(1)));
   }
 
   @Test

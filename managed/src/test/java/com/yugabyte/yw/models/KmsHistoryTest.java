@@ -33,78 +33,79 @@ public class KmsHistoryTest extends FakeDBApplication {
   @Before
   public void setup() {
     Customer testCustomer = ModelFactory.testCustomer();
-    testKMSConfig = KmsConfig.createKMSConfig(
-      testCustomer.uuid,
-      KeyProvider.AWS,
-      Json.newObject().put("test_key", "test_val"),
-      "some config name"
-    );
+    testKMSConfig =
+        KmsConfig.createKMSConfig(
+            testCustomer.uuid,
+            KeyProvider.AWS,
+            Json.newObject().put("test_key", "test_val"),
+            "some config name");
   }
 
-    @Test
-    public void testCreateUniverseHistory() {
-        UUID configUUID = testKMSConfig.configUUID;
-        UUID universeUUID = UUID.randomUUID();
-        KmsHistory keyRef = KmsHistory
-                .createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
-        assertNotNull(keyRef);
-    }
-
-    @Test
-    public void testGetCurrentKeyRef() {
-        UUID configUUID = testKMSConfig.configUUID;
-        UUID universeUUID = UUID.randomUUID();
+  @Test
+  public void testCreateUniverseHistory() {
+    UUID configUUID = testKMSConfig.configUUID;
+    UUID universeUUID = UUID.randomUUID();
+    KmsHistory keyRef =
         KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
-        KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "b");
+    assertNotNull(keyRef);
+  }
 
-        // Nothing should be returned because the key ref has not been set to active yet
-        KmsHistory keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
-        assertEquals(null, keyRef);
+  @Test
+  public void testGetCurrentKeyRef() {
+    UUID configUUID = testKMSConfig.configUUID;
+    UUID universeUUID = UUID.randomUUID();
+    KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
+    KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "b");
 
-        // Activate key ref
-        KmsHistory.activateKeyRef(universeUUID, configUUID, TargetType.UNIVERSE_KEY, "a");
+    // Nothing should be returned because the key ref has not been set to active yet
+    KmsHistory keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
+    assertEquals(null, keyRef);
 
-        // Ensure that now a result (the active history row) is returned
-        keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
-        assertEquals("a", keyRef.uuid.keyRef);
+    // Activate key ref
+    KmsHistory.activateKeyRef(universeUUID, configUUID, TargetType.UNIVERSE_KEY, "a");
 
-        // Activate key ref
-        KmsHistory.activateKeyRef(universeUUID, configUUID, TargetType.UNIVERSE_KEY, "b");
+    // Ensure that now a result (the active history row) is returned
+    keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
+    assertEquals("a", keyRef.uuid.keyRef);
 
-        // Ensure that now the appropriate result (the active history row) is returned
-        keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
-        assertEquals("b", keyRef.uuid.keyRef);
-    }
+    // Activate key ref
+    KmsHistory.activateKeyRef(universeUUID, configUUID, TargetType.UNIVERSE_KEY, "b");
 
-    @Test
-    public void testGetAllTargetKeyRefs() {
-        UUID configUUID = testKMSConfig.configUUID;
-        UUID universeUUID = UUID.randomUUID();
-        KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
-        List<KmsHistory> targetHistory = KmsHistory
-                .getAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
-        assertEquals(targetHistory.size(), 1);
-    }
+    // Ensure that now the appropriate result (the active history row) is returned
+    keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
+    assertEquals("b", keyRef.uuid.keyRef);
+  }
 
-    @Test
-    public void testDeleteAllTargetKeyRefs() {
-        UUID configUUID = testKMSConfig.configUUID;
-        UUID universeUUID = UUID.randomUUID();
-        KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
-        KmsHistory.deleteAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
-        List<KmsHistory> targetHistory = KmsHistory
-                .getAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
-        assertEquals(targetHistory.size(), 0);
-    }
+  @Test
+  public void testGetAllTargetKeyRefs() {
+    UUID configUUID = testKMSConfig.configUUID;
+    UUID universeUUID = UUID.randomUUID();
+    KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
+    List<KmsHistory> targetHistory =
+        KmsHistory.getAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
+    assertEquals(targetHistory.size(), 1);
+  }
 
-    @Test
-    public void testGetUniverses() {
-      UUID configUUID = testKMSConfig.configUUID;
-      Universe universe = ModelFactory.createUniverse();
-      KmsHistory keyRef = KmsHistory
-          .createKmsHistory(configUUID, universe.universeUUID, TargetType.UNIVERSE_KEY, "a");
-      assertNotNull(keyRef);
-      Set<Universe> universes = KmsHistory.getUniverses(configUUID, TargetType.UNIVERSE_KEY);
-      assertEquals(universes.size(), 1);
-    }
+  @Test
+  public void testDeleteAllTargetKeyRefs() {
+    UUID configUUID = testKMSConfig.configUUID;
+    UUID universeUUID = UUID.randomUUID();
+    KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
+    KmsHistory.deleteAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
+    List<KmsHistory> targetHistory =
+        KmsHistory.getAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
+    assertEquals(targetHistory.size(), 0);
+  }
+
+  @Test
+  public void testGetUniverses() {
+    UUID configUUID = testKMSConfig.configUUID;
+    Universe universe = ModelFactory.createUniverse();
+    KmsHistory keyRef =
+        KmsHistory.createKmsHistory(
+            configUUID, universe.universeUUID, TargetType.UNIVERSE_KEY, "a");
+    assertNotNull(keyRef);
+    Set<Universe> universes = KmsHistory.getUniverses(configUUID, TargetType.UNIVERSE_KEY);
+    assertEquals(universes.size(), 1);
+  }
 }

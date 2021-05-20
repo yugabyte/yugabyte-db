@@ -13,10 +13,9 @@ package com.yugabyte.yw.commissioner.tasks;
 public class DeleteKMSConfig extends KMSConfigTaskBase {
   @Override
   public void run() {
-    LOG.info("Deleting KMS Configuration for customer: " +
-      taskParams().customerUUID.toString());
+    LOG.info("Deleting KMS Configuration for customer: " + taskParams().customerUUID.toString());
     kmsManager
-      .getServiceInstance(taskParams().kmsProvider.name())
-      .deleteKMSConfig(taskParams().configUUID);
+        .getServiceInstance(taskParams().kmsProvider.name())
+        .deleteKMSConfig(taskParams().configUUID);
   }
 }

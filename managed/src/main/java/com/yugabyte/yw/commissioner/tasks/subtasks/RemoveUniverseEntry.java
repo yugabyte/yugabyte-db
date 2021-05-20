@@ -19,10 +19,12 @@ import org.slf4j.LoggerFactory;
 
 public class RemoveUniverseEntry extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(RemoveUniverseEntry.class);
+
   @Override
   protected DestroyUniverse.Params taskParams() {
     return (DestroyUniverse.Params) taskParams;
   }
+
   @Override
   public void run() {
     Customer customer = Customer.get(taskParams().customerUUID);

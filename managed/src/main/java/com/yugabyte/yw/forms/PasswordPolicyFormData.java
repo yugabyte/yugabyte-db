@@ -16,11 +16,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.models.CustomerConfig;
 import play.data.validation.Constraints;
 
-/**
- * This class will be used by the API and UI Form Elements to validate constraints are met
- */
-@Constraints.Validate(message = "Minimal length should be not less than the sum of minimal counts" +
-  " for upper case, lower case, digits and special characters")
+/** This class will be used by the API and UI Form Elements to validate constraints are met */
+@Constraints.Validate(
+    message =
+        "Minimal length should be not less than the sum of minimal counts"
+            + " for upper case, lower case, digits and special characters")
 public class PasswordPolicyFormData implements Constraints.Validatable<String> {
 
   @Constraints.Required(message = "Minimal length is required")
@@ -42,8 +42,6 @@ public class PasswordPolicyFormData implements Constraints.Validatable<String> {
   @Constraints.Required(message = "Minimal number of special characters is required")
   @Constraints.Min(value = 1, message = "Minimal number of special characters should be > 0")
   private int minSpecialCharacters = 1;
-
-
 
   public int getMinLength() {
     return minLength;
@@ -99,7 +97,7 @@ public class PasswordPolicyFormData implements Constraints.Validatable<String> {
     }
     if (passwordPolicyConfig.type != CustomerConfig.ConfigType.PASSWORD_POLICY) {
       throw new IllegalArgumentException(
-        "Received customer config of type " + passwordPolicyConfig.type.name());
+          "Received customer config of type " + passwordPolicyConfig.type.name());
     }
     return fromJson(passwordPolicyConfig.data);
   }
@@ -110,7 +108,7 @@ public class PasswordPolicyFormData implements Constraints.Validatable<String> {
       return mapper.treeToValue(passwordPolicyJson, PasswordPolicyFormData.class);
     } catch (RuntimeException | JsonProcessingException e) {
       throw new IllegalArgumentException(
-        "Failed to parse password policy config json " + passwordPolicyJson, e);
+          "Failed to parse password policy config json " + passwordPolicyJson, e);
     }
   }
 }

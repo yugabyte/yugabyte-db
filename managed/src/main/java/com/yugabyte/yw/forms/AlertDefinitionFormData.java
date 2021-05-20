@@ -16,21 +16,16 @@ import java.util.UUID;
 
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 
-/**
- * This class will be used by the API and UI Form Elements to validate constraints are met.
- */
+/** This class will be used by the API and UI Form Elements to validate constraints are met. */
 public class AlertDefinitionFormData {
 
   public UUID alertDefinitionUUID;
 
   public AlertDefinitionTemplate template;
 
-  @Constraints.Required()
-  public double value;
+  @Constraints.Required() public double value;
 
-  @Constraints.Required()
-  public String name;
+  @Constraints.Required() public String name;
 
-  @Constraints.Required()
-  public boolean isActive;
+  @Constraints.Required() public boolean isActive;
 }

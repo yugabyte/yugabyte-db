@@ -42,8 +42,7 @@ public class HAControllerTest extends FakeDBApplication {
 
   private Result createClusterKey() {
     String authToken = user.createAuthToken();
-    return FakeApiHelper
-      .doRequestWithAuthToken("GET", "/api/settings/ha/generate_key", authToken);
+    return FakeApiHelper.doRequestWithAuthToken("GET", "/api/settings/ha/generate_key", authToken);
   }
 
   @Test
@@ -57,8 +56,7 @@ public class HAControllerTest extends FakeDBApplication {
     String uri = "/api/settings/ha/config";
     String clusterKey = Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
     JsonNode body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
 
     assertOk(createResult);
     JsonNode result = Json.parse(contentAsString(createResult));
@@ -71,15 +69,14 @@ public class HAControllerTest extends FakeDBApplication {
     String uri = "/api/settings/ha/config";
     String clusterKey = Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
     JsonNode body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
 
     assertOk(createResult);
 
     clusterKey = Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
     body = Json.newObject().put("cluster_key", clusterKey);
     Result createResult2 =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+        FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
 
     assertBadRequest(createResult2, "An HA Config already exists");
   }
@@ -90,8 +87,7 @@ public class HAControllerTest extends FakeDBApplication {
     String uri = "/api/settings/ha/config";
     String clusterKey = Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
     JsonNode body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
 
     assertOk(createResult);
 
@@ -113,8 +109,7 @@ public class HAControllerTest extends FakeDBApplication {
     String uri = "/api/settings/ha/config";
     String clusterKey = Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
     JsonNode body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
 
     assertOk(createResult);
 
@@ -125,10 +120,9 @@ public class HAControllerTest extends FakeDBApplication {
 
     uri = uri + "/" + configUUID.toString();
     String editClusterKey =
-      Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
+        Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
     body = Json.newObject().put("cluster_key", editClusterKey);
-    Result editResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri, authToken, body);
+    Result editResult = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri, authToken, body);
 
     assertOk(editResult);
     result = Json.parse(contentAsString(editResult));
@@ -144,8 +138,7 @@ public class HAControllerTest extends FakeDBApplication {
     String uri = "/api/settings/ha/config";
     String clusterKey = Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
     JsonNode body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
 
     assertOk(createResult);
 

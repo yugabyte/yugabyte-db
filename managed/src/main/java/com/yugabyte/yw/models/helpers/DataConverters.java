@@ -40,6 +40,5 @@ public class DataConverters {
     }
   }
 
-  private DataConverters() {
-  }
+  private DataConverters() {}
 }

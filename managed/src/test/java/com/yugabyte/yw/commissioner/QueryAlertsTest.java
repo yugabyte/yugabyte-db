@@ -43,23 +43,17 @@ import static org.mockito.Mockito.when;
 @RunWith(JUnitParamsRunner.class)
 public class QueryAlertsTest extends FakeDBApplication {
 
-  @Rule
-  public MockitoRule rule = MockitoJUnit.rule();
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @Mock
-  private ExecutionContext executionContext;
+  @Mock private ExecutionContext executionContext;
 
-  @Mock
-  private ActorSystem actorSystem;
+  @Mock private ActorSystem actorSystem;
 
-  @Mock
-  private AlertManager alertManager;
+  @Mock private AlertManager alertManager;
 
-  @Mock
-  private MetricQueryHelper queryHelper;
+  @Mock private MetricQueryHelper queryHelper;
 
-  @Mock
-  private RuntimeConfigFactory configFactory;
+  @Mock private RuntimeConfigFactory configFactory;
 
   private QueryAlerts queryAlerts;
 
@@ -67,24 +61,28 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   private Universe universe;
 
-  @Mock
-  private Config universeConfig;
+  @Mock private Config universeConfig;
 
   private AlertDefinition definition;
 
   @Before
   public void setUp() {
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
-    queryAlerts = new QueryAlerts(executionContext, actorSystem, alertManager, queryHelper,
-        configFactory);
+    queryAlerts =
+        new QueryAlerts(executionContext, actorSystem, alertManager, queryHelper, configFactory);
 
     customer = ModelFactory.testCustomer();
     universe = ModelFactory.createUniverse(customer.getCustomerId());
     when(configFactory.forUniverse(universe)).thenReturn(universeConfig);
 
-    definition = AlertDefinition.create(customer.uuid, AlertDefinition.TargetType.Universe,
-      "alertDefinition", "query {{ test.parameter }}", true,
-      AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+    definition =
+        AlertDefinition.create(
+            customer.uuid,
+            AlertDefinition.TargetType.Universe,
+            "alertDefinition",
+            "query {{ test.parameter }}",
+            true,
+            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
   }
 
   @Test
@@ -112,20 +110,26 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Test
   // @formatter:off
-  @Parameters({ "ACTIVE, 1, true",
-                "CREATED, 1, true",
-                "RESOLVED, 0, false"})
+  @Parameters({"ACTIVE, 1, true", "CREATED, 1, true", "RESOLVED, 0, false"})
   // @formatter:on
-  public void testProcessAlertDefinitions(State alertState, int activeAlertsCount,
-      boolean alertReused) {
+  public void testProcessAlertDefinitions(
+      State alertState, int activeAlertsCount, boolean alertReused) {
     ArrayList<Entry> queryHelperResult = new ArrayList<>();
     queryHelperResult.add(mock(MetricQueryResponse.Entry.class));
     when(queryHelper.queryDirect("query test")).thenReturn(queryHelperResult);
     when(universeConfig.getString("test.parameter")).thenReturn("test");
 
-    Alert alert = Alert.create(customer.uuid, universe.universeUUID, TargetType.UniverseType,
-        "TEST_CHECK", "Warning", "Message", false, definition.uuid,
-      Collections.emptyList());
+    Alert alert =
+        Alert.create(
+            customer.uuid,
+            universe.universeUUID,
+            TargetType.UniverseType,
+            "TEST_CHECK",
+            "Warning",
+            "Message",
+            false,
+            definition.uuid,
+            Collections.emptyList());
     alert.setState(alertState);
     alert.save();
 
@@ -147,5 +151,4 @@ public class QueryAlertsTest extends FakeDBApplication {
 
     assertEquals(1 /* initial */ + (alertReused ? 0 : 1), Alert.list(customer.uuid).size());
   }
-
 }

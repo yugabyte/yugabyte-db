@@ -30,11 +30,9 @@ import static org.mockito.Mockito.when;
 @RunWith(MockitoJUnitRunner.class)
 public class CloudQueryHelperTest extends FakeDBApplication {
 
-  @InjectMocks
-  CloudQueryHelper cloudQueryHelper;
+  @InjectMocks CloudQueryHelper cloudQueryHelper;
 
-  @Mock
-  ShellProcessHandler shellProcessHandler;
+  @Mock ShellProcessHandler shellProcessHandler;
   private Customer defaultCustomer;
   private Provider defaultProvider;
   private Region defaultRegion;

@@ -14,7 +14,8 @@ import play.data.validation.Constraints;
 
 public class DemoteInstanceFormData {
   @Constraints.Required()
-  @Constraints.Pattern(message="Must be prefixed with http:// or https://",
-    value="\\b(?:http://|https://).+\\b")
+  @Constraints.Pattern(
+      message = "Must be prefixed with http:// or https://",
+      value = "\\b(?:http://|https://).+\\b")
   public String leader_address;
 }

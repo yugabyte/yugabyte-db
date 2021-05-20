@@ -49,7 +49,7 @@ public class ModifyBlackList extends UniverseTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -60,8 +60,14 @@ public class ModifyBlackList extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", isAdd=" +  taskParams().isAdd +
-        ", numNodes=" +  taskParams().nodes.size() + ")";
+    return super.getName()
+        + "("
+        + taskParams().universeUUID
+        + ", isAdd="
+        + taskParams().isAdd
+        + ", numNodes="
+        + taskParams().nodes.size()
+        + ")";
   }
 
   @Override
@@ -79,12 +85,12 @@ public class ModifyBlackList extends UniverseTaskBase {
           NodeDetails onDiskNode = universe.getNode(node.nodeName);
           ip = onDiskNode.cloudInfo.private_ip;
         }
-        HostPortPB.Builder hpb =  HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
+        HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         modifyHosts.add(hpb.build());
       }
       client = ybService.getClient(masterHostPorts, certificate);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
-        new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
+          new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
       modifyBlackList.doCall();
       universe.incrementVersion();
     } catch (Exception e) {

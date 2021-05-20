@@ -53,93 +53,90 @@ import play.test.Helpers;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AwsEARServiceTest extends FakeDBApplication {
-    ApiHelper mockApiHelper;
-    AwsEARService encryptionService;
+  ApiHelper mockApiHelper;
+  AwsEARService encryptionService;
 
-    KeyProvider testKeyProvider = KeyProvider.AWS;
+  KeyProvider testKeyProvider = KeyProvider.AWS;
 
-    String testCmkId = "some_cmk_id";
+  String testCmkId = "some_cmk_id";
 
-    AWSKMS mockClient;
-    ListAliasesResult mockAliasList;
-    List<AliasListEntry> mockAliases;
-    AliasListEntry mockAlias;
-    CreateKeyResult mockCreateKeyResult;
-    KeyMetadata mockKeyMetadata;
-    GenerateDataKeyWithoutPlaintextResult mockDataKeyResult;
-    DecryptResult mockDecryptResult;
+  AWSKMS mockClient;
+  ListAliasesResult mockAliasList;
+  List<AliasListEntry> mockAliases;
+  AliasListEntry mockAlias;
+  CreateKeyResult mockCreateKeyResult;
+  KeyMetadata mockKeyMetadata;
+  GenerateDataKeyWithoutPlaintextResult mockDataKeyResult;
+  DecryptResult mockDecryptResult;
 
-    UUID testUniUUID = UUID.randomUUID();
-    UUID testCustomerUUID = UUID.randomUUID();
-    EncryptionAtRestConfig config;
+  UUID testUniUUID = UUID.randomUUID();
+  UUID testCustomerUUID = UUID.randomUUID();
+  EncryptionAtRestConfig config;
 
-    byte[] mockEncryptionKey =
-            new String("tcIQ6E6HJu4m3C4NbVf/1yNe/6jYi/0LAYDsIouwcnU=").getBytes();
+  byte[] mockEncryptionKey = new String("tcIQ6E6HJu4m3C4NbVf/1yNe/6jYi/0LAYDsIouwcnU=").getBytes();
 
-    ByteBuffer decryptedKeyBuffer = ByteBuffer.wrap(mockEncryptionKey);
+  ByteBuffer decryptedKeyBuffer = ByteBuffer.wrap(mockEncryptionKey);
 
-    @Before
-    public void setUp() {
-        decryptedKeyBuffer.rewind();
-        mockClient = mock(AWSKMS.class);
-        mockAliasList = mock(ListAliasesResult.class);
-        mockAlias = mock(AliasListEntry.class);
-        mockAliases = new ArrayList<AliasListEntry>();
-        mockCreateKeyResult = mock(CreateKeyResult.class);
-        mockKeyMetadata = mock(KeyMetadata.class);
-        mockDataKeyResult = mock(GenerateDataKeyWithoutPlaintextResult.class);
-        mockDecryptResult = mock(DecryptResult.class);
-        when(mockAlias.getAliasName())
-                .thenReturn(String.format("alias/%s", testUniUUID.toString()));
-        when(mockAliasList.getAliases()).thenReturn(mockAliases);
-        when(mockClient.listAliases(any(ListAliasesRequest.class))).thenReturn(mockAliasList);
-        when(mockClient.createKey(any(CreateKeyRequest.class))).thenReturn(mockCreateKeyResult);
-        when(mockCreateKeyResult.getKeyMetadata()).thenReturn(mockKeyMetadata);
-        when(mockKeyMetadata.getKeyId()).thenReturn(testCmkId);
-        when(
-                mockClient.generateDataKeyWithoutPlaintext(
-                        any(GenerateDataKeyWithoutPlaintextRequest.class)
-                )
-        ).thenReturn(mockDataKeyResult);
-        when(mockDataKeyResult.getCiphertextBlob())
-                .thenReturn(
-                        ByteBuffer.wrap(new String("some_universe_key_value_encrypted").getBytes())
-                );
-        when(mockClient.decrypt(any(DecryptRequest.class))).thenReturn(mockDecryptResult);
-        when(mockDecryptResult.getPlaintext()).thenReturn(decryptedKeyBuffer);
-        encryptionService = new AwsEARService();
-        config = new EncryptionAtRestConfig();
-        // TODO: (Daniel) - Create KMS Config and link to here
-        config.kmsConfigUUID = null;
+  @Before
+  public void setUp() {
+    decryptedKeyBuffer.rewind();
+    mockClient = mock(AWSKMS.class);
+    mockAliasList = mock(ListAliasesResult.class);
+    mockAlias = mock(AliasListEntry.class);
+    mockAliases = new ArrayList<AliasListEntry>();
+    mockCreateKeyResult = mock(CreateKeyResult.class);
+    mockKeyMetadata = mock(KeyMetadata.class);
+    mockDataKeyResult = mock(GenerateDataKeyWithoutPlaintextResult.class);
+    mockDecryptResult = mock(DecryptResult.class);
+    when(mockAlias.getAliasName()).thenReturn(String.format("alias/%s", testUniUUID.toString()));
+    when(mockAliasList.getAliases()).thenReturn(mockAliases);
+    when(mockClient.listAliases(any(ListAliasesRequest.class))).thenReturn(mockAliasList);
+    when(mockClient.createKey(any(CreateKeyRequest.class))).thenReturn(mockCreateKeyResult);
+    when(mockCreateKeyResult.getKeyMetadata()).thenReturn(mockKeyMetadata);
+    when(mockKeyMetadata.getKeyId()).thenReturn(testCmkId);
+    when(mockClient.generateDataKeyWithoutPlaintext(
+            any(GenerateDataKeyWithoutPlaintextRequest.class)))
+        .thenReturn(mockDataKeyResult);
+    when(mockDataKeyResult.getCiphertextBlob())
+        .thenReturn(ByteBuffer.wrap(new String("some_universe_key_value_encrypted").getBytes()));
+    when(mockClient.decrypt(any(DecryptRequest.class))).thenReturn(mockDecryptResult);
+    when(mockDecryptResult.getPlaintext()).thenReturn(decryptedKeyBuffer);
+    encryptionService = new AwsEARService();
+    config = new EncryptionAtRestConfig();
+    // TODO: (Daniel) - Create KMS Config and link to here
+    config.kmsConfigUUID = null;
+  }
 
-    }
+  @Test
+  @Ignore
+  public void testCreateAndRetrieveEncryptionKeyCreateAlias() {
+    CreateAliasRequest createAliasReq =
+        new CreateAliasRequest()
+            .withAliasName(String.format("alias/%s", testUniUUID.toString()))
+            .withTargetKeyId(testCmkId);
+    ListAliasesRequest listAliasReq = new ListAliasesRequest().withLimit(100);
+    byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
+    verify(mockClient, times(1)).createKey(any(CreateKeyRequest.class));
+    verify(mockClient, times(1)).listAliases(listAliasReq);
+    verify(mockClient, times(1)).createAlias(createAliasReq);
+    assertNotNull(encryptionKey);
+    assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
+  }
 
-    @Test
-    @Ignore public void testCreateAndRetrieveEncryptionKeyCreateAlias() {
-        CreateAliasRequest createAliasReq = new CreateAliasRequest()
-                .withAliasName(String.format("alias/%s", testUniUUID.toString()))
-                .withTargetKeyId(testCmkId);
-        ListAliasesRequest listAliasReq = new ListAliasesRequest().withLimit(100);
-        byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
-        verify(mockClient, times(1)).createKey(any(CreateKeyRequest.class));
-        verify(mockClient, times(1)).listAliases(listAliasReq);
-        verify(mockClient, times(1)).createAlias(createAliasReq);
-        assertNotNull(encryptionKey);
-        assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
-    }
-
-    @Test
-    @Ignore public void testCreateAndRetrieveEncryptionKeyUpdateAlias() {
-        mockAliases.add(mockAlias);
-        UpdateAliasRequest updateAliasReq = new UpdateAliasRequest()
-                .withAliasName("alias/" + testUniUUID.toString())
-                .withTargetKeyId(testCmkId);
-        ListAliasesRequest listAliasReq = new ListAliasesRequest().withLimit(100);
-        byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
-        verify(mockClient, times(1)).createKey(any(CreateKeyRequest.class));
-        verify(mockClient, times(1)).listAliases(listAliasReq);
-        verify(mockClient, times(1)).updateAlias(updateAliasReq);
-        assertNotNull(encryptionKey);
-        assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
-    }
+  @Test
+  @Ignore
+  public void testCreateAndRetrieveEncryptionKeyUpdateAlias() {
+    mockAliases.add(mockAlias);
+    UpdateAliasRequest updateAliasReq =
+        new UpdateAliasRequest()
+            .withAliasName("alias/" + testUniUUID.toString())
+            .withTargetKeyId(testCmkId);
+    ListAliasesRequest listAliasReq = new ListAliasesRequest().withLimit(100);
+    byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
+    verify(mockClient, times(1)).createKey(any(CreateKeyRequest.class));
+    verify(mockClient, times(1)).listAliases(listAliasReq);
+    verify(mockClient, times(1)).updateAlias(updateAliasReq);
+    assertNotNull(encryptionKey);
+    assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
+  }
 }

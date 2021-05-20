@@ -25,17 +25,18 @@ public class HAAuthenticator extends Action.Simple {
 
   private boolean clusterKeyValid(String clusterKey) {
     return HighAvailabilityConfig.get()
-      .map(config -> config.getClusterKey().equals(clusterKey))
-      .orElse(false);
+        .map(config -> config.getClusterKey().equals(clusterKey))
+        .orElse(false);
   }
 
   @Override
   public CompletionStage<Result> call(Http.Context ctx) {
-    return ctx.request().header(HA_CLUSTER_KEY_TOKEN_HEADER)
-      .filter(this::clusterKeyValid)
-      .map(success -> delegate.call(ctx))
-      .orElse(CompletableFuture.completedFuture(
-        Results.badRequest("Unable to authenticate request")
-      ));
+    return ctx.request()
+        .header(HA_CLUSTER_KEY_TOKEN_HEADER)
+        .filter(this::clusterKeyValid)
+        .map(success -> delegate.call(ctx))
+        .orElse(
+            CompletableFuture.completedFuture(
+                Results.badRequest("Unable to authenticate request")));
   }
 }

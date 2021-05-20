@@ -29,7 +29,7 @@ public class ExtraMigration extends Model {
   public String migration;
 
   public static final Finder<String, ExtraMigration> find =
-    new Finder<String, ExtraMigration>(ExtraMigration.class) {};
+      new Finder<String, ExtraMigration>(ExtraMigration.class) {};
 
   public static List<ExtraMigration> getAll() {
     return find.query().orderBy("migration asc").findList();

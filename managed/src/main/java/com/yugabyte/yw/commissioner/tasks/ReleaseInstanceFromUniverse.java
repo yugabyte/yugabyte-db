@@ -38,13 +38,16 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
   @Override
   protected NodeTaskParams taskParams() {
-    return (NodeTaskParams)taskParams;
+    return (NodeTaskParams) taskParams;
   }
 
   @Override
   public void run() {
-    LOG.info("Started {} task for node {} in univ uuid={}", getName(),
-             taskParams().nodeName, taskParams().universeUUID);
+    LOG.info(
+        "Started {} task for node {} in univ uuid={}",
+        getName(),
+        taskParams().nodeName,
+        taskParams().universeUUID);
     NodeDetails currentNode = null;
     boolean hitException = false;
     try {
@@ -62,17 +65,20 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeState.Removed &&
-          currentNode.state != NodeState.Stopped) {
-        String msg = "Node " + taskParams().nodeName + " is not on removed or added state, but " +
-                     "is in " + currentNode.state + ", so cannot be released.";
+      if (currentNode.state != NodeState.Removed && currentNode.state != NodeState.Stopped) {
+        String msg =
+            "Node "
+                + taskParams().nodeName
+                + " is not on removed or added state, but "
+                + "is in "
+                + currentNode.state
+                + ", so cannot be released.";
         LOG.error(msg);
         throw new RuntimeException(msg);
       }
 
-      UserIntent userIntent = universe.getUniverseDetails()
-                                      .getClusterByUuid(currentNode.placementUuid)
-                                      .userIntent;
+      UserIntent userIntent =
+          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
 
       // Update Node State to BeingDecommissioned.
       createSetNodeStateTask(currentNode, NodeState.BeingDecommissioned)
@@ -82,8 +88,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       taskParams().placementUuid = currentNode.placementUuid;
 
       // Wait for Master Leader before doing Master operations, like blacklisting.
-      createWaitForMasterLeaderTask()
-          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       // Create a task for removal of this server from blacklist on master leader.
       createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
@@ -101,10 +106,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
         // Create tasks to terminate that instance. Force delete and ignore errors.
         createDestroyServerTasks(
-          currentNodeDetails,
-          true /* isForceDelete */,
-          false /* deleteNode */
-        ).setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+                currentNodeDetails, true /* isForceDelete */, false /* deleteNode */)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
 
       // Update Node State to Decommissioned.

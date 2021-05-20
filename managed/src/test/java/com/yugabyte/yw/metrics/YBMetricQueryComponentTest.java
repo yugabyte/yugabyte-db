@@ -49,8 +49,7 @@ import static com.yugabyte.yw.metrics.YBMetricQueryComponent.Function.Average;
 @RunWith(MockitoJUnitRunner.class)
 public class YBMetricQueryComponentTest extends FakeDBApplication {
 
-  @InjectMocks
-  YBMetricQueryComponent ybMetricQueryComponent;
+  @InjectMocks YBMetricQueryComponent ybMetricQueryComponent;
 
   private class MockResultSet {
     List<Date> times;
@@ -133,22 +132,26 @@ public class YBMetricQueryComponentTest extends FakeDBApplication {
     Long timeVal = 2323283232L;
     Long interval = 30000L;
     MockResultSet mockResultSet = new MockResultSet();
-    mockResultSet.times = Arrays.asList(new Date(timeVal),
-                                        new Date(timeVal - interval),
-                                        new Date(timeVal - interval * 2),
-                                        new Date(timeVal - interval * 3),
-                                        new Date(timeVal - interval * 4));
+    mockResultSet.times =
+        Arrays.asList(
+            new Date(timeVal),
+            new Date(timeVal - interval),
+            new Date(timeVal - interval * 2),
+            new Date(timeVal - interval * 3),
+            new Date(timeVal - interval * 4));
     mockResultSet.values = Arrays.asList(16000L, 12000L, 10000L, 7000L, 5000L);
-    mockResultSet.hasNexts = Arrays.asList(true, true, true, true, true,
-                                          true, true, true, true, false);
+    mockResultSet.hasNexts =
+        Arrays.asList(true, true, true, true, true, true, true, true, true, false);
 
-    List<ResultSet> allRS = setupCalculate(Arrays.asList(mockResultSet, mockResultSet,
-                                                         mockResultSet));
+    List<ResultSet> allRS =
+        setupCalculate(Arrays.asList(mockResultSet, mockResultSet, mockResultSet));
 
-    Map<Long, Double> expectedValues = ImmutableMap.of(2323163L, (200.0 / 3) * 3,
-                                                       2323193L, (300.0 / 3) * 3,
-                                                       2323223L, (200.0 / 3) * 3,
-                                                       2323253L, (400.0 / 3) * 3);
+    Map<Long, Double> expectedValues =
+        ImmutableMap.of(
+            2323163L, (200.0 / 3) * 3,
+            2323193L, (300.0 / 3) * 3,
+            2323223L, (200.0 / 3) * 3,
+            2323253L, (400.0 / 3) * 3);
     assertEquals(expectedValues, ybMetricQueryComponent.calculateRate(allRS, Sum, 3));
   }
 
@@ -157,22 +160,26 @@ public class YBMetricQueryComponentTest extends FakeDBApplication {
     Long timeVal = 2323283232L;
     Long interval = 30000L;
     MockResultSet mockResultSet = new MockResultSet();
-    mockResultSet.times = Arrays.asList(new Date(timeVal),
-                                        new Date(timeVal - interval),
-                                        new Date(timeVal - interval * 2),
-                                        new Date(timeVal - interval * 3),
-                                        new Date(timeVal - interval * 4));
+    mockResultSet.times =
+        Arrays.asList(
+            new Date(timeVal),
+            new Date(timeVal - interval),
+            new Date(timeVal - interval * 2),
+            new Date(timeVal - interval * 3),
+            new Date(timeVal - interval * 4));
     mockResultSet.values = Arrays.asList(16000L, 12000L, 10000L, 7000L, 5000L);
-    mockResultSet.hasNexts = Arrays.asList(true, true, true, true, true,
-                                          true, true, true, true, false);
+    mockResultSet.hasNexts =
+        Arrays.asList(true, true, true, true, true, true, true, true, true, false);
 
-    List<ResultSet> allRS = setupCalculate(Arrays.asList(mockResultSet, mockResultSet,
-                                                         mockResultSet));
+    List<ResultSet> allRS =
+        setupCalculate(Arrays.asList(mockResultSet, mockResultSet, mockResultSet));
 
-    Map<Long, Double> expectedValues = ImmutableMap.of(2323163L, 200.0 / 3,
-                                                       2323193L, 300.0 / 3,
-                                                       2323223L, 200.0 / 3,
-                                                       2323253L, 400.0 / 3);
+    Map<Long, Double> expectedValues =
+        ImmutableMap.of(
+            2323163L, 200.0 / 3,
+            2323193L, 300.0 / 3,
+            2323223L, 200.0 / 3,
+            2323253L, 400.0 / 3);
     assertEquals(expectedValues, ybMetricQueryComponent.calculateRate(allRS, Average, 3));
   }
 
@@ -182,31 +189,36 @@ public class YBMetricQueryComponentTest extends FakeDBApplication {
     Long interval = 30000L;
     MockResultSet mockResultSet = new MockResultSet();
     MockResultSet mockResultSetMissing = new MockResultSet();
-    mockResultSet.times = Arrays.asList(new Date(timeVal),
-                                        new Date(timeVal - interval),
-                                        new Date(timeVal - interval * 2),
-                                        new Date(timeVal - interval * 3),
-                                        new Date(timeVal - interval * 4));
-    mockResultSetMissing.times = Arrays.asList(new Date(timeVal),
-                                               new Date(timeVal - interval),
-                                               new Date(timeVal - interval * 3),
-                                               new Date(timeVal - interval * 4));
+    mockResultSet.times =
+        Arrays.asList(
+            new Date(timeVal),
+            new Date(timeVal - interval),
+            new Date(timeVal - interval * 2),
+            new Date(timeVal - interval * 3),
+            new Date(timeVal - interval * 4));
+    mockResultSetMissing.times =
+        Arrays.asList(
+            new Date(timeVal),
+            new Date(timeVal - interval),
+            new Date(timeVal - interval * 3),
+            new Date(timeVal - interval * 4));
 
     mockResultSet.values = Arrays.asList(16000L, 12000L, 10000L, 7000L, 5000L);
     mockResultSetMissing.values = Arrays.asList(16000L, 12000L, 7000L, 5000L);
 
-    mockResultSet.hasNexts = Arrays.asList(true, true, true, true, true,
-                                          true, true, true, true, false);
-    mockResultSetMissing.hasNexts = Arrays.asList(true, true, true, true,
-                                                 true, true, true, false);
+    mockResultSet.hasNexts =
+        Arrays.asList(true, true, true, true, true, true, true, true, true, false);
+    mockResultSetMissing.hasNexts = Arrays.asList(true, true, true, true, true, true, true, false);
 
-    List<ResultSet> allRS = setupCalculate(Arrays.asList(mockResultSet, mockResultSet,
-                                                         mockResultSetMissing));
+    List<ResultSet> allRS =
+        setupCalculate(Arrays.asList(mockResultSet, mockResultSet, mockResultSetMissing));
 
-    Map<Long, Double> expectedValues = ImmutableMap.of(2323163L, (200.0 / 3) * 3,
-                                                       2323193L, (300.0 / 3) * 2 + (500.0 / 6),
-                                                       2323223L, (200.0 / 3) * 2,
-                                                       2323253L, (400.0 / 3) * 3);
+    Map<Long, Double> expectedValues =
+        ImmutableMap.of(
+            2323163L, (200.0 / 3) * 3,
+            2323193L, (300.0 / 3) * 2 + (500.0 / 6),
+            2323223L, (200.0 / 3) * 2,
+            2323253L, (400.0 / 3) * 3);
     assertEquals(expectedValues, ybMetricQueryComponent.calculateRate(allRS, Sum, 3));
   }
 }

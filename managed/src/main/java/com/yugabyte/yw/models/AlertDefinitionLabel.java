@@ -20,8 +20,7 @@ import java.util.Objects;
 @Entity
 public class AlertDefinitionLabel extends Model {
 
-  @EmbeddedId
-  private AlertDefinitionLabelKey key;
+  @EmbeddedId private AlertDefinitionLabelKey key;
 
   @Column(nullable = false)
   private String value;
@@ -50,9 +49,8 @@ public class AlertDefinitionLabel extends Model {
     setDefinition(definition);
   }
 
-  public AlertDefinitionLabel(AlertDefinition definition,
-                              KnownAlertLabels knownLabel,
-                              String value) {
+  public AlertDefinitionLabel(
+      AlertDefinition definition, KnownAlertLabels knownLabel, String value) {
     this(definition, knownLabel.labelName(), value);
   }
 
@@ -96,9 +94,6 @@ public class AlertDefinitionLabel extends Model {
 
   @Override
   public String toString() {
-    return "AlertDefinitionLabel{" +
-      "key=" + key +
-      ", value=" + value +
-      '}';
+    return "AlertDefinitionLabel{" + "key=" + key + ", value=" + value + '}';
   }
 }

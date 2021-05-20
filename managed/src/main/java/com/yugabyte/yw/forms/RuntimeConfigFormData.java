@@ -29,27 +29,23 @@ public class RuntimeConfigFormData {
   public final List<ScopedConfig> scopedConfigList = new ArrayList<>();
 
   public void addGlobalScope(boolean asSuperAdmin) {
-    scopedConfigList.add(new ScopedConfig(
-      ScopedConfig.ScopeType.GLOBAL,
-      GLOBAL_SCOPE_UUID,
-      asSuperAdmin));
+    scopedConfigList.add(
+        new ScopedConfig(ScopedConfig.ScopeType.GLOBAL, GLOBAL_SCOPE_UUID, asSuperAdmin));
   }
 
   public void addMutableScope(ScopedConfig.ScopeType type, UUID uuid) {
-    scopedConfigList.add(new ScopedConfig(
-      type,
-      uuid,
-      true));
+    scopedConfigList.add(new ScopedConfig(type, uuid, true));
   }
 
   public static class ScopedConfig {
     public final ScopeType type;
     public final UUID uuid;
     /**
-     * global scope is mutable only if user is super admin
-     * other scopes can be mutated by the customer
+     * global scope is mutable only if user is super admin other scopes can be mutated by the
+     * customer
      */
     public final boolean mutableScope;
+
     public final List<ConfigEntry> configEntries = new ArrayList<>();
 
     public ScopedConfig(ScopeType type, UUID uuid) {
@@ -73,7 +69,7 @@ public class RuntimeConfigFormData {
       PROVIDER;
 
       public RuntimeConfig<? extends Model> forScopeType(
-        UUID scopeUUID, SettableRuntimeConfigFactory factory) {
+          UUID scopeUUID, SettableRuntimeConfigFactory factory) {
         switch (this) {
           case GLOBAL:
             return factory.globalRuntimeConf();
@@ -91,12 +87,12 @@ public class RuntimeConfigFormData {
 
   public static class ConfigEntry {
     /**
-     * When includeInherited is true; we will return inherited entries.
-     * For example a key may not be defined in customer scope but may
-     * be defined in global scope will be returned with inherited
+     * When includeInherited is true; we will return inherited entries. For example a key may not be
+     * defined in customer scope but may be defined in global scope will be returned with inherited
      * set to true.
      */
     public final boolean inherited;
+
     public final String key;
     public final String value;
 
@@ -106,5 +102,4 @@ public class RuntimeConfigFormData {
       this.value = value;
     }
   }
-
 }

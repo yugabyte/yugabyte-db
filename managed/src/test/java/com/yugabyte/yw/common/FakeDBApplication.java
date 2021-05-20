@@ -62,33 +62,33 @@ public class FakeDBApplication extends WithApplication {
   public Application provideApplication(Map<String, Object> additionalConfiguration) {
 
     return new GuiceApplicationBuilder()
-      .configure(additionalConfiguration)
-      .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
-      .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
-      .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
-      .overrides(bind(CallHome.class).toInstance(mockCallHome))
-      .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
-      .overrides(bind(Executors.class).toInstance(mockExecutors))
-      .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
-      .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
-      .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
-      .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-      .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
-      .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
-      .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
-      .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
-      .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
-      .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
-      .overrides(bind(YBClientService.class).toInstance(mockService))
-      .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
-      .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
-      .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
-      .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
-      .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
-      .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
-      .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
-      .overrides(bind(TableManager.class).toInstance(mockTableManager))
-      .build();
+        .configure(additionalConfiguration)
+        .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
+        .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+        .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+        .overrides(bind(CallHome.class).toInstance(mockCallHome))
+        .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
+        .overrides(bind(Executors.class).toInstance(mockExecutors))
+        .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+        .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
+        .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+        .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
+        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+        .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
+        .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
+        .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
+        .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
+        .overrides(bind(YBClientService.class).toInstance(mockService))
+        .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
+        .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
+        .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
+        .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+        .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
+        .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
+        .overrides(bind(TableManager.class).toInstance(mockTableManager))
+        .build();
   }
 
   public Application getApp() {
@@ -96,12 +96,12 @@ public class FakeDBApplication extends WithApplication {
   }
 
   /**
-   * If you want to quickly fix existing test that returns YWError json when exception
-   * gets thrown then use this function instead of Helpers.route().
-   * Alternatively change the test to expect that YWException get thrown
+   * If you want to quickly fix existing test that returns YWError json when exception gets thrown
+   * then use this function instead of Helpers.route(). Alternatively change the test to expect that
+   * YWException get thrown
    */
   public Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder)
-    throws InterruptedException, ExecutionException, TimeoutException {
+      throws InterruptedException, ExecutionException, TimeoutException {
     return FakeApiHelper.routeWithYWErrHandler(requestBuilder, getApp());
   }
 }

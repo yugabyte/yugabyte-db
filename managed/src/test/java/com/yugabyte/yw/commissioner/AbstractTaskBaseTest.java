@@ -29,8 +29,13 @@ public class AbstractTaskBaseTest extends FakeDBApplication {
     task = new AbstractTaskBaseFake();
     task.setUserTaskUUID(UUID.randomUUID());
 
-    CustomerTask.create(defaultCustomer, CUSTOMER_TASK_TARGET_UUID, task.userTaskUUID,
-        CustomerTask.TargetType.Universe, CustomerTask.TaskType.Update, "Test Universe");
+    CustomerTask.create(
+        defaultCustomer,
+        CUSTOMER_TASK_TARGET_UUID,
+        task.userTaskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        "Test Universe");
   }
 
   @Test

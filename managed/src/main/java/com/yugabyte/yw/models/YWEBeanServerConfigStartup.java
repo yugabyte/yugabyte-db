@@ -15,8 +15,8 @@ import io.ebean.event.ServerConfigStartup;
 import play.libs.Json;
 
 /**
- * Here we will modify EBean server config at startup.
- * EBeans framework will make sure that this gets executed at start.
+ * Here we will modify EBean server config at startup. EBeans framework will make sure that this
+ * gets executed at start.
  */
 public class YWEBeanServerConfigStartup implements ServerConfigStartup {
   @Override

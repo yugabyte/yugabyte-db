@@ -34,8 +34,8 @@ public class InstanceTypeController extends AuthenticatedController {
 
   // TODO: Remove this when we have HelperMethod in place to get Config details
   @Inject
-  public InstanceTypeController(Config config, ValidatingFormFactory formFactory,
-                                CloudAPI.Factory cloudAPIFactory) {
+  public InstanceTypeController(
+      Config config, ValidatingFormFactory formFactory, CloudAPI.Factory cloudAPIFactory) {
     this.config = config;
     this.formFactory = formFactory;
     this.cloudAPIFactory = cloudAPIFactory;
@@ -52,48 +52,62 @@ public class InstanceTypeController extends AuthenticatedController {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Map<String, InstanceType> instanceTypesMap;
-    instanceTypesMap = InstanceType.findByProvider(provider, config).stream()
-      .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
+    instanceTypesMap =
+        InstanceType.findByProvider(provider, config)
+            .stream()
+            .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
 
     return maybeFilterByZoneOfferings(filterByZoneCodes, provider, instanceTypesMap);
   }
 
-  private Result maybeFilterByZoneOfferings(Set<String> filterByZoneCodes, Provider provider,
-                                            Map<String, InstanceType> instanceTypesMap) {
+  private Result maybeFilterByZoneOfferings(
+      Set<String> filterByZoneCodes,
+      Provider provider,
+      Map<String, InstanceType> instanceTypesMap) {
     if (filterByZoneCodes.isEmpty()) {
       LOG.debug("No zones specified. Skipping filtering by zone.");
     } else {
       CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
       if (cloudAPI != null) {
         try {
-          LOG.debug("Full list of instance types: {}. Filtering it based on offerings.",
-            instanceTypesMap.keySet());
-          Map<Region, Set<String>> azByRegionMap = filterByZoneCodes.stream()
-            .map(code -> AvailabilityZone.getByCode(provider, code))
-            .collect(groupingBy(az -> az.region, mapping(az -> az.code, toSet())));
+          LOG.debug(
+              "Full list of instance types: {}. Filtering it based on offerings.",
+              instanceTypesMap.keySet());
+          Map<Region, Set<String>> azByRegionMap =
+              filterByZoneCodes
+                  .stream()
+                  .map(code -> AvailabilityZone.getByCode(provider, code))
+                  .collect(groupingBy(az -> az.region, mapping(az -> az.code, toSet())));
 
           LOG.debug("AZs looked up from db {}", azByRegionMap);
 
           Map<String, Set<String>> offeringsByInstanceType =
-            cloudAPI.offeredZonesByInstanceType(provider, azByRegionMap, instanceTypesMap.keySet());
+              cloudAPI.offeredZonesByInstanceType(
+                  provider, azByRegionMap, instanceTypesMap.keySet());
 
           LOG.debug("Instance Type Offerings from cloud: {}.", offeringsByInstanceType);
 
           List<InstanceType> filteredInstanceTypes =
-            offeringsByInstanceType.entrySet().stream()
-              .filter(kv -> kv.getValue().size() >= filterByZoneCodes.size())
-              .map(Map.Entry::getKey)
-              .map(instanceTypesMap::get)
-              .collect(Collectors.toList());
+              offeringsByInstanceType
+                  .entrySet()
+                  .stream()
+                  .filter(kv -> kv.getValue().size() >= filterByZoneCodes.size())
+                  .map(Map.Entry::getKey)
+                  .map(instanceTypesMap::get)
+                  .collect(Collectors.toList());
 
-          LOG.info("Num instanceTypes excluded {} because they were not offered in selected AZs.",
-            instanceTypesMap.size() - filteredInstanceTypes.size());
+          LOG.info(
+              "Num instanceTypes excluded {} because they were not offered in selected AZs.",
+              instanceTypesMap.size() - filteredInstanceTypes.size());
 
           return ApiResponse.success(filteredInstanceTypes);
         } catch (Exception exception) {
-          LOG.warn("There was an error {} talking to {} cloud API or filtering instance types " +
-              "based on per zone offerings for user selected zones: {}. We won't filter.",
-            exception.toString(), provider.code, filterByZoneCodes);
+          LOG.warn(
+              "There was an error {} talking to {} cloud API or filtering instance types "
+                  + "based on per zone offerings for user selected zones: {}. We won't filter.",
+              exception.toString(),
+              provider.code,
+              filterByZoneCodes);
         }
       } else {
         LOG.info("No Cloud API defined for {}. Skipping filtering by zone.", provider.code);
@@ -113,11 +127,13 @@ public class InstanceTypeController extends AuthenticatedController {
     Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(InstanceType.class);
 
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    InstanceType it = InstanceType.upsert(provider.uuid,
-      formData.get().getInstanceTypeCode(),
-      formData.get().numCores,
-      formData.get().memSizeGB,
-      formData.get().instanceTypeDetails);
+    InstanceType it =
+        InstanceType.upsert(
+            provider.uuid,
+            formData.get().getInstanceTypeCode(),
+            formData.get().numCores,
+            formData.get().memSizeGB,
+            formData.get().instanceTypeDetails);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
     return ApiResponse.success(it);
   }
@@ -125,8 +141,8 @@ public class InstanceTypeController extends AuthenticatedController {
   /**
    * DELETE endpoint for deleting instance types.
    *
-   * @param customerUUID,     UUID of customer
-   * @param providerUUID,     UUID of provider
+   * @param customerUUID, UUID of customer
+   * @param providerUUID, UUID of provider
    * @param instanceTypeCode, Instance TaskType code.
    * @return JSON response to denote if the delete was successful or not.
    */
@@ -144,8 +160,8 @@ public class InstanceTypeController extends AuthenticatedController {
   /**
    * Info endpoint for getting instance type information.
    *
-   * @param customerUUID,     UUID of customer
-   * @param providerUUID,     UUID of provider.
+   * @param customerUUID, UUID of customer
+   * @param providerUUID, UUID of provider.
    * @param instanceTypeCode, Instance type code.
    * @return JSON response with instance type information.
    */
@@ -166,8 +182,11 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return a list of all supported types of EBS volumes.
    */
   public Result getEBSTypes() {
-    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
-      .filter(name -> name.getCloudType().equals(Common.CloudType.aws)).toArray()));
+    return ok(
+        Json.toJson(
+            Arrays.stream(PublicCloudConstants.StorageType.values())
+                .filter(name -> name.getCloudType().equals(Common.CloudType.aws))
+                .toArray()));
   }
 
   /**
@@ -176,8 +195,11 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return a list of all supported types of GCP disks.
    */
   public Result getGCPTypes() {
-    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
-      .filter(name -> name.getCloudType().equals(Common.CloudType.gcp)).toArray()));
+    return ok(
+        Json.toJson(
+            Arrays.stream(PublicCloudConstants.StorageType.values())
+                .filter(name -> name.getCloudType().equals(Common.CloudType.gcp))
+                .toArray()));
   }
 
   /**
@@ -186,7 +208,10 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return a list of all supported types of AZU disks.
    */
   public Result getAZUTypes() {
-    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
-      .filter(name -> name.getCloudType().equals(Common.CloudType.azu)).toArray()));
+    return ok(
+        Json.toJson(
+            Arrays.stream(PublicCloudConstants.StorageType.values())
+                .filter(name -> name.getCloudType().equals(Common.CloudType.azu))
+                .toArray()));
   }
 }

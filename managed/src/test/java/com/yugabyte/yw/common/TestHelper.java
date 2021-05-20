@@ -23,9 +23,10 @@ public class TestHelper {
       fw.write(data);
       fw.close();
       return tmpFile.getAbsolutePath();
-    } catch (IOException ex) { return null; }
+    } catch (IOException ex) {
+      return null;
+    }
   }
-
 
   public static String createTempFile(String fileName, String data) {
     return createTempFile(null, fileName, data);

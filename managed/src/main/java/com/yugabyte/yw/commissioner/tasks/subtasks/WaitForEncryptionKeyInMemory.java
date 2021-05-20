@@ -23,55 +23,50 @@ import org.yb.client.YBClient;
 import play.api.Play;
 
 public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
-    public static final Logger LOG = LoggerFactory.getLogger(WaitForEncryptionKeyInMemory.class);
+  public static final Logger LOG = LoggerFactory.getLogger(WaitForEncryptionKeyInMemory.class);
 
-    public YBClientService ybService = null;
+  public YBClientService ybService = null;
 
-    public EncryptionAtRestManager keyManager = null;
+  public EncryptionAtRestManager keyManager = null;
 
-    public static final int KEY_IN_MEMORY_TIMEOUT = 5000;
+  public static final int KEY_IN_MEMORY_TIMEOUT = 5000;
 
-    public static class Params extends NodeTaskParams {
-        public HostAndPort nodeAddress;
-    }
+  public static class Params extends NodeTaskParams {
+    public HostAndPort nodeAddress;
+  }
 
-    @Override
-    public void initialize(ITaskParams params) {
-        super.initialize(params);
-        ybService = Play.current().injector().instanceOf(YBClientService.class);
-        keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
-    }
+  @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    ybService = Play.current().injector().instanceOf(YBClientService.class);
+    keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
+  }
 
-    @Override
-    protected Params taskParams() {
-        return (Params)taskParams;
-    }
+  @Override
+  protected Params taskParams() {
+    return (Params) taskParams;
+  }
 
-    @Override
-    public void run() {
-        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-        if (universe != null &&
-                EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
-            YBClient client = null;
-            String hostPorts = universe.getMasterAddresses();
-            String certificate = universe.getCertificate();
-            try {
-                client = ybService.getClient(hostPorts, certificate);
-                KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.universeUUID);
-                if (!client.waitForMasterHasUniverseKeyInMemory(
-                        KEY_IN_MEMORY_TIMEOUT,
-                        activeKey.uuid.keyRef,
-                        taskParams().nodeAddress
-                )) {
-                    throw new RuntimeException(
-                            "Timeout occurred waiting for universe encryption key to be set in memory"
-                    );
-                }
-            } catch (Exception e) {
-                LOG.error("{} hit error : {}", getName(), e.getMessage());
-            } finally {
-                ybService.closeClient(client, hostPorts);
-            }
+  @Override
+  public void run() {
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    if (universe != null && EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
+      YBClient client = null;
+      String hostPorts = universe.getMasterAddresses();
+      String certificate = universe.getCertificate();
+      try {
+        client = ybService.getClient(hostPorts, certificate);
+        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.universeUUID);
+        if (!client.waitForMasterHasUniverseKeyInMemory(
+            KEY_IN_MEMORY_TIMEOUT, activeKey.uuid.keyRef, taskParams().nodeAddress)) {
+          throw new RuntimeException(
+              "Timeout occurred waiting for universe encryption key to be set in memory");
         }
+      } catch (Exception e) {
+        LOG.error("{} hit error : {}", getName(), e.getMessage());
+      } finally {
+        ybService.closeClient(client, hostPorts);
+      }
     }
+  }
 }

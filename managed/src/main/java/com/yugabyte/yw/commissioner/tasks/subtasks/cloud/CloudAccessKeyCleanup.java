@@ -36,7 +36,7 @@ public class CloudAccessKeyCleanup extends CloudTaskBase {
     String regionCode = taskParams().regionCode;
     Region region = Region.getByCode(getProvider(), regionCode);
     if (region == null) {
-      throw new RuntimeException("Region " +  regionCode + " not setup.");
+      throw new RuntimeException("Region " + regionCode + " not setup.");
     }
 
     AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);

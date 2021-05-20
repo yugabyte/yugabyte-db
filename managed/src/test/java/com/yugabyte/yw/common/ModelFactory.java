@@ -39,13 +39,14 @@ public class ModelFactory {
   public static Customer testCustomer() {
     return testCustomer("test@customer.com");
   }
+
   public static Customer testCustomer(String name) {
     return testCustomer("tc", name);
   }
+
   public static Customer testCustomer(String code, String name) {
     return Customer.create(code, name);
   }
-
 
   /*
    * Users creation helpers.
@@ -53,12 +54,15 @@ public class ModelFactory {
   public static Users testUser(Customer customer) {
     return testUser(customer, "test@customer.com");
   }
+
   public static Users testUser(Customer customer, String email) {
     return testUser(customer, email, Role.Admin);
   }
+
   public static Users testUser(Customer customer, Role role) {
     return testUser(customer, "test@customer.com", role);
   }
+
   public static Users testUser(Customer customer, String email, Role role) {
     return Users.create(email, "password", role, customer.uuid);
   }
@@ -70,19 +74,25 @@ public class ModelFactory {
   public static Provider awsProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.aws, "Amazon");
   }
+
   public static Provider gcpProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.gcp, "Google");
   }
+
   public static Provider onpremProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.onprem, "OnPrem");
   }
+
   public static Provider kubernetesProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.kubernetes, "Kubernetes");
   }
+
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
     return Provider.create(customer.uuid, cloud, cloud.toString());
   }
-  public static Provider newProvider(Customer customer, Common.CloudType cloud, Map<String, String> config) {
+
+  public static Provider newProvider(
+      Customer customer, Common.CloudType cloud, Map<String, String> config) {
     return Provider.create(customer.uuid, cloud, cloud.toString(), config);
   }
 
@@ -93,43 +103,61 @@ public class ModelFactory {
   public static Universe createUniverse() {
     return createUniverse("Test Universe", 1L);
   }
+
   public static Universe createUniverse(String universeName) {
     return createUniverse(universeName, 1L);
   }
+
   public static Universe createUniverse(long customerId) {
     return createUniverse("Test Universe", customerId);
   }
+
   public static Universe createUniverse(long customerId, UUID rootCA) {
-    return createUniverse("Test Universe", UUID.randomUUID(), customerId,
-                          Common.CloudType.aws, null, rootCA);
+    return createUniverse(
+        "Test Universe", UUID.randomUUID(), customerId, Common.CloudType.aws, null, rootCA);
   }
+
   public static Universe createUniverse(String universeName, long customerId) {
     return createUniverse(universeName, UUID.randomUUID(), customerId, Common.CloudType.aws);
   }
+
   public static Universe createUniverse(String universeName, UUID universeUUID) {
     return createUniverse(universeName, universeUUID, 1L, Common.CloudType.aws);
   }
-  public static Universe createUniverse(String universeName, long customerId,
-                                        Common.CloudType cloudType) {
+
+  public static Universe createUniverse(
+      String universeName, long customerId, Common.CloudType cloudType) {
     return createUniverse(universeName, UUID.randomUUID(), 1L, cloudType);
   }
-  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId,
-                                        Common.CloudType cloudType) {
+
+  public static Universe createUniverse(
+      String universeName, UUID universeUUID, long customerId, Common.CloudType cloudType) {
     return createUniverse(universeName, universeUUID, customerId, cloudType, null);
   }
-  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId,
-                                        Common.CloudType cloudType, PlacementInfo pi) {
+
+  public static Universe createUniverse(
+      String universeName,
+      UUID universeUUID,
+      long customerId,
+      Common.CloudType cloudType,
+      PlacementInfo pi) {
     return createUniverse(universeName, universeUUID, customerId, cloudType, pi, null);
   }
-  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId,
-                                        Common.CloudType cloudType, PlacementInfo pi,
-                                        UUID rootCA) {
+
+  public static Universe createUniverse(
+      String universeName,
+      UUID universeUUID,
+      long customerId,
+      Common.CloudType cloudType,
+      PlacementInfo pi,
+      UUID rootCA) {
     Customer c = Customer.get(customerId);
     // Custom setup a default AWS provider, can be overridden later.
     List<Provider> providerList = Provider.get(c.uuid, cloudType);
     Provider p = providerList.isEmpty() ? newProvider(c, cloudType) : providerList.get(0);
 
-    UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
     userIntent.provider = p.uuid.toString();
     userIntent.providerType = cloudType;
@@ -146,26 +174,31 @@ public class ModelFactory {
   }
 
   public static CustomerConfig createS3StorageConfig(Customer customer) {
-    JsonNode formData = Json.parse("{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": " +
-      "{\"BACKUP_LOCATION\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", " +
-      "\"ACCESS_SECRET\": \"A-SECRET\"}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": "
+                + "{\"BACKUP_LOCATION\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", "
+                + "\"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createNfsStorageConfig(Customer customer) {
-    JsonNode formData = Json.parse("{\"name\": \"NFS\", \"type\": \"STORAGE\", \"data\": " +
-      "{\"BACKUP_LOCATION\": \"/foo/bar\"}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"NFS\", \"type\": \"STORAGE\", \"data\": "
+                + "{\"BACKUP_LOCATION\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createGcsStorageConfig(Customer customer) {
-    JsonNode formData = Json.parse("{\"name\": \"GCS\", \"type\": \"STORAGE\", \"data\": " +
-      "{\"BACKUP_LOCATION\": \"gs://foo\", \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"GCS\", \"type\": \"STORAGE\", \"data\": "
+                + "{\"BACKUP_LOCATION\": \"gs://foo\", \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
-  public static Backup createBackup(UUID customerUUID, UUID universeUUID,
-                                    UUID configUUID) {
+  public static Backup createBackup(UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.universeUUID = universeUUID;
@@ -176,7 +209,7 @@ public class ModelFactory {
   }
 
   public static Backup createBackupWithExpiry(
-    UUID customerUUID, UUID universeUUID, UUID configUUID) {
+      UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.universeUUID = universeUUID;
@@ -187,8 +220,8 @@ public class ModelFactory {
     return Backup.create(customerUUID, params);
   }
 
-  public static Schedule createScheduleBackup(UUID customerUUID,UUID universeUUID,
-                                              UUID configUUID) {
+  public static Schedule createScheduleBackup(
+      UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.universeUUID = universeUUID;
@@ -202,8 +235,8 @@ public class ModelFactory {
     return CustomerConfig.createCallHomeConfig(customer.uuid, level);
   }
 
-  public static CustomerConfig createAlertConfig(Customer customer, String alertingEmail,
-      boolean sendAlertsToYb, boolean reportOnlyErrors) {
+  public static CustomerConfig createAlertConfig(
+      Customer customer, String alertingEmail, boolean sendAlertsToYb, boolean reportOnlyErrors) {
     AlertingData data = new AlertingData();
     data.sendAlertsToYb = sendAlertsToYb;
     data.alertingEmail = alertingEmail;
@@ -216,16 +249,9 @@ public class ModelFactory {
    * KMS Configuration creation helpers.
    */
   public static KmsConfig createKMSConfig(
-          UUID customerUUID,
-          String keyProvider,
-          ObjectNode authConfig
-  ) {
+      UUID customerUUID, String keyProvider, ObjectNode authConfig) {
     EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
     EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
-    return keyService.createAuthConfig(
-            customerUUID,
-            "Test KMS Configuration",
-            authConfig
-    );
+    return keyService.createAuthConfig(customerUUID, "Test KMS Configuration", authConfig);
   }
 }

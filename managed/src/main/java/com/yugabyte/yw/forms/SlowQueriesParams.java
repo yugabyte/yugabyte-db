@@ -2,9 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
-/**
- * This class will be used by the API to generate entries on Slow Queries tab
- */
+/** This class will be used by the API to generate entries on Slow Queries tab */
 public class SlowQueriesParams {
 
   public String query;
@@ -22,5 +20,4 @@ public class SlowQueriesParams {
   public Double stddev_time;
 
   public int rows;
-
 }

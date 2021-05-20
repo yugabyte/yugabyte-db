@@ -60,7 +60,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       }
 
       Collection<NodeDetails> nodesToProvision =
-        PlacementInfoUtil.getNodesToProvision(readOnlyNodes);
+          PlacementInfoUtil.getNodesToProvision(readOnlyNodes);
 
       if (nodesToProvision.isEmpty()) {
         String errMsg = "Cannot have empty nodes to provision in read-only cluster.";
@@ -70,7 +70,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
       // Check if nodes are able to be provisioned/configured properly.
       Map<NodeInstance, String> failedNodes = new HashMap<>();
-      for (NodeDetails node: nodesToProvision) {
+      for (NodeDetails node : nodesToProvision) {
         if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
           continue;
         }
@@ -82,25 +82,22 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         nodeParams.azUuid = node.azUuid;
         nodeParams.universeUUID = taskParams().universeUUID;
         nodeParams.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
+            taskParams().extraDependencies.installNodeExporter;
 
         String preflightStatus = performPreflightCheck(node, nodeParams);
         if (preflightStatus != null) {
-            failedNodes.put(NodeInstance.getByName(node.nodeName), preflightStatus);
+          failedNodes.put(NodeInstance.getByName(node.nodeName), preflightStatus);
         }
       }
       if (!failedNodes.isEmpty()) {
-        createFailedPrecheckTask(failedNodes)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+        createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       }
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. for ex., private ip address.
-      createServerInfoTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createServerInfoTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
       createConfigureServerTasks(nodesToProvision, true /* isShell */)
@@ -114,8 +111,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       createGFlagsOverrideTasks(newTservers, ServerType.TSERVER);
 
       // Start the tservers in the clusters.
-      createStartTServersTasks(newTservers)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createStartTServersTasks(newTservers).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for all tablet servers to be responsive.
       createWaitForServersTasks(newTservers, ServerType.TSERVER)

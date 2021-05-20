@@ -64,18 +64,14 @@ public class ConfigHelper {
 
   public Map<String, Object> getConfig(ConfigType type) {
     YugawareProperty p = YugawareProperty.get(type.toString());
-    if (p == null)
-      return Collections.emptyMap();
+    if (p == null) return Collections.emptyMap();
     JsonNode node = p.getValue();
-    if (node == null)
-      return Collections.emptyMap();
+    if (node == null) return Collections.emptyMap();
     return Json.fromJson(node, Map.class);
   }
 
   public Map<String, Object> getRegionMetadata(Common.CloudType type) {
-    return type.getRegionMetadataConfigType()
-      .map(this::getConfig)
-      .orElse(Collections.emptyMap());
+    return type.getRegionMetadataConfigType().map(this::getConfig).orElse(Collections.emptyMap());
   }
 
   public void loadConfigsToDB(Application app) {
@@ -84,9 +80,7 @@ public class ConfigHelper {
         continue;
       }
       Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
-      Map<String, Object> config = yaml.load(
-        app.resourceAsStream(type.getConfigFile())
-      );
+      Map<String, Object> config = yaml.load(app.resourceAsStream(type.getConfigFile()));
       loadConfigToDB(type, config);
     }
   }

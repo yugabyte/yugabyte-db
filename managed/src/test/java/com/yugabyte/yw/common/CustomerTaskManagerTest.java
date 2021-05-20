@@ -31,16 +31,16 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   Universe universe;
   CustomerTaskManager taskManager;
 
-  private CustomerTask createTask(CustomerTask.TargetType targetType, UUID targetUUID,
-                                  CustomerTask.TaskType taskType) {
+  private CustomerTask createTask(
+      CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
     UUID taskUUID = UUID.randomUUID();
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.setTaskDetails(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.save();
-    return CustomerTask.create(customer, targetUUID, taskInfo.getTaskUUID(),
-      targetType, taskType, "Foo");
+    return CustomerTask.create(
+        customer, targetUUID, taskInfo.getTaskUUID(), targetType, taskType, "Foo");
   }
 
   @Before
@@ -76,11 +76,10 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
     taskManager.failAllPendingTasks();
     verify(taskManager, times(CustomerTask.TargetType.values().length))
-      .failPendingTask(any(), any());
+        .failPendingTask(any(), any());
 
-    List<CustomerTask> customerTasks = CustomerTask.find.query().where()
-      .eq("customer_uuid", customer.uuid)
-      .findList();
+    List<CustomerTask> customerTasks =
+        CustomerTask.find.query().where().eq("customer_uuid", customer.uuid).findList();
 
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {

@@ -53,13 +53,15 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void createPodsTask(KubernetesPlacement placement, String masterAddresses) {
-    createPodsTask(placement, masterAddresses, null,
-                   null, new PlacementInfo());
+    createPodsTask(placement, masterAddresses, null, null, new PlacementInfo());
   }
 
-  public void createPodsTask(KubernetesPlacement newPlacement, String masterAddresses,
-                             KubernetesPlacement currPlacement, ServerType serverType,
-                             PlacementInfo activeZones) {
+  public void createPodsTask(
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      PlacementInfo activeZones) {
 
     boolean edit = currPlacement != null;
     boolean isMultiAz = masterAddresses != null;
@@ -68,20 +70,24 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         PlacementInfoUtil.getConfigPerAZ(activeZones);
 
     // Only used for new deployments, so maybe empty.
-    SubTaskGroup createNamespaces = new SubTaskGroup(
-        KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE.getSubTaskGroupName(), executor);
+    SubTaskGroup createNamespaces =
+        new SubTaskGroup(
+            KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE.getSubTaskGroupName(), executor);
     createNamespaces.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-    SubTaskGroup applySecrets = new SubTaskGroup(
-        KubernetesCommandExecutor.CommandType.APPLY_SECRET.getSubTaskGroupName(), executor);
+    SubTaskGroup applySecrets =
+        new SubTaskGroup(
+            KubernetesCommandExecutor.CommandType.APPLY_SECRET.getSubTaskGroupName(), executor);
     applySecrets.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-    SubTaskGroup helmInstalls = new SubTaskGroup(
-        KubernetesCommandExecutor.CommandType.HELM_INSTALL.getSubTaskGroupName(), executor);
+    SubTaskGroup helmInstalls =
+        new SubTaskGroup(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL.getSubTaskGroupName(), executor);
     helmInstalls.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-    SubTaskGroup podsWait = new SubTaskGroup(
-        KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
+    SubTaskGroup podsWait =
+        new SubTaskGroup(
+            KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
     podsWait.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
@@ -101,10 +107,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int newNumMasters = newPlacement.masters.getOrDefault(azUUID, 0);
       int newNumTservers = newPlacement.tservers.getOrDefault(azUUID, 0);
 
-      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
-          newNumTservers;
-      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
-          newNumMasters;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = newNumTservers;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor = newNumMasters;
 
       if (edit) {
         currNumMasters = currPlacement.masters.getOrDefault(azUUID, 0);
@@ -117,8 +121,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           }
           // When adding new masters, we want to not increase the number of tservers
           // in the same operation.
-          tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
-              currNumTservers;
+          tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = currNumTservers;
         } else {
           if (newNumTservers <= currNumTservers) {
             continue;
@@ -137,38 +140,55 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         //    b) Masters changed, that means the master addresses changed, and we don't want to
         //       roll the older pods (or the new masters, since they will be in shell mode).
         int tserverPartition = currNumMasters != newNumMasters ? currNumTservers : 0;
-        int masterPartition = currNumMasters != newNumMasters ?
-            (serverType == ServerType.MASTER ? currNumMasters : newNumMasters): 0;
-        helmInstalls.addTask(createKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
-                             tempPI, azCode, masterAddresses, null, serverType,
-                             config, masterPartition,
-                             tserverPartition));
+        int masterPartition =
+            currNumMasters != newNumMasters
+                ? (serverType == ServerType.MASTER ? currNumMasters : newNumMasters)
+                : 0;
+        helmInstalls.addTask(
+            createKubernetesExecutorTaskForServerType(
+                CommandType.HELM_UPGRADE,
+                tempPI,
+                azCode,
+                masterAddresses,
+                null,
+                serverType,
+                config,
+                masterPartition,
+                tserverPartition));
 
         // When adding masters, the number of tservers will be still the same as before.
         // They get added later.
-        int podsToWaitFor = serverType == ServerType.MASTER ?
-            newNumMasters + currNumTservers : newNumMasters + newNumTservers;
-        podsWait.addTask(createKubernetesCheckPodNumTask(
-            KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS, azCode, config,
-            podsToWaitFor));
+        int podsToWaitFor =
+            serverType == ServerType.MASTER
+                ? newNumMasters + currNumTservers
+                : newNumMasters + newNumTservers;
+        podsWait.addTask(
+            createKubernetesCheckPodNumTask(
+                KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS, azCode, config, podsToWaitFor));
       } else {
         // Don't create the namespace if user has provided
         // KUBENAMESPACE value, as we might not have access to list or
         // create namespaces in such cases.
         if (config.get("KUBENAMESPACE") == null) {
           // Create the namespaces of the deployment.
-          createNamespaces.addTask(createKubernetesExecutorTask(
-              KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE, azCode, config));
+          createNamespaces.addTask(
+              createKubernetesExecutorTask(
+                  KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE, azCode, config));
         }
 
         // Apply the necessary pull secret to each namespace.
-        applySecrets.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.APPLY_SECRET, azCode, config));
+        applySecrets.addTask(
+            createKubernetesExecutorTask(
+                KubernetesCommandExecutor.CommandType.APPLY_SECRET, azCode, config));
 
         // Create the helm deployments.
-        helmInstalls.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.HELM_INSTALL, tempPI, azCode,
-            masterAddresses, config));
+        helmInstalls.addTask(
+            createKubernetesExecutorTask(
+                KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+                tempPI,
+                azCode,
+                masterAddresses,
+                config));
 
         // Add zone to active configs.
         PlacementInfoUtil.addPlacementZone(azUUID, activeZones);
@@ -181,32 +201,42 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     subTaskGroupQueue.add(podsWait);
   }
 
-  public void upgradePodsTask(KubernetesPlacement newPlacement, String masterAddresses,
-                              KubernetesPlacement currPlacement, ServerType serverType,
-                              String softwareVersion, int waitTime, boolean masterChanged,
-                              boolean tserverChanged) {
+  public void upgradePodsTask(
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      String softwareVersion,
+      int waitTime,
+      boolean masterChanged,
+      boolean tserverChanged) {
 
     boolean edit = currPlacement != null;
     boolean isMultiAz = masterAddresses != null;
 
-    Map<UUID, Integer> serversToUpdate = serverType == ServerType.MASTER ?
-        newPlacement.masters : newPlacement.tservers;
+    Map<UUID, Integer> serversToUpdate =
+        serverType == ServerType.MASTER ? newPlacement.masters : newPlacement.tservers;
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
 
     if (serverType == ServerType.TSERVER) {
       Map<UUID, PlacementInfo.PlacementAZ> placementAZMap =
-        PlacementInfoUtil.getPlacementAZMap(newPlacement.placementInfo);
+          PlacementInfoUtil.getPlacementAZMap(newPlacement.placementInfo);
 
-      List<UUID> sortedZonesToUpdate = serversToUpdate.keySet().stream()
-        .sorted(Comparator.comparing(
-          zoneUUID -> !placementAZMap.get(zoneUUID).isAffinitized))
-        .collect(Collectors.toList());
+      List<UUID> sortedZonesToUpdate =
+          serversToUpdate
+              .keySet()
+              .stream()
+              .sorted(Comparator.comparing(zoneUUID -> !placementAZMap.get(zoneUUID).isAffinitized))
+              .collect(Collectors.toList());
 
       // Put isAffinitized availability zones first
-      serversToUpdate = sortedZonesToUpdate.stream()
-        .collect(Collectors.toMap(
-          Function.identity(), serversToUpdate::get, (a, b) -> a, LinkedHashMap::new));
-     }
+      serversToUpdate =
+          sortedZonesToUpdate
+              .stream()
+              .collect(
+                  Collectors.toMap(
+                      Function.identity(), serversToUpdate::get, (a, b) -> a, LinkedHashMap::new));
+    }
 
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -256,14 +286,21 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         int tserverPartition = tserverChanged ? (edit ? currNumTservers : newNumTservers) : 0;
         masterPartition = serverType == ServerType.MASTER ? partition : masterPartition;
         tserverPartition = serverType == ServerType.TSERVER ? partition : tserverPartition;
-        createSingleKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
-            tempPI, azCode, masterAddresses, softwareVersion, serverType, config,
-            masterPartition, tserverPartition);
+        createSingleKubernetesExecutorTaskForServerType(
+            CommandType.HELM_UPGRADE,
+            tempPI,
+            azCode,
+            masterAddresses,
+            softwareVersion,
+            serverType,
+            config,
+            masterPartition,
+            tserverPartition);
         // TODO(bhavin192): might need to account for multiple
         // releases in one namespace.
         String podName = String.format("%s-%d", sType, partition);
-        createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-            podName, azCode, config);
+        createKubernetesWaitForPodTask(
+            KubernetesWaitForPod.CommandType.WAIT_FOR_POD, podName, azCode, config);
 
         NodeDetails node = getPodName(partition, azCode, serverType, isMultiAz);
         List<NodeDetails> nodeList = new ArrayList<>();
@@ -280,27 +317,34 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     deletePodsTask(currPlacement, null, null, false);
   }
 
-  public void deletePodsTask(KubernetesPlacement currPlacement, String masterAddresses,
-                             KubernetesPlacement newPlacement, boolean userIntentChange) {
+  public void deletePodsTask(
+      KubernetesPlacement currPlacement,
+      String masterAddresses,
+      KubernetesPlacement newPlacement,
+      boolean userIntentChange) {
 
     boolean edit = newPlacement != null;
     boolean isMultiAz = masterAddresses != null;
 
     // If no config in new placement, delete deployment.
-    SubTaskGroup helmDeletes = new SubTaskGroup(
-        KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
+    SubTaskGroup helmDeletes =
+        new SubTaskGroup(
+            KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
     helmDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
-    SubTaskGroup volumeDeletes = new SubTaskGroup(
-        KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
+    SubTaskGroup volumeDeletes =
+        new SubTaskGroup(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
     volumeDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
-    SubTaskGroup namespaceDeletes = new SubTaskGroup(
-        KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(), executor);
+    SubTaskGroup namespaceDeletes =
+        new SubTaskGroup(
+            KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(), executor);
     namespaceDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
-    SubTaskGroup podsWait = new SubTaskGroup(
-        KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
+    SubTaskGroup podsWait =
+        new SubTaskGroup(
+            KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
     podsWait.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     for (Entry<UUID, Map<String, String>> entry : currPlacement.configs.entrySet()) {
@@ -323,27 +367,33 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             newPlacement.tservers.get(azUUID);
         tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
             newPlacement.masters.getOrDefault(azUUID, 0);
-        helmDeletes.addTask(createKubernetesExecutorTask(CommandType.HELM_UPGRADE,
-                            tempPI, azCode, masterAddresses, config));
-        podsWait.addTask(createKubernetesCheckPodNumTask(
-                         KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS, azCode,
-                         config, newPlacement.tservers.get(azUUID) +
-                         newPlacement.masters.getOrDefault(azUUID, 0)));
+        helmDeletes.addTask(
+            createKubernetesExecutorTask(
+                CommandType.HELM_UPGRADE, tempPI, azCode, masterAddresses, config));
+        podsWait.addTask(
+            createKubernetesCheckPodNumTask(
+                KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
+                azCode,
+                config,
+                newPlacement.tservers.get(azUUID) + newPlacement.masters.getOrDefault(azUUID, 0)));
       } else {
         // Delete the helm deployments.
-        helmDeletes.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.HELM_DELETE, azCode, config));
+        helmDeletes.addTask(
+            createKubernetesExecutorTask(
+                KubernetesCommandExecutor.CommandType.HELM_DELETE, azCode, config));
 
         // Delete the PVs created for the deployments.
-        volumeDeletes.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, azCode, config));
+        volumeDeletes.addTask(
+            createKubernetesExecutorTask(
+                KubernetesCommandExecutor.CommandType.VOLUME_DELETE, azCode, config));
 
         // If the namespace is configured at the AZ, we don't delete
         // it, as it is not created by us.
         if (config.get("KUBENAMESPACE") == null) {
           // Delete the namespaces of the deployments.
-          namespaceDeletes.addTask(createKubernetesExecutorTask(
-              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE, azCode, config));
+          namespaceDeletes.addTask(
+              createKubernetesExecutorTask(
+                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE, azCode, config));
         }
       }
     }
@@ -356,12 +406,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Returns the NodeDetails of the pod that we need to wait for.
   */
-  public NodeDetails getPodName(int partition, String azCode, ServerType serverType,
-                                boolean isMultiAz) {
+  public NodeDetails getPodName(
+      int partition, String azCode, ServerType serverType, boolean isMultiAz) {
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
     Set<NodeDetails> tservers = new HashSet<>();
-    String podName = isMultiAz ? String.format("%s-%d_%s", sType, partition, azCode) :
-        String.format("%s-%d", sType, partition);
+    String podName =
+        isMultiAz
+            ? String.format("%s-%d_%s", sType, partition, azCode)
+            : String.format("%s-%d", sType, partition);
     NodeDetails node = new NodeDetails();
     node.nodeName = podName;
     return node;
@@ -370,9 +422,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be added.
   */
-  public Set<NodeDetails> getPodsToAdd(Map<UUID, Integer> newPlacement,
-                                       Map<UUID, Integer> currPlacement,
-                                       ServerType serverType, boolean isMultiAz) {
+  public Set<NodeDetails> getPodsToAdd(
+      Map<UUID, Integer> newPlacement,
+      Map<UUID, Integer> currPlacement,
+      ServerType serverType,
+      boolean isMultiAz) {
 
     Set<NodeDetails> podsToAdd = new HashSet<NodeDetails>();
     for (Entry<UUID, Integer> entry : newPlacement.entrySet()) {
@@ -394,10 +448,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be removed.
   */
-  public Set<NodeDetails> getPodsToRemove(Map<UUID, Integer> newPlacement,
-                                          Map<UUID, Integer> currPlacement,
-                                          ServerType serverType, Universe universe,
-                                          boolean isMultiAz) {
+  public Set<NodeDetails> getPodsToRemove(
+      Map<UUID, Integer> newPlacement,
+      Map<UUID, Integer> currPlacement,
+      ServerType serverType,
+      Universe universe,
+      boolean isMultiAz) {
     Set<NodeDetails> podsToRemove = new HashSet<NodeDetails>();
     for (Entry<UUID, Integer> entry : currPlacement.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -420,23 +476,37 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   // Create the Kubernetes Executor task for the helm deployments. (USED)
   public KubernetesCommandExecutor createKubernetesExecutorTask(
-      KubernetesCommandExecutor.CommandType commandType, PlacementInfo pi, String az,
-      String masterAddresses, Map<String, String> config) {
-    return createKubernetesExecutorTaskForServerType(commandType, pi, az, masterAddresses, null,
-        ServerType.EITHER, config, 0 /* master partition */, 0 /* tserver partition */);
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      Map<String, String> config) {
+    return createKubernetesExecutorTaskForServerType(
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        null,
+        ServerType.EITHER,
+        config,
+        0 /* master partition */,
+        0 /* tserver partition */);
   }
 
   // Create and return the Kubernetes Executor task for deployment of a k8s universe.
   public KubernetesCommandExecutor createKubernetesExecutorTaskForServerType(
       KubernetesCommandExecutor.CommandType commandType,
-      PlacementInfo pi, String az, String masterAddresses,
-      String ybSoftwareVersion, ServerType serverType,
-      Map<String, String> config, int masterPartition,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
       int tserverPartition) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
-    params.providerUUID = UUID.fromString(
-        primary.userIntent.provider);
+    params.providerUUID = UUID.fromString(primary.userIntent.provider);
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
@@ -457,8 +527,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.config = config;
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
-      params.namespace = PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix,
-                                                                  az, config);
+      params.namespace =
+          PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, az, config);
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -477,25 +547,35 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
-  public void createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType,
-                                                 PlacementInfo pi) {
-    createSingleKubernetesExecutorTaskForServerType(commandType, pi, null, null, null,
-                                                    ServerType.EITHER, null,
-                                                    0 /* master partition */,
-                                                    0 /* tserver partition */);
+  public void createSingleKubernetesExecutorTask(
+      KubernetesCommandExecutor.CommandType commandType, PlacementInfo pi) {
+    createSingleKubernetesExecutorTaskForServerType(
+        commandType,
+        pi,
+        null,
+        null,
+        null,
+        ServerType.EITHER,
+        null,
+        0 /* master partition */,
+        0 /* tserver partition */);
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
   public void createSingleKubernetesExecutorTaskForServerType(
       KubernetesCommandExecutor.CommandType commandType,
-      PlacementInfo pi, String az, String masterAddresses,
-      String ybSoftwareVersion, ServerType serverType,
-      Map<String, String> config, int masterPartition, int tserverPartition) {
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
+      int tserverPartition) {
     SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
-    params.providerUUID = UUID.fromString(
-        primary.userIntent.provider);
+    params.providerUUID = UUID.fromString(primary.userIntent.provider);
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
@@ -516,8 +596,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.config = config;
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
-      params.namespace = PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix,
-                                                                  az, config);
+      params.namespace =
+          PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, az, config);
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -532,9 +612,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
 
-  public void createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType commandType,
-                                             String podName, String az,
-                                             Map<String, String> config) {
+  public void createKubernetesWaitForPodTask(
+      KubernetesWaitForPod.CommandType commandType,
+      String podName,
+      String az,
+      Map<String, String> config) {
     SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesWaitForPod.Params params = new KubernetesWaitForPod.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
@@ -549,8 +631,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.config = config;
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
-      params.namespace = PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix,
-                                                                  az, config);
+      params.namespace =
+          PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, az, config);
     }
     params.universeUUID = taskParams().universeUUID;
     params.podName = podName;
@@ -561,9 +643,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.KubernetesWaitForPod);
   }
 
-    public KubernetesCheckNumPod createKubernetesCheckPodNumTask(
-        KubernetesCheckNumPod.CommandType commandType,
-        String az, Map<String, String> config, int numPods) {
+  public KubernetesCheckNumPod createKubernetesCheckPodNumTask(
+      KubernetesCheckNumPod.CommandType commandType,
+      String az,
+      Map<String, String> config,
+      int numPods) {
     KubernetesCheckNumPod.Params params = new KubernetesCheckNumPod.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
     params.providerUUID = UUID.fromString(primary.userIntent.provider);
@@ -576,8 +660,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.config = config;
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
-      params.namespace = PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix,
-                                                                  az, config);
+      params.namespace =
+          PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, az, config);
     }
     params.universeUUID = taskParams().universeUUID;
     params.podNum = numPods;

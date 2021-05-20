@@ -41,12 +41,10 @@ import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
 
-
 @RunWith(MockitoJUnitRunner.class)
 public class PauseUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks
-  private Commissioner commissioner;
+  @InjectMocks private Commissioner commissioner;
   private ShellResponse dummyShellResponse;
   private ShellResponse preflightSuccessResponse;
   private YBClient mockClient;
@@ -61,52 +59,52 @@ public class PauseUniverseTest extends CommissionerBaseTest {
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-
   }
+
   private void setupUniverse(boolean updateInProgress) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
-        10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 1);
+    InstanceType i =
+        InstanceType.upsert(
+            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getTestUserIntent(r, defaultProvider, i, 1);
     userIntent.replicationFactor = 1;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
 
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, true /* setMasters */, updateInProgress));
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(
+            userIntent, nodePrefix, true /* setMasters */, updateInProgress));
   }
 
+  List<TaskType> PAUSE_UNIVERSE_TASKS =
+      ImmutableList.of(
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.PauseServer,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.UniverseUpdateSucceeded);
 
-  List<TaskType> PAUSE_UNIVERSE_TASKS = ImmutableList.of(
-      TaskType.AnsibleClusterServerCtl,
-      TaskType.AnsibleClusterServerCtl,
-      TaskType.PauseServer,
-      TaskType.SwamperTargetsFileUpdate,
-      TaskType.UniverseUpdateSucceeded
-      );
-
-
-  List<JsonNode> PAUSE_UNIVERSE_EXPECTED_RESULTS = ImmutableList.of(
-      Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
-      Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of())
-  );
-
+  List<JsonNode> PAUSE_UNIVERSE_EXPECTED_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+          Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
 
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
     int position = 0;
-    for (TaskType taskType: PAUSE_UNIVERSE_TASKS) {
+    for (TaskType taskType : PAUSE_UNIVERSE_TASKS) {
       JsonNode expectedResults = PAUSE_UNIVERSE_EXPECTED_RESULTS.get(position);
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(taskType, tasks.get(0).getTaskType());
-      List<JsonNode> taskDetails = tasks.stream()
-          .map(t -> t.getTaskDetails())
-          .collect(Collectors.toList());
+      List<JsonNode> taskDetails =
+          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

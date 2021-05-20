@@ -38,14 +38,16 @@ public class CloudCleanup extends CloudTaskBase {
   public void run() {
     subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
-    taskParams().regionList.forEach(regionCode -> {
-      createAccessKeyCleanupTask(regionCode)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
-      createRegionCleanupTask(regionCode)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
-    });
-    createProviderCleanupTask()
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
+    taskParams()
+        .regionList
+        .forEach(
+            regionCode -> {
+              createAccessKeyCleanupTask(regionCode)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
+              createRegionCleanupTask(regionCode)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
+            });
+    createProviderCleanupTask().setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
 
     subTaskGroupQueue.run();
   }
@@ -87,5 +89,4 @@ public class CloudCleanup extends CloudTaskBase {
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
-
 }

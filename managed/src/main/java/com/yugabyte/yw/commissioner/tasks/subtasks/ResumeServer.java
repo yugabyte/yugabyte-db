@@ -28,7 +28,7 @@ public class ResumeServer extends NodeTaskBase {
 
   @Override
   protected ResumeServer.Params taskParams() {
-    return (ResumeServer.Params)taskParams;
+    return (ResumeServer.Params) taskParams;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ResumeServer.class);
@@ -45,14 +45,13 @@ public class ResumeServer extends NodeTaskBase {
   @Override
   public void run() {
     try {
-      ShellResponse response = getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Resume, taskParams());
+      ShellResponse response =
+          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Resume, taskParams());
       processShellResponse(response);
       setNodeState(NodeDetails.NodeState.Live);
       resumeUniverse(taskParams().nodeName);
     } catch (Exception e) {
       throw e;
     }
-
   }
 }

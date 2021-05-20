@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -38,13 +37,12 @@ import static org.mockito.Mockito.*;
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
 
   Universe defaultUniverse;
   String nodePrefix = "demo-universe";
 
-  Map<String, String> config= new HashMap<String, String>();
+  Map<String, String> config = new HashMap<String, String>();
   AvailabilityZone az1, az2, az3;
 
   private void setupUniverse(boolean updateInProgress) {
@@ -53,17 +51,21 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     defaultProvider.save();
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
-        10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
+    InstanceType i =
+        InstanceType.upsert(
+            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
 
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, true /* setMasters */, updateInProgress));
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(
+            userIntent, nodePrefix, true /* setMasters */, updateInProgress));
   }
 
   private void setupUniverseMultiAZ(boolean updateInProgress, boolean skipProviderConfig) {
@@ -77,48 +79,50 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
-        10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
+    InstanceType i =
+        InstanceType.upsert(
+            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
 
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, true /* setMasters */, updateInProgress));
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(
+            userIntent, nodePrefix, true /* setMasters */, updateInProgress));
   }
 
+  List<TaskType> KUBERNETES_DESTROY_UNIVERSE_TASKS =
+      ImmutableList.of(
+          TaskType.DestroyEncryptionAtRest,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.RemoveUniverseEntry,
+          TaskType.SwamperTargetsFileUpdate);
 
-  List<TaskType> KUBERNETES_DESTROY_UNIVERSE_TASKS = ImmutableList.of(
-      TaskType.DestroyEncryptionAtRest,
-      TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesCommandExecutor,
-      TaskType.RemoveUniverseEntry,
-      TaskType.SwamperTargetsFileUpdate);
-
-
-  List<JsonNode> KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS = ImmutableList.of(
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("commandType", HELM_DELETE.name())),
-      Json.toJson(ImmutableMap.of("commandType", VOLUME_DELETE.name())),
-      Json.toJson(ImmutableMap.of("commandType", NAMESPACE_DELETE.name())),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of())
-  );
+  List<JsonNode> KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("commandType", HELM_DELETE.name())),
+          Json.toJson(ImmutableMap.of("commandType", VOLUME_DELETE.name())),
+          Json.toJson(ImmutableMap.of("commandType", NAMESPACE_DELETE.name())),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
 
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks) {
     assertTaskSequence(subTasksByPosition, numTasks, numTasks);
   }
 
-  private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks,
-                                 int numNamespaceDelete) {
+  private void assertTaskSequence(
+      Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks, int numNamespaceDelete) {
     int position = 0;
-    for (TaskType taskType: KUBERNETES_DESTROY_UNIVERSE_TASKS) {
-      JsonNode expectedResults =
-          KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS.get(position);
+    for (TaskType taskType : KUBERNETES_DESTROY_UNIVERSE_TASKS) {
+      JsonNode expectedResults = KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS.get(position);
       List<TaskInfo> tasks = subTasksByPosition.get(position);
 
       if (expectedResults.equals(
@@ -131,7 +135,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
       } else if (expectedResults.equals(
           Json.toJson(ImmutableMap.of("commandType", VOLUME_DELETE.name())))) {
         assertEquals(numTasks, tasks.size());
-      } else if(expectedResults.equals(
+      } else if (expectedResults.equals(
           Json.toJson(ImmutableMap.of("commandType", HELM_DELETE.name())))) {
         assertEquals(numTasks, tasks.size());
       } else {
@@ -139,9 +143,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
       }
 
       assertEquals(taskType, tasks.get(0).getTaskType());
-      List<JsonNode> taskDetails = tasks.stream()
-          .map(t -> t.getTaskDetails())
-          .collect(Collectors.toList());
+      List<JsonNode> taskDetails =
+          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -162,8 +165,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesUniverseSuccess() {
     setupUniverse(false);
-    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
-                                              Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
@@ -185,8 +188,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestoryKubernetesUniverseWithUpdateInProgress() {
     setupUniverse(true);
-    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
-                                              Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
     taskParams.customerUUID = defaultCustomer.uuid;
@@ -198,8 +201,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testForceDestroyKubernetesUniverseWithUpdateInProgress() {
     setupUniverse(true);
-    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
-                                              Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = true;
     taskParams.customerUUID = defaultCustomer.uuid;
@@ -219,8 +222,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesUniverseSuccessMultiAZ() {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ false);
-    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
-                                              Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
 
@@ -255,8 +258,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesUniverseSuccessMultiAZWithNamespace() {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ true);
-    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
-                                              Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
 
     String nodePrefix1 = String.format("%s-%s", nodePrefix, az1.code);
     String nodePrefix2 = String.format("%s-%s", nodePrefix, az2.code);
@@ -311,8 +314,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesHelm2UniverseSuccess() {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ false);
-    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
-                                              Universe.HelmLegacy.V2TO3.toString()));
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString()));
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
 

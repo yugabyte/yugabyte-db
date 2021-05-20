@@ -21,18 +21,19 @@ public class AlertTemplateSubstitutor extends PlaceholderSubstitutor {
   private static final String LABELS_PREFIX = "$labels.";
 
   public AlertTemplateSubstitutor(AlertDefinition definition) {
-    super(key -> {
-      if (key.startsWith(LABELS_PREFIX)) {
-        String labelName = key.replace(LABELS_PREFIX, "");
-        String labelValue = definition.getLabelValue(labelName);
-        if (labelValue == null) {
-          LOG.warn("Label {} not found in definition {}", labelName, definition.uuid);
+    super(
+        key -> {
+          if (key.startsWith(LABELS_PREFIX)) {
+            String labelName = key.replace(LABELS_PREFIX, "");
+            String labelValue = definition.getLabelValue(labelName);
+            if (labelValue == null) {
+              LOG.warn("Label {} not found in definition {}", labelName, definition.uuid);
+              return "";
+            }
+            return labelValue;
+          }
+          LOG.warn("Unexpected placeholder {} in definition {}", key, definition.uuid);
           return "";
-        }
-        return labelValue;
-      }
-      LOG.warn("Unexpected placeholder {} in definition {}", key, definition.uuid);
-      return "";
-    });
+        });
   }
 }

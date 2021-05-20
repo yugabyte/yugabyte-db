@@ -63,13 +63,18 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Update the user intent.
       writeUserIntentToUniverse();
 
-      Provider provider = Provider.get(UUID.fromString(
-          taskParams().getPrimaryCluster().userIntent.provider));
+      Provider provider =
+          Provider.get(UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
 
       KubernetesPlacement placement = new KubernetesPlacement(pi);
 
-      String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, placement.masters,
-          taskParams().nodePrefix, provider, taskParams().communicationPorts.masterRpcPort);
+      String masterAddresses =
+          PlacementInfoUtil.computeMasterAddresses(
+              pi,
+              placement.masters,
+              taskParams().nodePrefix,
+              provider,
+              taskParams().communicationPorts.masterRpcPort);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
@@ -77,16 +82,15 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, pi);
 
-      Set<NodeDetails> tserversAdded = getPodsToAdd(placement.tservers, null, ServerType.TSERVER,
-                                                    isMultiAz);
+      Set<NodeDetails> tserversAdded =
+          getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz);
 
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(tserversAdded, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for a Master Leader to be elected.
-      createWaitForMasterLeaderTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Persist the placement info into the YB master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
@@ -99,8 +103,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       }
 
       // Wait for a master leader to hear from all the tservers.
-      createWaitForTServerHeartBeatsTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       createSwamperTargetUpdateTask(false);
 

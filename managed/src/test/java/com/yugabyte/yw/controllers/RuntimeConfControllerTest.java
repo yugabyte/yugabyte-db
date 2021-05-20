@@ -63,7 +63,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   @Test
   public void authError() {
     Result result =
-      Helpers.route(app, fakeRequest("GET", String.format(LIST_SCOPES, defaultCustomer.uuid)));
+        Helpers.route(app, fakeRequest("GET", String.format(LIST_SCOPES, defaultCustomer.uuid)));
     assertEquals(FORBIDDEN, result.status());
     assertEquals("Unable To Authenticate User", contentAsString(result));
   }
@@ -73,21 +73,22 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Result result = doRequestWithAuthToken("GET", LIST_KEYS, authToken);
     assertEquals(OK, result.status());
     ImmutableSet<String> expectedKeys =
-      ImmutableSet.of("yb.taskGC.gc_check_interval", "yb.taskGC.task_retention_duration");
+        ImmutableSet.of("yb.taskGC.gc_check_interval", "yb.taskGC.task_retention_duration");
     Set<String> actualKeys =
-      ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements()).stream()
-        .map(JsonNode::asText)
-        .collect(Collectors.toSet());
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements())
+            .stream()
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
     assertTrue(String.valueOf(actualKeys), actualKeys.containsAll(expectedKeys));
   }
 
   @Test
   public void listScopes() {
     Result result =
-      doRequestWithAuthToken("GET", String.format(LIST_SCOPES, defaultCustomer.uuid), authToken);
+        doRequestWithAuthToken("GET", String.format(LIST_SCOPES, defaultCustomer.uuid), authToken);
     assertEquals(OK, result.status());
     Iterator<JsonNode> scopedConfigList =
-      Json.parse(contentAsString(result)).get("scopedConfigList").elements();
+        Json.parse(contentAsString(result)).get("scopedConfigList").elements();
     Map<ScopeType, UUID> actualScopesMap = new HashMap<>();
     while (scopedConfigList.hasNext()) {
       JsonNode actualScope = scopedConfigList.next();
@@ -115,32 +116,32 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
     Http.RequestBuilder request =
-      fakeRequest(
-        "PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, GC_CHECK_INTERVAL_KEY))
-        .header("X-AUTH-TOKEN", authToken)
-        .bodyText(interval);
+        fakeRequest(
+                "PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, GC_CHECK_INTERVAL_KEY))
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyText(interval);
     return route(app, request);
   }
 
   private Result getGCInterval(UUID scopeUUID) {
     return doRequestWithAuthToken(
-      "GET",
-      String.format(KEY, defaultCustomer.uuid, scopeUUID, GC_CHECK_INTERVAL_KEY),
-      authToken);
+        "GET",
+        String.format(KEY, defaultCustomer.uuid, scopeUUID, GC_CHECK_INTERVAL_KEY),
+        authToken);
   }
 
   private Result deleteGCInterval(UUID universeUUID) {
     return doRequestWithAuthToken(
-      "DELETE",
-      String.format(KEY, defaultCustomer.uuid, universeUUID, GC_CHECK_INTERVAL_KEY),
-      authToken);
+        "DELETE",
+        String.format(KEY, defaultCustomer.uuid, universeUUID, GC_CHECK_INTERVAL_KEY),
+        authToken);
   }
 
   @Test
   public void getConfig_global() {
     Result result =
-      doRequestWithAuthToken(
-        "GET", String.format(GET_CONFIG, defaultCustomer.uuid, GLOBAL_SCOPE_UUID), authToken);
+        doRequestWithAuthToken(
+            "GET", String.format(GET_CONFIG, defaultCustomer.uuid, GLOBAL_SCOPE_UUID), authToken);
     assertEquals(OK, result.status());
     JsonNode actualScope = Json.parse(contentAsString(result));
     assertTrue(actualScope.get("mutableScope").asBoolean());
@@ -156,10 +157,10 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
       setGCInterval(presetIntervalValue, scopeUUID);
     }
     Result result =
-      doRequestWithAuthToken(
-        "GET",
-        String.format(GET_CONFIG_INCL_INHERITED, defaultCustomer.uuid, scopeUUID),
-        authToken);
+        doRequestWithAuthToken(
+            "GET",
+            String.format(GET_CONFIG_INCL_INHERITED, defaultCustomer.uuid, scopeUUID),
+            authToken);
     assertEquals(OK, result.status());
     JsonNode actualScope = Json.parse(contentAsString(result));
     assertTrue(actualScope.get("mutableScope").asBoolean());
@@ -169,7 +170,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     while (configEntries.hasNext()) {
       JsonNode entry = configEntries.next();
       if (GC_CHECK_INTERVAL_KEY.equals(entry.get("key").asText())
-        && !presetIntervalValue.isEmpty()) {
+          && !presetIntervalValue.isEmpty()) {
         assertFalse(contentAsString(result), entry.get("inherited").asBoolean());
       } else {
         assertTrue(contentAsString(result), entry.get("inherited").asBoolean());
@@ -200,15 +201,15 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   public Object[] scopeAndPresetParams() {
-    return new Object[]{
-      new Object[]{ScopeType.GLOBAL, ""},
-      new Object[]{ScopeType.CUSTOMER, ""},
-      new Object[]{ScopeType.PROVIDER, ""},
-      new Object[]{ScopeType.UNIVERSE, ""},
-      new Object[]{ScopeType.GLOBAL, "33 days"},
-      new Object[]{ScopeType.CUSTOMER, "44 seconds"},
-      new Object[]{ScopeType.PROVIDER, "22 hours"},
-      new Object[]{ScopeType.UNIVERSE, "11 minutes"},
+    return new Object[] {
+      new Object[] {ScopeType.GLOBAL, ""},
+      new Object[] {ScopeType.CUSTOMER, ""},
+      new Object[] {ScopeType.PROVIDER, ""},
+      new Object[] {ScopeType.UNIVERSE, ""},
+      new Object[] {ScopeType.GLOBAL, "33 days"},
+      new Object[] {ScopeType.CUSTOMER, "44 seconds"},
+      new Object[] {ScopeType.PROVIDER, "22 hours"},
+      new Object[] {ScopeType.UNIVERSE, "11 minutes"},
     };
   }
 }

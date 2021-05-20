@@ -70,10 +70,9 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
   @Override
   public JsonNode call() {
     ObjectNode response = Json.newObject();
-    String connectString =  String.format("jdbc:postgresql://%s:%d/%s",
-      hostName, port, "postgres");
-    try (Connection conn = DriverManager.getConnection(
-      connectString, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD)) {
+    String connectString = String.format("jdbc:postgresql://%s:%d/%s", hostName, port, "postgres");
+    try (Connection conn =
+        DriverManager.getConnection(connectString, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD)) {
       if (conn == null) {
         response.put("error", "Unable to connect to DB");
       } else {

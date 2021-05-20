@@ -40,11 +40,11 @@ public class WaitForLoadBalance extends AbstractTaskBase {
   private static final int SLEEP_TIME = 10;
 
   // Parameters for data move wait task.
-  public static class Params extends UniverseTaskParams { }
+  public static class Params extends UniverseTaskParams {}
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override

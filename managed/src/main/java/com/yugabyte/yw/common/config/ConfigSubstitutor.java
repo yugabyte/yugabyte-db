@@ -17,20 +17,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 // Note: Moved from RuntimeConfig.apply() written by @spotachev
-/**
- * Replace string template config keys by values from the config.
- */
+/** Replace string template config keys by values from the config. */
 public class ConfigSubstitutor extends PlaceholderSubstitutor {
   private static final Logger LOG = LoggerFactory.getLogger(ConfigSubstitutor.class);
 
   public ConfigSubstitutor(Config config) {
-    super("{{", "}}", key -> {
-      try {
-        return config.getString(key);
-      } catch (ConfigException.Missing e) {
-        LOG.warn("Parameter '{}' not found", key);
-      }
-      return "";
-    });
+    super(
+        "{{",
+        "}}",
+        key -> {
+          try {
+            return config.getString(key);
+          } catch (ConfigException.Missing e) {
+            LOG.warn("Parameter '{}' not found", key);
+          }
+          return "";
+        });
   }
 }

@@ -84,9 +84,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
     }
 
     public static CommunicationPorts exportToCommunicationPorts(
-      CommunicationPorts portsObj,
-      NodeDetails node
-    ) {
+        CommunicationPorts portsObj, NodeDetails node) {
       portsObj.masterHttpPort = node.masterHttpPort;
       portsObj.masterRpcPort = node.masterRpcPort;
       portsObj.tserverHttpPort = node.tserverHttpPort;

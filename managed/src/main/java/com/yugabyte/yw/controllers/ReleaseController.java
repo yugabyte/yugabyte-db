@@ -24,11 +24,9 @@ import java.util.stream.Collectors;
 public class ReleaseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseController.class);
 
-  @Inject
-  ReleaseManager releaseManager;
+  @Inject ReleaseManager releaseManager;
 
-  @Inject
-  ValidatingFormFactory formFactory;
+  @Inject ValidatingFormFactory formFactory;
 
   public Result create(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -44,14 +42,16 @@ public class ReleaseController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-
   public Result list(UUID customerUUID, Boolean includeMetadata) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
     // Filter out any deleted releases
-    Map<String, Object> filtered = releases.entrySet().stream().filter(
-      f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED")
-    ).collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
+    Map<String, Object> filtered =
+        releases
+            .entrySet()
+            .stream()
+            .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
+            .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
     if (includeMetadata) {
       return ApiResponse.success(filtered);
     } else {
@@ -67,7 +67,7 @@ public class ReleaseController extends AuthenticatedController {
     if (m == null) {
       throw new YWServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }
-    formData = (ObjectNode)request().body().asJson();
+    formData = (ObjectNode) request().body().asJson();
     // For now we would only let the user change the state on their releases.
     if (formData.has("state")) {
       m.state = ReleaseManager.ReleaseState.valueOf(formData.get("state").asText());

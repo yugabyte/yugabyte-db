@@ -19,8 +19,7 @@ public class TemplateManager extends DevopsBase {
   private static final String COMMAND_TYPE = "instance";
   public static final String PROVISION_SCRIPT = "provision_instance.py";
 
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
 
   @Override
   protected String getCommandType() {
@@ -30,23 +29,25 @@ public class TemplateManager extends DevopsBase {
   private String getOrCreateProvisionFilePath(UUID providerUUID) {
     File provisionBasePathName = new File(appConfig.getString("yb.storage.path"), "/provision");
     if (!provisionBasePathName.exists() && !provisionBasePathName.mkdirs()) {
-      throw new RuntimeException("Provision path " + provisionBasePathName.getAbsolutePath() + " doesn't exists.");
+      throw new RuntimeException(
+          "Provision path " + provisionBasePathName.getAbsolutePath() + " doesn't exists.");
     }
-    File provisionFilePath = new File(provisionBasePathName.getAbsoluteFile(), providerUUID.toString());
+    File provisionFilePath =
+        new File(provisionBasePathName.getAbsoluteFile(), providerUUID.toString());
     if (provisionFilePath.isDirectory() || provisionFilePath.mkdirs()) {
       return provisionFilePath.getAbsolutePath();
     }
-    throw new RuntimeException("Unable to create provision file path " + provisionFilePath.getAbsolutePath());
+    throw new RuntimeException(
+        "Unable to create provision file path " + provisionFilePath.getAbsolutePath());
   }
 
   public void createProvisionTemplate(
-    AccessKey accessKey,
-    boolean airGapInstall,
-    boolean passwordlessSudoAccess,
-    boolean installNodeExporter,
-    Integer nodeExporterPort,
-    String nodeExporterUser
-  ) {
+      AccessKey accessKey,
+      boolean airGapInstall,
+      boolean passwordlessSudoAccess,
+      boolean installNodeExporter,
+      Integer nodeExporterPort,
+      String nodeExporterUser) {
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String path = getOrCreateProvisionFilePath(accessKey.getProviderUUID());
 
@@ -85,7 +86,8 @@ public class TemplateManager extends DevopsBase {
       commandArgs.add(nodeExporterUser);
     }
 
-    JsonNode result = execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
+    JsonNode result =
+        execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
 
     if (result.get("error") == null) {
       keyInfo.passwordlessSudoAccess = passwordlessSudoAccess;
@@ -100,5 +102,4 @@ public class TemplateManager extends DevopsBase {
       throw new RuntimeException(Json.stringify(result));
     }
   }
-
 }

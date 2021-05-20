@@ -26,16 +26,15 @@ import java.util.Map;
 import java.util.UUID;
 
 public class NodeInstanceController extends AuthenticatedController {
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
-  @Inject
-  Commissioner commissioner;
+  @Inject Commissioner commissioner;
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeInstanceController.class);
 
   /**
    * GET endpoint for Node data
+   *
    * @param customerUuid the customer UUID
    * @param nodeUuid the node UUID
    * @return JSON response with Node data
@@ -53,6 +52,7 @@ public class NodeInstanceController extends AuthenticatedController {
 
   /**
    * GET endpoint for getting all unused nodes under a zone
+   *
    * @param customerUuid the customer UUID
    * @param zoneUuid the zone UUID
    * @return JSON response with list of nodes
@@ -81,6 +81,7 @@ public class NodeInstanceController extends AuthenticatedController {
 
   /**
    * POST endpoint for creating new Node(s)
+   *
    * @param customerUuid the customer UUID
    * @param zoneUuid the zone UUID
    * @return JSON response of newly created Nodes
@@ -89,7 +90,8 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone.getOrBadRequest(zoneUuid);
 
-    Form<NodeInstanceFormData> formData = formFactory.form(NodeInstanceFormData.class).bindFromRequest();
+    Form<NodeInstanceFormData> formData =
+        formFactory.form(NodeInstanceFormData.class).bindFromRequest();
     List<NodeInstanceData> nodeDataList = formData.get().nodes;
     Map<String, NodeInstance> nodes = new HashMap<>();
     try {
@@ -103,17 +105,16 @@ public class NodeInstanceController extends AuthenticatedController {
         auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
         return ApiResponse.success(nodes);
       }
-      return ApiResponse.error(BAD_REQUEST,
-        "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
+      return ApiResponse.error(
+          BAD_REQUEST, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 
   /**
-   * Endpoint deletes the configured instance for a provider.
-   * Since instance name and instance uuid are absent in a pristine (unused) instance
-   * We use IP to query for Instance and delete it
+   * Endpoint deletes the configured instance for a provider. Since instance name and instance uuid
+   * are absent in a pristine (unused) instance We use IP to query for Instance and delete it
    */
   public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
     try {
@@ -155,14 +156,15 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     universe.getNodeOrBadRequest(nodeName);
-    Form<NodeActionFormData> formData = formFactory.form(NodeActionFormData.class).bindFromRequest();
+    Form<NodeActionFormData> formData =
+        formFactory.form(NodeActionFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
     try {
       if (!universe.getUniverseDetails().isUniverseEditable()) {
-        String errMsg= "Node actions cannot be performed on universe UUID " + universeUUID;
+        String errMsg = "Node actions cannot be performed on universe UUID " + universeUUID;
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
@@ -176,41 +178,60 @@ public class NodeInstanceController extends AuthenticatedController {
       // Check deleting/removing a node will not go below the RF
       if (nodeAction == NodeActionType.STOP || nodeAction == NodeActionType.REMOVE) {
         if (!universe.isNodeActionAllowed(nodeName, nodeAction)) {
-          String errMsg = "Cannot " + nodeAction.name() + " " + nodeName + " as it will under replicate the masters.";
+          String errMsg =
+              "Cannot "
+                  + nodeAction.name()
+                  + " "
+                  + nodeName
+                  + " as it will under replicate the masters.";
           LOG.error(errMsg);
           return ApiResponse.error(BAD_REQUEST, errMsg);
         }
       }
 
-      if (nodeAction == NodeActionType.ADD || nodeAction == NodeActionType.START
+      if (nodeAction == NodeActionType.ADD
+          || nodeAction == NodeActionType.START
           || nodeAction == NodeActionType.START_MASTER) {
         taskParams.clusters = universe.getUniverseDetails().clusters;
         taskParams.rootCA = universe.getUniverseDetails().rootCA;
         if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
-          String errMsg = String.format("The certificate %s needs info. Update the cert" +
-                                        " and retry.",
-                                        CertificateInfo.get(taskParams.rootCA).label);
-            LOG.error(errMsg);
-            return ApiResponse.error(BAD_REQUEST, errMsg);
+          String errMsg =
+              String.format(
+                  "The certificate %s needs info. Update the cert" + " and retry.",
+                  CertificateInfo.get(taskParams.rootCA).label);
+          LOG.error(errMsg);
+          return ApiResponse.error(BAD_REQUEST, errMsg);
         }
       }
 
       if (nodeAction == NodeActionType.QUERY) {
-        String errMsg= "Node action not allowed for this action type.";
+        String errMsg = "Node action not allowed for this action type.";
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
 
-      LOG.info("{} Node {} in universe={}: name={} at version={}.",
-               nodeAction.toString(false), nodeName, universe.universeUUID,
-               universe.name, universe.version);
+      LOG.info(
+          "{} Node {} in universe={}: name={} at version={}.",
+          nodeAction.toString(false),
+          nodeName,
+          universe.universeUUID,
+          universe.name,
+          universe.version);
 
       UUID taskUUID = commissioner.submit(nodeAction.getCommissionerTask(), taskParams);
-      CustomerTask.create(customer, universe.universeUUID,
-              taskUUID, CustomerTask.TargetType.Node,
-              nodeAction.getCustomerTask(), nodeName);
-      LOG.info("Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
-              taskUUID, universe.universeUUID, universe.name, nodeName);
+      CustomerTask.create(
+          customer,
+          universe.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Node,
+          nodeAction.getCustomerTask(),
+          nodeName);
+      LOG.info(
+          "Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
+          taskUUID,
+          universe.universeUUID,
+          universe.name,
+          nodeName);
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
       return new YWResults.YWTask(taskUUID).asResult();
     } catch (Exception e) {

@@ -23,10 +23,9 @@ import org.slf4j.LoggerFactory;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
 /**
- * This class implements most (but not all) methods of com.typesafe.config.Config
- * In addition this also provides for mutating the config using `setValue(path, value)`
- * method.
- * Any mutations will be persisted to database.
+ * This class implements most (but not all) methods of com.typesafe.config.Config In addition this
+ * also provides for mutating the config using `setValue(path, value)` method. Any mutations will be
+ * persisted to database.
  */
 public class RuntimeConfig<M extends Model> extends DelegatingConfig {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfig.class);
@@ -44,7 +43,7 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
 
   /**
    * @return modify single path in underlying scoped config in the database and return modified
-   * config view.
+   *     config view.
    */
   public RuntimeConfig<M> setValue(String path, String value) {
     if (scope == null) {

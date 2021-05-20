@@ -31,23 +31,26 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
 
   private TaskInfo submitTask() {
-      Universe u = ModelFactory.createUniverse("test_universe", defaultCustomer.getCustomerId());
-      ManipulateDnsRecordTask task = new ManipulateDnsRecordTask();
-      ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
-      params.universeUUID = u.universeUUID;
-      params.type = DnsManager.DnsCommandType.Create;
-      params.providerUUID = UUID.randomUUID();
-      params.hostedZoneId = "";
-      params.domainNamePrefix = "";
+    Universe u = ModelFactory.createUniverse("test_universe", defaultCustomer.getCustomerId());
+    ManipulateDnsRecordTask task = new ManipulateDnsRecordTask();
+    ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
+    params.universeUUID = u.universeUUID;
+    params.type = DnsManager.DnsCommandType.Create;
+    params.providerUUID = UUID.randomUUID();
+    params.hostedZoneId = "";
+    params.domainNamePrefix = "";
     try {
       UUID taskUUID = commissioner.submit(TaskType.ManipulateDnsRecordTask, params);
       CustomerTask.create(
-          defaultCustomer, u.universeUUID, taskUUID, CustomerTask.TargetType.Universe,
-          CustomerTask.TaskType.Create, "Create Universe");
+          defaultCustomer,
+          u.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Create,
+          "Create Universe");
       waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
@@ -60,10 +63,12 @@ public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
     ShellResponse response = new ShellResponse();
     response.code = 0;
     response.message = "";
-    when(mockDnsManager.manipulateDnsRecord(any(), any(), anyString(), anyString(), anyString())).thenReturn(response);
+    when(mockDnsManager.manipulateDnsRecord(any(), any(), anyString(), anyString(), anyString()))
+        .thenReturn(response);
 
     submitTask();
 
-    verify(mockDnsManager, times(1)).manipulateDnsRecord(any(), any(), anyString(), anyString(), anyString());
+    verify(mockDnsManager, times(1))
+        .manipulateDnsRecord(any(), any(), anyString(), anyString(), anyString());
   }
 }

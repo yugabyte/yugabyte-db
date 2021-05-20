@@ -19,12 +19,10 @@ public class ImportUniverseFormData {
   }
 
   // The name for the universe being imported.
-  @Constraints.Required
-  public String universeName;
+  @Constraints.Required public String universeName;
 
   // The master addresses of the universe to import.
-  @Constraints.Required
-  public String masterAddresses;
+  @Constraints.Required public String masterAddresses;
 
   // The cloud provider type.
   public String cloudProviderType = CloudType.local.name();

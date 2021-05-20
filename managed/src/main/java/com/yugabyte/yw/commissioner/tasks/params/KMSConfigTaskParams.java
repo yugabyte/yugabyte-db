@@ -7,20 +7,20 @@ import com.yugabyte.yw.forms.AbstractTaskParams;
 import java.util.UUID;
 
 public class KMSConfigTaskParams extends AbstractTaskParams {
-    public UUID customerUUID;
+  public UUID customerUUID;
 
-    public UUID configUUID;
+  public UUID configUUID;
 
-    public String kmsConfigName;
+  public String kmsConfigName;
 
-    public KeyProvider kmsProvider;
+  public KeyProvider kmsProvider;
 
-    public ObjectNode providerConfig;
+  public ObjectNode providerConfig;
 
-    public String getName() {
-        if (kmsConfigName != null) return kmsConfigName;
-        KmsConfig config = KmsConfig.get(configUUID);
-        if (config != null) return config.name;
-        return String.format("%s KMS Configuration", this.kmsProvider);
-    }
+  public String getName() {
+    if (kmsConfigName != null) return kmsConfigName;
+    KmsConfig config = KmsConfig.get(configUUID);
+    if (config != null) return config.name;
+    return String.format("%s KMS Configuration", this.kmsProvider);
+  }
 }

@@ -47,8 +47,11 @@ public class UniverseResp {
     this(entity, taskUUID, null);
   }
 
-  public UniverseResp(Universe entity, UUID taskUUID
-    , UniverseResourceDetails resources, String sampleAppCommandTxt) {
+  public UniverseResp(
+      Universe entity,
+      UUID taskUUID,
+      UniverseResourceDetails resources,
+      String sampleAppCommandTxt) {
     universeUUID = entity.universeUUID.toString();
     name = entity.name;
     creationDate = entity.creationDate.toString();

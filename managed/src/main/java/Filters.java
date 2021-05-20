@@ -11,11 +11,9 @@ import java.util.List;
 
 public class Filters implements HttpFilters {
 
-  @Inject
-  CORSFilter corsFilter;
+  @Inject CORSFilter corsFilter;
 
-  @Inject
-  CSRFFilter csrfFilter;
+  @Inject CSRFFilter csrfFilter;
 
   public List<EssentialFilter> getFilters() {
     ArrayList<EssentialFilter> filters = new ArrayList<EssentialFilter>();

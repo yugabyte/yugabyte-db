@@ -39,12 +39,11 @@ public class ScheduleTest extends FakeDBApplication {
   @Test
   public void testCreateBackup() {
     UUID universeUUID = UUID.randomUUID();
-    Schedule schedule = ModelFactory.createScheduleBackup(defaultCustomer.uuid,
-                                                          universeUUID,
-                                                          s3StorageConfig.configUUID);
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
     assertNotNull(schedule);
-    BackupTableParams taskParams = Json.fromJson(schedule.getTaskParams(),
-                                                 BackupTableParams.class);
+    BackupTableParams taskParams = Json.fromJson(schedule.getTaskParams(), BackupTableParams.class);
     assertEquals(s3StorageConfig.configUUID, taskParams.storageConfigUUID);
     assertEquals(Active, schedule.getStatus());
   }
@@ -52,33 +51,33 @@ public class ScheduleTest extends FakeDBApplication {
   @Test
   public void testFetchByScheduleUUID() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Schedule s = ModelFactory.createScheduleBackup(defaultCustomer.uuid,
-                                                   u.universeUUID,
-                                                   s3StorageConfig.configUUID);
+    Schedule s =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
     Schedule schedule = Schedule.getOrBadRequest(s.scheduleUUID);
     assertNotNull(schedule);
   }
 
   @Test
   public void testGetAllActiveSchedulesWithAllActive() {
-    Schedule s1 = ModelFactory.createScheduleBackup(defaultCustomer.uuid,
-                                                    UUID.randomUUID(),
-                                                    s3StorageConfig.configUUID);
-    Schedule s2 = ModelFactory.createScheduleBackup(defaultCustomer.uuid,
-                                                    UUID.randomUUID(),
-                                                    s3StorageConfig.configUUID);
+    Schedule s1 =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, UUID.randomUUID(), s3StorageConfig.configUUID);
+    Schedule s2 =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, UUID.randomUUID(), s3StorageConfig.configUUID);
     List<Schedule> schedules = Schedule.getAllActive();
     assertEquals(2, schedules.size());
   }
 
   @Test
   public void testGetAllActiveSchedulesWithInactive() {
-    Schedule s1 = ModelFactory.createScheduleBackup(defaultCustomer.uuid,
-                                                    UUID.randomUUID(),
-                                                    s3StorageConfig.configUUID);
-    Schedule s2 = ModelFactory.createScheduleBackup(defaultCustomer.uuid,
-                                                    UUID.randomUUID(),
-                                                    s3StorageConfig.configUUID);
+    Schedule s1 =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, UUID.randomUUID(), s3StorageConfig.configUUID);
+    Schedule s2 =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, UUID.randomUUID(), s3StorageConfig.configUUID);
     List<Schedule> schedules = Schedule.getAllActive();
     assertEquals(2, schedules.size());
     s2.stopSchedule();

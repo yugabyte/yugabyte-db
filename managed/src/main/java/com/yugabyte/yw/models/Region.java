@@ -36,8 +36,7 @@ public class Region extends Model {
   private static final String SECURITY_GROUP_KEY = "sg_id";
   private static final String VNET_KEY = "vnet";
 
-  @Id
-  public UUID uuid;
+  @Id public UUID uuid;
 
   @Column(length = 25, nullable = false)
   public String code;
@@ -47,8 +46,7 @@ public class Region extends Model {
   public String name;
 
   // The AMI to be used in this region.
-  @Constraints.Required
-  public String ybImage;
+  @Constraints.Required public String ybImage;
 
   @Column(columnDefinition = "float")
   public double longitude = -90;
@@ -61,7 +59,8 @@ public class Region extends Model {
       throw new IllegalArgumentException("Invalid Latitude Value, it should be between -90 to 90");
     }
     if (longitude < -180 || longitude > 180) {
-      throw new IllegalArgumentException("Invalid Longitude Value, it should be between -180 to 180");
+      throw new IllegalArgumentException(
+          "Invalid Longitude Value, it should be between -180 to 180");
     }
 
     this.latitude = latitude;
@@ -75,13 +74,19 @@ public class Region extends Model {
   @JsonBackReference
   public Provider provider;
 
-  @OneToMany(cascade=CascadeType.ALL)
+  @OneToMany(cascade = CascadeType.ALL)
   public Set<AvailabilityZone> zones;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
   public Boolean active = true;
-  public Boolean isActive() { return active; }
-  public void setActiveFlag(Boolean active) { this.active = active; }
+
+  public Boolean isActive() {
+    return active;
+  }
+
+  public void setActiveFlag(Boolean active) {
+    this.active = active;
+  }
 
   @DbJson
   @Column(columnDefinition = "TEXT")
@@ -150,13 +155,12 @@ public class Region extends Model {
     }
   }
 
-  /**
-   * Query Helper for PlacementRegion with region code
-   */
-  public static final Finder<UUID, Region> find = new Finder<UUID, Region>(Region.class){};
+  /** Query Helper for PlacementRegion with region code */
+  public static final Finder<UUID, Region> find = new Finder<UUID, Region>(Region.class) {};
 
   /**
    * Create new instance of PlacementRegion
+   *
    * @param provider Cloud Provider
    * @param code Unique PlacementRegion Code
    * @param name User Friendly PlacementRegion Name
@@ -167,7 +171,13 @@ public class Region extends Model {
     return create(provider, code, name, ybImage, 0.0, 0.0);
   }
   // Overload create function with lat, long values for OnPrem case
-  public static Region create(Provider provider, String code, String name, String ybImage, double latitude, double longitude) {
+  public static Region create(
+      Provider provider,
+      String code,
+      String name,
+      String ybImage,
+      double latitude,
+      double longitude) {
     Region region = new Region();
     region.provider = provider;
     region.code = code;
@@ -200,10 +210,10 @@ public class Region extends Model {
   }
 
   public static Region get(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    String regionQuery
-        = " select r.uuid, r.code, r.name"
-        + "   from region r join provider p on p.uuid = r.provider_uuid "
-        + "  where r.uuid = :r_uuid and p.uuid = :p_uuid and p.customer_uuid = :c_uuid";
+    String regionQuery =
+        " select r.uuid, r.code, r.name"
+            + "   from region r join provider p on p.uuid = r.provider_uuid "
+            + "  where r.uuid = :r_uuid and p.uuid = :p_uuid and p.customer_uuid = :c_uuid";
 
     RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
     Query<Region> query = Ebean.find(Region.class);
@@ -216,19 +226,22 @@ public class Region extends Model {
 
   /**
    * Fetch Regions with the minimum zone count and having a valid yb server image.
+   *
    * @param customerUUID
    * @param providerUUID
    * @param minZoneCount
    * @return List of PlacementRegion
    */
-  public static List<Region> fetchValidRegions(UUID customerUUID, UUID providerUUID, int minZoneCount) {
-    String regionQuery
-      = " select r.uuid, r.code, r.name"
-      + "   from region r join provider p on p.uuid = r.provider_uuid "
-      + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
-      + "  where p.uuid = :p_uuid and p.customer_uuid = :c_uuid"
-      + "  group by r.uuid "
-      + " having count(zone.uuid) >= " + minZoneCount;
+  public static List<Region> fetchValidRegions(
+      UUID customerUUID, UUID providerUUID, int minZoneCount) {
+    String regionQuery =
+        " select r.uuid, r.code, r.name"
+            + "   from region r join provider p on p.uuid = r.provider_uuid "
+            + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
+            + "  where p.uuid = :p_uuid and p.customer_uuid = :c_uuid"
+            + "  group by r.uuid "
+            + " having count(zone.uuid) >= "
+            + minZoneCount;
 
     RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
     Query<Region> query = Ebean.find(Region.class);
@@ -243,7 +256,8 @@ public class Region extends Model {
     try {
       setActiveFlag(false);
       update();
-      String s = "UPDATE availability_zone set active = :active_flag where region_uuid = :region_uuid";
+      String s =
+          "UPDATE availability_zone set active = :active_flag where region_uuid = :region_uuid";
       SqlUpdate updateStmt = Ebean.createSqlUpdate(s);
       updateStmt.setParameter("active_flag", false);
       updateStmt.setParameter("region_uuid", uuid);
@@ -258,12 +272,12 @@ public class Region extends Model {
 
   public String toString() {
     return Json.newObject()
-      .put("code", code)
-      .put("provider", provider.uuid.toString())
-      .put("name", name)
-      .put("ybImage", ybImage)
-      .put("latitude", latitude)
-      .put("longitude", longitude)
-      .toString();
+        .put("code", code)
+        .put("provider", provider.uuid.toString())
+        .put("name", name)
+        .put("ybImage", ybImage)
+        .put("latitude", latitude)
+        .put("longitude", longitude)
+        .toString();
   }
 }

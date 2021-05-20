@@ -54,8 +54,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CertificateControllerTest extends FakeDBApplication {
-  @Mock
-  play.Configuration mockAppConfig;
+  @Mock play.Configuration mockAppConfig;
 
   private Customer customer;
   private Users user;
@@ -66,7 +65,7 @@ public class CertificateControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
-    for (String cert: test_certs) {
+    for (String cert : test_certs) {
       test_certs_uuids.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs"));
     }
   }
@@ -83,32 +82,31 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   private Result uploadCertificate(UUID customerUUID, ObjectNode bodyJson) {
     String uri = "/api/customers/" + customerUUID + "/certificates";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
-        user.createAuthToken(), bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result updateCertificate(UUID customerUUID, UUID rootUUID, ObjectNode bodyJson) {
-    String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID +
-                 "/update_empty_cert";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(),
-                                                       bodyJson);
+    String uri =
+        "/api/customers/" + customerUUID + "/certificates/" + rootUUID + "/update_empty_cert";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result getCertificate(UUID customerUUID, String label) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + label;
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
-  
+
   private Result deleteCertificate(UUID customerUUID, UUID certUUID) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + certUUID.toString();
     return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
   }
 
-  private Result createClientCertificate(UUID customerUUID, UUID rootUUID,
-                                         ObjectNode bodyJson) {
+  private Result createClientCertificate(UUID customerUUID, UUID rootUUID, ObjectNode bodyJson) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID;
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(),
-                                                       bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result getRootCertificate(UUID customerUUID, UUID rootUUID) {
@@ -127,12 +125,11 @@ public class CertificateControllerTest extends FakeDBApplication {
     List<String> result_labels = new ArrayList<>();
     for (LinkedHashMap e : certs) {
       if (e.get("uuid").toString().equals(test_certs_uuids.get(0).toString())) {
-          assertEquals(e.get("inUse"), true);
-          assertNotEquals(e.get("universeDetails"), new ArrayList<>());
-        }
-        else {
-          assertEquals(e.get("inUse"), false);
-          assertEquals(e.get("universeDetails"), new ArrayList<>());
+        assertEquals(e.get("inUse"), true);
+        assertNotEquals(e.get("universeDetails"), new ArrayList<>());
+      } else {
+        assertEquals(e.get("inUse"), false);
+        assertEquals(e.get("universeDetails"), new ArrayList<>());
       }
       result_uuids.add(UUID.fromString(e.get("uuid").toString()));
       result_labels.add(e.get("label").toString());
@@ -150,16 +147,17 @@ public class CertificateControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
   }
-  
+
   @Test
   public void testDeleteInvalidCertificate() {
-	UUID uuid=UUID.randomUUID();
-  Result result = assertThrows(YWServiceException.class,
-        () -> deleteCertificate(customer.uuid, uuid)).getResult();
-	JsonNode json = Json.parse(contentAsString(result));
-	assertEquals(BAD_REQUEST, result.status());
+    UUID uuid = UUID.randomUUID();
+    Result result =
+        assertThrows(YWServiceException.class, () -> deleteCertificate(customer.uuid, uuid))
+            .getResult();
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(BAD_REQUEST, result.status());
   }
-  
+
   @Test
   public void testGetCertificate() {
     UUID cert_uuid = test_certs_uuids.get(0);
@@ -172,25 +170,26 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testUploadCertificate() {
-    String cert_content = "-----BEGIN CERTIFICATE-----\n" +
-      "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n" +
-      "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n" +
-      "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n" +
-      "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n" +
-      "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n" +
-      "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n" +
-      "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n" +
-      "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n" +
-      "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n" +
-      "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n" +
-      "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n" +
-      "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n" +
-      "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n" +
-      "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n" +
-      "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n" +
-      "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n" +
-      "jZPSP3OuL0IXk96wFHScay8S\n" +
-      "-----END CERTIFICATE-----\n";
+    String cert_content =
+        "-----BEGIN CERTIFICATE-----\n"
+            + "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n"
+            + "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n"
+            + "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n"
+            + "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n"
+            + "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n"
+            + "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n"
+            + "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n"
+            + "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n"
+            + "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n"
+            + "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n"
+            + "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n"
+            + "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n"
+            + "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n"
+            + "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n"
+            + "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n"
+            + "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n"
+            + "jZPSP3OuL0IXk96wFHScay8S\n"
+            + "-----END CERTIFICATE-----\n";
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
     bodyJson.put("certContent", cert_content);
@@ -199,8 +198,9 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result = assertThrows(YWServiceException.class,
-        () -> uploadCertificate(customer.uuid, bodyJson)).getResult();
+    Result result =
+        assertThrows(YWServiceException.class, () -> uploadCertificate(customer.uuid, bodyJson))
+            .getResult();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
@@ -215,33 +215,35 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result = assertThrows(YWServiceException.class,
-        () -> uploadCertificate(customer.uuid, bodyJson)).getResult();
+    Result result =
+        assertThrows(YWServiceException.class, () -> uploadCertificate(customer.uuid, bodyJson))
+            .getResult();
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testUploadCustomCertificate() {
-    String cert_content = "-----BEGIN CERTIFICATE-----\n" +
-      "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n" +
-      "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n" +
-      "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n" +
-      "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n" +
-      "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n" +
-      "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n" +
-      "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n" +
-      "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n" +
-      "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n" +
-      "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n" +
-      "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n" +
-      "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n" +
-      "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n" +
-      "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n" +
-      "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n" +
-      "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n" +
-      "jZPSP3OuL0IXk96wFHScay8S\n" +
-      "-----END CERTIFICATE-----\n";
+    String cert_content =
+        "-----BEGIN CERTIFICATE-----\n"
+            + "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n"
+            + "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n"
+            + "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n"
+            + "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n"
+            + "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n"
+            + "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n"
+            + "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n"
+            + "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n"
+            + "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n"
+            + "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n"
+            + "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n"
+            + "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n"
+            + "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n"
+            + "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n"
+            + "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n"
+            + "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n"
+            + "jZPSP3OuL0IXk96wFHScay8S\n"
+            + "-----END CERTIFICATE-----\n";
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
     bodyJson.put("certContent", cert_content);
@@ -272,8 +274,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     Date date = new Date();
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
-    CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
-                           TestHelper.TMP_PATH + "/ca.crt", null);
+    CertificateInfo.create(
+        certUUID, customer.uuid, "test", date, date, TestHelper.TMP_PATH + "/ca.crt", null);
     CertificateParams.CustomCertInfo customCertInfo =
         CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNull(customCertInfo);
@@ -304,8 +306,14 @@ public class CertificateControllerTest extends FakeDBApplication {
     customCertInfo.nodeKeyPath = "nodeKeyPath";
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
-    CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
-                           TestHelper.TMP_PATH + "/ca.crt", customCertInfo);
+    CertificateInfo.create(
+        certUUID,
+        customer.uuid,
+        "test",
+        date,
+        date,
+        TestHelper.TMP_PATH + "/ca.crt",
+        customCertInfo);
     customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNotNull(customCertInfo);
     ObjectNode bodyJson = Json.newObject();
@@ -319,40 +327,43 @@ public class CertificateControllerTest extends FakeDBApplication {
     certJson.put("nodeCertPath", "/tmp/nodeCertPath");
     certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
     bodyJson.put("customCertInfo", certJson);
-    Result result = assertThrows(YWServiceException.class,
-        () -> updateCertificate(customer.uuid, certUUID, bodyJson)).getResult();
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> updateCertificate(customer.uuid, certUUID, bodyJson))
+            .getResult();
     assertEquals(BAD_REQUEST, result.status());
   }
 
   @Test
   public void testCreateClientCertificate() {
-    String cert_content = "-----BEGIN CERTIFICATE-----\n" +
-      "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n" +
-      "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n" +
-      "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n" +
-      "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n" +
-      "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n" +
-      "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n" +
-      "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n" +
-      "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n" +
-      "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n" +
-      "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n" +
-      "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n" +
-      "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n" +
-      "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n" +
-      "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n" +
-      "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n" +
-      "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n" +
-      "jZPSP3OuL0IXk96wFHScay8S\n" +
-      "-----END CERTIFICATE-----\n";
+    String cert_content =
+        "-----BEGIN CERTIFICATE-----\n"
+            + "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n"
+            + "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n"
+            + "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n"
+            + "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n"
+            + "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n"
+            + "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n"
+            + "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n"
+            + "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n"
+            + "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n"
+            + "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n"
+            + "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n"
+            + "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n"
+            + "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n"
+            + "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n"
+            + "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n"
+            + "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n"
+            + "jZPSP3OuL0IXk96wFHScay8S\n"
+            + "-----END CERTIFICATE-----\n";
     ObjectNode bodyJson = Json.newObject();
     Date date = new Date();
     bodyJson.put("username", "test");
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certContent", cert_content);
-    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
-                                                 "/tmp");
+    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid, "/tmp");
     Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -365,8 +376,7 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetRootCertificate() {
-    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
-                                                 "/tmp");
+    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid, "/tmp");
     Result result = getRootCertificate(customer.uuid, rootCA);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -374,5 +384,4 @@ public class CertificateControllerTest extends FakeDBApplication {
     assertNotNull(rootCert);
     assertAuditEntry(1, customer.uuid);
   }
-
 }

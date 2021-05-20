@@ -28,8 +28,7 @@ public class NodeDetailsResp {
   @JsonIgnoreProperties("allowedActions")
   public final NodeDetails delegate;
 
-  @JsonIgnore
-  public final Universe universe;
+  @JsonIgnore public final Universe universe;
 
   public NodeDetailsResp(NodeDetails nodeDetails, Universe universe) {
     this.delegate = nodeDetails;
@@ -39,8 +38,10 @@ public class NodeDetailsResp {
   @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   public Set<NodeActionType> getAllowedActions() {
     Set<NodeActionType> allowedActions = new HashSet<>(delegate.getStaticAllowedActions());
-    if (universe != null && delegate.state == NodeDetails.NodeState.Live && !delegate.isMaster
-      && Util.areMastersUnderReplicated(delegate, universe)) {
+    if (universe != null
+        && delegate.state == NodeDetails.NodeState.Live
+        && !delegate.isMaster
+        && Util.areMastersUnderReplicated(delegate, universe)) {
       allowedActions.add(NodeActionType.START_MASTER);
     }
     return allowedActions;

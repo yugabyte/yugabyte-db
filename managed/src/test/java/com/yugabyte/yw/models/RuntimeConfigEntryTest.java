@@ -133,18 +133,22 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
   private void checkAll(UUID scopeUuid) {
     List<RuntimeConfigEntry> entryList = RuntimeConfigEntry.getAll(scopeUuid);
     assertSame(2, entryList.size());
-    entryList.forEach(runtimeConfigEntry -> {
-      switch (runtimeConfigEntry.getPath()) {
-        case YB_SB_START_YEAR_KEY:
-          assertEquals("2020", runtimeConfigEntry.getValue());
-          break;
-        case YB_SB_TIMEZONE_KEY:
-          assertEquals("PST", runtimeConfigEntry.getValue());
-          break;
-        default:
-          fail("Unexpected path " + runtimeConfigEntry.getPath()
-            + "for config entry: " + runtimeConfigEntry);
-      }
-    });
+    entryList.forEach(
+        runtimeConfigEntry -> {
+          switch (runtimeConfigEntry.getPath()) {
+            case YB_SB_START_YEAR_KEY:
+              assertEquals("2020", runtimeConfigEntry.getValue());
+              break;
+            case YB_SB_TIMEZONE_KEY:
+              assertEquals("PST", runtimeConfigEntry.getValue());
+              break;
+            default:
+              fail(
+                  "Unexpected path "
+                      + runtimeConfigEntry.getPath()
+                      + "for config entry: "
+                      + runtimeConfigEntry);
+          }
+        });
   }
 }

@@ -32,22 +32,30 @@ public class AccessKey extends Model {
     public boolean skipProvisioning = false;
   }
 
-  @EmbeddedId
-  @Constraints.Required
-  public AccessKeyId idKey;
+  @EmbeddedId @Constraints.Required public AccessKeyId idKey;
 
   @JsonBackReference
-  public String getKeyCode() { return this.idKey.keyCode; }
+  public String getKeyCode() {
+    return this.idKey.keyCode;
+  }
+
   @JsonBackReference
-  public UUID getProviderUUID() { return this.idKey.providerUUID; }
+  public UUID getProviderUUID() {
+    return this.idKey.providerUUID;
+  }
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private KeyInfo keyInfo;
 
-  public void setKeyInfo(KeyInfo info) { this.keyInfo = info; }
-  public KeyInfo getKeyInfo() { return this.keyInfo; }
+  public void setKeyInfo(KeyInfo info) {
+    this.keyInfo = info;
+  }
+
+  public KeyInfo getKeyInfo() {
+    return this.keyInfo;
+  }
 
   public static AccessKey create(UUID providerUUID, String keyCode, KeyInfo keyInfo) {
     AccessKey accessKey = new AccessKey();
@@ -58,7 +66,7 @@ public class AccessKey extends Model {
   }
 
   private static final Finder<AccessKeyId, AccessKey> find =
-    new Finder<AccessKeyId, AccessKey>(AccessKey.class) {};
+      new Finder<AccessKeyId, AccessKey>(AccessKey.class) {};
 
   public static AccessKey get(AccessKeyId accessKeyId) {
     return find.byId(accessKeyId);

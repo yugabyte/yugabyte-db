@@ -36,7 +36,6 @@ import static play.test.Helpers.contentAsString;
 import static org.junit.Assert.assertThrows;
 import static play.test.Helpers.*;
 
-
 public class PlatformInstanceControllerTest extends FakeDBApplication {
   Customer customer;
   Users user;
@@ -49,8 +48,8 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
 
   private String createClusterKey() {
     String authToken = user.createAuthToken();
-    Result createClusterKeyResult =  FakeApiHelper
-      .doRequestWithAuthToken("GET", "/api/settings/ha/generate_key", authToken);
+    Result createClusterKeyResult =
+        FakeApiHelper.doRequestWithAuthToken("GET", "/api/settings/ha/generate_key", authToken);
     assertOk(createClusterKeyResult);
 
     return Json.parse(contentAsString(createClusterKeyResult)).get("cluster_key").asText();
@@ -61,39 +60,39 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     String uri = "/api/settings/ha/config";
     String clusterKey = createClusterKey();
     JsonNode body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
     assertOk(createResult);
 
     return Json.parse(contentAsString(createResult));
   }
 
   private Result createPlatformInstance(
-    UUID configUUID,
-    String address,
-    boolean isLocal,
-    boolean isLeader
-  ) {
+      UUID configUUID, String address, boolean isLocal, boolean isLeader) {
     String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString() + "/instance";
-    JsonNode body = Json.newObject()
-      .put("address", address)
-      .put("is_local", isLocal)
-      .put("is_leader", isLeader);
+    JsonNode body =
+        Json.newObject()
+            .put("address", address)
+            .put("is_local", isLocal)
+            .put("is_leader", isLeader);
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
   }
 
   private Result deletePlatformInstance(UUID configUUID, UUID instanceUUID) {
     String authToken = user.createAuthToken();
-    String uri = "/api/settings/ha/config/" + configUUID.toString()
-      + "/instance/" + instanceUUID.toString();
+    String uri =
+        "/api/settings/ha/config/" + configUUID.toString() + "/instance/" + instanceUUID.toString();
     return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, authToken);
   }
 
   private Result demotePlatformInstance(UUID configUUID, UUID instanceUUID) {
     String authToken = user.createAuthToken();
-    String uri = "/api/settings/ha/config/" + configUUID.toString()
-      + "/instance/" + instanceUUID.toString() + "/demote";
+    String uri =
+        "/api/settings/ha/config/"
+            + configUUID.toString()
+            + "/instance/"
+            + instanceUUID.toString()
+            + "/demote";
     return FakeApiHelper.doRequestWithAuthToken("POST", uri, authToken);
   }
 
@@ -112,17 +111,14 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreateRemotePlatformInstanceBeforeLocal() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = assertThrows(YWServiceException.class,
-      () -> createPlatformInstance(
-        configUUID,
-        "http://abc.com",
-        false,
-        true
-      )).getResult();
+    Result createResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> createPlatformInstance(configUUID, "http://abc.com", false, true))
+            .getResult();
     assertBadRequest(
-      createResult,
-      "Cannot create a remote platform instance before creating local platform instance"
-    );
+        createResult,
+        "Cannot create a remote platform instance before creating local platform instance");
   }
 
   @Test
@@ -131,17 +127,13 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
     Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, false);
     assertOk(createResult);
-    createResult = assertThrows(YWServiceException.class,
-      () -> createPlatformInstance(
-        configUUID,
-        "http://abcdef.com",
-        false,
-        false)
-    ).getResult();
+    createResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> createPlatformInstance(configUUID, "http://abcdef.com", false, false))
+            .getResult();
     assertBadRequest(
-      createResult,
-      "Cannot create a remote platform instance on a follower platform instance"
-    );
+        createResult, "Cannot create a remote platform instance on a follower platform instance");
   }
 
   @Test
@@ -160,13 +152,11 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
     Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, true);
     assertOk(createResult);
-    createResult = assertThrows(YWServiceException.class,
-      () -> createPlatformInstance(
-        configUUID,
-        "http://abcdef.com",
-        true,
-        false
-      )).getResult();
+    createResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> createPlatformInstance(configUUID, "http://abcdef.com", true, false))
+            .getResult();
     assertBadRequest(createResult, "Local platform instance already exists");
   }
 
@@ -176,13 +166,11 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
     Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, true);
     assertOk(createResult);
-    createResult = assertThrows(YWServiceException.class,
-      () -> createPlatformInstance(
-        configUUID,
-        "http://abcdef.com",
-        false,
-        true)
-    ).getResult();
+    createResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> createPlatformInstance(configUUID, "http://abcdef.com", false, true))
+            .getResult();
     assertBadRequest(createResult, "Leader platform instance already exists");
   }
 
@@ -194,8 +182,10 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     UUID instanceUUID = UUID.fromString(instanceJson.get("uuid").asText());
-    Result deleteResult = assertThrows(YWServiceException.class,
-      () -> deletePlatformInstance(configUUID, instanceUUID)).getResult();
+    Result deleteResult =
+        assertThrows(
+                YWServiceException.class, () -> deletePlatformInstance(configUUID, instanceUUID))
+            .getResult();
     assertBadRequest(deleteResult, "Cannot delete local instance");
   }
 
@@ -221,8 +211,10 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     UUID instanceUUID = UUID.fromString(instanceJson.get("uuid").asText());
-    Result deleteResult = assertThrows(YWServiceException.class,
-      () -> deletePlatformInstance(configUUID, instanceUUID)).getResult();
+    Result deleteResult =
+        assertThrows(
+                YWServiceException.class, () -> deletePlatformInstance(configUUID, instanceUUID))
+            .getResult();
     assertBadRequest(deleteResult, "Follower platform instance cannot delete platform instances");
   }
 
@@ -230,13 +222,11 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testInvalidAddress() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = assertThrows(YWServiceException.class,
-      () -> createPlatformInstance(
-        configUUID,
-        "http://abc.com::abc",
-        true,
-        false
-      )).getResult();
+    Result createResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> createPlatformInstance(configUUID, "http://abc.com::abc", true, false))
+            .getResult();
     assertBadRequest(createResult, "");
     JsonNode node = Json.parse(contentAsString(createResult));
     assertErrorNodeValue(node, "address", "Invalid URL provided");
@@ -245,7 +235,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testPromoteInstanceBackupFileNonexistent() {
     when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
-      .thenReturn(new ShellResponse());
+        .thenReturn(new ShellResponse());
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     UUID configUUID = config.getUUID();
@@ -256,23 +246,24 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     UUID instanceUUID = instance.getUUID();
     PlatformInstance remoteLeader = PlatformInstance.create(config, "http://def.com", true, false);
     remoteLeader.save();
-    String uri = String.format(
-      "/api/settings/ha/config/%s/instance/%s/promote",
-      configUUID.toString(),
-      instanceUUID.toString()
-    );
+    String uri =
+        String.format(
+            "/api/settings/ha/config/%s/instance/%s/promote",
+            configUUID.toString(), instanceUUID.toString());
     String authToken = user.createAuthToken();
     JsonNode body = Json.newObject().put("backup_file", "/foo/bar");
-    Result promoteResult = assertThrows(YWServiceException.class,
-      () -> FakeApiHelper
-        .doRequestWithAuthTokenAndBody("POST", uri, authToken, body)).getResult();
+    Result promoteResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body))
+            .getResult();
     assertBadRequest(promoteResult, "Could not find backup file");
   }
 
   @Test
   public void testPromoteInstanceNoLeader() {
     when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
-      .thenReturn(new ShellResponse());
+        .thenReturn(new ShellResponse());
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     UUID configUUID = config.getUUID();
@@ -281,16 +272,17 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     PlatformInstance instance = Json.fromJson(instanceJson, PlatformInstance.class);
     UUID instanceUUID = instance.getUUID();
-    String uri = String.format(
-      "/api/settings/ha/config/%s/instance/%s/promote",
-      configUUID.toString(),
-      instanceUUID.toString()
-    );
+    String uri =
+        String.format(
+            "/api/settings/ha/config/%s/instance/%s/promote",
+            configUUID.toString(), instanceUUID.toString());
     String authToken = user.createAuthToken();
     JsonNode body = Json.newObject().put("backup_file", "/foo/bar");
-    Result promoteResult = assertThrows(YWServiceException.class,
-      () -> FakeApiHelper
-        .doRequestWithAuthTokenAndBody("POST", uri, authToken, body)).getResult();
+    Result promoteResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body))
+            .getResult();
     assertBadRequest(promoteResult, "Could not find leader instance");
   }
 }

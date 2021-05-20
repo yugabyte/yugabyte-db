@@ -30,11 +30,9 @@ public class HAController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(HAController.class);
 
-  @Inject
-  private PlatformReplicationManager replicationManager;
+  @Inject private PlatformReplicationManager replicationManager;
 
-  @Inject
-  private FormFactory formFactory;
+  @Inject private FormFactory formFactory;
 
   // TODO: (Daniel) - This could be a task
   public Result createHAConfig() {

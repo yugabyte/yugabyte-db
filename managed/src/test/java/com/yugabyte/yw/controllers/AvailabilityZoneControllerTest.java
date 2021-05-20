@@ -46,10 +46,9 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
-    defaultRegion = Region.create(defaultProvider,
-                                  "default-region",
-                                  "Default PlacementRegion",
-                                  "default-image");
+    defaultRegion =
+        Region.create(
+            defaultProvider, "default-region", "Default PlacementRegion", "default-image");
   }
 
   @Test
@@ -68,7 +67,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
   @Test
   public void testListAvailabilityZonesWithValidProviderRegionUUID() {
-    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "PlacementAZ-1", "PlacementAZ One", "Subnet 1");
+    AvailabilityZone az =
+        AvailabilityZone.create(defaultRegion, "PlacementAZ-1", "PlacementAZ One", "Subnet 1");
     JsonNode json = doListAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, OK);
 
     assertEquals(1, json.size());
@@ -103,8 +103,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     azs.add(az2);
     azRequestJson.set("availabilityZones", azs);
 
-    JsonNode json = doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid,
-        azRequestJson, OK);
+    JsonNode json =
+        doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, azRequestJson, OK);
 
     assertEquals(2, json.size());
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -124,8 +124,9 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAvailabilityZoneWithInvalidTopFormParams() {
-    JsonNode json = doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid,
-        Json.newObject(), BAD_REQUEST);
+    JsonNode json =
+        doCreateAZAndVerifyResult(
+            defaultProvider.uuid, defaultRegion.uuid, Json.newObject(), BAD_REQUEST);
     assertErrorNodeValue(json, "availabilityZones", "This field is required");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -133,10 +134,11 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteAvailabilityZoneWithInvalidParams() {
     UUID randomUUID = UUID.randomUUID();
-    JsonNode json = doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid,
-        randomUUID, BAD_REQUEST);
-    Assert.assertThat(json.get("error").toString(),
-            CoreMatchers.containsString("Invalid Region/AZ UUID:" + randomUUID));
+    JsonNode json =
+        doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid, randomUUID, BAD_REQUEST);
+    Assert.assertThat(
+        json.get("error").toString(),
+        CoreMatchers.containsString("Invalid Region/AZ UUID:" + randomUUID));
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -151,30 +153,47 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     assertFalse(az.active);
   }
 
-  private JsonNode doDeleteAZAndVerify(UUID providerUUID, UUID regionUUID,
-                                       UUID zoneUUID, int expectedStatus) {
-    String uri = "/api/customers/" + defaultCustomer.uuid +
-        "/providers/" + providerUUID + "/regions/" + regionUUID + "/zones/" + zoneUUID;
+  private JsonNode doDeleteAZAndVerify(
+      UUID providerUUID, UUID regionUUID, UUID zoneUUID, int expectedStatus) {
+    String uri =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/providers/"
+            + providerUUID
+            + "/regions/"
+            + regionUUID
+            + "/zones/"
+            + zoneUUID;
     Result result = FakeApiHelper.doRequest("DELETE", uri);
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
   }
 
   private JsonNode doListAZAndVerifyResult(UUID cloudProvider, UUID region, int expectedStatus) {
-    String uri = "/api/customers/" + defaultCustomer.uuid +
-        "/providers/" + cloudProvider + "/regions/" + region + "/zones";
+    String uri =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/providers/"
+            + cloudProvider
+            + "/regions/"
+            + region
+            + "/zones";
     Result result = FakeApiHelper.doRequest("GET", uri);
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
   }
 
-  private JsonNode doCreateAZAndVerifyResult(UUID cloudProvider,
-                                             UUID region,
-                                             ObjectNode azRequestJson,
-                                             int expectedStatus) {
+  private JsonNode doCreateAZAndVerifyResult(
+      UUID cloudProvider, UUID region, ObjectNode azRequestJson, int expectedStatus) {
 
-    String uri = "/api/customers/" + defaultCustomer.uuid +
-        "/providers/" + cloudProvider + "/regions/" + region + "/zones";
+    String uri =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/providers/"
+            + cloudProvider
+            + "/regions/"
+            + region
+            + "/zones";
 
     Result result;
     if (azRequestJson != null) {

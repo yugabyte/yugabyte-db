@@ -39,7 +39,7 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -50,8 +50,12 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", enable=" +
-        taskParams().enable + ")";
+    return super.getName()
+        + "("
+        + taskParams().universeUUID
+        + ", enable="
+        + taskParams().enable
+        + ")";
   }
 
   @Override

@@ -38,11 +38,11 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
   private static final int WAIT_EACH_ATTEMPT_MS = 250;
 
   // Parameters for tserver heartbeat wait task.
-  public static class Params extends UniverseTaskParams { }
+  public static class Params extends UniverseTaskParams {}
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -78,8 +78,12 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
           break;
         }
 
-        LOG.info("Waiting to make sure {} tservers are heartbeating to master leader; retrying " +
-                 "after {}ms. Tried {} times.", numTservers, WAIT_EACH_ATTEMPT_MS, numTries);
+        LOG.info(
+            "Waiting to make sure {} tservers are heartbeating to master leader; retrying "
+                + "after {}ms. Tried {} times.",
+            numTservers,
+            WAIT_EACH_ATTEMPT_MS,
+            numTries);
 
         Thread.sleep(WAIT_EACH_ATTEMPT_MS);
         numTries++;

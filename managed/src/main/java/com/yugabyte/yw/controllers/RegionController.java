@@ -31,32 +31,29 @@ import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-
 public class RegionController extends AuthenticatedController {
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
-  @Inject
-  ConfigHelper configHelper;
+  @Inject ConfigHelper configHelper;
 
-  @Inject
-  NetworkManager networkManager;
+  @Inject NetworkManager networkManager;
 
-  @Inject
-  CloudQueryHelper cloudQueryHelper;
+  @Inject CloudQueryHelper cloudQueryHelper;
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
-  // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ complaint
+  // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ
+  // complaint
 
   /**
    * GET endpoint for listing regions
+   *
    * @return JSON response with region's
    */
   public Result list(UUID customerUUID, UUID providerUUID) {
     List<Region> regionList = null;
 
     try {
-      int minAZCountNeeded =  1;
+      int minAZCountNeeded = 1;
       regionList = Region.fetchValidRegions(customerUUID, providerUUID, minAZCountNeeded);
     } catch (Exception e) {
       LOG.error(e.getMessage());
@@ -67,6 +64,7 @@ public class RegionController extends AuthenticatedController {
 
   /**
    * GET endpoint for listing all regions across all providers
+   *
    * @return JSON response with RegionList joined with provider Name, uuid, code
    */
   public Result listAllRegions(UUID customerUUID) {
@@ -85,6 +83,7 @@ public class RegionController extends AuthenticatedController {
 
   /**
    * POST endpoint for creating new region
+   *
    * @return JSON response of newly created region
    */
   public Result create(UUID customerUUID, UUID providerUUID) {
@@ -115,9 +114,10 @@ public class RegionController extends AuthenticatedController {
         JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
         region = Region.createWithMetadata(provider, regionCode, metaData);
 
-        if (provider.code.equals("gcp")){
-          JsonNode zoneInfo = cloudQueryHelper.getZones(
-              region.uuid, provider.getConfig().get("CUSTOM_GCE_NETWORK"));
+        if (provider.code.equals("gcp")) {
+          JsonNode zoneInfo =
+              cloudQueryHelper.getZones(
+                  region.uuid, provider.getConfig().get("CUSTOM_GCE_NETWORK"));
           if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
             region.delete();
             String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
@@ -125,7 +125,8 @@ public class RegionController extends AuthenticatedController {
           }
           // TODO(bogdan): change this and add test...
           List<String> zones = Json.fromJson(zoneInfo.get(regionCode).get("zones"), List.class);
-          List<String> subnetworks = Json.fromJson(zoneInfo.get(regionCode).get("subnetworks"), List.class);
+          List<String> subnetworks =
+              Json.fromJson(zoneInfo.get(regionCode).get("subnetworks"), List.class);
           if (subnetworks.size() != 1) {
             region.delete();
             throw new RuntimeException(
@@ -133,9 +134,10 @@ public class RegionController extends AuthenticatedController {
           }
           String subnet = subnetworks.get(0);
           region.zones = new HashSet<>();
-          zones.forEach(zone -> {
-            region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
-          });
+          zones.forEach(
+              zone -> {
+                region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
+              });
         } else {
           // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
           // TODO(bogdan): is this even used???
@@ -143,22 +145,23 @@ public class RegionController extends AuthenticatedController {
           JsonNode vpcInfo = networkManager.bootstrap(
               region.uuid, null, form.hostVpcId, form.destVpcId, form.hostVpcRegion);
           */
-          JsonNode vpcInfo = networkManager.bootstrap(
-              region.uuid, null, null /* customPayload */);
+          JsonNode vpcInfo = networkManager.bootstrap(region.uuid, null, null /* customPayload */);
           if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
             region.delete();
             return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
           }
-          Map<String, String> zoneSubnets = Json.fromJson(vpcInfo.get(regionCode).get("zones"),
-              Map.class);
+          Map<String, String> zoneSubnets =
+              Json.fromJson(vpcInfo.get(regionCode).get("zones"), Map.class);
           region.zones = new HashSet<>();
-          zoneSubnets.forEach((zone, subnet) -> {
-            region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
-          });
+          zoneSubnets.forEach(
+              (zone, subnet) -> {
+                region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
+              });
         }
       } else {
-        region = Region.create(provider, regionCode, form.name, form.ybImage, form.latitude,
-            form.longitude);
+        region =
+            Region.create(
+                provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
       }
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(region);
@@ -170,11 +173,12 @@ public class RegionController extends AuthenticatedController {
 
   /**
    * DELETE endpoint for deleting a existing Region.
+   *
    * @param customerUUID Customer UUID
    * @param providerUUID Provider UUID
    * @param regionUUID Region UUID
    * @return JSON response on whether or not delete region was sucessful or not.
-     */
+   */
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
@@ -185,7 +189,8 @@ public class RegionController extends AuthenticatedController {
     try {
       region.disableRegionAndZones();
     } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Region UUID: " + regionUUID);
+      return ApiResponse.error(
+          INTERNAL_SERVER_ERROR, "Unable to delete Region UUID: " + regionUUID);
     }
 
     ObjectNode responseJson = Json.newObject();

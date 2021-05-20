@@ -41,12 +41,10 @@ import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.*;
 
-
 @RunWith(MockitoJUnitRunner.class)
 public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
 
   Universe defaultUniverse;
 
@@ -56,20 +54,22 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   String nodePrefix1, nodePrefix2, nodePrefix3;
   String ns, ns1, ns2, ns3;
 
-  Map<String, String> config= new HashMap<String, String>();
+  Map<String, String> config = new HashMap<String, String>();
   Map<String, String> config1 = new HashMap<String, String>();
   Map<String, String> config2 = new HashMap<String, String>();
   Map<String, String> config3 = new HashMap<String, String>();
 
-  private void setupUniverseMultiAZ(boolean setMasters, boolean enabledYEDIS,
-                                    boolean setNamespace) {
+  private void setupUniverseMultiAZ(
+      boolean setMasters, boolean enabledYEDIS, boolean setNamespace) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
-    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
-        10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
+    InstanceType i =
+        InstanceType.upsert(
+            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
@@ -77,11 +77,12 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "1.0.0";
     userIntent.enableYEDIS = enabledYEDIS;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
-                                              Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     nodePrefix1 = String.format("%s-%s", nodePrefix, az1.code);
     nodePrefix2 = String.format("%s-%s", nodePrefix, az2.code);
     nodePrefix3 = String.format("%s-%s", nodePrefix, az3.code);
@@ -115,29 +116,31 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     }
 
     String podInfosMessage =
-        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\"," +
-            " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"}," +
-            " \"metadata\": {\"namespace\": \"%1$s\"}}," +
-        "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}," +
-            " \"metadata\": {\"namespace\": \"%1$s\"}}]}";
-    ShellResponse shellResponse1 =
-        ShellResponse.create(0, String.format(podInfosMessage, ns1));
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(ns1))).thenReturn(shellResponse1);
-    ShellResponse shellResponse2 =
-        ShellResponse.create(0, String.format(podInfosMessage, ns2));
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(ns2))).thenReturn(shellResponse2);
-    ShellResponse shellResponse3 =
-        ShellResponse.create(0, String.format(podInfosMessage, ns3));
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(ns3))).thenReturn(shellResponse3);
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\","
+            + " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \"%1$s\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \"%1$s\"}}]}";
+    ShellResponse shellResponse1 = ShellResponse.create(0, String.format(podInfosMessage, ns1));
+    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(ns1)))
+        .thenReturn(shellResponse1);
+    ShellResponse shellResponse2 = ShellResponse.create(0, String.format(podInfosMessage, ns2));
+    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(ns2)))
+        .thenReturn(shellResponse2);
+    ShellResponse shellResponse3 = ShellResponse.create(0, String.format(podInfosMessage, ns3));
+    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(ns3)))
+        .thenReturn(shellResponse3);
   }
 
   private void setupUniverse(boolean setMasters, boolean enabledYEDIS, boolean setNamespace) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
-    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
-        10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
+    InstanceType i =
+        InstanceType.upsert(
+            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
@@ -145,11 +148,12 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "1.0.0";
     userIntent.enableYEDIS = enabledYEDIS;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
-                                              Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
 
     ns = nodePrefix;
     if (setNamespace) {
@@ -165,31 +169,44 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     ShellResponse response = new ShellResponse();
     response.message =
-        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}," +
-            " \"metadata\": {\"namespace\": \"" + ns + "\"}}," +
-            "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}," +
-            " \"metadata\": {\"namespace\": \"" + ns + "\"}}," +
-            "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-master-1\"}," +
-            " \"metadata\": {\"namespace\": \"" + ns + "\"}}," +
-            "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}," +
-            " \"metadata\": {\"namespace\": \"" + ns + "\"}}," +
-            "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.5\"}, \"spec\": {\"hostname\": \"yb-master-2\"}," +
-            " \"metadata\": {\"namespace\": \"" + ns + "\"}}," +
-            "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}," +
-            " \"metadata\": {\"namespace\": \"" + ns + "\"}}]}";
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + ns
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + ns
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-master-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + ns
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + ns
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.5\"}, \"spec\": {\"hostname\": \"yb-master-2\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + ns
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + ns
+            + "\"}}]}";
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(response);
   }
 
   private void setupCommon() {
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.createNamespace(anyMap(), any())).thenReturn(response);
-    when(mockKubernetesManager.helmInstall(anyMap(), any(), any(), any(), any())).thenReturn(response);
+    when(mockKubernetesManager.helmInstall(anyMap(), any(), any(), any(), any()))
+        .thenReturn(response);
     // Table RPCs.
     mockClient = mock(YBClient.class);
     // WaitForTServerHeartBeats mock.
@@ -205,24 +222,26 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.listTabletServers()).thenReturn(mockResponse);
       when(mockClient.createRedisTable(any())).thenReturn(mockTable);
-    } catch (Exception e) {}
+    } catch (Exception e) {
+    }
     // WaitForServer mock.
     mockWaits(mockClient);
   }
 
-  List<TaskType> KUBERNETES_CREATE_UNIVERSE_TASKS = ImmutableList.of(
-      TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesCheckNumPod,
-      TaskType.KubernetesCommandExecutor,
-      TaskType.WaitForServer,
-      TaskType.WaitForMasterLeader,
-      TaskType.UpdatePlacementInfo,
-      TaskType.WaitForTServerHeartBeats,
-      TaskType.SwamperTargetsFileUpdate,
-      TaskType.CreateTable,
-      TaskType.UniverseUpdateSucceeded);
+  List<TaskType> KUBERNETES_CREATE_UNIVERSE_TASKS =
+      ImmutableList.of(
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCheckNumPod,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.WaitForServer,
+          TaskType.WaitForMasterLeader,
+          TaskType.UpdatePlacementInfo,
+          TaskType.WaitForTServerHeartBeats,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.CreateTable,
+          TaskType.UniverseUpdateSucceeded);
 
   private static final ImmutableMap<String, String> EXPECTED_RESULT_FOR_CREATE_TABLE_TASK =
       ImmutableMap.of("tableType", "REDIS_TABLE_TYPE", "tableName", "redis");
@@ -230,19 +249,18 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   // Cannot use defaultUniverse.universeUUID in a class field.
   List<JsonNode> getExpectedCreateUniverseTaskResults() {
     return ImmutableList.of(
-      Json.toJson(ImmutableMap.of("commandType", CREATE_NAMESPACE.name())),
-      Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
-      Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
-      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("removeFile", false)),
-      Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
-      Json.toJson(ImmutableMap.of())
-    );
+        Json.toJson(ImmutableMap.of("commandType", CREATE_NAMESPACE.name())),
+        Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
+        Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())),
+        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
+        Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("removeFile", false)),
+        Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
+        Json.toJson(ImmutableMap.of()));
   }
 
   List<Integer> getTaskPositionsToSkip(boolean skipNamespace) {
@@ -253,33 +271,26 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
     return ImmutableList.of(
-      namespaceTasks,
-      parallelTasks,
-      parallelTasks,
-      0,
-      1,
-      3,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1);
+        namespaceTasks, parallelTasks, parallelTasks, 0, 1, 3, 1, 1, 1, 1, 1, 1);
   }
 
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks) {
-    assertTaskSequence(subTasksByPosition,
-                       KUBERNETES_CREATE_UNIVERSE_TASKS, getExpectedCreateUniverseTaskResults(),
-                       getTaskPositionsToSkip(/* skip namespace task */ false),
-                       getTaskCountPerPosition(numTasks, numTasks));
+    assertTaskSequence(
+        subTasksByPosition,
+        KUBERNETES_CREATE_UNIVERSE_TASKS,
+        getExpectedCreateUniverseTaskResults(),
+        getTaskPositionsToSkip(/* skip namespace task */ false),
+        getTaskCountPerPosition(numTasks, numTasks));
   }
 
-  private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                  List<TaskType> expectedTasks, List<JsonNode> expectedTasksResult,
-                                  List<Integer> taskPositionsToSkip,
-                                  List<Integer> taskCountPerPosition) {
+  private void assertTaskSequence(
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      List<TaskType> expectedTasks,
+      List<JsonNode> expectedTasksResult,
+      List<Integer> taskPositionsToSkip,
+      List<Integer> taskCountPerPosition) {
     int position = 0;
-    for (TaskType taskType: expectedTasks) {
+    for (TaskType taskType : expectedTasks) {
       if (taskPositionsToSkip.contains(position)) {
         position++;
         continue;
@@ -287,9 +298,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       JsonNode expectedResults = expectedTasksResult.get(position);
-      List<JsonNode> taskDetails = tasks.stream()
-          .map(t -> t.getTaskDetails())
-          .collect(Collectors.toList());
+      List<JsonNode> taskDetails =
+          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
       int expectedSize = taskCountPerPosition.get(position);
       assertEquals(expectedSize, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
@@ -297,7 +307,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       position++;
     }
   }
-
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {
     taskParams.universeUUID = defaultUniverse.universeUUID;
@@ -343,12 +352,27 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1)).createNamespace(config3, ns3);
 
-    verify(mockKubernetesManager, times(1)).helmInstall(eq(config1), eq(defaultProvider.uuid),
-        eq(nodePrefix1), eq(ns1), expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(1)).helmInstall(eq(config2), eq(defaultProvider.uuid),
-        eq(nodePrefix2), eq(ns2), expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(1)).helmInstall(eq(config3), eq(defaultProvider.uuid),
-        eq(nodePrefix3), eq(ns3), expectedOverrideFile.capture());
+    verify(mockKubernetesManager, times(1))
+        .helmInstall(
+            eq(config1),
+            eq(defaultProvider.uuid),
+            eq(nodePrefix1),
+            eq(ns1),
+            expectedOverrideFile.capture());
+    verify(mockKubernetesManager, times(1))
+        .helmInstall(
+            eq(config2),
+            eq(defaultProvider.uuid),
+            eq(nodePrefix2),
+            eq(ns2),
+            expectedOverrideFile.capture());
+    verify(mockKubernetesManager, times(1))
+        .helmInstall(
+            eq(config3),
+            eq(defaultProvider.uuid),
+            eq(nodePrefix3),
+            eq(ns3),
+            expectedOverrideFile.capture());
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
@@ -362,10 +386,12 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     int numNamespaces = setNamespace ? 1 : 3;
-    assertTaskSequence(subTasksByPosition,
-                       KUBERNETES_CREATE_UNIVERSE_TASKS, getExpectedCreateUniverseTaskResults(),
-                       getTaskPositionsToSkip(/* skip namespace task */ false),
-                       getTaskCountPerPosition(numNamespaces, 3));
+    assertTaskSequence(
+        subTasksByPosition,
+        KUBERNETES_CREATE_UNIVERSE_TASKS,
+        getExpectedCreateUniverseTaskResults(),
+        getTaskPositionsToSkip(/* skip namespace task */ false),
+        getTaskCountPerPosition(numNamespaces, 3));
     assertEquals(Success, taskInfo.getTaskState());
   }
 
@@ -392,9 +418,13 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       verify(mockKubernetesManager, times(1)).createNamespace(config, ns);
     }
 
-    verify(mockKubernetesManager, times(1)).helmInstall(eq(config), eq(defaultProvider.uuid),
-                                                        eq(nodePrefix), eq(ns),
-                                                        expectedOverrideFile.capture());
+    verify(mockKubernetesManager, times(1))
+        .helmInstall(
+            eq(config),
+            eq(defaultProvider.uuid),
+            eq(nodePrefix),
+            eq(ns),
+            expectedOverrideFile.capture());
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
@@ -406,17 +436,19 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     int numNamespaces = setNamespace ? 0 : 1;
-    assertTaskSequence(subTasksByPosition,
-                       KUBERNETES_CREATE_UNIVERSE_TASKS, getExpectedCreateUniverseTaskResults(),
-                       getTaskPositionsToSkip(/* skip namespace task */ setNamespace),
-                       getTaskCountPerPosition(numNamespaces, 1));
+    assertTaskSequence(
+        subTasksByPosition,
+        KUBERNETES_CREATE_UNIVERSE_TASKS,
+        getExpectedCreateUniverseTaskResults(),
+        getTaskPositionsToSkip(/* skip namespace task */ setNamespace),
+        getTaskCountPerPosition(numNamespaces, 1));
     assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
   public void testCreateKubernetesUniverseFailure() {
-    setupUniverse(/* Create Masters */ true, /* YEDIS/REDIS enabled */ true,
-                  /* set namespace */ false);
+    setupUniverse(
+        /* Create Masters */ true, /* YEDIS/REDIS enabled */ true, /* set namespace */ false);
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
@@ -424,15 +456,15 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testCreateKubernetesUniverseMultiAZWithoutYedis() {
-    setupUniverseMultiAZ(/* Create Masters */ false, /* YEDIS/REDIS disabled */ false,
-                         /* set namespace */ false);
+    setupUniverseMultiAZ(
+        /* Create Masters */ false, /* YEDIS/REDIS disabled */ false, /* set namespace */ false);
     testCreateKubernetesUniverseSubtasksWithoutYedis(3);
   }
 
   @Test
   public void testCreateKubernetesUniverseSingleAZWithoutYedis() {
-    setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS disabled */ false,
-                  /* set namespace */ false);
+    setupUniverse(
+        /* Create Masters */ false, /* YEDIS/REDIS disabled */ false, /* set namespace */ false);
     testCreateKubernetesUniverseSubtasksWithoutYedis(1);
   }
 
@@ -454,10 +486,12 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition,
-                       createUniverseTasks, expectedResults,
-                       getTaskPositionsToSkip(/* skip namespace task */ false),
-                       taskCountPerPosition);
+    assertTaskSequence(
+        subTasksByPosition,
+        createUniverseTasks,
+        expectedResults,
+        getTaskPositionsToSkip(/* skip namespace task */ false),
+        taskCountPerPosition);
     assertEquals(Success, taskInfo.getTaskState());
   }
 }

@@ -48,8 +48,8 @@ public class PauseServer extends NodeTaskBase {
       // Update the node state as stopping also can not set the node state to stopped
       // as it will be not reachable.
       setNodeState(NodeDetails.NodeState.Stopping);
-      ShellResponse response = getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Pause, taskParams());
+      ShellResponse response =
+          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Pause, taskParams());
       processShellResponse(response);
       pauseUniverse(taskParams().nodeName);
       setNodeState(NodeDetails.NodeState.Stopped);

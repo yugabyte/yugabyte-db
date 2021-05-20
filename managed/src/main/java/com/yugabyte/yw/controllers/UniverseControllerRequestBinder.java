@@ -30,15 +30,15 @@ import java.util.Map;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 /**
- * This code needs to be fixed (ideally purged) as it is doing lot of raw json manipulation.
- * As a first step to that cleanup we have moved it out of Universe controller to
- * keep the controller sane.
+ * This code needs to be fixed (ideally purged) as it is doing lot of raw json manipulation. As a
+ * first step to that cleanup we have moved it out of Universe controller to keep the controller
+ * sane.
  */
 public class UniverseControllerRequestBinder {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseControllerRequestBinder.class);
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
-    Http.Request request, Class<T> paramType) {
+      Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
     // Notes about code deleted from here:
     // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
@@ -54,21 +54,21 @@ public class UniverseControllerRequestBinder {
       taskParams.clusters = clusters;
       return taskParams;
     } catch (JsonProcessingException exception) {
-      throw new YWServiceException(BAD_REQUEST,
-        "JsonProcessingException parsing request body: " + exception.getMessage());
+      throw new YWServiceException(
+          BAD_REQUEST, "JsonProcessingException parsing request body: " + exception.getMessage());
     }
   }
 
   /**
-   * The ObjectMapper fails to properly map the array of clusters. Given form data, this method
-   * does the translation. Each cluster in the array of clusters is expected to conform to the
-   * Cluster definitions, especially including the UserIntent.
+   * The ObjectMapper fails to properly map the array of clusters. Given form data, this method does
+   * the translation. Each cluster in the array of clusters is expected to conform to the Cluster
+   * definitions, especially including the UserIntent.
    *
    * @param formData Parent FormObject for the clusters array.
    * @return A list of deserialized clusters.
    */
-  private static List<UniverseDefinitionTaskParams.Cluster> mapClustersInParams(
-    ObjectNode formData) throws JsonProcessingException {
+  private static List<UniverseDefinitionTaskParams.Cluster> mapClustersInParams(ObjectNode formData)
+      throws JsonProcessingException {
     ArrayNode clustersJsonArray = (ArrayNode) formData.get("clusters");
     if (clustersJsonArray == null) {
       throw new YWServiceException(BAD_REQUEST, "clusters: This field is required");
@@ -87,8 +87,8 @@ public class UniverseControllerRequestBinder {
       Map<String, String> instanceTags = serializeGFlagListToMap(userIntent, "instanceTags");
       clusterJson.set("userIntent", userIntent);
       newClustersJsonArray.add(clusterJson);
-      UniverseDefinitionTaskParams.Cluster cluster = (new ObjectMapper()).treeToValue(clusterJson
-        , UniverseDefinitionTaskParams.Cluster.class);
+      UniverseDefinitionTaskParams.Cluster cluster =
+          (new ObjectMapper()).treeToValue(clusterJson, UniverseDefinitionTaskParams.Cluster.class);
       cluster.userIntent.masterGFlags = masterGFlagsMap;
       cluster.userIntent.tserverGFlags = tserverGFlagsMap;
       cluster.userIntent.instanceTags = instanceTags;

@@ -39,15 +39,11 @@ import java.util.UUID;
 public class AlertController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AlertController.class);
 
-  @Inject
-  ValidatingFormFactory formFactory;
+  @Inject ValidatingFormFactory formFactory;
 
-  @Inject
-  private SettableRuntimeConfigFactory configFactory;
+  @Inject private SettableRuntimeConfigFactory configFactory;
 
-  /**
-   * Lists alerts for given customer.
-   */
+  /** Lists alerts for given customer. */
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -71,10 +67,10 @@ public class AlertController extends AuthenticatedController {
 
   /**
    * Upserts alert of specified errCode with new message and createTime. Creates alert if needed.
-   * This may only be used to create or update alerts that have 1 or fewer entries in the DB.
-   * e.g. Creating two different alerts with errCode='LOW_ULIMITS' and then calling this would
-   * error. Creating one alert with errCode=`LOW_ULIMITS` and then calling update would change
-   * the previously created alert.
+   * This may only be used to create or update alerts that have 1 or fewer entries in the DB. e.g.
+   * Creating two different alerts with errCode='LOW_ULIMITS' and then calling this would error.
+   * Creating one alert with errCode=`LOW_ULIMITS` and then calling update would change the
+   * previously created alert.
    */
   public Result upsert(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
@@ -84,9 +80,10 @@ public class AlertController extends AuthenticatedController {
     AlertFormData data = formData.get();
     List<Alert> alerts = Alert.list(customerUUID, data.errCode);
     if (alerts.size() > 1) {
-      return ApiResponse.error(CONFLICT,
-        "May only update alerts that have been created once."
-          + "Use POST instead to create new alert.");
+      return ApiResponse.error(
+          CONFLICT,
+          "May only update alerts that have been created once."
+              + "Use POST instead to create new alert.");
     } else if (alerts.size() == 1) {
       alerts.get(0).update(data.message);
     } else {
@@ -96,9 +93,7 @@ public class AlertController extends AuthenticatedController {
     return ok();
   }
 
-  /**
-   * Creates new alert.
-   */
+  /** Creates new alert. */
   public Result create(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -111,8 +106,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   /**
-   * Saves a value to customer's configuration with name 'paramName'. The saved
-   * double value is normalized (removed trailing '.0').
+   * Saves a value to customer's configuration with name 'paramName'. The saved double value is
+   * normalized (removed trailing '.0').
    *
    * @param universe
    * @param paramName
@@ -127,20 +122,20 @@ public class AlertController extends AuthenticatedController {
 
     Customer.getOrBadRequest(customerUUID);
 
-    Form<AlertDefinitionFormData> formData = formFactory.getFormDataOrBadRequest(
-        AlertDefinitionFormData.class);
+    Form<AlertDefinitionFormData> formData =
+        formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class);
 
     AlertDefinitionFormData data = formData.get();
     Universe universe = Universe.getOrBadRequest(universeUUID);
     updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-    AlertDefinition definition = AlertDefinition.create(
-      customerUUID,
-      AlertDefinition.TargetType.Universe,
-      data.name,
-      data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-      data.isActive,
-      AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get()
-    );
+    AlertDefinition definition =
+        AlertDefinition.create(
+            customerUUID,
+            AlertDefinition.TargetType.Universe,
+            data.name,
+            data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
+            data.isActive,
+            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
 
     return ok(Json.toJson(definition));
   }
@@ -151,8 +146,8 @@ public class AlertController extends AuthenticatedController {
     AlertDefinition definition = AlertDefinition.getOrBadRequest(customerUUID, universeUUID, name);
 
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    definition.query = new ConfigSubstitutor(configFactory.forUniverse(universe))
-        .replace(definition.query);
+    definition.query =
+        new ConfigSubstitutor(configFactory.forUniverse(universe)).replace(definition.query);
     return ok(Json.toJson(definition));
   }
 
@@ -162,28 +157,28 @@ public class AlertController extends AuthenticatedController {
 
     AlertDefinition definition = AlertDefinition.getOrBadRequest(alertDefinitionUUID);
 
-    Form<AlertDefinitionFormData> formData = formFactory.getFormDataOrBadRequest(
-        AlertDefinitionFormData.class);
+    Form<AlertDefinitionFormData> formData =
+        formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class);
 
     AlertDefinitionFormData data = formData.get();
 
     AlertDefinition updatedDefinition;
     switch (definition.targetType) {
-      // TODO Need to store threshold and duration in definition itself - this way custom
-      // logic will not be needed for each definition target type
+        // TODO Need to store threshold and duration in definition itself - this way custom
+        // logic will not be needed for each definition target type
       case Universe:
         Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
         updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-        updatedDefinition = AlertDefinition.update(
-          definition.uuid,
-          data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-          data.isActive,
-          AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get()
-        );
+        updatedDefinition =
+            AlertDefinition.update(
+                definition.uuid,
+                data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
+                data.isActive,
+                AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
         break;
       default:
         throw new IllegalStateException(
-          "Unexpected definition type " + definition.targetType.name());
+            "Unexpected definition type " + definition.targetType.name());
     }
     return ok(Json.toJson(updatedDefinition));
   }

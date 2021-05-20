@@ -21,9 +21,8 @@ public class NodeUniverseManager extends DevopsBase {
     return null;
   }
 
-
-  public synchronized ShellResponse downloadNodeLogs(NodeDetails node, Universe universe,
-                                        String targetLocalFile) {
+  public synchronized ShellResponse downloadNodeLogs(
+      NodeDetails node, Universe universe, String targetLocalFile) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -31,15 +30,16 @@ public class NodeUniverseManager extends DevopsBase {
     if (getNodeDeploymentMode(node, universe).equals(Common.CloudType.kubernetes)) {
 
       // Get namespace.  First determine isMultiAz.
-      UniverseDefinitionTaskParams.Cluster cluster = universe.getUniverseDetails()
-        .getClusterByUuid(node.placementUuid);
+      UniverseDefinitionTaskParams.Cluster cluster =
+          universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
       UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
       Provider provider = Provider.get(providerUUID);
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      String namespace = PlacementInfoUtil.getKubernetesNamespace(
-        universe.getUniverseDetails().nodePrefix,
-        isMultiAz ? AvailabilityZone.get(node.azUuid).name : null
-        , AvailabilityZone.get(node.azUuid).getConfig());
+      String namespace =
+          PlacementInfoUtil.getKubernetesNamespace(
+              universe.getUniverseDetails().nodePrefix,
+              isMultiAz ? AvailabilityZone.get(node.azUuid).name : null,
+              AvailabilityZone.get(node.azUuid).getConfig());
 
       commandArgs.add("k8s");
       commandArgs.add("--namespace");
@@ -68,15 +68,13 @@ public class NodeUniverseManager extends DevopsBase {
     return shellProcessHandler.run(commandArgs, new HashMap<>(), true);
   }
 
-  /**
-   * returns (location of) access key for a particular node in a universe
-   **/
+  /** returns (location of) access key for a particular node in a universe */
   private String getAccessKey(NodeDetails node, Universe universe) {
     if (node == null) {
       throw new RuntimeException("node must be nonnull");
     }
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getUniverseDetails()
-      .getClusterByUuid(node.placementUuid);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     AccessKey ak = AccessKey.get(providerUUID, cluster.userIntent.accessKeyCode);
     return ak.getKeyInfo().privateKey;
@@ -84,6 +82,7 @@ public class NodeUniverseManager extends DevopsBase {
 
   /**
    * Get deployment mode of node (on-prem/kubernetes/cloud provider)
+   *
    * @param node - node to get info on
    * @param universe - the universe
    * @return Get deployment details
@@ -92,23 +91,23 @@ public class NodeUniverseManager extends DevopsBase {
     if (node == null) {
       throw new RuntimeException("node must be nonnull");
     }
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getUniverseDetails()
-      .getClusterByUuid(node.placementUuid);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     return cluster.userIntent.providerType;
   }
 
   /**
    * Returns yb home directory for node
+   *
    * @param node
    * @param universe
    * @return home directory
    */
   public String getYbHomeDir(NodeDetails node, Universe universe) {
-    UUID providerUUID = UUID.fromString(universe.getUniverseDetails()
-      .getClusterByUuid(node.placementUuid).userIntent.provider);
+    UUID providerUUID =
+        UUID.fromString(
+            universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
     Provider provider = Provider.get(providerUUID);
     return provider.getYbHome();
   }
-
-
 }
