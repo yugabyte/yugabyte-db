@@ -16,19 +16,19 @@ isTocNested: true
 showAsideToc: true 
 ---
 
-## v2.7.1 - May 20, 2021
+## v2.7.1.1 - May 21, 2021
 
-**Build:** `2.7.1.0-b184`
+**Build:** `2.7.1.1-b1`
 
 ### Downloads
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.7.1.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.7.1.1-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.7.1.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.7.1.1-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -38,7 +38,7 @@ showAsideToc: true
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.7.1.0-b184
+docker pull yugabytedb/yugabyte:2.7.1.1-b1
 ```
 
 ### New Features
@@ -291,6 +291,7 @@ N/A
 * [[8150](https://github.com/yugabyte/yugabyte-db/issues/8150)] [[8196](https://github.com/yugabyte/yugabyte-db/issues/8196)] Fix preceding op id in case of empty ops sent to the follower
 * [[8183](https://github.com/yugabyte/yugabyte-db/issues/8183)] ysql: Import Always call ExecShutdownNode() if appropriate.
 * [[8225](https://github.com/yugabyte/yugabyte-db/issues/8225)] YQL: Add missing makefile dependency
+* [[8496](https://github.com/yugabyte/yugabyte-db/issues/8496)] Downgrade gperftools to 2.7
 
 ### Known Issues
 
