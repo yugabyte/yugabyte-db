@@ -780,7 +780,7 @@ Status Tablet::DoEnableCompactions() {
   };
   if (regular_db_) {
     WARN_WITH_PREFIX_NOT_OK(
-        regular_db_->SetOptions(new_options),
+        regular_db_->SetOptions(new_options, /* dump_options= */ false),
         "Failed to set options on regular DB");
     regular_db_status =
         regular_db_->EnableAutoCompaction({regular_db_->DefaultColumnFamily()});
@@ -791,7 +791,7 @@ Status Tablet::DoEnableCompactions() {
   }
   if (intents_db_) {
     WARN_WITH_PREFIX_NOT_OK(
-        intents_db_->SetOptions(new_options),
+        intents_db_->SetOptions(new_options, /* dump_options= */ false),
         "Failed to set options on provisional records DB");
     Status intents_db_status =
         intents_db_->EnableAutoCompaction({intents_db_->DefaultColumnFamily()});
