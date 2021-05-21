@@ -34,7 +34,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
 
   @Override
   protected ServerSubTaskParams taskParams() {
-    return (ServerSubTaskParams)taskParams;
+    return (ServerSubTaskParams) taskParams;
   }
 
   @Override
@@ -45,8 +45,14 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", " + taskParams().nodeName +
-           ", type=" + taskParams().serverType + ")";
+    return super.getName()
+        + "("
+        + taskParams().universeUUID
+        + ", "
+        + taskParams().nodeName
+        + ", type="
+        + taskParams().serverType
+        + ")";
   }
 
   public String getMasterAddresses() {
@@ -57,9 +63,12 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
 
   public HostAndPort getHostPort() {
     NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
-    HostAndPort hp = HostAndPort.fromParts(
-        node.cloudInfo.private_ip,
-        taskParams().serverType == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
+    HostAndPort hp =
+        HostAndPort.fromParts(
+            node.cloudInfo.private_ip,
+            taskParams().serverType == ServerType.MASTER
+                ? node.masterRpcPort
+                : node.tserverRpcPort);
     return hp;
   }
 
@@ -80,33 +89,47 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
     LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
-      throw new IllegalArgumentException("Invalid master addresses " + masterAddresses + " for " +
-          taskParams().universeUUID);
+      throw new IllegalArgumentException(
+          "Invalid master addresses " + masterAddresses + " for " + taskParams().universeUUID);
     }
 
     NodeDetails node = universe.getNode(taskParams().nodeName);
 
     if (node == null) {
-      throw new IllegalArgumentException("Node " + taskParams().nodeName + " not found in " +
-                                         "universe " + taskParams().universeUUID);
+      throw new IllegalArgumentException(
+          "Node "
+              + taskParams().nodeName
+              + " not found in "
+              + "universe "
+              + taskParams().universeUUID);
     }
 
-    if (taskParams().serverType != ServerType.TSERVER &&
-        taskParams().serverType != ServerType.MASTER) {
-      throw new IllegalArgumentException("Unexpected server type " + taskParams().serverType +
-          " for universe " + taskParams().universeUUID);
+    if (taskParams().serverType != ServerType.TSERVER
+        && taskParams().serverType != ServerType.MASTER) {
+      throw new IllegalArgumentException(
+          "Unexpected server type "
+              + taskParams().serverType
+              + " for universe "
+              + taskParams().universeUUID);
     }
 
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
     if (isTserverTask && !node.isTserver) {
-      throw new IllegalArgumentException("Task server type " + taskParams().serverType + " is " +
-                                         "not for a node running tserver : " + node.toString());
+      throw new IllegalArgumentException(
+          "Task server type "
+              + taskParams().serverType
+              + " is "
+              + "not for a node running tserver : "
+              + node.toString());
     }
 
     if (!isTserverTask && !node.isMaster) {
-      throw new IllegalArgumentException("Task server type " + taskParams().serverType + " is " +
-                                         "not for a node running master : " + node.toString());
+      throw new IllegalArgumentException(
+          "Task server type "
+              + taskParams().serverType
+              + " is "
+              + "not for a node running master : "
+              + node.toString());
     }
   }
-
 }

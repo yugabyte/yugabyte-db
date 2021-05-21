@@ -58,16 +58,15 @@ public class CustomerConfig extends Model {
     }
   }
 
-  @Id
-  public UUID configUUID;
+  @Id public UUID configUUID;
 
   @Column(nullable = false)
   public UUID customerUUID;
 
-  @Column(length=25, nullable = false)
+  @Column(length = 25, nullable = false)
   public ConfigType type;
 
-  @Column(length=100, nullable = false)
+  @Column(length = 100, nullable = false)
   public String name;
 
   @Constraints.Required
@@ -77,7 +76,7 @@ public class CustomerConfig extends Model {
   public JsonNode data;
 
   public static final Finder<UUID, CustomerConfig> find =
-    new Finder<UUID, CustomerConfig>(CustomerConfig.class){};
+      new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
 
   public Map<String, String> dataAsMap() {
     return new ObjectMapper().convertValue(data, Map.class);
@@ -88,8 +87,8 @@ public class CustomerConfig extends Model {
   }
 
   /**
-   * Updates configuration data. If some fields are still masked with asterisks
-   * then these fields remain unchanged.
+   * Updates configuration data. If some fields are still masked with asterisks then these fields
+   * remain unchanged.
    *
    * @param data
    */
@@ -101,8 +100,8 @@ public class CustomerConfig extends Model {
   public boolean getInUse() {
     if (this.type == ConfigType.STORAGE) {
       // Check if a backup or schedule currently has a reference.
-      return (Backup.existsStorageConfig(this.configUUID) ||
-              Schedule.existsStorageConfig(this.configUUID));
+      return (Backup.existsStorageConfig(this.configUUID)
+          || Schedule.existsStorageConfig(this.configUUID));
     }
     return false;
   }
@@ -127,10 +126,12 @@ public class CustomerConfig extends Model {
   }
 
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
-    return CustomerConfig.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .idEq(configUUID)
-      .findOne();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .idEq(configUUID)
+        .findOne();
   }
 
   public static CustomerConfig get(UUID configUUID) {
@@ -158,19 +159,23 @@ public class CustomerConfig extends Model {
   }
 
   public static CustomerConfig getAlertConfig(UUID customerUUID) {
-    return CustomerConfig.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("type", ConfigType.ALERTS.toString())
-      .eq("name", ALERTS_PREFERENCES)
-      .findOne();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("type", ConfigType.ALERTS.toString())
+        .eq("name", ALERTS_PREFERENCES)
+        .findOne();
   }
 
   public static CustomerConfig getSmtpConfig(UUID customerUUID) {
-    return CustomerConfig.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("type", ConfigType.ALERTS.toString())
-      .eq("name", SMTP_INFO)
-      .findOne();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("type", ConfigType.ALERTS.toString())
+        .eq("name", SMTP_INFO)
+        .findOne();
   }
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
@@ -189,14 +194,16 @@ public class CustomerConfig extends Model {
   }
 
   public static CustomerConfig getCallhomeConfig(UUID customerUUID) {
-    return CustomerConfig.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("type", ConfigType.CALLHOME.toString())
-      .eq("name", CALLHOME_PREFERENCES)
-      .findOne();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("type", ConfigType.CALLHOME.toString())
+        .eq("name", CALLHOME_PREFERENCES)
+        .findOne();
   }
 
-  public static CollectionLevel getOrCreateCallhomeLevel(UUID customerUUID){
+  public static CollectionLevel getOrCreateCallhomeLevel(UUID customerUUID) {
     CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customerUUID);
     if (callhomeConfig == null) CustomerConfig.createCallHomeConfig(customerUUID);
     return CustomerConfig.getCallhomeLevel(customerUUID);
@@ -204,7 +211,7 @@ public class CustomerConfig extends Model {
 
   public static CollectionLevel getCallhomeLevel(UUID customerUUID) {
     CustomerConfig config = getCallhomeConfig(customerUUID);
-    if (config != null){
+    if (config != null) {
       return CollectionLevel.valueOf(config.getData().get("callhomeLevel").textValue());
     }
     return null;

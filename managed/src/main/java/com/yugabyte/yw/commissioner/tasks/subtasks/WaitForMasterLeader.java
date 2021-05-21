@@ -32,12 +32,11 @@ public class WaitForMasterLeader extends AbstractTaskBase {
   // Timeout for failing to respond to pings.
   private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
-  public static class Params extends UniverseTaskParams {
-  }
+  public static class Params extends UniverseTaskParams {}
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override

@@ -35,20 +35,17 @@ import java.util.UUID;
 public class AlertController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AlertController.class);
 
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
-  /**
-   * Lists alerts for given customer.
-   */
+  /** Lists alerts for given customer. */
   public Result list(UUID customerUUID) {
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
     ArrayNode alerts = Json.newArray();
-    for (Alert alert: Alert.list(customerUUID)) {
-        alerts.add(alert.toJson());
+    for (Alert alert : Alert.list(customerUUID)) {
+      alerts.add(alert.toJson());
     }
 
     return ok(alerts);
@@ -61,7 +58,7 @@ public class AlertController extends AuthenticatedController {
       }
 
       ArrayNode alerts = Json.newArray();
-      for (Alert alert: Alert.listActive(customerUUID)) {
+      for (Alert alert : Alert.listActive(customerUUID)) {
         alerts.add(alert.toJson());
       }
 
@@ -73,10 +70,10 @@ public class AlertController extends AuthenticatedController {
 
   /**
    * Upserts alert of specified errCode with new message and createTime. Creates alert if needed.
-   * This may only be used to create or update alerts that have 1 or fewer entries in the DB.
-   * e.g. Creating two different alerts with errCode='LOW_ULIMITS' and then calling this would
-   * error. Creating one alert with errCode=`LOW_ULIMITS` and then calling update would change
-   * the previously created alert.
+   * This may only be used to create or update alerts that have 1 or fewer entries in the DB. e.g.
+   * Creating two different alerts with errCode='LOW_ULIMITS' and then calling this would error.
+   * Creating one alert with errCode=`LOW_ULIMITS` and then calling update would change the
+   * previously created alert.
    */
   public Result upsert(UUID customerUUID) {
     if (Customer.get(customerUUID) == null) {
@@ -91,9 +88,10 @@ public class AlertController extends AuthenticatedController {
     AlertFormData data = formData.get();
     List<Alert> alerts = Alert.list(customerUUID, data.errCode);
     if (alerts.size() > 1) {
-      return ApiResponse.error(CONFLICT,
-        "May only update alerts that have been created once."
-        + "Use POST instead to create new alert.");
+      return ApiResponse.error(
+          CONFLICT,
+          "May only update alerts that have been created once."
+              + "Use POST instead to create new alert.");
     } else if (alerts.size() == 1) {
       alerts.get(0).update(data.message);
     } else {
@@ -103,9 +101,7 @@ public class AlertController extends AuthenticatedController {
     return ok();
   }
 
-  /**
-   * Creates new alert.
-   */
+  /** Creates new alert. */
   public Result create(UUID customerUUID) {
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
@@ -130,19 +126,19 @@ public class AlertController extends AuthenticatedController {
       Universe universe = Universe.get(universeUUID);
 
       Form<AlertDefinitionFormData> formData =
-        formFactory.form(AlertDefinitionFormData.class).bindFromRequest();
+          formFactory.form(AlertDefinitionFormData.class).bindFromRequest();
       if (formData.hasErrors()) {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
 
       AlertDefinitionFormData data = formData.get();
-      AlertDefinition definition = AlertDefinition.create(
-        customerUUID,
-        universeUUID,
-        data.name,
-        data.template.buildTemplate(universe.getUniverseDetails().nodePrefix, data.value),
-        data.isActive
-      );
+      AlertDefinition definition =
+          AlertDefinition.create(
+              customerUUID,
+              universeUUID,
+              data.name,
+              data.template.buildTemplate(universe.getUniverseDetails().nodePrefix, data.value),
+              data.isActive);
 
       return ok(Json.toJson(definition));
     } catch (Exception e) {
@@ -173,23 +169,24 @@ public class AlertController extends AuthenticatedController {
 
       AlertDefinition definition = AlertDefinition.get(alertDefinitionUUID);
       if (definition == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Alert Definition UUID: " + alertDefinitionUUID);
+        return ApiResponse.error(
+            BAD_REQUEST, "Invalid Alert Definition UUID: " + alertDefinitionUUID);
       }
 
       Universe universe = Universe.get(definition.universeUUID);
 
       Form<AlertDefinitionFormData> formData =
-        formFactory.form(AlertDefinitionFormData.class).bindFromRequest();
+          formFactory.form(AlertDefinitionFormData.class).bindFromRequest();
       if (formData.hasErrors()) {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
 
       AlertDefinitionFormData data = formData.get();
-      definition = AlertDefinition.update(
-        definition.uuid,
-        data.template.buildTemplate(universe.getUniverseDetails().nodePrefix, data.value),
-        data.isActive
-      );
+      definition =
+          AlertDefinition.update(
+              definition.uuid,
+              data.template.buildTemplate(universe.getUniverseDetails().nodePrefix, data.value),
+              data.isActive);
 
       return ok(Json.toJson(definition));
     } catch (Exception e) {

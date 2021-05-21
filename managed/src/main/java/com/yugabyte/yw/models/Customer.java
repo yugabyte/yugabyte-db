@@ -40,15 +40,22 @@ public class Customer extends Model {
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
   public UUID uuid = UUID.randomUUID();
-  public void setUuid(UUID uuid) { this.uuid = uuid;}
+
+  public void setUuid(UUID uuid) {
+    this.uuid = uuid;
+  }
 
   // An auto incrementing, user-friendly id for the customer. Used to compose a db prefix. Currently
   // it is assumed that there is a single instance of the db. The id space for this field may have
   // to be partitioned in case the db is being sharded.
   @Id
-  @SequenceGenerator(name="customer_id_seq", sequenceName="customer_id_seq", allocationSize=1)
-  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator="customer_id_seq")  private Long id;
-  public Long getCustomerId() { return id; }
+  @SequenceGenerator(name = "customer_id_seq", sequenceName = "customer_id_seq", allocationSize = 1)
+  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "customer_id_seq")
+  private Long id;
+
+  public Long getCustomerId() {
+    return id;
+  }
 
   @Column(length = 15, nullable = false)
   @Constraints.Required
@@ -104,9 +111,11 @@ public class Customer extends Model {
 
   @JsonIgnore
   public Set<Universe> getUniversesForProvider(UUID providerUUID) {
-    Set<Universe> universesInProvider = getUniverses()
-        .stream().filter(u -> checkClusterInProvider(u, providerUUID))
-        .collect(Collectors.toSet());
+    Set<Universe> universesInProvider =
+        getUniverses()
+            .stream()
+            .filter(u -> checkClusterInProvider(u, providerUUID))
+            .collect(Collectors.toSet());
     return universesInProvider;
   }
 
@@ -119,8 +128,7 @@ public class Customer extends Model {
     return false;
   }
 
-  public static final Finder<UUID, Customer> find = new Finder<UUID, Customer>(Customer.class) {
-  };
+  public static final Finder<UUID, Customer> find = new Finder<UUID, Customer>(Customer.class) {};
 
   public static Customer get(UUID customerUUID) {
     return find.query().where().eq("uuid", customerUUID).findOne();
@@ -155,16 +163,14 @@ public class Customer extends Model {
     return cust;
   }
 
-  /**
-   * Get features for this customer.
-   */
+  /** Get features for this customer. */
   public JsonNode getFeatures() {
     return features == null ? Json.newObject() : features;
   }
 
   /**
-   * Upserts features for this customer. If updating a feature, only specified features will
-   * be updated.
+   * Upserts features for this customer. If updating a feature, only specified features will be
+   * updated.
    */
   public void upsertFeatures(JsonNode input) {
     if (!input.isObject()) {

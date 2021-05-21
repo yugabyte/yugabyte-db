@@ -29,13 +29,10 @@ public class HealthCheck extends Model {
   // Top-level payload field for figuring out if we have errors or not.
   public static final String FIELD_HAS_ERROR = "has_error";
 
-  @EmbeddedId
-  @Constraints.Required
-  public HealthCheckKey idKey;
+  @EmbeddedId @Constraints.Required public HealthCheckKey idKey;
 
   // The customer id, needed only to enforce unique universe names for a customer.
-  @Constraints.Required
-  public Long customerId;
+  @Constraints.Required public Long customerId;
 
   // The Json serialized version of the details. This is used only in read from and writing to the
   // DB.
@@ -51,10 +48,11 @@ public class HealthCheck extends Model {
   }
 
   public static final Finder<UUID, HealthCheck> find =
-    new Finder<UUID, HealthCheck>(HealthCheck.class) {};
+      new Finder<UUID, HealthCheck>(HealthCheck.class) {};
 
   /**
    * Creates an empty universe.
+   *
    * @param taskParams: The details that will describe the universe.
    * @param customerId: UUID of the customer creating the universe
    * @return the newly created universe
@@ -90,11 +88,13 @@ public class HealthCheck extends Model {
   }
 
   public static HealthCheck getLatest(UUID universeUUID) {
-    List<HealthCheck> checks = find.query().where()
-      .eq("universe_uuid", universeUUID)
-      .orderBy("check_time desc")
-      .setMaxRows(1)
-      .findList();
+    List<HealthCheck> checks =
+        find.query()
+            .where()
+            .eq("universe_uuid", universeUUID)
+            .orderBy("check_time desc")
+            .setMaxRows(1)
+            .findList();
     if (checks != null && checks.size() > 0) {
       return checks.get(0);
     } else {

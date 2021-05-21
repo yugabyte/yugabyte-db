@@ -115,37 +115,42 @@ public class HealthChecker {
     this.initialize();
   }
 
-
   @Inject
   public HealthChecker(
-    ActorSystem actorSystem,
-    Configuration config,
-    ExecutionContext executionContext,
-    HealthManager healthManager,
-    HealthCheckerReport healthCheckerReport,
-    EmailHelper emailHelper) {
-    this(actorSystem, config, executionContext, healthManager,
-        CollectorRegistry.defaultRegistry, healthCheckerReport,
+      ActorSystem actorSystem,
+      Configuration config,
+      ExecutionContext executionContext,
+      HealthManager healthManager,
+      HealthCheckerReport healthCheckerReport,
+      EmailHelper emailHelper) {
+    this(
+        actorSystem,
+        config,
+        executionContext,
+        healthManager,
+        CollectorRegistry.defaultRegistry,
+        healthCheckerReport,
         emailHelper);
   }
 
   private void initialize() {
     LOG.info("Scheduling health checker every " + this.healthCheckIntervalMs() + " ms");
-    this.actorSystem.scheduler().schedule(
-      Duration.create(0, TimeUnit.MILLISECONDS), // initialDelay
-      Duration.create(this.healthCheckIntervalMs(), TimeUnit.MILLISECONDS), // interval
-      this::scheduleRunner,
-      this.executionContext
-    );
+    this.actorSystem
+        .scheduler()
+        .schedule(
+            Duration.create(0, TimeUnit.MILLISECONDS), // initialDelay
+            Duration.create(this.healthCheckIntervalMs(), TimeUnit.MILLISECONDS), // interval
+            this::scheduleRunner,
+            this.executionContext);
 
     try {
-      healthMetric = Gauge.build(kUnivMetricName, "Boolean result of health checks")
-        .labelNames(kUnivUUIDLabel, kUnivNameLabel, kNodeLabel, kCheckLabel)
-        .register(this.promRegistry);
+      healthMetric =
+          Gauge.build(kUnivMetricName, "Boolean result of health checks")
+              .labelNames(kUnivUUIDLabel, kUnivNameLabel, kNodeLabel, kCheckLabel)
+              .register(this.promRegistry);
     } catch (IllegalArgumentException e) {
       LOG.warn("Failed to build prometheus gauge for name: " + kUnivMetricName);
     }
-
   }
 
   // The interval at which the checker will run.
@@ -162,8 +167,14 @@ public class HealthChecker {
     return interval == null ? 0 : interval;
   }
 
-  private void processResults(Customer c, Universe u, String response, long durationMs,
-      String emailDestinations, boolean sendMailAlways, boolean reportOnlyErrors) {
+  private void processResults(
+      Customer c,
+      Universe u,
+      String response,
+      long durationMs,
+      String emailDestinations,
+      boolean sendMailAlways,
+      boolean reportOnlyErrors) {
 
     JsonNode healthJSON = null;
     try {
@@ -183,26 +194,33 @@ public class HealthChecker {
           hasErrors = checkResult || hasErrors;
           if (null == healthMetric) continue;
 
-          Gauge.Child prometheusVal = healthMetric.labels(u.universeUUID.toString(), u.name,
-              nodeName, checkName);
+          Gauge.Child prometheusVal =
+              healthMetric.labels(u.universeUUID.toString(), u.name, nodeName, checkName);
           prometheusVal.set(checkResult ? 1 : 0);
         }
-        LOG.info("Health check for universe {} reported {}. [ {} ms ]", u.name,
-            (hasErrors ? "errors" : " success"), durationMs);
+        LOG.info(
+            "Health check for universe {} reported {}. [ {} ms ]",
+            u.name,
+            (hasErrors ? "errors" : " success"),
+            durationMs);
 
       } catch (Exception e) {
         LOG.warn("Failed to convert health check response to prometheus metrics " + e.getMessage());
-        createAlert(c, u,
+        createAlert(
+            c,
+            u,
             "Error converting health check response to prometheus metrics: " + e.getMessage());
       }
 
       SmtpData smtpData = emailHelper.getSmtpData(c.uuid);
-      if (!StringUtils.isEmpty(emailDestinations) && (smtpData != null)
+      if (!StringUtils.isEmpty(emailDestinations)
+          && (smtpData != null)
           && (sendMailAlways || hasErrors)) {
-        String subject = String.format("%s - <%s> %s", hasErrors ? "ERROR" : "OK", c.getTag(),
-            u.name);
-        String mailError = sendEmailReport(u, c, smtpData, emailDestinations, subject, healthJSON,
-            reportOnlyErrors);
+        String subject =
+            String.format("%s - <%s> %s", hasErrors ? "ERROR" : "OK", c.getTag(), u.name);
+        String mailError =
+            sendEmailReport(
+                u, c, smtpData, emailDestinations, subject, healthJSON, reportOnlyErrors);
         if (mailError != null) {
           LOG.warn("Health check had the following errors during mailing: " + mailError);
           createAlert(c, u, "Error sending Health check email: " + mailError);
@@ -211,15 +229,22 @@ public class HealthChecker {
     }
   }
 
-  private String sendEmailReport(Universe u, Customer c, SmtpData smtpData,
-      String emailDestinations, String subject, JsonNode report, boolean reportOnlyErrors) {
+  private String sendEmailReport(
+      Universe u,
+      Customer c,
+      SmtpData smtpData,
+      String emailDestinations,
+      String subject,
+      JsonNode report,
+      boolean reportOnlyErrors) {
 
     // LinkedHashMap saves values order.
     Map<String, String> contentMap = new LinkedHashMap<>();
-    contentMap.put("text/plain; charset=\"us-ascii\"",
+    contentMap.put(
+        "text/plain; charset=\"us-ascii\"",
         healthCheckerReport.asPlainText(report, reportOnlyErrors));
-    contentMap.put("text/html; charset=\"us-ascii\"",
-        healthCheckerReport.asHtml(u, report, reportOnlyErrors));
+    contentMap.put(
+        "text/html; charset=\"us-ascii\"", healthCheckerReport.asHtml(u, report, reportOnlyErrors));
 
     try {
       emailHelper.sendEmail(c, subject, emailDestinations, smtpData, contentMap);
@@ -262,15 +287,15 @@ public class HealthChecker {
 
     AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
     long now = (new Date()).getTime();
-    long checkIntervalMs = alertingData.checkIntervalMs <= 0
-      ? healthCheckIntervalMs()
-      : alertingData.checkIntervalMs;
+    long checkIntervalMs =
+        alertingData.checkIntervalMs <= 0 ? healthCheckIntervalMs() : alertingData.checkIntervalMs;
     boolean shouldRunCheck = (now - checkIntervalMs) > lastCheckTimeMap.getOrDefault(c.uuid, 0L);
-    long statusUpdateIntervalMs = alertingData.statusUpdateIntervalMs <= 0
-      ? statusUpdateIntervalMs()
-      : alertingData.statusUpdateIntervalMs;
-    boolean shouldSendStatusUpdate = (now - statusUpdateIntervalMs) >
-        lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0L);
+    long statusUpdateIntervalMs =
+        alertingData.statusUpdateIntervalMs <= 0
+            ? statusUpdateIntervalMs()
+            : alertingData.statusUpdateIntervalMs;
+    boolean shouldSendStatusUpdate =
+        (now - statusUpdateIntervalMs) > lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0L);
     // Always do a check if it's time for a status update OR if it's time for a check.
     if (shouldSendStatusUpdate || shouldRunCheck) {
       // Since we'll do a check, update this all the time.
@@ -283,16 +308,23 @@ public class HealthChecker {
   }
 
   private void createAlert(Customer c, Universe u, String details) {
-    Alert.create(c.uuid, u.universeUUID, Alert.TargetType.UniverseType, ALERT_ERROR_CODE, "Warning",
-        details, true, null);
+    Alert.create(
+        c.uuid,
+        u.universeUUID,
+        Alert.TargetType.UniverseType,
+        ALERT_ERROR_CODE,
+        "Warning",
+        details,
+        true,
+        null);
   }
 
   public void checkAllUniverses(Customer c, CustomerConfig config, boolean shouldSendStatusUpdate) {
 
-    AlertingData alertingData = config != null ? Json.fromJson(config.data, AlertingData.class)
-        : null;
-    boolean reportOnlyErrors = !shouldSendStatusUpdate && alertingData != null
-        && alertingData.reportOnlyErrors;
+    AlertingData alertingData =
+        config != null ? Json.fromJson(config.data, AlertingData.class) : null;
+    boolean reportOnlyErrors =
+        !shouldSendStatusUpdate && alertingData != null && alertingData.reportOnlyErrors;
 
     // Process all of a customer's universes.
     for (Universe u : c.getUniverses()) {
@@ -324,8 +356,12 @@ public class HealthChecker {
     return silenceEmails ? null : String.join(",", destinations);
   }
 
-  public void checkSingleUniverse(Universe u, Customer c, boolean shouldSendStatusUpdate,
-      boolean reportOnlyErrors, String emailDestinations) {
+  public void checkSingleUniverse(
+      Universe u,
+      Customer c,
+      boolean shouldSendStatusUpdate,
+      boolean reportOnlyErrors,
+      String emailDestinations) {
     // Validate universe data and make sure nothing is in progress.
     UniverseDefinitionTaskParams details = u.getUniverseDetails();
     if (details == null) {
@@ -358,8 +394,11 @@ public class HealthChecker {
 
       Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
       if (provider == null) {
-        LOG.warn("Skipping universe " + u.name + " due to invalid provider "
-            + cluster.userIntent.provider);
+        LOG.warn(
+            "Skipping universe "
+                + u.name
+                + " due to invalid provider "
+                + cluster.userIntent.provider);
         invalidUniverseData = true;
         createAlert(c, u, "Health check skipped due to invalid provider data.");
         break;
@@ -367,8 +406,9 @@ public class HealthChecker {
 
       providerCode = provider.code;
       if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
-        info.namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(
-            cluster.placementInfo, details.nodePrefix, provider);
+        info.namespaceToConfig =
+            PlacementInfoUtil.getConfigPerNamespace(
+                cluster.placementInfo, details.nodePrefix, provider);
       }
 
       AccessKey accessKey = AccessKey.get(provider.uuid, cluster.userIntent.accessKeyCode);
@@ -387,8 +427,8 @@ public class HealthChecker {
       if (info.enableYSQL) {
         for (NodeDetails nd : details.nodeDetailsSet) {
           if (nd.isYsqlServer) {
-           info.ysqlPort = nd.ysqlServerRpcPort;
-           break;
+            info.ysqlPort = nd.ysqlServerRpcPort;
+            break;
           }
         }
       }
@@ -417,11 +457,15 @@ public class HealthChecker {
       HealthManager.ClusterInfo info = clusterMetadata.get(nd.placementUuid);
       if (info == null) {
         invalidUniverseData = true;
-        LOG.warn(String.format(
-              "Universe %s has node %s with invalid placement %s", u.name, nd.nodeName,
-              nd.placementUuid));
-        createAlert(c, u, String.format("Universe has node %s with invalid placement %s.",
-            nd.nodeName, nd.placementUuid));
+        LOG.warn(
+            String.format(
+                "Universe %s has node %s with invalid placement %s",
+                u.name, nd.nodeName, nd.placementUuid));
+        createAlert(
+            c,
+            u,
+            String.format(
+                "Universe has node %s with invalid placement %s.", nd.nodeName, nd.placementUuid));
         break;
       }
 
@@ -441,7 +485,7 @@ public class HealthChecker {
 
     CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(u.universeUUID);
     long potentialStartTime = 0;
-    if (lastTask != null && lastTask.getCompletionTime()!= null) {
+    if (lastTask != null && lastTask.getCompletionTime() != null) {
       potentialStartTime = lastTask.getCompletionTime().getTime();
     }
 
@@ -450,28 +494,33 @@ public class HealthChecker {
     // email about it.
     HealthCheck lastCheck = HealthCheck.getLatest(u.universeUUID);
     boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
-    Provider mainProvider = Provider.get(UUID.fromString(
-          details.getPrimaryCluster().userIntent.provider));
+    Provider mainProvider =
+        Provider.get(UUID.fromString(details.getPrimaryCluster().userIntent.provider));
 
     // Call devops and process response.
-    ShellResponse response = healthManager.runCommand(
-        mainProvider,
-        new ArrayList<>(clusterMetadata.values()),
-        potentialStartTime
-    );
+    ShellResponse response =
+        healthManager.runCommand(
+            mainProvider, new ArrayList<>(clusterMetadata.values()), potentialStartTime);
 
     long durationMs = System.currentTimeMillis() - startMs;
     boolean sendMailAlways = (shouldSendStatusUpdate || lastCheckHadErrors);
 
     if (response.code == 0) {
-      processResults(c, u, response.message, durationMs, emailDestinations, sendMailAlways,
-          reportOnlyErrors);
+      processResults(
+          c, u, response.message, durationMs, emailDestinations, sendMailAlways, reportOnlyErrors);
       HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
     } else {
-      LOG.error("Health check script got error: {} code ({}) [ {} ms ]",
-                response.message, response.code, durationMs);
-      createAlert(c, u, String.format("Health check script got error: %s code (%d) [ %d ms ]",
-          response.message, response.code, durationMs));
+      LOG.error(
+          "Health check script got error: {} code ({}) [ {} ms ]",
+          response.message,
+          response.code,
+          durationMs);
+      createAlert(
+          c,
+          u,
+          String.format(
+              "Health check script got error: %s code (%d) [ %d ms ]",
+              response.message, response.code, durationMs));
     }
   }
 }

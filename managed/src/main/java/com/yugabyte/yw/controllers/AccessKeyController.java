@@ -31,14 +31,11 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
 public class AccessKeyController extends AuthenticatedController {
 
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
-  @Inject
-  AccessManager accessManager;
+  @Inject AccessManager accessManager;
 
-  @Inject
-  TemplateManager templateManager;
+  @Inject TemplateManager templateManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
@@ -85,8 +82,8 @@ public class AccessKeyController extends AuthenticatedController {
     String keyCode = formData.get().keyCode;
     String keyContent = formData.get().keyContent;
     AccessManager.KeyType keyType = formData.get().keyType;
-    String sshUser =  formData.get().sshUser;
-    Integer sshPort =  formData.get().sshPort;
+    String sshUser = formData.get().sshUser;
+    Integer sshPort = formData.get().sshPort;
     boolean airGapInstall = formData.get().airGapInstall;
     boolean skipProvisioning = formData.get().skipProvisioning;
     AccessKey accessKey;
@@ -99,9 +96,16 @@ public class AccessKeyController extends AuthenticatedController {
         if (keyType == null || uploadedFile == null) {
           return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
         }
-        accessKey = accessManager.uploadKeyFile(
-            region.uuid, uploadedFile, keyCode, keyType, sshUser, sshPort, airGapInstall,
-            skipProvisioning);
+        accessKey =
+            accessManager.uploadKeyFile(
+                region.uuid,
+                uploadedFile,
+                keyCode,
+                keyType,
+                sshUser,
+                sshPort,
+                airGapInstall,
+                skipProvisioning);
       } else if (keyContent != null && !keyContent.isEmpty()) {
         if (keyType == null) {
           return ApiResponse.error(BAD_REQUEST, "keyType params required.");
@@ -111,27 +115,33 @@ public class AccessKeyController extends AuthenticatedController {
         Files.write(tempFile, keyContent.getBytes());
 
         // Upload temp file to create the access key and return success/failure
-        accessKey = accessManager.uploadKeyFile(
-            regionUUID, tempFile.toFile(), keyCode, keyType, sshUser, sshPort, airGapInstall,
-            skipProvisioning);
+        accessKey =
+            accessManager.uploadKeyFile(
+                regionUUID,
+                tempFile.toFile(),
+                keyCode,
+                keyType,
+                sshUser,
+                sshPort,
+                airGapInstall,
+                skipProvisioning);
       } else {
-        accessKey = accessManager.addKey(
-            regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
+        accessKey =
+            accessManager.addKey(regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
       }
 
       // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
       // and create a preprovision script
       if (region.provider.code.equals(onprem.name())) {
         templateManager.createProvisionTemplate(
-          accessKey,
-          airGapInstall,
-          formData.get().passwordlessSudoAccess,
-          formData.get().installNodeExporter,
-          formData.get().nodeExporterPort,
-          formData.get().nodeExporterUser
-        );
+            accessKey,
+            airGapInstall,
+            formData.get().passwordlessSudoAccess,
+            formData.get().installNodeExporter,
+            formData.get().nodeExporterPort,
+            formData.get().nodeExporterUser);
       }
-    } catch(RuntimeException | IOException e) {
+    } catch (RuntimeException | IOException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
     }
@@ -163,9 +173,13 @@ public class AccessKeyController extends AuthenticatedController {
     if (customer == null) {
       return "Invalid Customer UUID: " + customerUUID;
     }
-    Provider provider = Provider.find.query().where()
-        .eq("customer_uuid", customerUUID)
-        .idEq(providerUUID).findOne();
+    Provider provider =
+        Provider.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .idEq(providerUUID)
+            .findOne();
     if (provider == null) {
       return "Invalid Provider UUID: " + providerUUID;
     }

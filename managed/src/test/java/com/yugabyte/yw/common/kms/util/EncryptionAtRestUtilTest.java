@@ -18,131 +18,109 @@ import static org.junit.Assert.assertNull;
 import play.libs.Json;
 
 public class EncryptionAtRestUtilTest extends FakeDBApplication {
-    Customer testCustomer;
-    Universe testUniverse;
+  Customer testCustomer;
+  Universe testUniverse;
 
-    EncryptionAtRestUtil encryptionUtil;
+  EncryptionAtRestUtil encryptionUtil;
 
-    @Before
-    public void setup() {
-        encryptionUtil = new EncryptionAtRestUtil();
-        testCustomer = ModelFactory.testCustomer();
-        testUniverse = ModelFactory.createUniverse();
-    }
+  @Before
+  public void setup() {
+    encryptionUtil = new EncryptionAtRestUtil();
+    testCustomer = ModelFactory.testCustomer();
+    testUniverse = ModelFactory.createUniverse();
+  }
 
-    @Test
-    public void testGenerateSalt() {
-        String salt = encryptionUtil
-                .generateSalt(testCustomer.uuid, KeyProvider.SMARTKEY);
-        assertNotNull(salt);
-    }
+  @Test
+  public void testGenerateSalt() {
+    String salt = encryptionUtil.generateSalt(testCustomer.uuid, KeyProvider.SMARTKEY);
+    assertNotNull(salt);
+  }
 
-    @Test
-    public void testMaskAndUnmaskConfigData() {
-        JsonNode originalObj = Json.newObject().put("test_key", "test_val");
-        ObjectNode encryptedObj = encryptionUtil.maskConfigData(
-                testCustomer.uuid,
-                originalObj,
-                KeyProvider.SMARTKEY
-        );
-        JsonNode unencryptedObj = encryptionUtil.unmaskConfigData(
-                testCustomer.uuid,
-                encryptedObj,
-                KeyProvider.SMARTKEY
-        );
-        assertEquals(originalObj.get("test_key").asText(), unencryptedObj.get("test_key").asText());
-    }
+  @Test
+  public void testMaskAndUnmaskConfigData() {
+    JsonNode originalObj = Json.newObject().put("test_key", "test_val");
+    ObjectNode encryptedObj =
+        encryptionUtil.maskConfigData(testCustomer.uuid, originalObj, KeyProvider.SMARTKEY);
+    JsonNode unencryptedObj =
+        encryptionUtil.unmaskConfigData(testCustomer.uuid, encryptedObj, KeyProvider.SMARTKEY);
+    assertEquals(originalObj.get("test_key").asText(), unencryptedObj.get("test_key").asText());
+  }
 
-    @Test
-    public void testGetUniverseKeyCacheEntryNoEntry() {
-        assertNull(encryptionUtil.getUniverseKeyCacheEntry(
-            UUID.randomUUID(),
-            new String("some_key_ref").getBytes())
-        );
-    }
+  @Test
+  public void testGetUniverseKeyCacheEntryNoEntry() {
+    assertNull(
+        encryptionUtil.getUniverseKeyCacheEntry(
+            UUID.randomUUID(), new String("some_key_ref").getBytes()));
+  }
 
-    @Test
-    public void testSetAndGetUniverseKeyCacheEntry() {
-        UUID universeUUID = UUID.randomUUID();
-        byte[] keyRef = new String("some_key_ref").getBytes();
-        byte[] keyVal = new String("some_key_val").getBytes();
-        encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-        assertEquals(
-                Base64.getEncoder().encodeToString(keyVal),
-                Base64.getEncoder().encodeToString(
-                        encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)
-                )
-        );
-    }
+  @Test
+  public void testSetAndGetUniverseKeyCacheEntry() {
+    UUID universeUUID = UUID.randomUUID();
+    byte[] keyRef = new String("some_key_ref").getBytes();
+    byte[] keyVal = new String("some_key_val").getBytes();
+    encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+    assertEquals(
+        Base64.getEncoder().encodeToString(keyVal),
+        Base64.getEncoder()
+            .encodeToString(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)));
+  }
 
-    @Test
-    public void testSetUpdateAndGetUniverseKeyCacheEntry() {
-        UUID universeUUID = UUID.randomUUID();
-        byte[] keyRef = new String("some_key_ref").getBytes();
-        byte[] keyVal = new String("some_key_val").getBytes();
-        encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-        assertEquals(
-                Base64.getEncoder().encodeToString(keyVal),
-                Base64.getEncoder().encodeToString(
-                        encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)
-                )
-        );
-        keyVal = new String("some_new_key_val").getBytes();
-        encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-        assertEquals(
-                Base64.getEncoder().encodeToString(keyVal),
-                Base64.getEncoder().encodeToString(
-                        encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)
-                )
-        );
-    }
+  @Test
+  public void testSetUpdateAndGetUniverseKeyCacheEntry() {
+    UUID universeUUID = UUID.randomUUID();
+    byte[] keyRef = new String("some_key_ref").getBytes();
+    byte[] keyVal = new String("some_key_val").getBytes();
+    encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+    assertEquals(
+        Base64.getEncoder().encodeToString(keyVal),
+        Base64.getEncoder()
+            .encodeToString(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)));
+    keyVal = new String("some_new_key_val").getBytes();
+    encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+    assertEquals(
+        Base64.getEncoder().encodeToString(keyVal),
+        Base64.getEncoder()
+            .encodeToString(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)));
+  }
 
-    @Test
-    public void testClearUniverseKeyCacheEntry() {
-        UUID universeUUID = UUID.randomUUID();
-        byte[] keyRef = new String("some_key_ref").getBytes();
-        byte[] keyVal = new String("some_key_val").getBytes();
-        encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-        assertEquals(
-                Base64.getEncoder().encodeToString(keyVal),
-                Base64.getEncoder().encodeToString(
-                        encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)
-                )
-        );
-        encryptionUtil.removeUniverseKeyCacheEntry(universeUUID);
-        assertNull(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef));
-    }
+  @Test
+  public void testClearUniverseKeyCacheEntry() {
+    UUID universeUUID = UUID.randomUUID();
+    byte[] keyRef = new String("some_key_ref").getBytes();
+    byte[] keyVal = new String("some_key_val").getBytes();
+    encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+    assertEquals(
+        Base64.getEncoder().encodeToString(keyVal),
+        Base64.getEncoder()
+            .encodeToString(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)));
+    encryptionUtil.removeUniverseKeyCacheEntry(universeUUID);
+    assertNull(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef));
+  }
 
-    @Test
-    public void testGetNumKeyRotationsNoHistory() {
-        int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);
-        assertEquals(numRotations, 0);
-    }
+  @Test
+  public void testGetNumKeyRotationsNoHistory() {
+    int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);
+    assertEquals(numRotations, 0);
+  }
 
-    @Test
-    public void testGetNumKeyRotations() {
-        UUID configUUID = UUID.randomUUID();
-        encryptionUtil.addKeyRef(
-                testUniverse.universeUUID,
-                configUUID,
-                new String("some_key_ref").getBytes()
-        );
-        int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, configUUID);
-        assertEquals(1, numRotations);
-    }
+  @Test
+  public void testGetNumKeyRotations() {
+    UUID configUUID = UUID.randomUUID();
+    encryptionUtil.addKeyRef(
+        testUniverse.universeUUID, configUUID, new String("some_key_ref").getBytes());
+    int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, configUUID);
+    assertEquals(1, numRotations);
+  }
 
-    @Test
-    public void testClearUniverseKeyHistory() {
-        UUID configUUID = UUID.randomUUID();
-        encryptionUtil.addKeyRef(
-                testUniverse.universeUUID,
-                configUUID,
-                new String("some_key_ref").getBytes()
-        );
-        int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, configUUID);
-        assertEquals(numRotations, 1);
-        encryptionUtil.removeKeyRotationHistory(testUniverse.universeUUID, configUUID);
-        numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);
-        assertEquals(0, numRotations);
-    }
+  @Test
+  public void testClearUniverseKeyHistory() {
+    UUID configUUID = UUID.randomUUID();
+    encryptionUtil.addKeyRef(
+        testUniverse.universeUUID, configUUID, new String("some_key_ref").getBytes());
+    int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, configUUID);
+    assertEquals(numRotations, 1);
+    encryptionUtil.removeKeyRotationHistory(testUniverse.universeUUID, configUUID);
+    numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);
+    assertEquals(0, numRotations);
+  }
 }

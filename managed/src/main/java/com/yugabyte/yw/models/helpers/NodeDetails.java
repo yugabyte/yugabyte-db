@@ -12,9 +12,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Represents all the details of a cloud node that are of interest.
- */
+/** Represents all the details of a cloud node that are of interest. */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
@@ -136,38 +134,45 @@ public class NodeDetails {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("name: ").append(nodeName).append(", ")
-      .append(cloudInfo.toString())
-      .append(", isMaster: ").append(isMaster)
-      .append(", isTserver: ").append(isTserver)
-      .append(", state: ").append(state)
-      .append(", azUuid: ").append(azUuid)
-      .append(", placementUuid: ").append(placementUuid);
+    sb.append("name: ")
+        .append(nodeName)
+        .append(", ")
+        .append(cloudInfo.toString())
+        .append(", isMaster: ")
+        .append(isMaster)
+        .append(", isTserver: ")
+        .append(isTserver)
+        .append(", state: ")
+        .append(state)
+        .append(", azUuid: ")
+        .append(azUuid)
+        .append(", placementUuid: ")
+        .append(placementUuid);
     return sb.toString();
   }
 
   @JsonIgnore
   public boolean isActive() {
-    return !(state == NodeState.Unreachable ||
-      state == NodeState.ToBeRemoved ||
-      state == NodeState.Removing ||
-      state == NodeState.Removed ||
-      state == NodeState.Starting ||
-      state == NodeState.Stopped ||
-      state == NodeState.Adding ||
-      state == NodeState.BeingDecommissioned ||
-      state == NodeState.Decommissioned);
+    return !(state == NodeState.Unreachable
+        || state == NodeState.ToBeRemoved
+        || state == NodeState.Removing
+        || state == NodeState.Removed
+        || state == NodeState.Starting
+        || state == NodeState.Stopped
+        || state == NodeState.Adding
+        || state == NodeState.BeingDecommissioned
+        || state == NodeState.Decommissioned);
   }
 
   @JsonIgnore
   public boolean isQueryable() {
-    return (state == NodeState.UpgradeSoftware ||
-      state == NodeState.UpdateGFlags ||
-      state == NodeState.Live ||
-      state == NodeState.ToBeRemoved ||
-      state == NodeState.Removing ||
-      state == NodeState.Stopping ||
-      state == NodeState.UpdateCert);
+    return (state == NodeState.UpgradeSoftware
+        || state == NodeState.UpdateGFlags
+        || state == NodeState.Live
+        || state == NodeState.ToBeRemoved
+        || state == NodeState.Removing
+        || state == NodeState.Stopping
+        || state == NodeState.UpdateCert);
   }
 
   @JsonIgnore
@@ -180,7 +185,7 @@ public class NodeDetails {
       return new HashSet<>();
     }
     switch (state) {
-      // Unexpected/abnormal states.
+        // Unexpected/abnormal states.
       case ToBeAdded:
         return new HashSet<>(Arrays.asList(NodeActionType.DELETE));
       case Adding:
@@ -192,7 +197,7 @@ public class NodeDetails {
       case ToBeRemoved:
         return new HashSet<>(Arrays.asList(NodeActionType.REMOVE));
 
-      // Expected/normal states.
+        // Expected/normal states.
       case Live:
         return new HashSet<>(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
       case Stopped:
@@ -209,8 +214,10 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isRemovable() {
-    return state == NodeState.ToBeAdded || state == NodeState.Adding
-        || state == NodeState.SoftwareInstalled || state == NodeState.Removed
+    return state == NodeState.ToBeAdded
+        || state == NodeState.Adding
+        || state == NodeState.SoftwareInstalled
+        || state == NodeState.Removed
         || state == NodeState.Decommissioned;
   }
 

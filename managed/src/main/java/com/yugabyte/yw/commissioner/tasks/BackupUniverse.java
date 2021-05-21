@@ -78,10 +78,12 @@ public class BackupUniverse extends UniverseTaskBase {
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-      Set<String> tableNames = taskParams().getTableNames()
-        .stream()
-        .map(tableName -> taskParams().keyspace + ":" + tableName)
-        .collect(Collectors.toSet());
+      Set<String> tableNames =
+          taskParams()
+              .getTableNames()
+              .stream()
+              .map(tableName -> taskParams().keyspace + ":" + tableName)
+              .collect(Collectors.toSet());
 
       taskInfo = String.join(",", tableNames);
 

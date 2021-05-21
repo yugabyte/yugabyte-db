@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
@@ -71,32 +70,51 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   }
 
   private JsonNode doListInstanceTypesAndVerify(UUID providerUUID, int status) {
-    Result result = FakeApiHelper.doRequest("GET", "/api/customers/" + customer.uuid
-        + "/providers/" + providerUUID + "/instance_types");
+    Result result =
+        FakeApiHelper.doRequest(
+            "GET",
+            "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types");
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
 
   private JsonNode doCreateInstanceTypeAndVerify(UUID providerUUID, JsonNode bodyJson, int status) {
-    Result result = FakeApiHelper.doRequestWithBody(
-        "POST",
-        "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types",
-        bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithBody(
+            "POST",
+            "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types",
+            bodyJson);
 
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
 
-  private JsonNode doGetInstanceTypeAndVerify(UUID providerUUID, String instanceTypeCode, int status) {
-    Result result = FakeApiHelper.doRequest("GET", "/api/customers/" + customer.uuid
-        + "/providers/" + providerUUID + "/instance_types/" + instanceTypeCode);
+  private JsonNode doGetInstanceTypeAndVerify(
+      UUID providerUUID, String instanceTypeCode, int status) {
+    Result result =
+        FakeApiHelper.doRequest(
+            "GET",
+            "/api/customers/"
+                + customer.uuid
+                + "/providers/"
+                + providerUUID
+                + "/instance_types/"
+                + instanceTypeCode);
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
 
-  private JsonNode doDeleteInstanceTypeAndVerify(UUID providerUUID, String instanceTypeCode, int status) {
-    Result result = FakeApiHelper.doRequest("DELETE", "/api/customers/" + customer.uuid
-        + "/providers/" + providerUUID + "/instance_types/" + instanceTypeCode);
+  private JsonNode doDeleteInstanceTypeAndVerify(
+      UUID providerUUID, String instanceTypeCode, int status) {
+    Result result =
+        FakeApiHelper.doRequest(
+            "DELETE",
+            "/api/customers/"
+                + customer.uuid
+                + "/providers/"
+                + providerUUID
+                + "/instance_types/"
+                + instanceTypeCode);
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
@@ -141,9 +159,12 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     for (int idx = 0; idx < json.size(); ++idx) {
       JsonNode instance = json.get(idx);
       assertValue(instance, "instanceTypeCode", instanceTypes[idx].getInstanceTypeCode());
-      assertThat(instance.get("numCores").asDouble(),
-        allOf(notNullValue(), equalTo(instanceTypes[idx].numCores)));
-      assertThat(instance.get("memSizeGB").asDouble(), allOf(notNullValue(), equalTo(instanceTypes[idx].memSizeGB)));
+      assertThat(
+          instance.get("numCores").asDouble(),
+          allOf(notNullValue(), equalTo(instanceTypes[idx].numCores)));
+      assertThat(
+          instance.get("memSizeGB").asDouble(),
+          allOf(notNullValue(), equalTo(instanceTypes[idx].memSizeGB)));
 
       InstanceType it = instanceTypes[idx];
       InstanceTypeDetails itd = it.instanceTypeDetails;
@@ -152,13 +173,17 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       JsonNode itdNode = instance.get("instanceTypeDetails");
       JsonNode detailsListNode = itdNode.get("volumeDetailsList");
       JsonNode jsonDetails = detailsListNode.get(0);
-      assertThat(jsonDetails.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(targetDetails.volumeSizeGB)));
+      assertThat(
+          jsonDetails.get("volumeSizeGB").asInt(),
+          allOf(notNullValue(), equalTo(targetDetails.volumeSizeGB)));
       assertValue(jsonDetails, "volumeType", targetDetails.volumeType.toString());
       assertValue(jsonDetails, "mountPath", targetDetails.mountPath);
     }
-    List<String> expectedCodes = Arrays.asList(instanceTypes).stream()
-        .map(instanceType -> instanceType.idKey.instanceTypeCode)
-        .collect(Collectors.toList());
+    List<String> expectedCodes =
+        Arrays.asList(instanceTypes)
+            .stream()
+            .map(instanceType -> instanceType.idKey.instanceTypeCode)
+            .collect(Collectors.toList());
     assertValues(json, "instanceTypeCode", expectedCodes);
     assertAuditEntry(0, customer.uuid);
   }
@@ -284,8 +309,9 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteInstanceTypeWithValidParams() {
-    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0,
-        new InstanceType.InstanceTypeDetails());
+    InstanceType it =
+        InstanceType.upsert(
+            awsProvider.code, "test-i1", 3, 5.0, new InstanceType.InstanceTypeDetails());
     JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
     it = InstanceType.get(awsProvider.code, it.getInstanceTypeCode());
     assertTrue(json.get("success").asBoolean());

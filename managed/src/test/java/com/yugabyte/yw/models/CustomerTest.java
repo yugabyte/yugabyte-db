@@ -27,7 +27,7 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    Customer customer = Customer.create("tc","Test Customer");
+    Customer customer = Customer.create("tc", "Test Customer");
     customer.save();
     assertNotNull(customer.uuid);
     assertEquals("Test Customer", customer.name);
@@ -38,7 +38,7 @@ public class CustomerTest extends FakeDBApplication {
   public void testCreateWithLargerCustomerCode() {
     String largeCustomerCode = RandomStringUtils.randomAlphabetic(16);
     try {
-      Customer customer = Customer.create(largeCustomerCode,"Test Customer");
+      Customer customer = Customer.create(largeCustomerCode, "Test Customer");
       customer.save();
     } catch (PersistenceException pe) {
       assertTrue(pe.getMessage().contains("Value too long for column"));
@@ -48,14 +48,14 @@ public class CustomerTest extends FakeDBApplication {
   @Test
   public void testCreateWithCustomerCode() {
     String customerCode = RandomStringUtils.randomAlphabetic(15);
-    Customer customer = Customer.create(customerCode,"Test Customer");
+    Customer customer = Customer.create(customerCode, "Test Customer");
     customer.save();
     assertEquals(customerCode, customer.code);
   }
 
   @Test
   public void testCreateValidateUniqueIDs() {
-    Customer c1 = Customer.create("C1",  "Customer 1");
+    Customer c1 = Customer.create("C1", "Customer 1");
     c1.save();
     Customer c2 = Customer.create("C2", "Customer 2");
     c2.save();
@@ -76,7 +76,7 @@ public class CustomerTest extends FakeDBApplication {
     assertEquals(2, customerList.size());
   }
 
-  @Test(expected=javax.persistence.PersistenceException.class)
+  @Test(expected = javax.persistence.PersistenceException.class)
   public void testInvalidCreate() {
     Customer c = Customer.create(null, null);
     c.save();
@@ -89,8 +89,8 @@ public class CustomerTest extends FakeDBApplication {
 
     assertNotNull(c.uuid);
 
-    JsonNode features = Json.parse(
-      "{\"TLS\": true, \"universe\": {\"foo\": \"bar\", \"backups\": false}}");
+    JsonNode features =
+        Json.parse("{\"TLS\": true, \"universe\": {\"foo\": \"bar\", \"backups\": false}}");
     c.upsertFeatures(features);
 
     assertEquals(features, c.getFeatures());
@@ -98,8 +98,8 @@ public class CustomerTest extends FakeDBApplication {
     JsonNode newFeatures = Json.parse("{\"universe\": {\"foo\": \"foo\"}}");
     c.upsertFeatures(newFeatures);
 
-    JsonNode expectedFeatures = Json.parse(
-      "{\"TLS\": true, \"universe\": {\"foo\": \"foo\", \"backups\": false}}");
+    JsonNode expectedFeatures =
+        Json.parse("{\"TLS\": true, \"universe\": {\"foo\": \"foo\", \"backups\": false}}");
     assertEquals(expectedFeatures, c.getFeatures());
   }
 
@@ -111,12 +111,14 @@ public class CustomerTest extends FakeDBApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     Universe universe = createUniverse(c.getCustomerId());
-    UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
     UUID randProviderUUID = UUID.randomUUID();
     userIntent.provider = randProviderUUID.toString();
     userIntent.regionList = new ArrayList<UUID>();
     userIntent.regionList.add(r.uuid);
-    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+    universe =
+        Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     c.addUniverseUUID(universe.universeUUID);
     c.save();
     Set<Universe> universes = c.getUniversesForProvider(randProviderUUID);

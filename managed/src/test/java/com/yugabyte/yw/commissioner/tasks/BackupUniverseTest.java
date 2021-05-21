@@ -31,12 +31,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-
 @RunWith(MockitoJUnitRunner.class)
 public class BackupUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
 
   Universe defaultUniverse;
 
@@ -62,8 +60,12 @@ public class BackupUniverseTest extends CommissionerBaseTest {
       Backup backup = Backup.create(defaultCustomer.uuid, backupTableParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);
       backup.setTaskUUID(taskUUID);
-      CustomerTask.create(defaultCustomer, defaultUniverse.universeUUID, taskUUID,
-          CustomerTask.TargetType.Backup, CustomerTask.TaskType.Create,
+      CustomerTask.create(
+          defaultCustomer,
+          defaultUniverse.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Backup,
+          CustomerTask.TaskType.Create,
           "bar");
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
@@ -74,7 +76,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableCreateAction() {
-    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
@@ -89,7 +91,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableError() {
-    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
     shellResponse.message = "{\"error\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
@@ -103,7 +105,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableFatal() {
-    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
     shellResponse.message = "{\"error\": true}";
     shellResponse.code = 99;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
@@ -116,7 +118,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableRestoreAction() {
-    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
@@ -131,7 +133,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableRestoreVerbose() {
-    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
     shellResponse.message = "{\"snapshot_url\": \"s3://random\", \"skipthis\": \"INFO\"}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);

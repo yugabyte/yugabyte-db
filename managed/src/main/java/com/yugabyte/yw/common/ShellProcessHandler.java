@@ -26,90 +26,85 @@ import java.util.Map;
 
 @Singleton
 public class ShellProcessHandler {
-    public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
+  public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
-    public static class ShellResponse {
-        public int code;
-        public String message;
+  public static class ShellResponse {
+    public int code;
+    public String message;
 
-        public static ShellResponse create(int code, String message) {
-            ShellResponse response = new ShellResponse();
-            response.code = code;
-            response.message = message;
-            return response;
-        }
+    public static ShellResponse create(int code, String message) {
+      ShellResponse response = new ShellResponse();
+      response.code = code;
+      response.message = message;
+      return response;
+    }
+  }
+
+  @Inject play.Configuration appConfig;
+
+  public ShellResponse run(
+      List<String> command, Map<String, String> extraEnvVars, boolean logCmdOutput) {
+    ProcessBuilder pb = new ProcessBuilder(command);
+    Map envVars = pb.environment();
+    if (!extraEnvVars.isEmpty()) {
+      envVars.putAll(extraEnvVars);
+    }
+    String devopsHome = appConfig.getString("yb.devops.home");
+    if (devopsHome != null) {
+      pb.directory(new File(devopsHome));
     }
 
-    @Inject
-    play.Configuration appConfig;
+    ShellResponse response = new ShellResponse();
+    response.code = -1;
 
-
-    public ShellResponse run(
-        List<String> command,
-        Map<String, String> extraEnvVars,
-        boolean logCmdOutput) {
-        ProcessBuilder pb = new ProcessBuilder(command);
-        Map envVars = pb.environment();
-        if (!extraEnvVars.isEmpty()) {
-            envVars.putAll(extraEnvVars);
-        }
-        String devopsHome = appConfig.getString("yb.devops.home");
-        if (devopsHome != null) {
-            pb.directory(new File(devopsHome));
-        }
-
-        ShellResponse response = new ShellResponse();
-        response.code = -1;
-
-        File tempOutputFile = null;
-        File tempErrorFile = null;
-        try {
-            tempOutputFile = File.createTempFile("shell_process_out", "tmp");
-            tempErrorFile = File.createTempFile("shell_process_err", "tmp");
-            pb.redirectOutput(tempOutputFile);
-            pb.redirectError(tempErrorFile);
-            Process process = pb.start();
-            response.code = process.waitFor();
-            String processOutput = fetchStream(new FileInputStream(tempOutputFile), logCmdOutput);
-            String processError = fetchStream(new FileInputStream(tempErrorFile), logCmdOutput);
-            response.message = (response.code == 0) ? processOutput : processError;
-        } catch (IOException | InterruptedException e) {
-            LOG.error(e.getMessage());
-            response.message = e.getMessage();
-        } finally {
-            if (tempOutputFile != null && tempOutputFile.exists()) {
-                tempOutputFile.delete();
-            }
-            if (tempErrorFile != null && tempErrorFile.exists()) {
-                tempErrorFile.delete();
-            }
-        }
-
-        return response;
+    File tempOutputFile = null;
+    File tempErrorFile = null;
+    try {
+      tempOutputFile = File.createTempFile("shell_process_out", "tmp");
+      tempErrorFile = File.createTempFile("shell_process_err", "tmp");
+      pb.redirectOutput(tempOutputFile);
+      pb.redirectError(tempErrorFile);
+      Process process = pb.start();
+      response.code = process.waitFor();
+      String processOutput = fetchStream(new FileInputStream(tempOutputFile), logCmdOutput);
+      String processError = fetchStream(new FileInputStream(tempErrorFile), logCmdOutput);
+      response.message = (response.code == 0) ? processOutput : processError;
+    } catch (IOException | InterruptedException e) {
+      LOG.error(e.getMessage());
+      response.message = e.getMessage();
+    } finally {
+      if (tempOutputFile != null && tempOutputFile.exists()) {
+        tempOutputFile.delete();
+      }
+      if (tempErrorFile != null && tempErrorFile.exists()) {
+        tempErrorFile.delete();
+      }
     }
 
-    public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
-        return run(command, extraEnvVars, true /*logCommandOutput*/);
-    }
+    return response;
+  }
 
-    private static String fetchStream(
-        InputStream inputStream,
-        boolean logCmdOutput) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        BufferedReader br = null;
-        try {
-            br = new BufferedReader(new InputStreamReader(inputStream));
-            String line = null;
-            while ((line = br.readLine()) != null) {
-                sb.append(line + System.lineSeparator());
-                if (logCmdOutput) {
-                    LOG.info(line);
-                }
-            }
-        } finally {
-            br.close();
-            inputStream.close();
+  public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
+    return run(command, extraEnvVars, true /*logCommandOutput*/);
+  }
+
+  private static String fetchStream(InputStream inputStream, boolean logCmdOutput)
+      throws IOException {
+    StringBuilder sb = new StringBuilder();
+    BufferedReader br = null;
+    try {
+      br = new BufferedReader(new InputStreamReader(inputStream));
+      String line = null;
+      while ((line = br.readLine()) != null) {
+        sb.append(line + System.lineSeparator());
+        if (logCmdOutput) {
+          LOG.info(line);
         }
-        return sb.toString().trim();
+      }
+    } finally {
+      br.close();
+      inputStream.close();
     }
+    return sb.toString().trim();
+  }
 }

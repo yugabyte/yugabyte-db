@@ -35,10 +35,8 @@ public class ApiResponse {
   public static JsonNode errorJSON(Object message) {
     ObjectNode jsonMsg = Json.newObject();
 
-    if (message instanceof JsonNode)
-      jsonMsg.set("error", (JsonNode) message);
-    else
-      jsonMsg.put("error", (String) message);
+    if (message instanceof JsonNode) jsonMsg.set("error", (JsonNode) message);
+    else jsonMsg.put("error", (String) message);
 
     return jsonMsg;
   }

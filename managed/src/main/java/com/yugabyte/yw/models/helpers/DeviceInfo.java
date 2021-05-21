@@ -23,7 +23,7 @@ public class DeviceInfo {
 
   // The type of storage used for this instance (null if instance volume type is not EBS).
   public PublicCloudConstants.StorageType storageType;
-  
+
   public String toString() {
     StringBuilder sb = new StringBuilder("DeviceInfo: ");
     sb.append("volSize=").append(volumeSize);

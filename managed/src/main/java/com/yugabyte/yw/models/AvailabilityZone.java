@@ -25,8 +25,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 @Entity
 public class AvailabilityZone extends Model {
 
-  @Id
-  public UUID uuid;
+  @Id public UUID uuid;
 
   @Column(length = 25, nullable = false)
   public String code;
@@ -43,8 +42,14 @@ public class AvailabilityZone extends Model {
 
   @Column(nullable = false, columnDefinition = "boolean default true")
   public Boolean active = true;
-  public Boolean isActive() { return active; }
-  public void setActiveFlag(Boolean active) { this.active = active; }
+
+  public Boolean isActive() {
+    return active;
+  }
+
+  public void setActiveFlag(Boolean active) {
+    this.active = active;
+  }
 
   @Column(length = 50)
   public String subnet;
@@ -80,11 +85,9 @@ public class AvailabilityZone extends Model {
     }
   }
 
-  /**
-   * Query Helper for Availability Zone with primary key
-   */
+  /** Query Helper for Availability Zone with primary key */
   public static final Finder<UUID, AvailabilityZone> find =
-    new Finder<UUID,AvailabilityZone>(AvailabilityZone.class){};
+      new Finder<UUID, AvailabilityZone>(AvailabilityZone.class) {};
 
   public static AvailabilityZone create(Region region, String code, String name, String subnet) {
     AvailabilityZone az = new AvailabilityZone();
@@ -105,18 +108,18 @@ public class AvailabilityZone extends Model {
   }
 
   public static AvailabilityZone get(UUID zoneUuid) {
-    return AvailabilityZone.find.query().
-      fetch("region")
-      .fetch("region.provider")
-      .where()
-      .idEq(zoneUuid)
-      .findOne();
+    return AvailabilityZone.find
+        .query()
+        .fetch("region")
+        .fetch("region.provider")
+        .where()
+        .idEq(zoneUuid)
+        .findOne();
   }
 
   @JsonBackReference
   public Provider getProvider() {
-    String providerQuery =
-        "select p.uuid, p.code, p.name from provider p where p.uuid = :p_uuid";
+    String providerQuery = "select p.uuid, p.code, p.name from provider p where p.uuid = :p_uuid";
     RawSql rawSql = RawSqlBuilder.parse(providerQuery).create();
     Query<Provider> query = Ebean.find(Provider.class);
     query.setRawSql(rawSql);

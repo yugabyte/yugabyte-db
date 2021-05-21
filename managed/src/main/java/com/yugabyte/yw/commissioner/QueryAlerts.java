@@ -54,12 +54,11 @@ public class QueryAlerts {
 
   @Inject
   public QueryAlerts(
-    ExecutionContext executionContext,
-    ActorSystem actorSystem,
-    AlertManager alertManager,
-    MetricQueryHelper queryHelper,
-    RuntimeConfigFactory configFactory
-  ) {
+      ExecutionContext executionContext,
+      ActorSystem actorSystem,
+      AlertManager alertManager,
+      MetricQueryHelper queryHelper,
+      RuntimeConfigFactory configFactory) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.queryHelper = queryHelper;
@@ -73,37 +72,47 @@ public class QueryAlerts {
   }
 
   private void initialize() {
-    this.actorSystem.scheduler().schedule(
-      Duration.create(0, TimeUnit.MINUTES),
-      Duration.create(YB_QUERY_ALERTS_INTERVAL, TimeUnit.MINUTES),
-      this::scheduleRunner,
-      this.executionContext
-    );
+    this.actorSystem
+        .scheduler()
+        .schedule(
+            Duration.create(0, TimeUnit.MINUTES),
+            Duration.create(YB_QUERY_ALERTS_INTERVAL, TimeUnit.MINUTES),
+            this::scheduleRunner,
+            this.executionContext);
   }
 
   public Set<Alert> processAlertDefinitions(UUID customerUUID) {
     Set<Alert> alertsStillActive = new HashSet<>();
-    AlertDefinition.listActive(customerUUID).forEach(definition -> {
-      try {
-        Universe universe = Universe.get(definition.universeUUID);
-        String query = new ConfigSubstitutor(configFactory.forUniverse(universe))
-            .replace(definition.query);
-        if (!queryHelper.queryDirect(query).isEmpty()) {
-          List<Alert> existingAlerts = Alert.getActiveCustomerAlerts(customerUUID, definition.uuid);
-          // Create an alert to activate if it doesn't exist already.
-          if (existingAlerts.isEmpty()) {
-            Alert.create(customerUUID, definition.universeUUID, Alert.TargetType.UniverseType,
-                "CUSTOMER_ALERT", "Error",
-                String.format("%s for %s is firing", definition.name, universe.name),
-                definition.isActive, definition.uuid);
-          } else {
-            alertsStillActive.addAll(existingAlerts);
-          }
-        }
-      } catch (Exception e) {
-        LOG.error("Error processing alert definition '{}'", definition.name, e);
-      }
-    });
+    AlertDefinition.listActive(customerUUID)
+        .forEach(
+            definition -> {
+              try {
+                Universe universe = Universe.get(definition.universeUUID);
+                String query =
+                    new ConfigSubstitutor(configFactory.forUniverse(universe))
+                        .replace(definition.query);
+                if (!queryHelper.queryDirect(query).isEmpty()) {
+                  List<Alert> existingAlerts =
+                      Alert.getActiveCustomerAlerts(customerUUID, definition.uuid);
+                  // Create an alert to activate if it doesn't exist already.
+                  if (existingAlerts.isEmpty()) {
+                    Alert.create(
+                        customerUUID,
+                        definition.universeUUID,
+                        Alert.TargetType.UniverseType,
+                        "CUSTOMER_ALERT",
+                        "Error",
+                        String.format("%s for %s is firing", definition.name, universe.name),
+                        definition.isActive,
+                        definition.uuid);
+                  } else {
+                    alertsStillActive.addAll(existingAlerts);
+                  }
+                }
+              } catch (Exception e) {
+                LOG.error("Error processing alert definition '{}'", definition.name, e);
+              }
+            });
 
     return alertsStillActive;
   }
@@ -121,10 +130,14 @@ public class QueryAlerts {
         Set<Alert> alertsToTransition = new HashSet<>(Alert.listToActivate());
 
         // Pick up all alerts that should be resolved internally but are currently active
-        Customer.getAll().forEach(c ->
-          Alert.listActiveCustomerAlerts(c.uuid).forEach(alert -> {
-            if (!alertsStillActive.contains(alert)) alertsToTransition.add(alert);
-          }));
+        Customer.getAll()
+            .forEach(
+                c ->
+                    Alert.listActiveCustomerAlerts(c.uuid)
+                        .forEach(
+                            alert -> {
+                              if (!alertsStillActive.contains(alert)) alertsToTransition.add(alert);
+                            }));
 
         // Trigger alert transitions
         alertsToTransition.forEach(alertManager::transitionAlert);

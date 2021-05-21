@@ -51,17 +51,15 @@ public class AuditTest extends FakeDBApplication {
     request = mock(Http.Request.class);
     Long id = 2L;
     play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    context = new Http.Context(
-      id, header, request, flashData, flashData, argData, contextComponents()
-    );
+    context =
+        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
     Http.Context.current.set(context);
     when(request.method()).thenReturn("PUT");
     when(request.path()).thenReturn("/api/customer/test/universe/test");
   }
 
   public Audit createEntry(UUID taskUUID, Users user) {
-    return Audit.create(user.uuid, user.customerUUID,
-        "/test/api/call", "PUT", null, taskUUID);
+    return Audit.create(user.uuid, user.customerUUID, "/test/api/call", "PUT", null, taskUUID);
   }
 
   @Test
@@ -104,9 +102,7 @@ public class AuditTest extends FakeDBApplication {
 
   @Test
   public void testCreateAuditEntryWithPayload() {
-    ObjectNode testPayload = Json.newObject()
-            .put("foo", "bar")
-            .put("abc", "xyz");
+    ObjectNode testPayload = Json.newObject().put("foo", "bar").put("abc", "xyz");
     Audit.createAuditEntry(context, request, testPayload);
     List<Audit> entries = Audit.getAll(customer.uuid);
     assertEquals(entries.size(), 1);
@@ -121,9 +117,7 @@ public class AuditTest extends FakeDBApplication {
   @Test
   public void testCreateAuditEntryWithPayloadAndTaskUUID() {
     UUID randUUID = UUID.randomUUID();
-    ObjectNode testPayload = Json.newObject()
-            .put("foo", "bar")
-            .put("abc", "xyz");
+    ObjectNode testPayload = Json.newObject().put("foo", "bar").put("abc", "xyz");
     Audit.createAuditEntry(context, request, testPayload, randUUID);
     List<Audit> entries = Audit.getAll(customer.uuid);
     assertEquals(entries.size(), 1);

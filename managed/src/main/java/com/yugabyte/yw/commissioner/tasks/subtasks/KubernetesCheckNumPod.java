@@ -40,11 +40,9 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     }
   }
 
-  @Inject
-  KubernetesManager kubernetesManager;
+  @Inject KubernetesManager kubernetesManager;
 
-  @Inject
-  Application application;
+  @Inject Application application;
 
   // Number of iterations to wait for the pod to come up.
   private static final int MAX_ITERS = 10;
@@ -71,7 +69,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
   }
 
   protected KubernetesCheckNumPod.Params taskParams() {
-    return (KubernetesCheckNumPod.Params)taskParams;
+    return (KubernetesCheckNumPod.Params) taskParams;
   }
 
   @Override

@@ -52,11 +52,9 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     }
   }
 
-  @Inject
-  KubernetesManager kubernetesManager;
+  @Inject KubernetesManager kubernetesManager;
 
-  @Inject
-  Application application;
+  @Inject Application application;
 
   // Number of iterations to wait for the pod to come up.
   private static final int MAX_ITERS = 10;
@@ -83,7 +81,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   }
 
   protected KubernetesWaitForPod.Params taskParams() {
-    return (KubernetesWaitForPod.Params)taskParams;
+    return (KubernetesWaitForPod.Params) taskParams;
   }
 
   @Override
@@ -118,8 +116,8 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     if (taskParams().config == null) {
       config = Provider.get(taskParams().providerUUID).getConfig();
     }
-    ShellResponse podResponse = kubernetesManager.getPodStatus(config, taskParams().nodePrefix,
-        taskParams().podName);
+    ShellResponse podResponse =
+        kubernetesManager.getPodStatus(config, taskParams().nodePrefix, taskParams().podName);
     JsonNode podInfo = parseShellResponseAsJson(podResponse);
     JsonNode statusNode = podInfo.path("status");
     String status = statusNode.get("phase").asText();

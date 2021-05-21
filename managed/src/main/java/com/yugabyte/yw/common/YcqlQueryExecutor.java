@@ -34,15 +34,14 @@ public class YcqlQueryExecutor {
     Session session = null;
   }
 
-  private CassandraConnection createCassandraConnection(UUID universeUUID, Boolean authEnabled,
-                                                        String username, String password) {
+  private CassandraConnection createCassandraConnection(
+      UUID universeUUID, Boolean authEnabled, String username, String password) {
     CassandraConnection cc = new CassandraConnection();
     List<InetSocketAddress> addresses = Util.getNodesAsInet(universeUUID);
     if (addresses.isEmpty()) {
       return cc;
     }
-    Cluster.Builder builder = Cluster.builder()
-                              .addContactPointsWithPorts(addresses);
+    Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(addresses);
     if (authEnabled) {
       builder.withCredentials(username.trim(), password.trim());
     }
@@ -84,16 +83,20 @@ public class YcqlQueryExecutor {
     return command;
   }
 
-  public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams,
-                               Boolean authEnabled) {
+  public JsonNode executeQuery(
+      Universe universe, RunQueryFormData queryParams, Boolean authEnabled) {
     return executeQuery(universe, queryParams, authEnabled, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD);
   }
 
-  public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams,
-                               Boolean authEnabled, String username, String password) {
+  public JsonNode executeQuery(
+      Universe universe,
+      RunQueryFormData queryParams,
+      Boolean authEnabled,
+      String username,
+      String password) {
     ObjectNode response = newObject();
-    CassandraConnection cc = createCassandraConnection(universe.universeUUID, authEnabled,
-                                                       username, password);
+    CassandraConnection cc =
+        createCassandraConnection(universe.universeUUID, authEnabled, username, password);
     try {
       ResultSet rs = cc.session.execute(queryParams.query);
       if (rs.iterator().hasNext()) {

@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.queries;
 
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,8 +33,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
   private int port;
   private QueryApi apiType;
 
-  public LiveQueryExecutor(ApiHelper apiHelper, String nodeName, String hostName,
-                           int port, QueryApi api) {
+  public LiveQueryExecutor(
+      ApiHelper apiHelper, String nodeName, String hostName, int port, QueryApi api) {
     this.apiHelper = apiHelper;
     this.nodeName = nodeName;
     this.hostName = hostName;
@@ -68,16 +67,14 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
     ObjectMapper mapper = new ObjectMapper();
     if (response.has("connections")) {
       for (JsonNode objNode : response.get("connections")) {
-        if (objNode.has("backend_type") &&
-          objNode.get("backend_type").asText().equalsIgnoreCase("client backend") &&
-          objNode.has("backend_status") &&
-          !objNode.get("backend_status").asText().equalsIgnoreCase("idle")) {
+        if (objNode.has("backend_type")
+            && objNode.get("backend_type").asText().equalsIgnoreCase("client backend")
+            && objNode.has("backend_status")
+            && !objNode.get("backend_status").asText().equalsIgnoreCase("idle")) {
           try {
             // Rather than access the JSON through .get()'s we convert to POJO
-            LiveQueriesParams.YSQLQueryParams params = mapper.treeToValue(
-              objNode,
-              LiveQueriesParams.YSQLQueryParams.class
-            );
+            LiveQueriesParams.YSQLQueryParams params =
+                mapper.treeToValue(objNode, LiveQueriesParams.YSQLQueryParams.class);
             ObjectNode rowData = Json.newObject();
             // Random UUID intended for table row key
             rowData.put("id", UUID.randomUUID().toString());
@@ -115,10 +112,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
     if (response.has("inbound_connections")) {
       for (JsonNode objNode : response.get("inbound_connections")) {
         try {
-          LiveQueriesParams.YCQLQueryParams params = mapper.treeToValue(
-            objNode,
-            LiveQueriesParams.YCQLQueryParams.class
-          );
+          LiveQueriesParams.YCQLQueryParams params =
+              mapper.treeToValue(objNode, LiveQueriesParams.YCQLQueryParams.class);
           if (params.calls_in_flight != null) {
             for (LiveQueriesParams.QueryCallsInFlight query : params.calls_in_flight) {
               // Get SQL query string, joining multiple entries if necessary
@@ -130,8 +125,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
                 }
                 queryStringBuilder.append(callDetail.get("sql_string").asText());
               }
-              String keyspace = params.connection_details.cql_connection_details
-                .get("keyspace").asText();
+              String keyspace =
+                  params.connection_details.cql_connection_details.get("keyspace").asText();
               String[] splitIp = params.remote_ip.split(":");
               // Random UUID intended for table row key
               rowData.put("id", UUID.randomUUID().toString());

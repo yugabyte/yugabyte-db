@@ -42,8 +42,7 @@ import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
   Universe defaultUniverse;
   YBClient mockClient;
   ModifyMasterClusterConfigBlacklist modifyBL;
@@ -52,20 +51,21 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   static final String DEFAULT_NODE_NAME = "host-n1";
 
   private void setDefaultNodeState(final NodeState desiredState) {
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
-        for (NodeDetails node : nodes) {
-          if (node.nodeName.equals(DEFAULT_NODE_NAME)) {
-            node.state = desiredState;
-            break;
+    Universe.UniverseUpdater updater =
+        new Universe.UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
+            for (NodeDetails node : nodes) {
+              if (node.nodeName.equals(DEFAULT_NODE_NAME)) {
+                node.state = desiredState;
+                break;
+              }
+            }
+            universe.setUniverseDetails(universeDetails);
           }
-        }
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+        };
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
   }
 
@@ -83,7 +83,8 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.uuid);
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
 
     setDefaultNodeState(NodeState.Removed);
@@ -93,7 +94,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     when(mockNodeManager.nodeCommand(any(), any()))
         .thenReturn(new ShellProcessHandler.ShellResponse());
     modifyBL = mock(ModifyMasterClusterConfigBlacklist.class);
-    dummyShellResponse =  new ShellProcessHandler.ShellResponse();
+    dummyShellResponse = new ShellProcessHandler.ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }
@@ -110,36 +111,35 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  List<TaskType> RELEASE_INSTANCE_TASK_SEQUENCE = ImmutableList.of(
-    TaskType.SetNodeState,
-    TaskType.WaitForMasterLeader,
-    TaskType.ModifyBlackList,
-    TaskType.AnsibleDestroyServer,
-    TaskType.SetNodeState,
-    TaskType.SwamperTargetsFileUpdate,
-    TaskType.UniverseUpdateSucceeded
-  );
+  List<TaskType> RELEASE_INSTANCE_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.WaitForMasterLeader,
+          TaskType.ModifyBlackList,
+          TaskType.AnsibleDestroyServer,
+          TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> RELEASE_INSTANCE_TASK_EXPECTED_RESULTS = ImmutableList.of(
-    Json.toJson(ImmutableMap.of("state", "BeingDecommissioned")),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of("state", "Decommissioned")),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of())
-  );
+  List<JsonNode> RELEASE_INSTANCE_TASK_EXPECTED_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of("state", "BeingDecommissioned")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Decommissioned")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
 
   private void assertReleaseInstanceSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
     int position = 0;
-    for (TaskType taskType: RELEASE_INSTANCE_TASK_SEQUENCE) {
+    for (TaskType taskType : RELEASE_INSTANCE_TASK_SEQUENCE) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(1, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = RELEASE_INSTANCE_TASK_EXPECTED_RESULTS.get(position);
-      List<JsonNode> taskDetails = tasks.stream()
-          .map(t -> t.getTaskDetails())
-          .collect(Collectors.toList());
+      List<JsonNode> taskDetails =
+          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

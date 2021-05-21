@@ -31,11 +31,14 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(NodeTaskBase.class);
 
   private NodeManager nodeManager;
-  public NodeManager getNodeManager() { return nodeManager; }
+
+  public NodeManager getNodeManager() {
+    return nodeManager;
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
-    return (NodeTaskParams)taskParams;
+    return (NodeTaskParams) taskParams;
   }
 
   @Override
@@ -58,9 +61,8 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
   // Helper API to update the db for the current node with the given state.
   public void setNodeState(NodeDetails.NodeState state) {
     // Persist the desired node information into the DB.
-    UniverseUpdater updater = nodeStateUpdater(taskParams().universeUUID,
-                                               taskParams().nodeName,
-                                               state);
+    UniverseUpdater updater =
+        nodeStateUpdater(taskParams().universeUUID, taskParams().nodeName, state);
     Universe.saveDetails(taskParams().universeUUID, updater);
   }
 }

@@ -30,19 +30,16 @@ import static com.yugabyte.yw.models.Users.Role;
 
 public class TokenAuthenticator extends Action.Simple {
   public static final String COOKIE_AUTH_TOKEN = "authToken";
-  public static final String AUTH_TOKEN_HEADER =  "X-AUTH-TOKEN";
+  public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
   public static final String API_TOKEN_HEADER = "X-AUTH-YW-API-TOKEN";
   public static final String COOKIE_PLAY_SESSION = "PLAY_SESSION";
 
-  @Inject
-  ConfigHelper configHelper;
+  @Inject ConfigHelper configHelper;
 
-  @Inject
-  Configuration appConfig;
+  @Inject Configuration appConfig;
 
-  @Inject
-  private PlaySessionStore playSessionStore;
+  @Inject private PlaySessionStore playSessionStore;
 
   private Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
@@ -167,8 +164,7 @@ public class TokenAuthenticator extends Action.Simple {
     }
 
     // All users have access to get, metrics and setting an API token.
-    if (requestType.equals("GET") || endPoint.equals("/metrics") ||
-        endPoint.equals("/api_token")) {
+    if (requestType.equals("GET") || endPoint.equals("/metrics") || endPoint.equals("/api_token")) {
       return true;
     }
     // If the user is readonly, then don't get any further access.
@@ -176,8 +172,9 @@ public class TokenAuthenticator extends Action.Simple {
       return false;
     }
     // All users other than read only get access to backup endpoints.
-    if (endPoint.endsWith("/create_backup") || endPoint.endsWith("/multi_table_backup") ||
-        endPoint.endsWith("/restore")) {
+    if (endPoint.endsWith("/create_backup")
+        || endPoint.endsWith("/multi_table_backup")
+        || endPoint.endsWith("/restore")) {
       return true;
     }
     // If the user is backupAdmin, they don't get further access.

@@ -43,13 +43,16 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   protected NodeTaskParams taskParams() {
-    return (NodeTaskParams)taskParams;
+    return (NodeTaskParams) taskParams;
   }
 
   @Override
   public void run() {
-    LOG.info("Started {} task for node {} in univ uuid={}", getName(),
-             taskParams().nodeName, taskParams().universeUUID);
+    LOG.info(
+        "Started {} task for node {} in univ uuid={}",
+        getName(),
+        taskParams().nodeName,
+        taskParams().universeUUID);
     NodeDetails currentNode = null;
     String errorString = null;
 
@@ -67,10 +70,14 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeState.Removed &&
-          currentNode.state != NodeState.Decommissioned) {
-        String msg = "Node " + taskParams().nodeName + " is not in removed or decommissioned state"
-                     + ", but is in " + currentNode.state + ", so cannot be added.";
+      if (currentNode.state != NodeState.Removed && currentNode.state != NodeState.Decommissioned) {
+        String msg =
+            "Node "
+                + taskParams().nodeName
+                + " is not in removed or decommissioned state"
+                + ", but is in "
+                + currentNode.state
+                + ", so cannot be added.";
         LOG.error(msg);
         throw new RuntimeException(msg);
       }
@@ -82,14 +89,14 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // For onprem universes, allocate an available node
       // from the provider's node_instance table.
       if (wasDecommissioned && cluster.userIntent.providerType.equals(CloudType.onprem)) {
-          Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
-          List<String> nodeNameList = new ArrayList<>();
-          nodeNameList.add(currentNode.nodeName);
-          onpremAzToNodes.put(currentNode.azUuid, nodeNameList);
-          String instanceType = currentNode.cloudInfo.instance_type;
+        Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
+        List<String> nodeNameList = new ArrayList<>();
+        nodeNameList.add(currentNode.nodeName);
+        onpremAzToNodes.put(currentNode.azUuid, nodeNameList);
+        String instanceType = currentNode.cloudInfo.instance_type;
 
-          Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
-          currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).nodeUuid;
+        Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
+        currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).nodeUuid;
       }
 
       NodeTaskParams nodeParams = new NodeTaskParams();
@@ -99,14 +106,13 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       nodeParams.azUuid = currentNode.azUuid;
       nodeParams.universeUUID = taskParams().universeUUID;
       nodeParams.extraDependencies.installNodeExporter =
-        taskParams().extraDependencies.installNodeExporter;
+          taskParams().extraDependencies.installNodeExporter;
 
       String preflightStatus = performPreflightCheck(currentNode, nodeParams);
       if (preflightStatus != null) {
         Map<NodeInstance, String> failedNodes = new HashMap<>();
         failedNodes.put(NodeInstance.getByName(currentNode.nodeName), preflightStatus);
-        createFailedPrecheckTask(failedNodes)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+        createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
         errorString = "Preflight checks failed.";
       } else {
         // Update Node State to being added.
@@ -115,11 +121,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // First spawn an instance for Decommissioned node.
         if (wasDecommissioned) {
-            createSetupServerTasks(node)
-                .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+          createSetupServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-            createServerInfoTasks(node)
-                .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+          createServerInfoTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
         }
 
         // Re-install software.
@@ -138,15 +142,14 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         boolean masterAdded = false;
         if (areMastersUnderReplicated(currentNode, universe)) {
           LOG.info(
-            "Bringing up master for under replicated universe {} ({})",
-            universe.universeUUID, universe.name
-          );
+              "Bringing up master for under replicated universe {} ({})",
+              universe.universeUUID,
+              universe.name);
           // Set gflags for master.
           createGFlagsOverrideTasks(node, ServerType.MASTER);
 
           // Start a shell master process.
-          createStartMasterTasks(node)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+          createStartMasterTasks(node).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
           // Mark node as a master in YW DB.
           // Do this last so that master addresses does not pick up current node.
@@ -183,17 +186,16 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // Clear the host from master's blacklist.
         if (currentNode.state == NodeState.Removed) {
-            createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         }
 
         // Wait for load to balance.
-        createWaitForLoadBalanceTask()
-            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+        createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
         // Update all tserver conf files with new master information.
         if (masterAdded) {
-            createMasterInfoUpdateTask(universe, currentNode);
+          createMasterInfoUpdateTask(universe, currentNode);
         }
 
         // Update node state to live.
@@ -201,16 +203,18 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
         if (wasDecommissioned) {
-            // Update the DNS entry for this universe.
-            createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false,
-                                      userIntent.providerType, userIntent.provider,
-                                      userIntent.universeName)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          // Update the DNS entry for this universe.
+          createDnsManipulationTask(
+                  DnsManager.DnsCommandType.Edit,
+                  false,
+                  userIntent.providerType,
+                  userIntent.provider,
+                  userIntent.universeName)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         }
 
         // Mark universe task state to success.
-        createMarkUniverseUpdateSuccessTasks()
-            .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+        createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);
       }
 
       // Run all the tasks.

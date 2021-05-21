@@ -39,10 +39,10 @@ public class WaitForDataMove extends AbstractTaskBase {
   private static final int LOG_EVERY_NUM_ITERS = 100;
 
   // Parameters for data move wait task.
-  public static class Params extends UniverseTaskParams { }
+  public static class Params extends UniverseTaskParams {}
 
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -70,7 +70,7 @@ public class WaitForDataMove extends AbstractTaskBase {
       LOG.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
 
       // TODO: Have a mechanism to send this percent to the parent task completion.
-      while (percent < (double)100) {
+      while (percent < (double) 100) {
         GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
 
         if (response.hasError()) {
@@ -87,7 +87,7 @@ public class WaitForDataMove extends AbstractTaskBase {
 
         percent = response.getPercentCompleted();
         // No need to wait if completed (as in, percent == 100).
-        if (percent < (double)100) {
+        if (percent < (double) 100) {
           Thread.sleep(WAIT_EACH_ATTEMPT_MS);
         }
 
@@ -99,7 +99,7 @@ public class WaitForDataMove extends AbstractTaskBase {
       }
     } catch (Exception e) {
       LOG.error("{} hit error {}.", getName(), e.getMessage(), e);
-      throw new RuntimeException(getName() + " hit error: " , e);
+      throw new RuntimeException(getName() + " hit error: ", e);
     } finally {
       ybService.closeClient(client, masterAddresses);
     }

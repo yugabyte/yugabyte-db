@@ -58,7 +58,8 @@ public class ScheduleControllerTest extends FakeDBApplication {
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
     backupTableParams.storageConfigUUID = customerConfig.configUUID;
-    defaultSchedule = Schedule.create(defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000);
+    defaultSchedule =
+        Schedule.create(defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000);
   }
 
   private Result listSchedules(UUID customerUUID) {
@@ -83,8 +84,8 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertOk(r);
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(1, resultJson.size());
-    assertEquals(resultJson.get(0).get("scheduleUUID").asText(),
-                 defaultSchedule.scheduleUUID.toString());
+    assertEquals(
+        resultJson.get(0).get("scheduleUUID").asText(), defaultSchedule.scheduleUUID.toString());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -98,7 +99,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
-  @Test 
+  @Test
   public void testDeleteValid() {
     JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());
@@ -109,7 +110,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
-  @Test 
+  @Test
   public void testDeleteInvalidCustomerUUID() {
     UUID invalidCustomerUUID = UUID.randomUUID();
     JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
@@ -123,7 +124,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
-  @Test 
+  @Test
   public void testDeleteInvalidScheduleUUID() {
     UUID invalidScheduleUUID = UUID.randomUUID();
     JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));

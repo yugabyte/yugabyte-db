@@ -47,14 +47,13 @@ public class ApiUtils {
     return mockUniverseUpdater(nodePrefix, null);
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdater(final String nodePrefix,
-                                                             final Common.CloudType cloudType) {
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final String nodePrefix, final Common.CloudType cloudType) {
     return mockUniverseUpdater(nodePrefix, cloudType, false);
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdater(final String nodePrefix,
-                                                             final Common.CloudType cloudType,
-                                                             final boolean backupState) {
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final String nodePrefix, final Common.CloudType cloudType, final boolean backupState) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -69,8 +68,9 @@ public class ApiUtils {
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
           // and nodeName should be null for ToBeAdded.
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
-              idx <= userIntent.replicationFactor);
+          NodeDetails node =
+              getDummyNodeDetails(
+                  idx, NodeDetails.NodeState.Live, idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
           universeDetails.nodeDetailsSet.add(node);
         }
@@ -85,43 +85,44 @@ public class ApiUtils {
     return mockUniverseUpdater(userIntent, "host", false /* setMasters */);
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdater(UserIntent userIntent,
-                                                             boolean setMasters) {
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      UserIntent userIntent, boolean setMasters) {
     return mockUniverseUpdater(userIntent, "host", setMasters);
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdater(UserIntent userIntent,
-                                                             String nodePrefix) {
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      UserIntent userIntent, String nodePrefix) {
     return mockUniverseUpdater(userIntent, nodePrefix, false /* setMasters */);
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdater(final UserIntent userIntent,
-                                                             final String nodePrefix,
-                                                             final boolean setMasters) {
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final UserIntent userIntent, final String nodePrefix, final boolean setMasters) {
     return mockUniverseUpdater(userIntent, nodePrefix, setMasters, false /* updateInProgress */);
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdater(final UserIntent userIntent,
-                                                             final String nodePrefix,
-                                                             final boolean setMasters,
-                                                             final boolean updateInProgress) {
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final UserIntent userIntent,
+      final String nodePrefix,
+      final boolean setMasters,
+      final boolean updateInProgress) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(
-          ClusterType.PRIMARY,
-          userIntent,
-          userIntent.replicationFactor
-        );
+        PlacementInfo placementInfo =
+            PlacementInfoUtil.getPlacementInfo(
+                ClusterType.PRIMARY, userIntent, userIntent.replicationFactor);
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
           // and nodeName should be null for ToBeAdded.
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
-              setMasters && idx <= userIntent.replicationFactor);
+          NodeDetails node =
+              getDummyNodeDetails(
+                  idx,
+                  NodeDetails.NodeState.Live,
+                  setMasters && idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
           universeDetails.nodeDetailsSet.add(node);
         }
@@ -137,13 +138,14 @@ public class ApiUtils {
   }
 
   public static Universe insertInstanceTags(UUID univUUID) {
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-        userIntent.instanceTags.put("Cust", "Test");
-      }
-    };
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+            userIntent.instanceTags.put("Cust", "Test");
+          }
+        };
     return Universe.saveDetails(univUUID, updater);
   }
 
@@ -158,14 +160,17 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         userIntent.numNodes = userIntent.replicationFactor;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
-                                                setMasters && idx <= userIntent.replicationFactor);
+          NodeDetails node =
+              getDummyNodeDetails(
+                  idx,
+                  NodeDetails.NodeState.Live,
+                  setMasters && idx <= userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.upsertPrimaryCluster(userIntent, null);
 
-        NodeDetails node = getDummyNodeDetails(userIntent.numNodes + 1,
-                                               NodeDetails.NodeState.Removed);
+        NodeDetails node =
+            getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
         universe.setUniverseDetails(universeDetails);
@@ -173,7 +178,8 @@ public class ApiUtils {
     };
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdaterWithYSQLNodes(final boolean enableYSQL) {
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithYSQLNodes(
+      final boolean enableYSQL) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -184,14 +190,13 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         userIntent.numNodes = userIntent.replicationFactor;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
-            true, enableYSQL);
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live, true, enableYSQL);
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.upsertPrimaryCluster(userIntent, null);
 
-        NodeDetails node = getDummyNodeDetails(userIntent.numNodes + 1,
-          NodeDetails.NodeState.Removed);
+        NodeDetails node =
+            getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
         universe.setUniverseDetails(universeDetails);
@@ -225,15 +230,16 @@ public class ApiUtils {
         userIntent.enableYSQL = true;
         userIntent.numNodes = 1;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        universeDetails.nodeDetailsSet.add(getDummyNodeDetailsWithPlacement(
-            universeDetails.getPrimaryCluster().uuid));
+        universeDetails.nodeDetailsSet.add(
+            getDummyNodeDetailsWithPlacement(universeDetails.getPrimaryCluster().uuid));
         universeDetails.upsertPrimaryCluster(userIntent, pi);
         universe.setUniverseDetails(universeDetails);
       }
     };
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdaterWithActivePods(int numMasters, int numTservers) {
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithActivePods(
+      int numMasters, int numTservers) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -243,8 +249,9 @@ public class ApiUtils {
         userIntent.enableYSQL = true;
         userIntent.numNodes = 1;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        universeDetails.nodeDetailsSet.addAll(getDummyNodeDetailSet(
-            universeDetails.getPrimaryCluster().uuid, numMasters, numTservers));
+        universeDetails.nodeDetailsSet.addAll(
+            getDummyNodeDetailSet(
+                universeDetails.getPrimaryCluster().uuid, numMasters, numTservers));
         universeDetails.upsertPrimaryCluster(userIntent, pi);
         universe.setUniverseDetails(universeDetails);
       }
@@ -263,22 +270,25 @@ public class ApiUtils {
         userIntent.numNodes = userIntent.replicationFactor;
         UUID primaryClusterUUID = universeDetails.getPrimaryCluster().uuid;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
-              setMasters && idx <= userIntent.replicationFactor);
+          NodeDetails node =
+              getDummyNodeDetails(
+                  idx,
+                  NodeDetails.NodeState.Live,
+                  setMasters && idx <= userIntent.replicationFactor);
           node.placementUuid = primaryClusterUUID;
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.upsertPrimaryCluster(userIntent, null);
 
-        NodeDetails node = getDummyNodeDetails(userIntent.numNodes + 1,
-            NodeDetails.NodeState.Removed);
+        NodeDetails node =
+            getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
         node.placementUuid = primaryClusterUUID;
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
 
         UUID readonlyClusterUUID = UUID.randomUUID();
-        Set<NodeDetails> readReplicaNodesSet = getDummyNodeDetailSet(readonlyClusterUUID, 0,
-            readOnlyNodes);
+        Set<NodeDetails> readReplicaNodesSet =
+            getDummyNodeDetailSet(readonlyClusterUUID, 0, readOnlyNodes);
         for (NodeDetails roNode : readReplicaNodesSet) {
           roNode.state = NodeState.Live;
         }
@@ -300,7 +310,8 @@ public class ApiUtils {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i =
+        InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
@@ -311,7 +322,8 @@ public class ApiUtils {
   public static UserIntent getDefaultUserIntentSingleAZ(Provider p) {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i =
+        InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
@@ -341,7 +353,8 @@ public class ApiUtils {
     return node;
   }
 
-  public static Set<NodeDetails> getDummyNodeDetailSet(UUID placementUUID, int numMasters, int numTservers) {
+  public static Set<NodeDetails> getDummyNodeDetailSet(
+      UUID placementUUID, int numMasters, int numTservers) {
     Set<NodeDetails> nodeDetailsSet = new HashSet<>();
     int counter = 1;
     for (int i = 0; i < numMasters; i++) {
@@ -375,33 +388,39 @@ public class ApiUtils {
     return getDummyNodeDetails(idx, state, false /* isMaster */, false);
   }
 
-  private static NodeDetails getDummyNodeDetails(int idx,
-                                                 NodeDetails.NodeState state,
-                                                 boolean isMaster) {
+  private static NodeDetails getDummyNodeDetails(
+      int idx, NodeDetails.NodeState state, boolean isMaster) {
     return getDummyNodeDetails(idx, state, isMaster, false);
   }
 
-  private static NodeDetails getDummyNodeDetails(int idx,
-                                                 NodeDetails.NodeState state,
-                                                 boolean isMaster,
-                                                 boolean isYSQL) {
-    return getDummyNodeDetails(idx, state, isMaster, isYSQL,
-                               "aws", "test-region","az-" + idx,
-                               "subnet-" + idx);
+  private static NodeDetails getDummyNodeDetails(
+      int idx, NodeDetails.NodeState state, boolean isMaster, boolean isYSQL) {
+    return getDummyNodeDetails(
+        idx, state, isMaster, isYSQL, "aws", "test-region", "az-" + idx, "subnet-" + idx);
   }
 
-  public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state,
-                                                boolean isMaster, boolean isYSQL,
-                                                String cloud, String region, String zone,
-                                                String subnet) {
-    return getDummyNodeDetails(idx, state, isMaster, isYSQL, cloud, region,
-                               zone, subnet, null);
+  public static NodeDetails getDummyNodeDetails(
+      int idx,
+      NodeDetails.NodeState state,
+      boolean isMaster,
+      boolean isYSQL,
+      String cloud,
+      String region,
+      String zone,
+      String subnet) {
+    return getDummyNodeDetails(idx, state, isMaster, isYSQL, cloud, region, zone, subnet, null);
   }
 
-  public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state,
-                                                boolean isMaster, boolean isYSQL,
-                                                String cloud, String region, String zone,
-                                                String subnet, UUID azUUID) {
+  public static NodeDetails getDummyNodeDetails(
+      int idx,
+      NodeDetails.NodeState state,
+      boolean isMaster,
+      boolean isYSQL,
+      String cloud,
+      String region,
+      String zone,
+      String subnet,
+      UUID azUUID) {
     NodeDetails node = new NodeDetails();
     // TODO: Set nodeName to null for ToBeAdded state
     node.nodeName = "host-n" + idx;
@@ -441,8 +460,8 @@ public class ApiUtils {
     return getDummyTableDetails(partitionKeyCount, 0, ttl, SortOrder.NONE);
   }
 
-  public static TableDetails getDummyTableDetails(int partitionKeyCount, int clusteringKeyCount,
-                                                  long ttl, SortOrder sortOrder) {
+  public static TableDetails getDummyTableDetails(
+      int partitionKeyCount, int clusteringKeyCount, long ttl, SortOrder sortOrder) {
     TableDetails table = new TableDetails();
     table.tableName = "dummy_table";
     table.keyspace = "dummy_ks";
@@ -470,7 +489,6 @@ public class ApiUtils {
     return table;
   }
 
-
   public static DeviceInfo getDummyDeviceInfo(int numVolumes, int volumeSize) {
     DeviceInfo deviceInfo = new DeviceInfo();
     deviceInfo.numVolumes = numVolumes;
@@ -478,8 +496,8 @@ public class ApiUtils {
     return deviceInfo;
   }
 
-  public static UserIntent getDummyUserIntent(DeviceInfo deviceInfo, Provider provider,
-                                              String instanceType) {
+  public static UserIntent getDummyUserIntent(
+      DeviceInfo deviceInfo, Provider provider, String instanceType) {
     UserIntent userIntent = new UserIntent();
     userIntent.provider = provider.uuid.toString();
     userIntent.providerType = Common.CloudType.valueOf(provider.code);

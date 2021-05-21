@@ -26,19 +26,20 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class HealthManagerTest extends FakeDBApplication {
-  @Mock
-  ShellProcessHandler shellProcessHandler;
+  @Mock ShellProcessHandler shellProcessHandler;
 
-  @InjectMocks
-  HealthManager healthManager;
+  @InjectMocks HealthManager healthManager;
 
-  @Mock
-  play.Configuration appConfig;
+  @Mock play.Configuration appConfig;
 
   private List<String> healthCheckCommand(
-      Provider provider, List<HealthManager.ClusterInfo> clusters,
-      String customerTag, String destination, long startTimeMs,
-      boolean shouldSendStatusUpdate, boolean reportOnlyErrors) {
+      Provider provider,
+      List<HealthManager.ClusterInfo> clusters,
+      String customerTag,
+      String destination,
+      long startTimeMs,
+      boolean shouldSendStatusUpdate,
+      boolean reportOnlyErrors) {
     List<String> expectedCommand = new ArrayList<>();
 
     expectedCommand.add(DevopsBase.PY_WRAPPER);
@@ -57,8 +58,8 @@ public class HealthManagerTest extends FakeDBApplication {
   public void testHealthManager() {
     HashMap<String, String> baseConfig = new HashMap<>();
     baseConfig.put("testKey", "testVal");
-    Provider provider = ModelFactory.newProvider(
-        ModelFactory.testCustomer(), Common.CloudType.aws, baseConfig);
+    Provider provider =
+        ModelFactory.newProvider(ModelFactory.testCustomer(), Common.CloudType.aws, baseConfig);
     // Setup the cluster.
     HealthManager.ClusterInfo cluster = new HealthManager.ClusterInfo();
     cluster.sshPort = 22;
@@ -93,17 +94,21 @@ public class HealthManagerTest extends FakeDBApplication {
               when(appConfig.getString("yb.health.ses_email_username")).thenReturn(envVal);
               when(appConfig.getString("yb.health.ses_email_password")).thenReturn(envVal);
               when(appConfig.getString("yb.health.default_email")).thenReturn(envVal);
-              List<String> expectedCommand = healthCheckCommand(
-                  provider, ImmutableList.of(cluster), customerTag, d, startTime,
-                  sendStatus, reportOnlyErrors);
+              List<String> expectedCommand =
+                  healthCheckCommand(
+                      provider,
+                      ImmutableList.of(cluster),
+                      customerTag,
+                      d,
+                      startTime,
+                      sendStatus,
+                      reportOnlyErrors);
               System.out.println("running, reportOnlyErrors = " + reportOnlyErrors.toString());
               healthManager.runCommand(provider, ImmutableList.of(cluster), startTime);
               HashMap extraEnvVars = new HashMap<>(provider.getConfig());
               System.out.println("verifying");
-              verify(shellProcessHandler, times(1)).run(
-                eq(expectedCommand),
-                eq(extraEnvVars),
-                eq(false));
+              verify(shellProcessHandler, times(1))
+                  .run(eq(expectedCommand), eq(extraEnvVars), eq(false));
 
               reset(shellProcessHandler);
             }

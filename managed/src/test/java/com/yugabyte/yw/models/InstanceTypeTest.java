@@ -48,7 +48,7 @@ public class InstanceTypeTest extends FakeDBApplication {
     assertEquals("aws", i1.getProviderCode());
     assertEquals("foo", i1.getInstanceTypeCode());
   }
-  
+
   @Test
   public void testGetNonDefaultInstanceTypeDetails() {
     int volumeCount = 3;
@@ -64,7 +64,7 @@ public class InstanceTypeTest extends FakeDBApplication {
       assertEquals(String.format("/mnt/d%d", i), v.mountPath);
     }
   }
-  
+
   @Test
   public void testGetDefaultInstanceTypeDetails() {
     InstanceType.InstanceTypeDetails itDetails =
@@ -73,8 +73,8 @@ public class InstanceTypeTest extends FakeDBApplication {
     assertNotNull(itDetails.volumeDetailsList);
     for (int i = 0; i < InstanceType.InstanceTypeDetails.DEFAULT_VOLUME_COUNT; i++) {
       InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
-      assertEquals(InstanceType.InstanceTypeDetails.DEFAULT_GCP_VOLUME_SIZE_GB,
-        v.volumeSizeGB.intValue());
+      assertEquals(
+          InstanceType.InstanceTypeDetails.DEFAULT_GCP_VOLUME_SIZE_GB, v.volumeSizeGB.intValue());
       assertEquals(InstanceType.VolumeType.SSD, v.volumeType);
       assertEquals(String.format("/mnt/d%d", i), v.mountPath);
     }
@@ -108,10 +108,10 @@ public class InstanceTypeTest extends FakeDBApplication {
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider);
     assertNotNull(instanceTypeList);
     assertEquals(1, instanceTypeList.size());
-    assertThat(instanceTypeList.get(0).getInstanceTypeCode(),
-        allOf(notNullValue(), equalTo("c3.medium")));
+    assertThat(
+        instanceTypeList.get(0).getInstanceTypeCode(), allOf(notNullValue(), equalTo("c3.medium")));
   }
-  
+
   @Test
   public void testDeleteByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);

@@ -5,7 +5,5 @@ import play.data.validation.Constraints;
 
 public class NodeActionFormData {
 
-
-    @Constraints.Required()
-    public NodeActionType nodeAction;
+  @Constraints.Required() public NodeActionType nodeAction;
 }
