@@ -494,7 +494,7 @@ export default class ClusterFields extends Component {
     }
     // If nodeInstanceList changes, fetch number of available nodes
     if (getPromiseState(nodeInstanceList).isSuccess()) {
-      let nodesPerRegion = [];
+      const nodesPerRegion = [];
       nodeInstanceList.data.forEach((node) => {
         isNonEmptyArray(this.state.regionList) &&
           this.state.regionList.forEach((region) => {
