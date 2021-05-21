@@ -25,6 +25,7 @@ public class CommonUtilsTest {
     assertValue(maskedData, "MY_SECRET_DATA", "SE**********TA");
     assertValue(maskedData, "MY_PASSWORD", "********");
     assertValue(maskedData, "DATA", "VALUE");
+    assertValue(maskedData, "MY_KEY", "********");
   }
 
   private ObjectNode prepareConfig() {
@@ -36,6 +37,7 @@ public class CommonUtilsTest {
     config.put("SECRET_DATA", "SENSITIVE_DATA");
     config.put("MY_SECRET_DATA", "SENSITIVE_DATA");
     config.put("MY_PASSWORD", "SENSITIVE_DATA"); // Strong sensitive, complete masking.
+    config.put("MY_KEY", "DATA"); // Sensitive, complete masking as the lenght is less than 5.
     config.put("DATA", "VALUE");
     return config;
   }
