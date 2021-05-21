@@ -33,6 +33,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace tablet {
 
@@ -74,6 +76,8 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
 }
 
 Status TabletSnapshots::Create(const CreateSnapshotData& data) {
+  LongOperationTracker long_operation_tracker("Create snapshot", 5s);
+
   ScopedRWOperation scoped_read_operation(&pending_op_counter());
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -203,6 +207,8 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   const std::string snapshot_dir = VERIFY_RESULT(tx_state->GetSnapshotDir());
   auto restore_at = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time());
 
+  VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(snapshot_dir, restore_at);
+
   if (!snapshot_dir.empty()) {
     RETURN_NOT_OK_PREPEND(
         FileExists(&rocksdb_env(), snapshot_dir),
@@ -230,6 +236,8 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
     const docdb::ConsensusFrontier& frontier) {
+  LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
+
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
   auto op_pause = PauseReadWriteOperations();
@@ -242,7 +250,6 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
 
-  const rocksdb::SequenceNumber sequence_number = regular_db().GetLatestSequenceNumber();
   const string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
 
@@ -293,9 +300,6 @@ Status TabletSnapshots::RestoreCheckpoint(
   }
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
-  LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
-            << ", restored=" << regular_db().GetLatestSequenceNumber();
-
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
   s = tablet().EnableCompactions(&op_pause);
   if (!s.ok()) {
