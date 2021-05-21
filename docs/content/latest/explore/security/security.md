@@ -47,7 +47,7 @@ Read more about [how to enable authentication in YugabyteDB](../../../secure/aut
 
 YugabyteDB provides role-based access control (RBAC), consisting of a collection of privileges on resources given to roles. 
 
-Read more about [authorization in YugabyteDB](../../../authorization).
+Read more about [authorization in YugabyteDB](../../../secure/authorization).
 
 ### Roles
 
