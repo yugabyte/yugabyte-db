@@ -274,6 +274,10 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                             consensus::ChangeConfigResponsePB* resp,
                             rpc::RpcContext context) override;
 
+  virtual void UnsafeChangeConfig(const consensus::UnsafeChangeConfigRequestPB* req,
+                                  consensus::UnsafeChangeConfigResponsePB* resp,
+                                  rpc::RpcContext context) override;
+
   virtual void GetNodeInstance(const consensus::GetNodeInstanceRequestPB* req,
                                consensus::GetNodeInstanceResponsePB* resp,
                                rpc::RpcContext context) override;

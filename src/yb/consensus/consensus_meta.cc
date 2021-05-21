@@ -43,10 +43,17 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/fault_injection.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
+
+DEFINE_test_flag(double, fault_crash_before_cmeta_flush, 0.0,
+              "Fraction of the time when the server will crash just before flushing "
+              "consensus metadata. (For testing only!)");
 
 namespace yb {
 namespace consensus {
@@ -249,6 +256,7 @@ void ConsensusMetadata::MergeCommittedConsensusStatePB(const ConsensusStatePB& c
 }
 
 Status ConsensusMetadata::Flush() {
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_before_cmeta_flush);
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500, LogPrefix(), "flushing consensus metadata");
   // Sanity test to ensure we never write out a bad configuration.
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(pb_.committed_config(), COMMITTED_QUORUM),
