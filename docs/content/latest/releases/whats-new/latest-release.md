@@ -16,6 +16,14 @@ isTocNested: true
 showAsideToc: true 
 ---
 
+{{< warning title="Use v2.7.1.1 or later" >}}
+
+YugabyteDB version 2.7.1.1 contains an important fix for a bug in a downstream dependency (the `gperftools` package). This `tcmalloc` memory allocation bug could lead to process crashes. If you're using a previous 2.7 version, please upgrade as soon as possible.
+
+Refer to [issue 8531](https://github.com/yugabyte/yugabyte-db/issues/8531) for details.
+
+{{< /warning >}}
+
 ## v2.7.1.1 - May 21, 2021
 
 **Build:** `2.7.1.1-b1`
