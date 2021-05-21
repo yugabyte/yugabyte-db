@@ -48,6 +48,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/consensus/metadata.pb.h"
 #include "yb/server/secure.h"
 #include "yb/server/server_base.proxy.h"
 
@@ -70,19 +71,20 @@ using std::string;
 using std::vector;
 using yb::HostPort;
 using yb::consensus::ConsensusServiceProxy;
+using yb::consensus::RaftConfigPB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::ServerStatusPB;
 using yb::tablet::TabletStatusPB;
-using yb::tserver::IsTabletServerReadyRequestPB;
-using yb::tserver::IsTabletServerReadyResponsePB;
 using yb::tserver::CountIntentsRequestPB;
 using yb::tserver::CountIntentsResponsePB;
 using yb::tserver::DeleteTabletRequestPB;
 using yb::tserver::DeleteTabletResponsePB;
 using yb::tserver::FlushTabletsRequestPB;
 using yb::tserver::FlushTabletsResponsePB;
+using yb::tserver::IsTabletServerReadyRequestPB;
+using yb::tserver::IsTabletServerReadyResponsePB;
 using yb::tserver::ListTabletsRequestPB;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::TabletServerAdminServiceProxy;
@@ -97,6 +99,7 @@ const char* const kRefreshFlagsOp = "refresh_flags";
 const char* const kDumpTabletOp = "dump_tablet";
 const char* const kTabletStateOp = "get_tablet_state";
 const char* const kDeleteTabletOp = "delete_tablet";
+const char* const kUnsafeConfigChange = "unsafe_config_change";
 const char* const kCurrentHybridTime = "current_hybrid_time";
 const char* const kStatus = "status";
 const char* const kCountIntents = "count_intents";
@@ -196,6 +199,10 @@ class TsAdminClient {
   Status DeleteTablet(const std::string& tablet_id,
                       const std::string& reason,
                       tablet::TabletDataState delete_type);
+
+  Status UnsafeConfigChange(const std::string& tablet_id,
+                            const std::vector<string>& peers);
+
 
   // Sets hybrid_time to the value of the tablet server's current hybrid_time.
   Status CurrentHybridTime(uint64_t* hybrid_time);
@@ -464,6 +471,37 @@ Status TsAdminClient::DeleteTablet(const string& tablet_id,
   return Status::OK();
 }
 
+Status TsAdminClient::UnsafeConfigChange(const std::string& tablet_id,
+                                         const std::vector<string>& peers) {
+  ServerStatusPB status_pb;
+  RETURN_NOT_OK(GetStatus(&status_pb));
+
+  if (peers.empty()) {
+    return STATUS(InvalidArgument, "No peer UUIDs specified for the new config");
+  }
+  RaftConfigPB new_config;
+  for (const auto& arg : peers) {
+    consensus::RaftPeerPB new_peer;
+    new_peer.set_permanent_uuid(arg);
+    new_config.add_peers()->CopyFrom(new_peer);
+  }
+
+  // Send a request to replace the config to node dst_address.
+  consensus::UnsafeChangeConfigRequestPB req;
+  consensus::UnsafeChangeConfigResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
+  req.set_tablet_id(tablet_id);
+  req.set_caller_id("yb-ts-cli");
+  *req.mutable_new_config() = new_config;
+  RETURN_NOT_OK(cons_proxy_->UnsafeChangeConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Status TsAdminClient::CurrentHybridTime(uint64_t* hybrid_time) {
   server::ServerClockRequestPB req;
   server::ServerClockResponsePB resp;
@@ -542,6 +580,7 @@ void SetUsage(const char* argv0) {
       << "  " << kTabletStateOp << " <tablet_id>\n"
       << "  " << kDumpTabletOp << " <tablet_id>\n"
       << "  " << kDeleteTabletOp << " [-force] <tablet_id> <reason string>\n"
+      << "  " << kUnsafeConfigChange << " <tablet_id> <peer1> [<peer2>...]\n"
       << "  " << kCurrentHybridTime << "\n"
       << "  " << kStatus << "\n"
       << "  " << kCountIntents << "\n"
@@ -691,6 +730,19 @@ static int TsCliMain(int argc, char** argv) {
                                                   tablet::TABLET_DATA_TOMBSTONED;
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.DeleteTablet(tablet_id, reason, state),
                                     "Unable to delete tablet");
+  } else if (op == kUnsafeConfigChange) {
+    if (argc < 4) {
+      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
+    }
+
+    string tablet_id = argv[2];
+    vector<string> peers;
+    for (int i = 3; i < argc; i++) {
+      peers.push_back(argv[i]);
+    }
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.UnsafeConfigChange(tablet_id, peers), "Unable to change config unsafely.");
   } else if (op == kCurrentHybridTime) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
