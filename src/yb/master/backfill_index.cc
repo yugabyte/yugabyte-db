@@ -1370,9 +1370,14 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
 
   if (resp_.has_error()) {
     status = StatusFromPB(resp_.error().status());
-    for (int i = 0; i < resp_.failed_index_ids_size(); i++) {
-      VLOG(1) << " Added to failed index " << resp_.failed_index_ids(i);
-      failed_indexes.insert(resp_.failed_index_ids(i));
+    if (resp_.failed_index_ids_size() > 0) {
+      for (int i = 0; i < resp_.failed_index_ids_size(); i++) {
+        VLOG(1) << " Added to failed index " << resp_.failed_index_ids(i);
+        failed_indexes.insert(resp_.failed_index_ids(i));
+      }
+    } else {
+      // No specific index was marked as a failure. So consider all of them as failed.
+      failed_indexes = indexes_being_backfilled_;
     }
   } else if (state() != MonitoredTaskState::kComplete) {
     // There is no response, so the error happened even before we could

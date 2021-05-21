@@ -321,7 +321,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   }
 
   LOG_WITH_PREFIX(INFO) << "Scheduling retry with a delay of " << delay_millis
-                        << "ms (attempt = " << attempt_ << ")...";
+                        << "ms (attempt = " << attempt_ << " / " << attempt_threshold << ")...";
 
   if (!PerformStateTransition(task_state, MonitoredTaskState::kScheduling)) {
     LOG_WITH_PREFIX(WARNING) << "Unable to mark this task as MonitoredTaskState::kScheduling";

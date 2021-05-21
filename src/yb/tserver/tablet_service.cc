@@ -684,9 +684,12 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   // Wait for SafeTime to get past read_at;
   const HybridTime read_at(req->read_at_hybrid_time());
-  const auto safe_time = tablet.peer->tablet()->SafeTime(
-      tablet::RequireLease::kTrue, read_at, deadline);
+  DVLOG(1) << "Waiting for safe time to be past " << read_at;
+  const auto safe_time =
+      tablet.peer->tablet()->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
+  DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
+    LOG(ERROR) << "Could not get a good enough safe time " << safe_time.ToString();
     SetupErrorAndRespond(
         resp->mutable_error(),
         safe_time.status(),
