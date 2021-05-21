@@ -61,3 +61,20 @@ DROP FUNCTION checkHexCallStack();
 DROP FUNCTION checkIntCallStack();
 DROP FUNCTION checkIntUnpaddedCallStack();
 
+/*
+ * Test for dbms_utility.get_time(), the result is rounded
+ * to have constant result in the regression test.
+ */
+DO $$
+DECLARE
+    start_time integer;
+    end_time integer;
+BEGIN
+    start_time := DBMS_UTILITY.GET_TIME();
+    PERFORM pg_sleep(2);
+    end_time := DBMS_UTILITY.GET_TIME();
+    RAISE NOTICE 'Execution time: % seconds', round((end_time - start_time)::numeric/100, 0);
+END
+$$;
+
+
