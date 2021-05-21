@@ -266,6 +266,49 @@ class CppCassandraDriverTestIndexMultipleChunks : public CppCassandraDriverTestI
   }
 };
 
+class CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves
+    : public CppCassandraDriverTestIndexMultipleChunks {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
+    flags.push_back("--enable_load_balancing=true");
+    flags.push_back("--index_backfill_rpc_max_retries=0");
+    // We do not want backfill to fail because of any throttling.
+    flags.push_back("--index_backfill_rpc_timeout_ms=180000");
+    return flags;
+  }
+
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
+    flags.push_back("--backfill_index_rate_rows_per_sec=10");
+    flags.push_back("--backfill_index_write_batch_size=2");
+    return flags;
+  }
+
+  void SetUp() override {
+    CppCassandraDriverTestIndex::SetUp();
+    thread_holder_.AddThreadFunctor([this] {
+      const auto kNumTServers = cluster_->num_tablet_servers();
+      constexpr auto kSleepTimeMs = 5000;
+      for (int i = 0; !thread_holder_.stop_flag(); i++) {
+        const auto tserver_id = i % kNumTServers;
+        ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+            cluster_->master(), cluster_->tablet_server(tserver_id)));
+        SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+        ASSERT_OK(cluster_->EmptyBlacklist(cluster_->master()));
+      }
+    });
+  }
+
+  void TearDown() override {
+    thread_holder_.Stop();
+    CppCassandraDriverTestIndex::TearDown();
+  }
+
+ private:
+  TestThreadHolder thread_holder_;
+};
+
 class CppCassandraDriverTestIndexSlowBackfill : public CppCassandraDriverTestIndex {
  public:
   std::vector<std::string> ExtraMasterFlags() override {
@@ -1860,6 +1903,13 @@ TEST_F_EX(CppCassandraDriverTest, TestTableBackfillInChunks,
           CppCassandraDriverTestIndexMultipleChunks) {
   TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
                          IncludeAllColumns::kTrue, UserEnforced::kFalse);
+}
+
+TEST_F_EX(
+    CppCassandraDriverTest, TestTableBackfillWithLeaderMoves,
+    CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves) {
+  TestBackfillIndexTable(
+      this, PKOnlyIndex::kFalse, IsUnique::kFalse, IncludeAllColumns::kTrue, UserEnforced::kFalse);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableBackfillUniqueInChunks,
