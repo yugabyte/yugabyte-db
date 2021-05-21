@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
@@ -22,6 +23,7 @@ import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
+import play.mvc.Results;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -63,7 +65,10 @@ public class HAController extends AuthenticatedController {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
 
       if (!config.isPresent()) {
-        return ApiResponse.error(NOT_FOUND, "No HA config exists");
+        LOG.debug("No HA config exists");
+
+        JsonNode jsonMsg = Json.newObject().put("error", "No HA config exists");
+        return Results.status(NOT_FOUND, jsonMsg);
       }
 
       return ApiResponse.success(config.get());
