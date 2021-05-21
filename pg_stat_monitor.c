@@ -110,7 +110,13 @@ static int pg_get_application_name(char* application_name);
 static PgBackendStatus *pg_get_backend_status(void);
 static Datum intarray_get_datum(int32 arr[], int len);
 
+
+#if PG_VERSION_NUM < 140000
 static void pgss_post_parse_analyze(ParseState *pstate, Query *query);
+#else
+static void pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate);
+#endif
+
 static void pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count, bool execute_once);
 static void pgss_ExecutorFinish(QueryDesc *queryDesc);
@@ -163,21 +169,24 @@ static void pgss_store(uint64 queryid,
 						uint64 rows,
 						BufferUsage *bufusage,
 						WalUsage *walusage,
-						pgssJumbleState *jstate,
+						JumbleState *jstate,
 						pgssStoreKind kind);
 
 static void pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 							bool showtext);
 
-static void AppendJumble(pgssJumbleState *jstate,
+#if PG_VERSION_NUM < 140000
+static void AppendJumble(JumbleState *jstate,
 			 const unsigned char *item, Size size);
-static void JumbleQuery(pgssJumbleState *jstate, Query *query);
-static void JumbleRangeTable(pgssJumbleState *jstate, List *rtable);
-static void JumbleExpr(pgssJumbleState *jstate, Node *node);
-static void RecordConstLocation(pgssJumbleState *jstate, int location);
-static char *generate_normalized_query(pgssJumbleState *jstate, const char *query,
+static void JumbleQuery(JumbleState *jstate, Query *query);
+static void JumbleRangeTable(JumbleState *jstate, List *rtable);
+static void JumbleExpr(JumbleState *jstate, Node *node);
+static void RecordConstLocation(JumbleState *jstate, int location);
+#endif
+
+static char *generate_normalized_query(JumbleState *jstate, const char *query,
 						  int query_loc, int *query_len_p, int encoding);
-static void fill_in_constant_lengths(pgssJumbleState *jstate, const char *query, int query_loc);
+static void fill_in_constant_lengths(JumbleState *jstate, const char *query, int query_loc);
 static int comp_location(const void *a, const void *b);
 
 static uint64 get_next_wbucket(pgssSharedState *pgss);
@@ -188,11 +197,16 @@ pgss_store_query(uint64 queryid,
 				  CmdType cmd_type,
 				  int query_location,
 				  int query_len,
-				  pgssJumbleState *jstate,
+#if PG_VERSION_NUM > 130000
+				  JumbleState *jstate,
+#else
+				  JumbleState *jstate,
+#endif
 				  pgssStoreKind kind);
 
-static uint64 get_query_id(pgssJumbleState *jstate, Query *query);
-
+#if PG_VERSION_NUM < 140000
+static uint64 get_query_id(JumbleState *jstate, Query *query);
+#endif
 /*
  * Module load callback
  */
@@ -216,6 +230,14 @@ _PG_init(void)
 
 	/* Inilize the GUC variables */
 	init_guc();
+
+#if PG_VERSION_NUM >= 140000
+	/*
+	 * Inform the postmaster that we want to enable query_id calculation if
+	 * compute_query_id is set to auto.
+	 */
+ 	EnableQueryId();
+#endif
 
 	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
 	{
@@ -309,13 +331,59 @@ pg_stat_monitor_version(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text(BUILD_VERSION));
 }
 
+#if PG_VERSION_NUM >= 140000
+/*
+ * Post-parse-analysis hook: mark query with a queryId
+ */
+static void
+pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
+{
+	pgssStoreKind   kind = PGSS_PARSE;
+
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+
+	/* Safety check... */
+	if (!IsSystemInitialized())
+		return;
+
+	/*
+	 * Clear queryId for prepared statements related utility, as those will
+	 * inherit from the underlying statement's one (except DEALLOCATE which is
+	 * entirely untracked).
+	 */
+	if (query->utilityStmt)
+	{
+		query->queryId = UINT64CONST(0);
+		return;
+	}
+
+	/*
+	 * If query jumbling were able to identify any ignorable constants, we
+	 * immediately create a hash table entry for the query, so that we can
+	 * record the normalized form of the query string.  If there were no such
+	 * constants, the normalized string would be the same as the query text
+	 * anyway, so there's no need for an early entry.
+	 */
+	if (jstate == NULL || jstate->clocations_count <= 0)
+		return;
+	pgss_store_query(query->queryId,          /* queryid */
+               pstate->p_sourcetext,          /* query */
+               query->commandType,            /* CmdType */
+			   query->stmt_location,		  /* Query Location */
+               query->stmt_len,			  	  /* Query Len */
+               jstate,                       /* JumbleState */
+			   kind);						  /*pgssStoreKind */
+}
+#else
+
 /*
  * Post-parse-analysis hook: mark query with a queryId
  */
 static void
 pgss_post_parse_analyze(ParseState *pstate, Query *query)
 {
-	pgssJumbleState jstate;
+	JumbleState jstate;
 	pgssStoreKind   kind = PGSS_PARSE;
 
 	if (prev_post_parse_analyze_hook)
@@ -356,9 +424,10 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
                query->commandType,            /* CmdType */
 			   query->stmt_location,		  /* Query Location */
                query->stmt_len,			  	  /* Query Len */
-               &jstate,                       /* pgssJumbleState */
+               &jstate,                       /* JumbleState */
 			   kind);						  /*pgssStoreKind */
 }
+#endif
 
 /*
  * ExecutorStart hook: start up tracking if needed
@@ -393,7 +462,11 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			MemoryContext oldcxt;
 
 			oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
+#if PG_VERSION_NUM < 140000
 			queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_ALL);
+#else
+			queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_ALL, false);
+#endif
 			MemoryContextSwitchTo(oldcxt);
 		}
 		pgss_store(queryId,                                 /* query id */
@@ -656,7 +729,7 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 				0,									/* rows */
 				&bufusage,							/*  bufusage */
 				&walusage,							/* walusage */
-				NULL,								/* pgssJumbleState */
+				NULL,								/* JumbleState */
 				PGSS_PLAN); 							/* pgssStoreKind */
 	}
 	else
@@ -1073,7 +1146,11 @@ pgss_store_query(uint64 queryid,
 				  CmdType cmd_type,
 				  int query_location,
 				  int query_len,
-				  pgssJumbleState *jstate,
+#if PG_VERSION_NUM > 130000
+				  JumbleState *jstate,
+#else
+				  JumbleState *jstate,
+#endif
 				  pgssStoreKind kind)
 {
 	char *norm_query = NULL;
@@ -1125,7 +1202,7 @@ pgss_store_query(uint64 queryid,
 				0,						/* rows */
 				NULL,					/*  bufusage */
 				NULL,					/* walusage */
-				jstate,					/* pgssJumbleState */
+				jstate,					/* JumbleState */
 				kind);					/* pgssStoreKind */
 }
 
@@ -1150,7 +1227,7 @@ pgss_store_error(uint64 queryid,
 				0,						/* rows */
 				NULL,					/* bufusage */
 				NULL,					/* walusage */
-				NULL,					/* pgssJumbleState */
+				NULL,					/* JumbleState */
 				PGSS_ERROR);			/* pgssStoreKind */
 }
 
@@ -1173,7 +1250,7 @@ pgss_store_utility(const char *query,
 				rows,					/* rows */
 				bufusage,				/* bufusage */
 				walusage,				/* walusage */
-				NULL,					/* pgssJumbleState */
+				NULL,					/* JumbleState */
 				PGSS_FINISHED);			/* pgssStoreKind */
 }
 
@@ -1198,7 +1275,7 @@ pgss_store(uint64 queryid,
 			uint64 rows,
 			BufferUsage *bufusage,
 			WalUsage *walusage,
-			pgssJumbleState *jstate,
+			JumbleState *jstate,
 			pgssStoreKind kind)
 {
 	pgssEntry		*entry;
@@ -1402,9 +1479,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		uint64        planid = entry->key.planid;
 		unsigned char *buf = pgss_qbuf[bucketid];
 		char 		  *query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
+#if PG_VERSION_NUM < 140000
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
-
-
+#else
+		bool 		  is_allowed_role = is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
+#endif
 		query_entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip);
 		if (query_entry == NULL)
 			continue;
@@ -1722,12 +1801,13 @@ get_next_wbucket(pgssSharedState *pgss)
 	return pgss->current_wbucket;
 }
 
+#if PG_VERSION_NUM < 140000
 /*
  * AppendJumble: Append a value that is substantive in a given query to
  * the current jumble.
  */
 static void
-AppendJumble(pgssJumbleState *jstate, const unsigned char *item, Size size)
+AppendJumble(JumbleState *jstate, const unsigned char *item, Size size)
 {
 	unsigned char *jumble = jstate->jumble;
 	Size		jumble_len = jstate->jumble_len;
@@ -1778,7 +1858,7 @@ AppendJumble(pgssJumbleState *jstate, const unsigned char *item, Size size)
  * of information).
  */
 static void
-JumbleQuery(pgssJumbleState *jstate, Query *query)
+JumbleQuery(JumbleState *jstate, Query *query)
 {
 	Assert(IsA(query, Query));
 	Assert(query->utilityStmt == NULL);
@@ -1807,7 +1887,7 @@ JumbleQuery(pgssJumbleState *jstate, Query *query)
  * Jumble a range table
  */
 static void
-JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
+JumbleRangeTable(JumbleState *jstate, List *rtable)
 {
 	ListCell   *lc = NULL;
 
@@ -1871,7 +1951,7 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
  * about any unrecognized node type.
  */
 static void
-JumbleExpr(pgssJumbleState *jstate, Node *node)
+JumbleExpr(JumbleState *jstate, Node *node)
 {
 	ListCell   *temp;
 
@@ -2356,13 +2436,12 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 			break;
 	}
 }
-
 /*
  * Record location of constant within query string of query tree
  * that is currently being walked.
  */
 static void
-RecordConstLocation(pgssJumbleState *jstate, int location)
+RecordConstLocation(JumbleState *jstate, int location)
 {
 	/* -1 indicates unknown or undefined location */
 	if (location >= 0)
@@ -2371,10 +2450,10 @@ RecordConstLocation(pgssJumbleState *jstate, int location)
 		if (jstate->clocations_count >= jstate->clocations_buf_size)
 		{
 			jstate->clocations_buf_size *= 2;
-			jstate->clocations = (pgssLocationLen *)
+			jstate->clocations = (LocationLen *)
 				repalloc(jstate->clocations,
 						 jstate->clocations_buf_size *
-						 sizeof(pgssLocationLen));
+						 sizeof(LocationLen));
 		}
 		jstate->clocations[jstate->clocations_count].location = location;
 		/* initialize lengths to -1 to simplify fill_in_constant_lengths */
@@ -2382,6 +2461,7 @@ RecordConstLocation(pgssJumbleState *jstate, int location)
 		jstate->clocations_count++;
 	}
 }
+#endif
 
 /*
  * Generate a normalized version of the query string that will be used to
@@ -2403,7 +2483,7 @@ RecordConstLocation(pgssJumbleState *jstate, int location)
  * Returns a palloc'd string.
  */
 static char *
-generate_normalized_query(pgssJumbleState *jstate, const char *query,
+generate_normalized_query(JumbleState *jstate, const char *query,
 						  int query_loc, int *query_len_p, int encoding)
 {
 	char	   *norm_query;
@@ -2510,10 +2590,10 @@ generate_normalized_query(pgssJumbleState *jstate, const char *query,
  * reason for a constant to start with a '-'.
  */
 static void
-fill_in_constant_lengths(pgssJumbleState *jstate, const char *query,
+fill_in_constant_lengths(JumbleState *jstate, const char *query,
 						 int query_loc)
 {
-	pgssLocationLen		*locs;
+	LocationLen		*locs;
 	core_yyscan_t		yyscanner;
 	core_yy_extra_type	yyextra;
 	core_YYSTYPE		yylval;
@@ -2527,7 +2607,7 @@ fill_in_constant_lengths(pgssJumbleState *jstate, const char *query,
 	 */
 	if (jstate->clocations_count > 1)
 		qsort(jstate->clocations, jstate->clocations_count,
-			  sizeof(pgssLocationLen), comp_location);
+			  sizeof(LocationLen), comp_location);
 	locs = jstate->clocations;
 
 	/* initialize the flex scanner --- should match raw_parser() */
@@ -2611,13 +2691,13 @@ fill_in_constant_lengths(pgssJumbleState *jstate, const char *query,
 }
 
 /*
- * comp_location: comparator for qsorting pgssLocationLen structs by location
+ * comp_location: comparator for qsorting LocationLen structs by location
  */
 static int
 comp_location(const void *a, const void *b)
 {
-	int	l = ((const pgssLocationLen *) a)->location;
-	int	r = ((const pgssLocationLen *) b)->location;
+	int	l = ((const LocationLen *) a)->location;
+	int	r = ((const LocationLen *) b)->location;
 
 	if (l < r)
 		return -1;
@@ -2780,24 +2860,6 @@ SaveQueryText(uint64 bucketid, uint64 queryid, unsigned char *buf, const char *q
 	return true;
 }
 
-static uint64
-get_query_id(pgssJumbleState *jstate, Query *query)
-{
-	uint64 queryid;
-
-	/* Set up workspace for query jumbling */
-	jstate->jumble = (unsigned char *) palloc(JUMBLE_SIZE);
-	jstate->jumble_len = 0;
-	jstate->clocations_buf_size = 32;
-	jstate->clocations = (pgssLocationLen *) palloc(jstate->clocations_buf_size * sizeof(pgssLocationLen));
-	jstate->clocations_count = 0;
-	jstate->highest_extern_param_id = 0;
-
-	/* Compute query ID and mark the Query node with it */
-	JumbleQuery(jstate, query);
-	queryid = DatumGetUInt64(hash_any_extended(jstate->jumble, jstate->jumble_len, 0));
-	return queryid;
-}
 
 Datum
 pg_stat_monitor_settings(PG_FUNCTION_ARGS)
@@ -3086,3 +3148,23 @@ extract_query_comments(const char *query)
    regfree(&preg);
    return comments;
 }
+#if PG_VERSION_NUM < 140000
+static uint64
+get_query_id(JumbleState *jstate, Query *query)
+{
+	uint64 queryid;
+
+	/* Set up workspace for query jumbling */
+	jstate->jumble = (unsigned char *) palloc(JUMBLE_SIZE);
+	jstate->jumble_len = 0;
+	jstate->clocations_buf_size = 32;
+	jstate->clocations = (LocationLen *) palloc(jstate->clocations_buf_size * sizeof(LocationLen));
+	jstate->clocations_count = 0;
+	jstate->highest_extern_param_id = 0;
+
+	/* Compute query ID and mark the Query node with it */
+	JumbleQuery(jstate, query);
+	queryid = DatumGetUInt64(hash_any_extended(jstate->jumble, jstate->jumble_len, 0));
+	return queryid;
+}
+#endif

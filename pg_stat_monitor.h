@@ -323,20 +323,21 @@ do { \
 		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
 } while(0)
 
+
+#if PG_VERSION_NUM < 140000
 /*
  * Struct for tracking locations/lengths of constants during normalization
  */
-typedef struct pgssLocationLen
+typedef struct LocationLen
 {
 	int			location;		/* start offset in query text */
 	int			length;			/* length in bytes, or -1 to ignore */
-} pgssLocationLen;
-
+} LocationLen;
 /*
  * Working state for computing a query jumble and producing a normalized
  * query string
  */
-typedef struct pgssJumbleState
+typedef struct JumbleState
 {
 	/* Jumble of current query tree */
 	unsigned char *jumble;
@@ -345,7 +346,7 @@ typedef struct pgssJumbleState
 	Size		jumble_len;
 
 	/* Array of locations of constants that should be removed */
-	pgssLocationLen *clocations;
+	LocationLen *clocations;
 
 	/* Allocated length of clocations array */
 	int			clocations_buf_size;
@@ -355,7 +356,8 @@ typedef struct pgssJumbleState
 
 	/* highest Param id we've seen, in order to start normalization correctly */
 	int			highest_extern_param_id;
-} pgssJumbleState;
+} JumbleState;
+#endif
 
 /* Links to shared memory state */
 
