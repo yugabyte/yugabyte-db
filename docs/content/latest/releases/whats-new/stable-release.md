@@ -19,7 +19,7 @@ Included here are the release notes for all releases in the v2.4 stable release 
 
 {{< warning title="Use v2.4.4.0 or later" >}}
 
-YugabyteDB version 2.4.4.0 contains an important fix for a `tcmalloc` memory allocation bug which could lead to process crashes. This was caused by a dependency (the `gperftools` package). If you're using a prior version in the 2.4 series, please upgrade as soon as possible.
+YugabyteDB version 2.4.4.0 contains an important fix for a bug in a downstream dependency (the `gperftools` package). This `tcmalloc` memory allocation bug could lead to process crashes. If you're using a version higher than 2.4.0.0, please upgrade as soon as possible.
 
 Refer to [issue 8531](https://github.com/yugabyte/yugabyte-db/issues/8531) for details.
 
