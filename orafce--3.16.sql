@@ -1596,6 +1596,12 @@ AS 'MODULE_PATHNAME','dbms_utility_format_call_stack0'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_utility.format_call_stack() IS 'Return formated call stack';
 
+CREATE FUNCTION dbms_utility.get_time()
+RETURNS int
+AS 'MODULE_PATHNAME','dbms_utility_get_time'
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION dbms_utility.get_time() IS 'Returns the number of hundredths of seconds that have elapsed since point in time';
+
 CREATE SCHEMA plvlex;
 
 CREATE FUNCTION plvlex.tokens(IN str text, IN skip_spaces bool, IN qualified_names bool,
