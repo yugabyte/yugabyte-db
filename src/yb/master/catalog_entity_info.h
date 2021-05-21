@@ -176,9 +176,6 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
   void set_state(SysTabletsEntryPB::State state, const std::string& msg);
 };
 
-class TableInfo;
-typedef scoped_refptr<TableInfo> TableInfoPtr;
-
 typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 
 // The information about a single tablet which exists in the cluster,
@@ -347,6 +344,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
     return pb.schema();
   }
 
+  const std::string& indexed_table_id() const;
+
+  bool is_index() const;
+
   SchemaPB* mutable_schema() {
     return pb.mutable_schema();
   }
@@ -385,7 +386,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   virtual const std::string& id() const override { return table_id_; }
 
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
-  const std::string indexed_table_id() const;
+  std::string indexed_table_id() const;
 
   bool is_index() const {
     return !indexed_table_id().empty();
@@ -440,7 +441,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool AreAllTabletsDeleted() const;
 
   // Returns true if all tablets of the table are deleted or hidden.
-  bool AreAllTabletsDeletedOrHidden() const;
+  bool AreAllTabletsHidden() const;
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
@@ -483,7 +484,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool HasTasks() const;
   bool HasTasks(MonitoredTask::Type type) const;
   void AddTask(std::shared_ptr<MonitoredTask> task);
-  void RemoveTask(const std::shared_ptr<MonitoredTask>& task);
+
+  // Returns true if no running tasks left.
+  bool RemoveTask(const std::shared_ptr<MonitoredTask>& task);
+
   void AbortTasks();
   void AbortTasksAndClose();
   void WaitTasksCompletion();
@@ -510,6 +514,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   void AddTabletUnlocked(TabletInfo* tablet) REQUIRES_SHARED(lock_);
   void AbortTasksAndCloseIfRequested(bool close);
+
+  std::string LogPrefix() const {
+    return ToString() + ": ";
+  }
 
   const TableId table_id_;
 
@@ -801,7 +809,6 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
 // Convenience typedefs.
 // Table(t)InfoMap ordered for deterministic locking.
 typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
-typedef std::map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;

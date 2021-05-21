@@ -912,16 +912,16 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
 
   // If the current schema is newer than the one in the request reject the request.
   if (schema_version > req->schema_version()) {
-    LOG(ERROR) << "Tablet " << req->tablet_id() << " has a newer schema "
+    LOG(ERROR) << "Tablet " << req->tablet_id() << " has a newer schema"
                << " version=" << schema_version
                << " req->schema_version()=" << req->schema_version()
                << "\n current-schema=" << tablet_schema.ToString()
-               << "\n request-schema=" << req_schema.ToString() << " (wtf?)";
+               << "\n request-schema=" << req_schema.ToString();
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS_SUBSTITUTE(
             InvalidArgument, "Tablet has a newer schema Tab $0. Req $1 vs Existing version : $2",
-            req->tablet_id(), req->DebugString(), schema_version),
+            req->tablet_id(), req->schema_version(), schema_version),
         TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, &context);
     return;
   }
@@ -1238,6 +1238,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   LOG(INFO) << "T " << req->tablet_id() << " P " << server_->permanent_uuid()
             << ": Processing DeleteTablet with delete_type " << TabletDataState_Name(delete_type)
             << (req->has_reason() ? (" (" + req->reason() + ")") : "")
+            << (req->hide_only() ? " (Hide only)" : "")
             << " from " << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 

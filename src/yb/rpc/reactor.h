@@ -235,6 +235,10 @@ class DelayedTask : public ReactorTask {
 
   std::string ToString() const override;
 
+  std::string LogPrefix() const {
+    return ToString() + ": ";
+  }
+
  private:
   void DoAbort(const Status& abort_status) override;
 

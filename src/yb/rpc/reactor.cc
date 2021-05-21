@@ -341,6 +341,8 @@ void Reactor::CheckReadyToStop() {
 // something to our attention, like the fact that we're shutting down, or the fact that there is a
 // new outbound Transfer ready to send.
 void Reactor::AsyncHandler(ev::async &watcher, int revents) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Events: " << revents;
+
   DCHECK(IsCurrentThread());
 
   auto se = ScopeExit([this] {
@@ -763,6 +765,9 @@ void DelayedTask::Run(Reactor* reactor) {
   // will be requested in the middle of scheduling - task will be aborted right after return
   // from this method.
   std::lock_guard<LockType> l(lock_);
+
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Done: " << done_ << ", when: " << when_;
+
   if (done_) {
     // Task has been aborted.
     return;
@@ -802,6 +807,10 @@ std::string DelayedTask::ToString() const {
 
 void DelayedTask::AbortTask(const Status& abort_status) {
   auto mark_as_done_result = MarkAsDone();
+
+  VLOG_WITH_PREFIX_AND_FUNC(4)
+      << "Status: " << abort_status << ", " << AsString(mark_as_done_result);
+
   if (mark_as_done_result == MarkAsDoneResult::kSuccess) {
     // Stop the libev timer. We don't need to do this in the kNotScheduled case, because the timer
     // has not started in that case.
@@ -841,9 +850,9 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   }
 
   // Hold shared_ptr, so this task wouldn't be destroyed upon removal below until func_ is called.
-  auto holder = shared_from_this();
+  auto holder = shared_from(this);
 
-  reactor_->scheduled_tasks_.erase(shared_from(this));
+  reactor_->scheduled_tasks_.erase(holder);
   if (messenger_ != nullptr) {
     messenger_->RemoveScheduledTask(id_);
   }
@@ -851,8 +860,10 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   if (EV_ERROR & revents) {
     std::string msg = "Delayed task got an error in its timer handler";
     LOG(WARNING) << msg;
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Abort";
     func_(STATUS(Aborted, msg));
   } else {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Execute";
     func_(Status::OK());
   }
 }

@@ -186,7 +186,20 @@ Status RestoreSysCatalogState::LoadObjects(const Schema& schema, const docdb::Do
   RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, &namespaces_));
   RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, &tables_));
   RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, &tablets_));
-  return DetermineEntries();
+  return Status::OK();
+}
+
+Status RestoreSysCatalogState::PatchVersions(const TableInfoMap& tables) {
+  for (auto& id_and_pb : tables_) {
+    auto it = tables.find(id_and_pb.first);
+    if (it == tables.end()) {
+      return STATUS_FORMAT(NotFound, "Not found restoring table: $0", id_and_pb.first);
+    }
+
+    // Force schema update after restoration.
+    id_and_pb.second.set_version(it->second->LockForRead()->pb.version() + 1);
+  }
+  return Status::OK();
 }
 
 Status RestoreSysCatalogState::DetermineObsoleteObjects(const SysRowEntries& existing) {

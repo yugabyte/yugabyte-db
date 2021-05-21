@@ -17,6 +17,8 @@
 #include <memory>
 #include <vector>
 
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -54,15 +56,19 @@ class SysRowEntries;
 class SysSnapshotEntryPB;
 class SysTablesEntryPB;
 class SysTabletsEntryPB;
+class TabletReportPB;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 class TSRegistrationPB;
 class TSSnapshotSchedulesInfoPB;
-class TabletInfo;
-class TabletReportPB;
 
-typedef scoped_refptr<TabletInfo> TabletInfoPtr;
-typedef std::vector<TabletInfoPtr> TabletInfos;
+class TableInfo;
+using TableInfoPtr = scoped_refptr<TableInfo>;
+using TableInfoMap = std::map<TableId, TableInfoPtr>;
+
+class TabletInfo;
+using TabletInfoPtr = scoped_refptr<TabletInfo>;
+using TabletInfos = std::vector<TabletInfoPtr>;
 
 struct SnapshotScheduleRestoration;
 using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestoration>;

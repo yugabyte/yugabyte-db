@@ -1433,6 +1433,11 @@ Status CatalogManager::RestoreSysCatalog(SnapshotScheduleRestoration* restoratio
   RestoreSysCatalogState state(restoration);
   RETURN_NOT_OK(state.LoadObjects(schema(), doc_db));
   {
+    SharedLock lock(mutex_);
+    RETURN_NOT_OK(state.PatchVersions(*table_ids_map_));
+  }
+  RETURN_NOT_OK(state.DetermineEntries());
+  {
     auto existing = VERIFY_RESULT(CollectEntriesForSnapshot(restoration->filter.tables().tables()));
     RETURN_NOT_OK(state.DetermineObsoleteObjects(existing));
   }

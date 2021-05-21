@@ -305,11 +305,8 @@ bool TableInfo::colocated() const {
   return LockForRead()->pb.colocated();
 }
 
-const string TableInfo::indexed_table_id() const {
-  auto l = LockForRead();
-  return l->pb.has_index_info()
-             ? l->pb.index_info().indexed_table_id()
-             : l->pb.has_indexed_table_id() ? l->pb.indexed_table_id() : "";
+std::string TableInfo::indexed_table_id() const {
+  return LockForRead()->indexed_table_id();
 }
 
 bool TableInfo::is_local_index() const {
@@ -403,9 +400,10 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
   SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     if (e.second->reported_schema_version(table_id_) < version) {
-      VLOG(3) << "Table " << table_id_ << " ALTER in progress due to tablet "
-              << e.second->ToString() << " because reported schema "
-              << e.second->reported_schema_version(table_id_) << " < expected " << version;
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "ALTER in progress due to tablet "
+          << e.second->ToString() << " because reported schema "
+          << e.second->reported_schema_version(table_id_) << " < expected " << version;
       return true;
     }
   }
@@ -417,11 +415,11 @@ bool TableInfo::HasTablets() const {
   return !tablet_map_.empty();
 }
 
-bool TableInfo::AreAllTabletsDeletedOrHidden() const {
+bool TableInfo::AreAllTabletsHidden() const {
   SharedLock<decltype(lock_)> l(lock_);
   for (const auto& e : tablet_map_) {
-    auto tablet_lock = e.second->LockForRead();
-    if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
+    if (!e.second->LockForRead()->is_hidden()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Not hidden tablet: " << e.second->ToString();
       return false;
     }
   }
@@ -432,6 +430,7 @@ bool TableInfo::AreAllTabletsDeleted() const {
   SharedLock<decltype(lock_)> l(lock_);
   for (const auto& e : tablet_map_) {
     if (!e.second->LockForRead()->is_deleted()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Not deleted tablet: " << e.second->ToString();
       return false;
     }
   }
@@ -493,6 +492,7 @@ std::size_t TableInfo::NumTasks() const {
 
 bool TableInfo::HasTasks() const {
   SharedLock<decltype(lock_)> l(lock_);
+  VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(pending_tasks_);
   return !pending_tasks_.empty();
 }
 
@@ -522,16 +522,19 @@ void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   if (abort_task) {
-    task->AbortAndReturnPrevState(STATUS(Aborted, "Table closing"));
+    task->AbortAndReturnPrevState(STATUS(Expired, "Table closing"));
   }
 }
 
-void TableInfo::RemoveTask(const std::shared_ptr<MonitoredTask>& task) {
+bool TableInfo::RemoveTask(const std::shared_ptr<MonitoredTask>& task) {
+  bool result;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     pending_tasks_.erase(task);
+    result = pending_tasks_.empty();
   }
-  VLOG(1) << __func__ << " Removed task " << task.get() << " " << task->description();
+  VLOG(1) << "Removed task " << task.get() << " " << task->description();
+  return result;
 }
 
 // Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
@@ -554,11 +557,17 @@ void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
     abort_tasks.reserve(pending_tasks_.size());
     abort_tasks.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
   }
+  if (abort_tasks.empty()) {
+    return;
+  }
+  auto status = close ? STATUS(Expired, "Table closing") : STATUS(Aborted, "Table closing");
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   for (const auto& task : abort_tasks) {
-    VLOG(1) << __func__ << " Aborting task " << task.get() << " " << task->description();
-    task->AbortAndReturnPrevState(STATUS(Aborted, "Table closing"));
+    VLOG_WITH_FUNC(1)
+        << (close ? "Close and abort" : "Abort") << " task " << task.get() << " "
+        << task->description();
+    task->AbortAndReturnPrevState(status);
   }
 }
 
@@ -637,11 +646,23 @@ void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_i
 }
 
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
-  VLOG(2) << __PRETTY_FUNCTION__ << " setting state for " << name() << " to "
-          << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
+  VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
+                    << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
   pb.set_state(state);
   pb.set_state_msg(msg);
 }
+
+bool PersistentTableInfo::is_index() const {
+  return !indexed_table_id().empty();
+}
+
+const std::string& PersistentTableInfo::indexed_table_id() const {
+  static const std::string kEmptyString;
+  return pb.has_index_info()
+             ? pb.index_info().indexed_table_id()
+             : pb.has_indexed_table_id() ? pb.indexed_table_id() : kEmptyString;
+}
+
 
 // ================================================================================================
 // DeletedTableInfo

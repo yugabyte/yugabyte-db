@@ -20,12 +20,9 @@
 
 #include "yb/util/cross_thread_mutex.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
-
-#ifndef NDEBUG
-#include "yb/util/debug/long_operation_tracker.h"
-#endif
 
 namespace yb {
 

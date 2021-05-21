@@ -61,8 +61,9 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
   void Finished(const Status& status) override;
+  bool RetryAllowed(tserver::TabletServerErrorPB::Code code, const Status& status);
 
-  scoped_refptr<TabletInfo> tablet_;
+  TabletInfoPtr tablet_;
   const std::string snapshot_id_;
   tserver::TabletSnapshotOpRequestPB::Operation operation_;
   SnapshotScheduleId snapshot_schedule_id_ = SnapshotScheduleId::Nil();

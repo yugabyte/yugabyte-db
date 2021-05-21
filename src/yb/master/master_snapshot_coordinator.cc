@@ -545,8 +545,8 @@ class MasterSnapshotCoordinator::Impl {
     } else if ((**it).ShouldUpdate(*new_entry)) {
       map->replace(it, std::move(new_entry));
     } else {
-      LOG(INFO) << __func__ << " ignore because of version check, existing: "
-                << (**it).ToString() << ", loaded: " << new_entry->ToString();
+      VLOG_WITH_FUNC(1) << "Ignore because of version check, existing: " << (**it).ToString()
+                        << ", loaded: " << new_entry->ToString();
     }
 
     return Status::OK();

@@ -31,6 +31,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/thread_restrictions.h"
 
+using namespace std::literals;
+
 DEFINE_int32(unresponsive_ts_rpc_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "After this amount of time (or after we have retried unresponsive_ts_rpc_retry_limit "
              "times, whichever happens first), the master will stop attempting to contact a tablet "
@@ -113,16 +115,20 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
     replica_picker_(replica_picker.Pass()),
     table_(DCHECK_NOTNULL(table)),
     start_ts_(MonoTime::Now()),
-    attempt_(0),
-    state_(MonitoredTaskState::kWaiting) {
-  deadline_ = start_ts_;
-  deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_unresponsive_ts_rpc_timeout_ms));
+    deadline_(start_ts_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {
+}
+
+RetryingTSRpcTask::~RetryingTSRpcTask() {
+  auto state = state_.load(std::memory_order_acquire);
+  LOG_IF(DFATAL, !IsStateTerminal(state))
+      << "Destroying " << this << " task in a wrong state: " << AsString(state);
+  VLOG_WITH_FUNC(1) << "Destroying " << this << " in " << AsString(state);
 }
 
 // Send the subclass RPC request.
 Status RetryingTSRpcTask::Run() {
-  VLOG_WITH_PREFIX(1) << "Start Running";
   ++attempt_;
+  VLOG_WITH_PREFIX(1) << "Start Running, attempt: " << attempt_;
   auto task_state = state();
   if (task_state == MonitoredTaskState::kAborted) {
     return STATUS(IllegalState, "Unable to run task because it has been aborted");
@@ -130,11 +136,12 @@ Status RetryingTSRpcTask::Run() {
   // TODO(bogdan): There is a race between scheduling and running and can cause this to fail.
   // Should look into removing the kScheduling state, if not needed, and simplifying the state
   // transitions!
-  DCHECK(task_state == MonitoredTaskState::kWaiting) << "State: " << ToString(task_state);
+  DCHECK(task_state == MonitoredTaskState::kWaiting) << "State: " << AsString(task_state);
 
   Status s = ResetTSProxy();
   if (!s.ok()) {
     s = s.CloneAndPrepend("Failed to reset TS proxy");
+    LOG_WITH_PREFIX(INFO) << s;
     if (s.IsExpired()) {
       TransitionToTerminalState(MonitoredTaskState::kWaiting, MonitoredTaskState::kFailed, s);
       UnregisterAsyncTask();
@@ -201,6 +208,8 @@ MonitoredTaskState RetryingTSRpcTask::AbortAndReturnPrevState(const Status& stat
   while (!IsStateTerminal(prev_state)) {
     auto expected = prev_state;
     if (state_.compare_exchange_weak(expected, MonitoredTaskState::kAborted)) {
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Aborted with: " << status << ", prev state: " << AsString(prev_state);
       AbortIfScheduled();
       Finished(status);
       UnregisterAsyncTask();
@@ -208,6 +217,8 @@ MonitoredTaskState RetryingTSRpcTask::AbortAndReturnPrevState(const Status& stat
     }
     prev_state = state();
   }
+  VLOG_WITH_PREFIX_AND_FUNC(1)
+      << "Already terminated, prev state: " << AsString(prev_state);
   UnregisterAsyncTask();
   return prev_state;
 }
@@ -224,6 +235,7 @@ void RetryingTSRpcTask::RpcCallback() {
   // Note: This can fail on shutdown, so just print a warning for it.
   Status s = callback_pool_->SubmitFunc(
       std::bind(&RetryingTSRpcTask::DoRpcCallback, shared_from(this)));
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "Submit status: " << s;
   if (!s.ok()) {
     WARN_NOT_OK(s, "Could not submit to queue, probably shutting down");
     AbortTask(s);
@@ -233,6 +245,8 @@ void RetryingTSRpcTask::RpcCallback() {
 // Handle the actual work of the RPC callback. This is run on the master's worker
 // pool, rather than a reactor thread, so it may do blocking IO operations.
 void RetryingTSRpcTask::DoRpcCallback() {
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "Rpc status: " << rpc_.status();
+
   if (!rpc_.status().ok()) {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                              << type_name() << " RPC failed for tablet "
@@ -316,6 +330,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   auto task_id = master_->messenger()->ScheduleOnReactor(
       std::bind(&RetryingTSRpcTask::RunDelayedTask, shared_from(this), _1),
       MonoDelta::FromMilliseconds(delay_millis), SOURCE_LOCATION(), master_->messenger());
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Task id: " << task_id;
   reactor_task_id_.store(task_id, std::memory_order_release);
 
   if (task_id == rpc::kInvalidTaskId) {
@@ -342,10 +357,10 @@ void RetryingTSRpcTask::RunDelayedTask(const Status& status) {
     return;
   }
 
-  string desc = description();  // Save in case we need to log after deletion.
+  auto log_prefix = LogPrefix(); // Save in case we need to log after deletion.
   Status s = Run();  // May delete this.
   if (!s.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Async tablet task failed: " << s.ToString();
+    LOG(WARNING) << log_prefix << "Async tablet task failed: " << s;
   }
 }
 
@@ -367,8 +382,10 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
   }
   end_ts_ = MonoTime::Now();
-  if (table_ != nullptr) {
-    table_->RemoveTask(self);
+  if (table_ != nullptr && table_->RemoveTask(self)) {
+    // We don't delete table while it have running tasks, so should check whether it was last task,
+    // even it is not delete table task.
+    master_->catalog_manager()->CheckTableDeleted(table_);
   }
   // Make sure to run the callbacks last, in case they rely on the task no longer being tracked
   // by the table.
@@ -377,6 +394,7 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
 
 void RetryingTSRpcTask::AbortIfScheduled() {
   auto reactor_task_id = reactor_task_id_.load(std::memory_order_acquire);
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "Reactor task id: " << reactor_task_id;
   if (reactor_task_id != rpc::kInvalidTaskId) {
     master_->messenger()->AbortOnReactor(reactor_task_id);
   }
@@ -686,11 +704,12 @@ void AsyncAlterTable::HandleResponse(int attempt) {
 
   if (state() == MonitoredTaskState::kComplete) {
     // TODO: proper error handling here. Not critical, since TSHeartbeat will retry on failure.
-    WARN_NOT_OK(master_->catalog_manager()->HandleTabletSchemaVersionReport(
-        tablet_.get(), schema_version_, table()),
-        yb::Format(
-            "$0 for $1 failed while running AsyncAlterTable::HandleResponse. response $2",
-            description(), tablet_->ToString(), resp_.DebugString()));
+    WARN_NOT_OK(
+        master_->catalog_manager()->HandleTabletSchemaVersionReport(
+            tablet_.get(), schema_version_, table()),
+        Format(
+            "$0 failed while running AsyncAlterTable::HandleResponse. Response $1",
+            description(), resp_.ShortDebugString()));
   } else {
     VLOG_WITH_PREFIX(1) << "Task is not completed " << tablet_->ToString() << " for version "
                         << schema_version_;
