@@ -1,6 +1,7 @@
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
+import com.swoval.format.ExtensionFilter
 
 name := """yugaware"""
 
@@ -73,6 +74,8 @@ dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+
+javafmtSources += (baseDirectory.value / "src", ExtensionFilter("java"), true)
 
 // Skip packaging javadoc for now
 sources in (Compile, doc) := Seq()
