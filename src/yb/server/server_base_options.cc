@@ -103,20 +103,9 @@ ServerBaseOptions::ServerBaseOptions(int default_port)
                                  << ": " << status;
   }
 
-  LOG_IF(INFO, CheckSpaces(FLAGS_placement_uuid)) << 
-          "FLAGS_placement_uuid has leading or trailing spaces,should trim it";
   placement_uuid = yb::util::TrimStr(FLAGS_placement_uuid);
-
-  LOG_IF(INFO, CheckSpaces(FLAGS_placement_cloud)) << 
-          "FLAGS_placement_cloud has leading or trailing spaces,should trim it";
   placement_cloud_ = yb::util::TrimStr(FLAGS_placement_cloud);
-
-  LOG_IF(INFO, CheckSpaces(FLAGS_placement_region)) << 
-          "FLAGS_placement_region has leading or trailing spaces,should trim it";
   placement_region_ = yb::util::TrimStr(FLAGS_placement_region);
-
-  LOG_IF(INFO, CheckSpaces(FLAGS_placement_zone)) << 
-          "FLAGS_placement_zone has leading or trailing spaces,should trim it";
   placement_zone_ = yb::util::TrimStr(FLAGS_placement_zone);
 }
 
@@ -341,17 +330,6 @@ void ServerBaseOptions::SetPlacement(std::string cloud, std::string region, std:
   placement_cloud_ = std::move(cloud);
   placement_region_ = std::move(region);
   placement_zone_ = std::move(zone);
-}
-
-bool CheckSpaces(std::string str) {
-  if (str.empty()) return false;
-  size_t start = 0;
-  size_t end = str.size() - 1;
-  if (isspace(str[start]) != 0 || isspace(str[end]) != 0) {
-    return true;
-  }
-  //Eliminate compile warnings
-  return false;
 }
 
 } // namespace server
