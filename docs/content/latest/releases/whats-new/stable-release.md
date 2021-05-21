@@ -21,6 +21,52 @@ Included here are the release notes for all releases in the v2.4 stable release 
 
 {{< /note >}}
 
+## v2.4.4.0 - May 20, 2021
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.4.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.4.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.4.4.0-b7
+```
+
+### Improvements
+
+#### Core database
+
+* [[8037](https://github.com/yugabyte/yugabyte-db/issues/8037)] [DocDB] - Refactor memory management for tablets into a separate class
+
+#### Yugabyte Platform
+
+* [[8302](https://github.com/yugabyte/yugabyte-db/issues/8302)] Platform: Scrape platform prometheus metrics in replicated
+
+### Bug fixes
+
+#### Core database
+
+* [[7651](https://github.com/yugabyte/yugabyte-db/issues/7651)] YSQL: Always listen on UNIX domain socket
+* [[7873](https://github.com/yugabyte/yugabyte-db/issues/7873)] [DocDB] - Initialize block cache for master/sys_catalog
+* [[8388](https://github.com/yugabyte/yugabyte-db/issues/8388)] ysql: prevent temp indexes from using lsm
+* [[8496](https://github.com/yugabyte/yugabyte-db/issues/8496)] Downgrade gperftools to 2.7
+
+#### Yugabyte Platform
+
+N/A
+
 ## v2.4.3.0 - May 12, 2021
 
 ### Downloads
