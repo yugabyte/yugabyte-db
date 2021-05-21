@@ -51,7 +51,7 @@ For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-
 | [v2.7](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | May 5, 2021 | --- | --- |
 | [v2.4](../whats-new/stable-release) ![CURRENT STABLE](/images/releases/current-stable.png) | Jan 22, 2021 | Jan 22, 2022 | Jul 21, 2022 |
 | [v2.5](../earlier-releases/v2.5) | Nov 12, 2020 | --- | --- |
-| [v2.3](../whats-new/latest-releases) | Sep 08, 2020 | --- | --- |
+| [v2.3](../earlier-releases/v2.3.0) | Sep 08, 2020 | --- | --- |
 | [v2.2](../earlier-releases/v2.2.0) | Jul 15, 2020 | Jul 15, 2021 | Jan 15, 2022 |
 | [v2.1](../earlier-releases/v2.1.0) | Feb 25, 2020 | Feb 25, 2021 | Aug 08, 2021 |
 | [v2.0](../earlier-releases/v2.0.0) | Sep 17, 2019 | Sep 17, 2020 | Mar 03, 2021 |
