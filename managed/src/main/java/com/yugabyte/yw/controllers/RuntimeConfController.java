@@ -51,24 +51,27 @@ public class RuntimeConfController extends AuthenticatedController {
     formData.addGlobalScope(isSuperAdmin);
     formData.addMutableScope(ScopeType.CUSTOMER, customer.uuid);
     Provider.getAll(customer.uuid)
-      .forEach(provider -> formData.addMutableScope(ScopeType.PROVIDER, provider.uuid));
+        .forEach(provider -> formData.addMutableScope(ScopeType.PROVIDER, provider.uuid));
     Universe.getAllUUIDs(customer)
-      .forEach(universeUUID -> formData.addMutableScope(ScopeType.UNIVERSE, universeUUID));
+        .forEach(universeUUID -> formData.addMutableScope(ScopeType.UNIVERSE, universeUUID));
     return formData;
   }
 
   private static Optional<ScopedConfig> getScopedConfigInternal(UUID customerUUID, UUID scopeUUID) {
     RuntimeConfigFormData runtimeConfigFormData = listScopesInternal(Customer.get(customerUUID));
-    return runtimeConfigFormData.scopedConfigList.stream()
-      .filter(config -> config.uuid.equals(scopeUUID))
-      .findFirst();
+    return runtimeConfigFormData
+        .scopedConfigList
+        .stream()
+        .filter(config -> config.uuid.equals(scopeUUID))
+        .findFirst();
   }
 
   private Result buildCachedResult() {
     ArrayNode list =
-      mutableKeys.stream()
-        .sorted()
-        .collect(Collector.of(Json::newArray, ArrayNode::add, ArrayNode::addAll));
+        mutableKeys
+            .stream()
+            .sorted()
+            .collect(Collector.of(Json::newArray, ArrayNode::add, ArrayNode::addAll));
     return ok(list);
   }
 
@@ -76,13 +79,15 @@ public class RuntimeConfController extends AuthenticatedController {
     Config config = settableRuntimeConfigFactory.staticApplicationConf();
     List<String> included = config.getStringList("runtime_config.included_paths");
     List<String> excluded = config.getStringList("runtime_config.excluded_paths");
-    return config.entrySet().stream()
-      .map(Map.Entry::getKey)
-      .filter(
-        key ->
-          included.stream().anyMatch(key::startsWith)
-            && excluded.stream().noneMatch(key::startsWith))
-      .collect(Collectors.toSet());
+    return config
+        .entrySet()
+        .stream()
+        .map(Map.Entry::getKey)
+        .filter(
+            key ->
+                included.stream().anyMatch(key::startsWith)
+                    && excluded.stream().noneMatch(key::startsWith))
+        .collect(Collectors.toSet());
   }
 
   public Result listKeys() {
@@ -96,25 +101,25 @@ public class RuntimeConfController extends AuthenticatedController {
 
   public Result getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
     LOG.trace(
-      "customerUUID: {} scopeUUID: {} includeInherited: {}",
-      customerUUID,
-      scopeUUID,
-      includeInherited);
+        "customerUUID: {} scopeUUID: {} includeInherited: {}",
+        customerUUID,
+        scopeUUID,
+        includeInherited);
 
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
 
     if (!optScopedConfig.isPresent()) {
       return ApiResponse.error(
-        NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
+          NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
     Config fullConfig =
-      optScopedConfig.get().type.forScopeType(scopeUUID, settableRuntimeConfigFactory);
+        optScopedConfig.get().type.forScopeType(scopeUUID, settableRuntimeConfigFactory);
     Map<String, String> overriddenInScope = RuntimeConfigEntry.getAsMapForScope(scopeUUID);
     for (String k : mutableKeys) {
       boolean isOverridden = overriddenInScope.containsKey(k);
       LOG.trace(
-        "key: {} overriddenInScope: {} includeInherited: {}", k, isOverridden, includeInherited);
+          "key: {} overriddenInScope: {} includeInherited: {}", k, isOverridden, includeInherited);
 
       if (isOverridden) {
         optScopedConfig.get().configEntries.add(new ConfigEntry(false, k, fullConfig.getString(k)));
@@ -136,13 +141,13 @@ public class RuntimeConfController extends AuthenticatedController {
 
     if (!scopedConfig.isPresent()) {
       return ApiResponse.error(
-        NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
+          NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
     RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.get(scopeUUID, path);
     if (runtimeConfigEntry == null)
       return ApiResponse.error(
-        NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
+          NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
     return ok(runtimeConfigEntry.getValue());
   }
 
@@ -155,21 +160,21 @@ public class RuntimeConfController extends AuthenticatedController {
 
     if (!optScopedConfig.isPresent()) {
       return ApiResponse.error(
-        NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
+          NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
     if (!optScopedConfig.get().mutableScope)
       return ApiResponse.error(
-        FORBIDDEN,
-        "Customer "
-          + customerUUID
-          + "does not have access to mutate configuration for this scope "
-          + scopeUUID);
+          FORBIDDEN,
+          "Customer "
+              + customerUUID
+              + "does not have access to mutate configuration for this scope "
+              + scopeUUID);
     optScopedConfig
-      .get()
-      .type
-      .forScopeType(scopeUUID, settableRuntimeConfigFactory)
-      .setValue(path, newValue);
+        .get()
+        .type
+        .forScopeType(scopeUUID, settableRuntimeConfigFactory)
+        .setValue(path, newValue);
 
     return ok();
   }
@@ -181,21 +186,21 @@ public class RuntimeConfController extends AuthenticatedController {
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
     if (!optScopedConfig.isPresent()) {
       return ApiResponse.error(
-        NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
+          NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
     if (!optScopedConfig.get().mutableScope)
       return ApiResponse.error(
-        FORBIDDEN,
-        "Customer "
-          + customerUUID
-          + " does not have access to mutate configuration for this scope "
-          + scopeUUID);
+          FORBIDDEN,
+          "Customer "
+              + customerUUID
+              + " does not have access to mutate configuration for this scope "
+              + scopeUUID);
     optScopedConfig
-      .get()
-      .type
-      .forScopeType(scopeUUID, settableRuntimeConfigFactory)
-      .deleteEntry(path);
+        .get()
+        .type
+        .forScopeType(scopeUUID, settableRuntimeConfigFactory)
+        .deleteEntry(path);
     return ok();
   }
 }

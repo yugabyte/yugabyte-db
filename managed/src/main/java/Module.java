@@ -31,7 +31,7 @@ import play.Environment;
 /**
  * This class is a Guice module that tells Guice to bind different types
  *
- * Play will automatically use any class called 'Module' in the root package
+ * <p>Play will automatically use any class called 'Module' in the root package
  */
 public class Module extends AbstractModule {
 
@@ -114,8 +114,9 @@ public class Module extends AbstractModule {
 
   @Provides
   protected Config provideConfig(OidcClient oidcClient) {
-    final Clients clients = new Clients(String.format("%s/api/v1/callback",
-        config.getString("yb.url", "")), oidcClient);
+    final Clients clients =
+        new Clients(
+            String.format("%s/api/v1/callback", config.getString("yb.url", "")), oidcClient);
     final Config config = new Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
     return config;

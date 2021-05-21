@@ -19,8 +19,7 @@ public class BackupTableParams extends TableManagerParams {
     DELETE
   }
 
-  @Constraints.Required
-  public UUID storageConfigUUID;
+  @Constraints.Required public UUID storageConfigUUID;
 
   public UUID kmsConfigUUID = null;
 
@@ -28,8 +27,7 @@ public class BackupTableParams extends TableManagerParams {
   // the S3 url based on universeUUID and timestamp.
   public String storageLocation;
 
-  @Constraints.Required
-  public ActionType actionType;
+  @Constraints.Required public ActionType actionType;
 
   public TableType backupType;
 

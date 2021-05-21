@@ -18,13 +18,12 @@ import play.mvc.Http;
 import play.mvc.With;
 
 /**
- *  This class contains dependencies, which can be used by most of the Platform controllers.
- *  An example of such a functionality is the request audit.
+ * This class contains dependencies, which can be used by most of the Platform controllers. An
+ * example of such a functionality is the request audit.
  */
 public abstract class AbstractPlatformController extends Controller {
 
-  @Inject
-  private AuditService auditService;
+  @Inject private AuditService auditService;
 
   protected AuditService auditService() {
     Users user = (Users) Http.Context.current().args.get("user");

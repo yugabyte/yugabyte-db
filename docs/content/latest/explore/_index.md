@@ -178,4 +178,16 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="security/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
+        <div class="title">Security</div>
+      </div>
+      <div class="body">
+        Learn about strategies for securing YugabyteDB.
+      </div>
+    </a>
+  </div>
+
 </div>

@@ -39,7 +39,7 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -50,8 +50,12 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", enable=" +
-        taskParams().enable + ")";
+    return super.getName()
+        + "("
+        + taskParams().universeUUID
+        + ", enable="
+        + taskParams().enable
+        + ")";
   }
 
   @Override
@@ -60,7 +64,7 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
     YBClient client = null;
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     try {
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
 
