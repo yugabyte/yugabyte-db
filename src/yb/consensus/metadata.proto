@@ -98,6 +98,9 @@ message RaftConfigPB {
   // It is left undefined if the operation isn't committed.
   optional int64 opid_index = 1;
 
+  // Flag to allow unsafe config change operations.
+  optional bool unsafe_config_change = 4 [ default = false ];
+
   // The set of peers in the configuration.
   repeated RaftPeerPB peers = 2;
 }

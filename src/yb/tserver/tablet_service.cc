@@ -236,6 +236,8 @@ using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::StartRemoteBootstrapRequestPB;
 using consensus::StartRemoteBootstrapResponsePB;
+using consensus::UnsafeChangeConfigRequestPB;
+using consensus::UnsafeChangeConfigResponsePB;
 using consensus::VoteRequestPB;
 using consensus::VoteResponsePB;
 
@@ -1819,6 +1821,31 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
     return;
   }
   // The success case is handled when the callback fires.
+}
+
+void ConsensusServiceImpl::UnsafeChangeConfig(const UnsafeChangeConfigRequestPB* req,
+                                              UnsafeChangeConfigResponsePB* resp,
+                                              RpcContext context) {
+  VLOG(1) << "Received UnsafeChangeConfig RPC: " << req->ShortDebugString();
+  if (!CheckUuidMatchOrRespond(tablet_manager_, "UnsafeChangeConfig", req, resp, &context)) {
+    return;
+  }
+  auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      tablet_manager_, req->tablet_id(), resp, &context));
+  auto tablet_peer = peer_tablet.tablet_peer;
+
+  shared_ptr<Consensus> consensus;
+  if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) {
+    return;
+  }
+  boost::optional<TabletServerErrorPB::Code> error_code;
+  const Status s = consensus->UnsafeChangeConfig(*req, &error_code);
+  if (PREDICT_FALSE(!s.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    HandleErrorResponse(resp, &context, s, error_code);
+    return;
+  }
+  context.RespondSuccess();
 }
 
 void ConsensusServiceImpl::GetNodeInstance(const GetNodeInstanceRequestPB* req,
