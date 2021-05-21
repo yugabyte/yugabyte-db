@@ -33,7 +33,9 @@
 #define YB_UTIL_RWC_LOCK_H
 
 #include "yb/gutil/macros.h"
+
 #include "yb/util/condition_variable.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/mutex.h"
 
 namespace yb {
@@ -138,10 +140,9 @@ class RWCLock {
   bool write_locked_;
 
 #ifndef NDEBUG
-  static const int kBacktraceBufSize = 1024;
   int64_t last_writer_tid_;
   int64_t last_writelock_acquire_time_;
-  char last_writer_backtrace_[kBacktraceBufSize];
+  StackTrace last_writer_stacktrace_;
 #endif // NDEBUG
 
   DISALLOW_COPY_AND_ASSIGN(RWCLock);

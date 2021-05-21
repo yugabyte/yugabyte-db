@@ -730,8 +730,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return permissions_manager_.get();
   }
 
-  uintptr_t tablets_version() const {
-    std::lock_guard<LockType> l_map(lock_);
+  uintptr_t tablets_version() const NO_THREAD_SAFETY_ANALYSIS {
+    // This method should not hold the lock, because Version method is thread safe.
     return tablet_map_.Version() + table_ids_map_.Version();
   }
 
@@ -782,6 +782,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const TablespaceId& tablespace_id);
 
   void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
+
+  void CheckTableDeleted(const TableInfoPtr& table);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

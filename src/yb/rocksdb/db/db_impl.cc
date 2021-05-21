@@ -2440,8 +2440,10 @@ void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
   }
 }
 
-Status DBImpl::SetOptions(ColumnFamilyHandle* column_family,
-    const std::unordered_map<std::string, std::string>& options_map) {
+Status DBImpl::SetOptions(
+    ColumnFamilyHandle* column_family,
+    const std::unordered_map<std::string, std::string>& options_map,
+    bool dump_options) {
 #ifdef ROCKSDB_LITE
   return STATUS(NotSupported, "Not supported in ROCKSDB LITE");
 #else
@@ -2474,17 +2476,15 @@ Status DBImpl::SetOptions(ColumnFamilyHandle* column_family,
   }
 
   RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
-      "SetOptions() on column family [%s], inputs:",
-      cfd->GetName().c_str());
-  for (const auto& o : options_map) {
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
-        "%s: %s\n", o.first.c_str(), o.second.c_str());
-  }
+      "SetOptions() on column family [%s], inputs: %s",
+      cfd->GetName().c_str(), yb::AsString(options_map).c_str());
   if (s.ok()) {
     RLOG(InfoLogLevel::INFO_LEVEL,
         db_options_.info_log, "[%s] SetOptions succeeded",
         cfd->GetName().c_str());
-    new_options.Dump(db_options_.info_log.get());
+    if (dump_options) {
+      new_options.Dump(db_options_.info_log.get());
+    }
     if (!persist_options_status.ok()) {
       if (db_options_.fail_if_options_file_error) {
         s = STATUS(IOError,
@@ -2962,7 +2962,7 @@ Status DBImpl::EnableAutoCompaction(
   Status s;
   for (auto cf_ptr : column_family_handles) {
     Status status =
-        this->SetOptions(cf_ptr, {{"disable_auto_compactions", "false"}});
+        this->SetOptions(cf_ptr, {{"disable_auto_compactions", "false"}}, false);
     if (status.ok()) {
       ColumnFamilyData* cfd = down_cast<ColumnFamilyHandleImpl*>(cf_ptr)->cfd();
       InstrumentedMutexLock guard_lock(&mutex_);

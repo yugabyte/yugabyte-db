@@ -419,7 +419,8 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
         req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
       }
 
-      RETURN_NOT_OK(master_backup_proxy_->ListSnapshotSchedules(req, &resp, &rpc));
+      RETURN_NOT_OK_PREPEND(master_backup_proxy_->ListSnapshotSchedules(req, &resp, &rpc),
+                            "Failed to list snapshot schedules");
 
       if (resp.has_error()) {
         return StatusFromPB(resp.error().status());
@@ -446,7 +447,8 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
     master::CreateSnapshotRequestPB req;
     master::CreateSnapshotResponsePB resp;
     req.set_schedule_id(schedule_id.data(), schedule_id.size());
-    RETURN_NOT_OK(master_backup_proxy_->CreateSnapshot(req, &resp, &rpc));
+    RETURN_NOT_OK_PREPEND(master_backup_proxy_->CreateSnapshot(req, &resp, &rpc),
+                          "Failed to create snapshot");
     if (resp.has_error()) {
       auto status = StatusFromPB(resp.error().status());
       if (master::MasterError(status) == master::MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
@@ -471,7 +473,8 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     master::ListSnapshotsRequestPB req;
     req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
     master::ListSnapshotsResponsePB resp;
-    RETURN_NOT_OK(master_backup_proxy_->ListSnapshots(req, &resp, &rpc));
+    RETURN_NOT_OK_PREPEND(master_backup_proxy_->ListSnapshots(req, &resp, &rpc),
+                          "Failed to list snapshots");
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
@@ -500,7 +503,8 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
   RestoreSnapshotResponsePB resp;
   req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   req.set_restore_ht(restore_at.ToUint64());
-  RETURN_NOT_OK(master_backup_proxy_->RestoreSnapshot(req, &resp, &rpc));
+  RETURN_NOT_OK_PREPEND(master_backup_proxy_->RestoreSnapshot(req, &resp, &rpc),
+                        "Failed to restore snapshot");
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());

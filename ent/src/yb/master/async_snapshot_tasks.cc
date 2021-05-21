@@ -37,6 +37,15 @@ using tserver::TabletServerErrorPB;
 // AsyncTabletSnapshotOp
 ////////////////////////////////////////////////////////////
 
+namespace {
+
+std::string SnapshotIdToString(const std::string& snapshot_id) {
+  auto uuid = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  return uuid.IsNil() ? snapshot_id : uuid.ToString();
+}
+
+}
+
 AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(Master *master,
                                              ThreadPool* callback_pool,
                                              const scoped_refptr<TabletInfo>& tablet,
@@ -52,8 +61,9 @@ AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(Master *master,
 }
 
 string AsyncTabletSnapshotOp::description() const {
-  return Format("$0 Tablet Snapshot Operation $1 RPC",
-                *tablet_, tserver::TabletSnapshotOpRequestPB::Operation_Name(operation_));
+  return Format("$0 Tablet Snapshot Operation $1 RPC $2",
+                *tablet_, tserver::TabletSnapshotOpRequestPB::Operation_Name(operation_),
+                SnapshotIdToString(snapshot_id_));
 }
 
 TabletId AsyncTabletSnapshotOp::tablet_id() const {
@@ -64,43 +74,36 @@ TabletServerId AsyncTabletSnapshotOp::permanent_uuid() const {
   return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
+bool AsyncTabletSnapshotOp::RetryAllowed(TabletServerErrorPB::Code code, const Status& status) {
+  switch (code) {
+    case TabletServerErrorPB::TABLET_NOT_FOUND:
+      return false;
+    case TabletServerErrorPB::INVALID_SNAPSHOT:
+      return operation_ != tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET;
+    default:
+      return TransactionError(status) != TransactionErrorCode::kSnapshotTooOld;
+  }
+}
+
 void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
   server::UpdateClock(resp_, master_->clock());
 
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
-    // Do not retry on a fatal error.
-    switch (resp_.error().code()) {
-      case TabletServerErrorPB::TABLET_NOT_FOUND:
-        LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
-                     << tablet_->ToString() << " no further retry: " << status;
-        TransitionToCompleteState();
-        break;
-      case TabletServerErrorPB::INVALID_SNAPSHOT:
-        LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
-                     << tablet_->ToString() << ": " << status;
-        if (operation_ == tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
-          LOG(WARNING) << "No further retry for RESTORE snapshot operation: " << status;
-          TransitionToCompleteState();
-        }
-        break;
-      default:
-        LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
-                     << tablet_->ToString() << ": " << status;
-        if (TransactionError(status) == TransactionErrorCode::kSnapshotTooOld) {
-          TransitionToCompleteState();
-        }
-        break;
+    if (!RetryAllowed(resp_.error().code(), status)) {
+      LOG_WITH_PREFIX(WARNING) << "Failed, NO retry: " << status;
+      TransitionToCompleteState();
+    } else {
+      LOG_WITH_PREFIX(WARNING) << "Failed, will be retried: " << status;
     }
   } else {
     TransitionToCompleteState();
-    VLOG(1) << "TS " << permanent_uuid() << ": snapshot complete on tablet "
-            << tablet_->ToString();
+    VLOG_WITH_PREFIX(1) << "Complete";
   }
 
   if (state() != MonitoredTaskState::kComplete) {
-    VLOG(1) << "TabletSnapshotOp task is not completed";
+    VLOG_WITH_PREFIX(1) << "TabletSnapshotOp task is not completed";
     return;
   }
 
@@ -162,9 +165,8 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 
   ts_backup_proxy_->TabletSnapshotOpAsync(req, &resp_, &rpc_, BindRpcCallback());
-  VLOG(1) << "Send tablet snapshot request " << operation_ << " to " << permanent_uuid()
-          << " (attempt " << attempt << "):\n"
-          << req.DebugString();
+  VLOG_WITH_PREFIX(1) << "Sent to " << permanent_uuid() << " (attempt " << attempt << "): "
+                      << (VLOG_IS_ON(4) ? req.ShortDebugString() : "");
   return true;
 }
 

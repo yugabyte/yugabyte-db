@@ -35,16 +35,28 @@ class RestoreSysCatalogState {
  public:
   explicit RestoreSysCatalogState(SnapshotScheduleRestoration* restoration);
 
+  // Load objects from DB snapshot.
   CHECKED_STATUS LoadObjects(const Schema& schema, const docdb::DocDB& doc_db);
 
+  // Patch table versions, so restored tables will have greater schema version to force schema
+  // update.
+  CHECKED_STATUS PatchVersions(const TableInfoMap& tables);
+
+  // Determine entries that should be restored. I.e. apply filter and serialize.
+  CHECKED_STATUS DetermineEntries();
+
+  // Determine objects that should be removed, i.e. was created after restoration time.
   CHECKED_STATUS DetermineObsoleteObjects(const SysRowEntries& existing);
 
+  // Prepare write batch with object changes.
   CHECKED_STATUS PrepareWriteBatch(const Schema& schema, docdb::DocWriteBatch* write_batch);
 
+  // Prepare write batch to delete obsolete tablet.
   CHECKED_STATUS PrepareTabletCleanup(
       const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
 
+  // Prepare write batch to delete obsolete table.
   CHECKED_STATUS PrepareTableCleanup(
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
@@ -61,8 +73,6 @@ class RestoreSysCatalogState {
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(
       const Schema& schema, const docdb::DocDB& doc_db, std::unordered_map<std::string, PB>* map);
-
-  CHECKED_STATUS DetermineEntries();
 
   Result<bool> MatchTable(const TableId& id, const SysTablesEntryPB& table);
   Result<bool> TableMatchesIdentifier(

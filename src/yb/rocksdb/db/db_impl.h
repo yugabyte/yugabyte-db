@@ -169,7 +169,8 @@ class DBImpl : public DB {
   using DB::SetOptions;
   Status SetOptions(
       ColumnFamilyHandle* column_family,
-      const std::unordered_map<std::string, std::string>& options_map) override;
+      const std::unordered_map<std::string, std::string>& options_map,
+      bool dump_options = true) override;
 
   // Set whether DB should be flushed on shutdown.
   void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
