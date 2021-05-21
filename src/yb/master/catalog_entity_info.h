@@ -263,7 +263,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   friend class LeaderChangeReporter;
 
   ~TabletInfo();
-  TSDescriptor* GetLeaderUnlocked() const;
+  TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
@@ -274,16 +274,16 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // The last time the replica locations were updated.
   // Also set when the Master first attempts to create the tablet.
-  MonoTime last_update_time_;
+  MonoTime last_update_time_ GUARDED_BY(lock_);
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
-  std::shared_ptr<ReplicaMap> replica_locations_;
+  std::shared_ptr<ReplicaMap> replica_locations_ GUARDED_BY(lock_);
 
   // Reported schema version (in-memory only).
-  std::unordered_map<TableId, uint32_t> reported_schema_version_ = {};
+  std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
 
-  LeaderStepDownFailureTimes leader_stepdown_failure_times_;
+  LeaderStepDownFailureTimes leader_stepdown_failure_times_ GUARDED_BY(lock_);
 
   std::atomic<bool> initiated_election_{false};
 
@@ -508,7 +508,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  void AddTabletUnlocked(TabletInfo* tablet);
+  void AddTabletUnlocked(TabletInfo* tablet) REQUIRES_SHARED(lock_);
   void AbortTasksAndCloseIfRequested(bool close);
 
   const TableId table_id_;
@@ -518,7 +518,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
   typedef std::map<std::string, TabletInfo *> TabletInfoMap;
-  TabletInfoMap tablet_map_;
+  TabletInfoMap tablet_map_ GUARDED_BY(lock_);
 
   // Protects tablet_map_ and pending_tasks_.
   mutable rw_spinlock lock_;
@@ -532,7 +532,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::atomic<bool> is_system_{false};
 
   // List of pending tasks (e.g. create/alter tablet requests).
-  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
+  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
@@ -573,7 +573,7 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
   mutable simple_spinlock lock_;
 
   typedef std::unordered_set<TabletKey, boost::hash<TabletKey>> TabletSet;
-  TabletSet tablet_set_;
+  TabletSet tablet_set_ GUARDED_BY(lock_);
 };
 
 // The data related to a namespace which is persisted on disk.
@@ -651,7 +651,7 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
 
   // Protects table_set_.
   mutable simple_spinlock lock_;
-  std::unordered_set<TableId> table_set_;
+  std::unordered_set<TableId> table_set_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TablegroupInfo);
 };
