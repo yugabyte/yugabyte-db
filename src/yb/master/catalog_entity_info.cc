@@ -375,7 +375,7 @@ void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletI
 void TableInfo::GetTabletsInRange(
     const std::string& partition_key_start, const std::string& partition_key_end,
     TabletInfos* ret, const int32_t max_returned_locations) const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
 
   TableInfo::TabletInfoMap::const_iterator it, it_end;
   if (partition_key_start.empty()) {
@@ -400,7 +400,7 @@ void TableInfo::GetTabletsInRange(
 }
 
 bool TableInfo::IsAlterInProgress(uint32_t version) const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     if (e.second->reported_schema_version(table_id_) < version) {
       VLOG(3) << "Table " << table_id_ << " ALTER in progress due to tablet "
@@ -413,12 +413,12 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
 }
 
 bool TableInfo::HasTablets() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return !tablet_map_.empty();
 }
 
 bool TableInfo::AreAllTabletsDeletedOrHidden() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const auto& e : tablet_map_) {
     auto tablet_lock = e.second->LockForRead();
     if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
@@ -429,7 +429,7 @@ bool TableInfo::AreAllTabletsDeletedOrHidden() const {
 }
 
 bool TableInfo::AreAllTabletsDeleted() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const auto& e : tablet_map_) {
     if (!e.second->LockForRead()->is_deleted()) {
       return false;
@@ -439,7 +439,7 @@ bool TableInfo::AreAllTabletsDeleted() const {
 }
 
 bool TableInfo::IsCreateInProgress() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     if (!e.second->LockForRead()->is_running()) {
       return true;
@@ -475,29 +475,29 @@ void TableInfo::SetCreateTableErrorStatus(const Status& status) {
 }
 
 Status TableInfo::GetCreateTableErrorStatus() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return create_table_error_;
 }
 
 std::size_t TableInfo::NumLBTasks() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return std::count_if(pending_tasks_.begin(),
                        pending_tasks_.end(),
                        [](auto task) { return task->started_by_lb(); });
 }
 
 std::size_t TableInfo::NumTasks() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return pending_tasks_.size();
 }
 
 bool TableInfo::HasTasks() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return !pending_tasks_.empty();
 }
 
 bool TableInfo::HasTasks(MonitoredTask::Type type) const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (auto task : pending_tasks_) {
     if (task->type() == type) {
       return true;
@@ -567,7 +567,7 @@ void TableInfo::WaitTasksCompletion() {
   while (1) {
     std::vector<std::shared_ptr<MonitoredTask>> waiting_on_for_debug;
     {
-      shared_lock<decltype(lock_)> l(lock_);
+      SharedLock<decltype(lock_)> l(lock_);
       if (pending_tasks_.empty()) {
         break;
       } else if (VLOG_IS_ON(1)) {
@@ -584,25 +584,25 @@ void TableInfo::WaitTasksCompletion() {
 }
 
 std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return pending_tasks_;
 }
 
 std::size_t TableInfo::NumTablets() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return tablet_map_.size();
 }
 
 void TableInfo::GetAllTablets(TabletInfos *ret) const {
   ret->clear();
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     ret->push_back(make_scoped_refptr(e.second));
   }
 }
 
 TabletInfoPtr TableInfo::GetColocatedTablet() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   if (colocated()) {
     for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
       return make_scoped_refptr(e.second);
@@ -627,7 +627,7 @@ bool TableInfo::UsesTablespacesForPlacement() const {
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return tablespace_id_for_table_creation_;
 }
 
