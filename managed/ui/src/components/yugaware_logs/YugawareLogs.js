@@ -1,29 +1,62 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { isDefinedNotNull, isNonEmptyObject } from '../../utils/ObjectUtils';
 import { showOrRedirect } from '../../utils/LayoutUtils';
+import AceEditor from 'react-ace';
+import 'ace-builds/src-noconflict/ext-searchbox';
+import 'ace-builds/src-noconflict/mode-java';
+import 'ace-builds/src-noconflict/theme-github';
 
-export default class YugawareLogs extends Component {
-  componentDidMount() {
-    this.props.getLogs();
-  }
+const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError }) => {
+  const editorStyle = {
+    width: '100%',
+    height: 'calc(100vh - 150px)'
+  };
 
-  render() {
-    const { currentCustomer, yugawareLogs, logError } = this.props;
-    showOrRedirect(currentCustomer.data.features, 'main.logs');
+  const logContent = useMemo(() => {
+    // Hard limit set so even if 50k lines we show 10k lines only
+    // When pagination for logs implemented this hard limit can be removed .
+    const hardLimit = 10000;
 
-    let logContent = <span />;
     if (isDefinedNotNull(yugawareLogs) && isNonEmptyObject(yugawareLogs)) {
-      logContent = <pre style={{ whiteSpace: 'pre-wrap' }}>{yugawareLogs.join('\n')}</pre>;
+      return yugawareLogs
+        .slice(yugawareLogs.length - hardLimit)
+        .reverse()
+        .join('\n');
+    } else {
+      return 'Loading ...';
     }
-    return (
+  }, [yugawareLogs]);
+
+  useEffect(() => {
+    showOrRedirect(currentCustomer.data.features, 'main.logs');
+    getLogs(); // call to get logs
+  }, []);
+
+  return (
+    <div>
+      <h2 className="content-title">
+        <b>YugaWare logs</b>
+      </h2>
       <div>
-        <h2>
-          <b>YugaWare logs</b>
-        </h2>
-        <div>{logError ? <div>Something went wrong fetching logs.</div> : logContent}</div>
+        {logError ? (
+          <div>Something went wrong fetching logs.</div>
+        ) : (
+          <AceEditor
+            theme="github"
+            mode="java"
+            name="dc-config-val"
+            value={logContent}
+            style={editorStyle}
+            readOnly
+            showPrintMargin={false}
+            wrapEnabled={true}
+          />
+        )}
       </div>
-    );
-  }
-}
+    </div>
+  );
+};
+
+export default YugawareLogs;
