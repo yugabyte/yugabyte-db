@@ -61,7 +61,6 @@ N/A
 * [7215] Added an ability to select multiple backups for deletion rather than deleting individual backups. 
 * [7223] [7224] Added a new “Show Universes” action in the Actions menu. This provides a way for users to see all the associated universes that are using a particular KMS config. We are now also showing the list of universes as a modal dialog box associated with the certificate. 
 * [7278] [7446] Improved search usability for Live and Slow queries by adding autocomplete suggestions, better filtering and navigation.
-* [7474] Added support for creating more than one instance of the same cloud provider type (viz. AWS, GCP, Azure)
 * [7726] Health check now runs in parallel on all the universes rather than sequential.
 * [7799] Added support for AWS GP3 volumes during universe creation from the Platform. The disk size and IOPS configuration for GP3 drives are configurable, whereas throughput is not configurable and is set to default value of 125MiB/sec.
 * [7913] When upgrading a universe with read replica clusters, nodes in primary clusters are now always upgraded first, then read replica cluster nodes. 
@@ -175,7 +174,6 @@ N/A
 * [5733] Disabled "stop process" and "remove node" for a single node universe
 * [5946] Clock sync is now checked while creating or expanding the universe. Clock sync is added to health checks now.
 * [6019] Added an init container to yugabyte helm charts to wait for container to be ready
-* [6460] Added pre-flight checks for cloud provider configuration like ssh key and cloud credentials. In the case of validation failure, user is notified via the Task window, and disables universe creation for that cloud provider.
 * [6924] When a node is removed/released from a universe, hide the "Show Live Queries" button.
 * [7007] Fixed an issue where Restore backup dialog allowed empty/no universe name selected.
 * [7171] Added a validation that on-prem instance type name cannot be same for different customers on the same platform.
@@ -214,7 +212,6 @@ N/A
 * [7780] Fixed an issue causing old backups to not get deleted by a schedule.
 * [7810] Health check emails not working with default SMTP configuration
 * [7811] Slow queries is not displaying all queries on k8s universe pods
-* [7841] Resume Universe Failure.Cannot replace a node until follower_unavailable_considered_failed_sec is past
 * [7908] Added a fix caused while deleting a universe with a stopped node
 * [7909] Fix issue with signature could not be verified for google-cloud-sdk for GCP VMs
 * [7950] Navigating to a universe with KMS enabled will show this error due if something has been misconfigured
