@@ -37,23 +37,17 @@ public class AlertDefinition extends Model {
   @Column(columnDefinition = "Text", nullable = false)
   public String query;
 
-  @Constraints.Required
-  public boolean isActive;
+  @Constraints.Required public boolean isActive;
 
   @Constraints.Required
   @Column(nullable = false)
   public UUID customerUUID;
 
   private static final Finder<UUID, AlertDefinition> find =
-    new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
+      new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
 
   public static AlertDefinition create(
-    UUID customerUUID,
-    UUID universeUUID,
-    String name,
-    String query,
-    boolean isActive
-  ) {
+      UUID customerUUID, UUID universeUUID, String name, String query, boolean isActive) {
     AlertDefinition definition = new AlertDefinition();
     definition.uuid = UUID.randomUUID();
     definition.name = name;
@@ -71,18 +65,15 @@ public class AlertDefinition extends Model {
   }
 
   public static AlertDefinition get(UUID customerUUID, UUID universeUUID, String name) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("universe_uuid", universeUUID)
-      .eq("name", name)
-      .findOne();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("universe_uuid", universeUUID)
+        .eq("name", name)
+        .findOne();
   }
 
-  public static AlertDefinition update(
-    UUID alertDefinitionUUID,
-    String query,
-    boolean isActive
-  ) {
+  public static AlertDefinition update(UUID alertDefinitionUUID, String query, boolean isActive) {
     AlertDefinition alertDefinition = get(alertDefinitionUUID);
     alertDefinition.query = query;
     alertDefinition.isActive = isActive;
@@ -92,9 +83,6 @@ public class AlertDefinition extends Model {
   }
 
   public static Set<AlertDefinition> listActive(UUID customerUUID) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("is_active", true)
-      .findSet();
+    return find.query().where().eq("customer_uuid", customerUUID).eq("is_active", true).findSet();
   }
 }

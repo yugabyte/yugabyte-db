@@ -51,8 +51,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CertificateControllerTest extends FakeDBApplication {
-  @Mock
-  play.Configuration mockAppConfig;
+  @Mock play.Configuration mockAppConfig;
 
   private Customer customer;
   private Users user;
@@ -63,7 +62,7 @@ public class CertificateControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
-    for (String cert: test_certs) {
+    for (String cert : test_certs) {
       test_certs_uuids.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs"));
     }
   }
@@ -80,15 +79,15 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   private Result uploadCertificate(UUID customerUUID, ObjectNode bodyJson) {
     String uri = "/api/customers/" + customerUUID + "/certificates";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
-        user.createAuthToken(), bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result updateCertificate(UUID customerUUID, UUID rootUUID, ObjectNode bodyJson) {
-    String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID +
-                 "/update_empty_cert";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(),
-                                                       bodyJson);
+    String uri =
+        "/api/customers/" + customerUUID + "/certificates/" + rootUUID + "/update_empty_cert";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result getCertificate(UUID customerUUID, String label) {
@@ -96,11 +95,10 @@ public class CertificateControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
-  private Result createClientCertificate(UUID customerUUID, UUID rootUUID,
-                                         ObjectNode bodyJson) {
+  private Result createClientCertificate(UUID customerUUID, UUID rootUUID, ObjectNode bodyJson) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID;
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(),
-                                                       bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result getRootCertificate(UUID customerUUID, UUID rootUUID) {
@@ -203,8 +201,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     Date date = new Date();
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
-    CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
-                           TestHelper.TMP_PATH + "/ca.crt", null);
+    CertificateInfo.create(
+        certUUID, customer.uuid, "test", date, date, TestHelper.TMP_PATH + "/ca.crt", null);
     CertificateParams.CustomCertInfo customCertInfo =
         CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNull(customCertInfo);
@@ -235,8 +233,14 @@ public class CertificateControllerTest extends FakeDBApplication {
     customCertInfo.nodeKeyPath = "nodeKeyPath";
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
-    CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
-                           TestHelper.TMP_PATH + "/ca.crt", customCertInfo);
+    CertificateInfo.create(
+        certUUID,
+        customer.uuid,
+        "test",
+        date,
+        date,
+        TestHelper.TMP_PATH + "/ca.crt",
+        customCertInfo);
     customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNotNull(customCertInfo);
     ObjectNode bodyJson = Json.newObject();
@@ -261,8 +265,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("username", "test");
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
-    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
-                                                 "/tmp");
+    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid, "/tmp");
     Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -275,8 +278,7 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetRootCertificate() {
-    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
-                                                 "/tmp");
+    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid, "/tmp");
     Result result = getRootCertificate(customer.uuid, rootCA);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -284,5 +286,4 @@ public class CertificateControllerTest extends FakeDBApplication {
     assertNotNull(rootCert);
     assertAuditEntry(1, customer.uuid);
   }
-
 }

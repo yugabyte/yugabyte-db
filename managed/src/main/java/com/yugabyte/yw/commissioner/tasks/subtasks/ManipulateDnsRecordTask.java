@@ -47,23 +47,23 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
     try {
       List<NodeDetails> tserverNodes = Universe.get(taskParams().universeUUID).getTServers();
-      String nodeIpCsv = tserverNodes.stream()
-          .map(nd -> nd.cloudInfo.private_ip)
-          .collect(Collectors.joining(","));
+      String nodeIpCsv =
+          tserverNodes.stream().map(nd -> nd.cloudInfo.private_ip).collect(Collectors.joining(","));
       // Create the process to fetch information about the node from the cloud provider.
-      ShellProcessHandler.ShellResponse response = dnsManager.manipulateDnsRecord(
-          taskParams().type,
-          taskParams().providerUUID,
-          taskParams().hostedZoneId,
-          taskParams().domainNamePrefix,
-          nodeIpCsv);
+      ShellProcessHandler.ShellResponse response =
+          dnsManager.manipulateDnsRecord(
+              taskParams().type,
+              taskParams().providerUUID,
+              taskParams().hostedZoneId,
+              taskParams().domainNamePrefix,
+              nodeIpCsv);
       logShellResponse(response);
     } catch (Exception e) {
       if (taskParams().type != DnsManager.DnsCommandType.Delete || !taskParams().isForceDelete) {

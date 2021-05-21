@@ -62,7 +62,8 @@ public class BackupsControllerTest extends FakeDBApplication {
   private JsonNode listBackups(UUID universeUUID) {
     String authToken = defaultUser.createAuthToken();
     String method = "GET";
-    String url = "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/backups";
+    String url =
+        "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/backups";
 
     Result r = FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
     assertOk(r);
@@ -90,8 +91,12 @@ public class BackupsControllerTest extends FakeDBApplication {
       authToken = user.createAuthToken();
     }
     String method = "POST";
-    String url = "/api/customers/" + defaultCustomer.uuid +
-        "/universes/" + universeUUID + "/backups/restore";
+    String url =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/universes/"
+            + universeUUID
+            + "/backups/restore";
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
@@ -159,8 +164,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testRestoreBackupWithReadOnlyUser() {
-    Users user = ModelFactory.testUser(defaultCustomer, "tc@test.com",
-                                       Users.Role.ReadOnly);
+    Users user = ModelFactory.testUser(defaultCustomer, "tc@test.com", Users.Role.ReadOnly);
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
     Backup b = Backup.create(defaultCustomer.uuid, bp);
@@ -189,8 +193,10 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", "s3://foo/bar");
 
-    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);;
-    ArgumentCaptor<BackupTableParams> taskParams =  ArgumentCaptor.forClass(BackupTableParams.class);;
+    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
+    ;
+    ArgumentCaptor<BackupTableParams> taskParams = ArgumentCaptor.forClass(BackupTableParams.class);
+    ;
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);

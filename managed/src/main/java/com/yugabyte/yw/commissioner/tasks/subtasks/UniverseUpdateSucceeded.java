@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-
 import java.util.UUID;
 
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -32,7 +31,7 @@ public class UniverseUpdateSucceeded extends AbstractTaskBase {
   }
 
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -46,27 +45,28 @@ public class UniverseUpdateSucceeded extends AbstractTaskBase {
       LOG.info("Running {}", getName());
 
       // Create the update lambda.
-      UniverseUpdater updater = new UniverseUpdater() {
-        @Override
-        public void run(Universe universe) {
-          // If this universe is not being edited, fail the request.
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress && !universeDetails.backupInProgress) {
-            LOG.error("UserUniverse " + taskParams().universeUUID + " is not being edited.");
-            throw new RuntimeException("UserUniverse " + taskParams().universeUUID +
-                " is not being edited");
-          }
-          // Set the operation success flag.
-          universeDetails.updateSucceeded = true;
-          universe.setUniverseDetails(universeDetails);
-        }
-      };
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              // If this universe is not being edited, fail the request.
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              if (!universeDetails.updateInProgress && !universeDetails.backupInProgress) {
+                LOG.error("UserUniverse " + taskParams().universeUUID + " is not being edited.");
+                throw new RuntimeException(
+                    "UserUniverse " + taskParams().universeUUID + " is not being edited");
+              }
+              // Set the operation success flag.
+              universeDetails.updateSucceeded = true;
+              universe.setUniverseDetails(universeDetails);
+            }
+          };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
       Universe.saveDetails(taskParams().universeUUID, updater);
 
     } catch (Exception e) {
-      String msg = getName() + " failed with exception "  + e.getMessage();
+      String msg = getName() + " failed with exception " + e.getMessage();
       LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }

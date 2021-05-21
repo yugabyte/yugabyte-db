@@ -104,14 +104,13 @@ public class ConfigHelper {
   }
 
   public void loadConfigsToDB(Application app) {
-    for (ConfigType type: ConfigType.values()) {
+    for (ConfigType type : ConfigType.values()) {
       if (type.getConfigFile() == null) {
         continue;
       }
       Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
-      Map<String, Object> config = (HashMap<String, Object>) yaml.load(
-        app.resourceAsStream(type.getConfigFile())
-      );
+      Map<String, Object> config =
+          (HashMap<String, Object>) yaml.load(app.resourceAsStream(type.getConfigFile()));
       loadConfigToDB(type, config);
     }
   }

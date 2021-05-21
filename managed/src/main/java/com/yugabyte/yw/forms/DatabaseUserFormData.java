@@ -4,7 +4,6 @@ package com.yugabyte.yw.forms;
 
 import play.data.validation.Constraints;
 
-
 public class DatabaseUserFormData {
 
   public String ycqlAdminUsername;
@@ -14,9 +13,7 @@ public class DatabaseUserFormData {
   public String ysqlAdminPassword;
   public String dbName;
 
-  @Constraints.Required()
-  public String username;
+  @Constraints.Required() public String username;
 
-  @Constraints.Required()
-  public String password;
+  @Constraints.Required() public String password;
 }

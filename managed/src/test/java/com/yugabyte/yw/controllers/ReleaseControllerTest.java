@@ -50,7 +50,6 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
-
   }
 
   private Result getReleases(UUID customerUUID) {
@@ -72,14 +71,12 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   private Result createRelease(UUID customerUUID, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
-        user.createAuthToken(), body);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), body);
   }
 
   private Result updateRelease(UUID customerUUID, String version, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases/" + version;
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri,
-        user.createAuthToken(), body);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri, user.createAuthToken(), body);
   }
 
   private void mockReleaseData(boolean multiple) {
@@ -93,17 +90,15 @@ public class ReleaseControllerTest extends FakeDBApplication {
       ReleaseManager.ReleaseMetadata deletedRelease =
           ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "yugabyte-0.0.1.tar.gz");
       deletedRelease.state = ReleaseManager.ReleaseState.DELETED;
-      data = ImmutableMap.of(
-          "0.0.3", activeRelease,
-          "0.0.2", disabledRelease,
-          "0.0.1", deletedRelease
-      );
+      data =
+          ImmutableMap.of(
+              "0.0.3", activeRelease,
+              "0.0.2", disabledRelease,
+              "0.0.1", deletedRelease);
     } else {
       ReleaseManager.ReleaseMetadata activeRelease =
           ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "yugabyte-0.0.1.tar.gz");
-      data = ImmutableMap.of(
-          "0.0.1", activeRelease
-      );
+      data = ImmutableMap.of("0.0.1", activeRelease);
     }
 
     when(mockReleaseManager.getReleaseMetadata()).thenReturn(data);
@@ -222,11 +217,9 @@ public class ReleaseControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     HashMap releases = Json.fromJson(json, HashMap.class);
     assertTrue(json.has("0.0.1"));
-    Map expectedMap = ImmutableMap.of(
-        "0.0.1",
-        ImmutableMap.of("filePath", "yugabyte-0.0.1.tar.gz",
-            "state", "ACTIVE")
-    );
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.1", ImmutableMap.of("filePath", "yugabyte-0.0.1.tar.gz", "state", "ACTIVE"));
     assertReleases(expectedMap, releases);
     assertAuditEntry(0, customer.uuid);
   }
@@ -234,14 +227,12 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testGetReleasesStateFilteringWithMetadata() {
     mockReleaseData(true);
-    Map expectedMap = ImmutableMap.of(
-        "0.0.3",
-        ImmutableMap.of("filePath", "yugabyte-0.0.3.tar.gz",
-            "state", "ACTIVE"),
-        "0.0.2",
-        ImmutableMap.of("filePath", "yugabyte-0.0.2.tar.gz",
-            "state", "DISABLED")
-    );
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.3",
+            ImmutableMap.of("filePath", "yugabyte-0.0.3.tar.gz", "state", "ACTIVE"),
+            "0.0.2",
+            ImmutableMap.of("filePath", "yugabyte-0.0.2.tar.gz", "state", "DISABLED"));
     Result result = getReleases(customer.uuid, true);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -284,10 +275,11 @@ public class ReleaseControllerTest extends FakeDBApplication {
     assertAuditEntry(0, customer.uuid);
   }
 
-
   @Test
   public void testUpdateReleaseWithReleaseManagerException() {
-    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).getReleaseByVersion("0.0.2");
+    doThrow(new RuntimeException("Some Error"))
+        .when(mockReleaseManager)
+        .getReleaseByVersion("0.0.2");
     ObjectNode body = Json.newObject();
     body.put("state", "DISABLED");
     Result result = updateRelease(customer.uuid, "0.0.2", body);

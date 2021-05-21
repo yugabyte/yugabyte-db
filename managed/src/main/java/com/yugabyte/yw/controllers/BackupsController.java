@@ -25,25 +25,21 @@ import java.util.UUID;
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
 
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
-  @Inject
-  Commissioner commissioner;
+  @Inject Commissioner commissioner;
 
   public Result list(UUID customerUUID, UUID universeUUID) {
     List<Backup> backups = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
-    JsonNode custStorageLoc = CommonUtils.getNodeProperty(
-      Customer.get(customerUUID).getFeatures(),
-      "universes.details.backups.storageLocation"
-    );
+    JsonNode custStorageLoc =
+        CommonUtils.getNodeProperty(
+            Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
     boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
     if (!isStorageLocMasked) {
       Users user = (Users) ctx().args.get("user");
-      JsonNode userStorageLoc = CommonUtils.getNodeProperty(
-        user.getFeatures(),
-        "universes.details.backups.storageLocation"
-      );
+      JsonNode userStorageLoc =
+          CommonUtils.getNodeProperty(
+              user.getFeatures(), "universes.details.backups.storageLocation");
       isStorageLocMasked = userStorageLoc != null && userStorageLoc.asText().equals("hidden");
     }
 
@@ -76,8 +72,7 @@ public class BackupsController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
-    Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class)
-        .bindFromRequest();
+    Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class).bindFromRequest();
 
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
@@ -94,7 +89,7 @@ public class BackupsController extends AuthenticatedController {
 
     // Change the BackupTableParams in list to be "RESTORE" action type
     if (taskParams.backupList != null) {
-      for (BackupTableParams subParams: taskParams.backupList) {
+      for (BackupTableParams subParams : taskParams.backupList) {
         // Override default CREATE action type that we inherited from backup flow
         subParams.actionType = BackupTableParams.ActionType.RESTORE;
         // Assume no renaming of keyspaces or tables
@@ -104,7 +99,8 @@ public class BackupsController extends AuthenticatedController {
         subParams.tableName = null;
         subParams.keyspace = null;
         subParams.universeUUID = universeUUID;
-        subParams.parallelism = taskParams.parallelism;;
+        subParams.parallelism = taskParams.parallelism;
+        ;
       }
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);
@@ -119,41 +115,56 @@ public class BackupsController extends AuthenticatedController {
 
     Backup newBackup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
-    LOG.info("Submitted task to restore table backup to {}.{}, task uuid = {}.",
-        taskParams.keyspace, taskParams.tableName, taskUUID);
+    LOG.info(
+        "Submitted task to restore table backup to {}.{}, task uuid = {}.",
+        taskParams.keyspace,
+        taskParams.tableName,
+        taskUUID);
     newBackup.setTaskUUID(taskUUID);
     if (taskParams.tableName != null) {
-      CustomerTask.create(customer,
-        universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Restore,
-        taskParams.tableName);
-      LOG.info("Saved task uuid {} in customer tasks table for table {}.{}", taskUUID,
-        taskParams.keyspace, taskParams.tableName);
+      CustomerTask.create(
+          customer,
+          universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Backup,
+          CustomerTask.TaskType.Restore,
+          taskParams.tableName);
+      LOG.info(
+          "Saved task uuid {} in customer tasks table for table {}.{}",
+          taskUUID,
+          taskParams.keyspace,
+          taskParams.tableName);
     } else if (taskParams.keyspace != null) {
-      CustomerTask.create(customer,
-        universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Restore,
-        taskParams.keyspace);
-      LOG.info("Saved task uuid {} in customer tasks table for keyspace {}", taskUUID,
-        taskParams.keyspace);
+      CustomerTask.create(
+          customer,
+          universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Backup,
+          CustomerTask.TaskType.Restore,
+          taskParams.keyspace);
+      LOG.info(
+          "Saved task uuid {} in customer tasks table for keyspace {}",
+          taskUUID,
+          taskParams.keyspace);
     } else {
-      CustomerTask.create(customer,
-        universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Restore,
-        universe.name);
-      if (taskParams.backupList != null) {
-        LOG.info("Saved task uuid {} in customer tasks table for universe backup {}", taskUUID,
+      CustomerTask.create(
+          customer,
+          universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Backup,
+          CustomerTask.TaskType.Restore,
           universe.name);
+      if (taskParams.backupList != null) {
+        LOG.info(
+            "Saved task uuid {} in customer tasks table for universe backup {}",
+            taskUUID,
+            universe.name);
       } else {
-        LOG.info("Saved task uuid {} in customer tasks table for restore identical " +
-                 "keyspace & tables in universe {}", taskUUID,
-                 universe.name);
+        LOG.info(
+            "Saved task uuid {} in customer tasks table for restore identical "
+                + "keyspace & tables in universe {}",
+            taskUUID,
+            universe.name);
       }
     }
 
@@ -175,17 +186,18 @@ public class BackupsController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
     if (backup.state != Backup.BackupState.Completed) {
-      String errMsg = String.format("Cannot delete backup %s since it hasn't been completed",
-                                    backupUUID.toString());
+      String errMsg =
+          String.format(
+              "Cannot delete backup %s since it hasn't been completed", backupUUID.toString());
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
     DeleteBackup.Params taskParams = new DeleteBackup.Params();
     taskParams.customerUUID = customerUUID;
     taskParams.backupUUID = backupUUID;
     UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-    LOG.info("Saved task uuid {} in customer tasks for backup {}.",
-             taskUUID, backupUUID);
-    CustomerTask.create(customer,
+    LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backupUUID);
+    CustomerTask.create(
+        customer,
         backupUUID,
         taskUUID,
         CustomerTask.TargetType.Backup,

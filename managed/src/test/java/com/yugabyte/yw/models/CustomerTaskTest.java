@@ -25,11 +25,10 @@ public class CustomerTaskTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
   }
 
-  private CustomerTask createTask(CustomerTask.TargetType targetType,
-                          UUID targetUUID, CustomerTask.TaskType taskType) {
+  private CustomerTask createTask(
+      CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
     UUID taskUUID = UUID.randomUUID();
-    return CustomerTask.create(defaultCustomer, targetUUID, taskUUID,
-        targetType, taskType, "Foo");
+    return CustomerTask.create(defaultCustomer, targetUUID, taskUUID, targetType, taskType, "Foo");
   }
 
   @Test
@@ -37,10 +36,11 @@ public class CustomerTaskTest extends FakeDBApplication {
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
-      Date currentDate  = new Date();
+      Date currentDate = new Date();
       assertTrue(currentDate.compareTo(th.getCreateTime()) >= 0);
-      assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(),
-          equalTo("Creating " + targetType.toString() + " : Foo"))));
+      assertThat(
+          th.getFriendlyDescription(),
+          is(allOf(notNullValue(), equalTo("Creating " + targetType.toString() + " : Foo"))));
       assertThat(th.getTargetUUID(), is(equalTo(targetUUID)));
       assertThat(th.getCustomerUUID(), is(equalTo(defaultCustomer.uuid)));
     }
@@ -52,11 +52,13 @@ public class CustomerTaskTest extends FakeDBApplication {
       UUID targetUUID = UUID.randomUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
       assertEquals(th.getTarget(), targetType);
-      assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(),
-          equalTo("Creating " + targetType.toString() + " : Foo"))));
+      assertThat(
+          th.getFriendlyDescription(),
+          is(allOf(notNullValue(), equalTo("Creating " + targetType.toString() + " : Foo"))));
       th.markAsCompleted();
-      assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(),
-          equalTo("Created " + targetType.toString() + " : Foo"))));
+      assertThat(
+          th.getFriendlyDescription(),
+          is(allOf(notNullValue(), equalTo("Created " + targetType.toString() + " : Foo"))));
       assertTrue(th.getCreateTime().compareTo(th.getCompletionTime()) <= 0);
       Date completionTime = th.getCompletionTime();
       // Calling mark as completed shouldn't change the time.
@@ -69,13 +71,15 @@ public class CustomerTaskTest extends FakeDBApplication {
   public void testFriendlyDescriptions() {
     UUID targetUUID = UUID.randomUUID();
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
-      for (CustomerTask.TaskType taskType: CustomerTask.TaskType.filteredValues()) {
+      for (CustomerTask.TaskType taskType : CustomerTask.TaskType.filteredValues()) {
         CustomerTask th = createTask(targetType, targetUUID, taskType);
-        assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(),
-            equalTo(taskType.toString(false) +  targetType + " : Foo"))));
+        assertThat(
+            th.getFriendlyDescription(),
+            is(allOf(notNullValue(), equalTo(taskType.toString(false) + targetType + " : Foo"))));
         th.markAsCompleted();
-        assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(),
-            equalTo(taskType.toString(true) + targetType + " : Foo"))));
+        assertThat(
+            th.getFriendlyDescription(),
+            is(allOf(notNullValue(), equalTo(taskType.toString(true) + targetType + " : Foo"))));
       }
     }
   }

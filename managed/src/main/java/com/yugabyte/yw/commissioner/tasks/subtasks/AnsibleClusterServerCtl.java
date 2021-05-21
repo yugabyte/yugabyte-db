@@ -30,21 +30,27 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().nodeName + ", " +
-           taskParams().process + ": " + taskParams().command + ")";
+    return super.getName()
+        + "("
+        + taskParams().nodeName
+        + ", "
+        + taskParams().process
+        + ": "
+        + taskParams().command
+        + ")";
   }
 
   @Override
   public void run() {
     try {
       // Execute the ansible command.
-      ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
-          NodeManager.NodeCommandType.Control, taskParams());
+      ShellProcessHandler.ShellResponse response =
+          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Control, taskParams());
       logShellResponse(response);
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {

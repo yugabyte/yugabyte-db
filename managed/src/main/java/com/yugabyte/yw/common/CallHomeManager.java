@@ -34,28 +34,27 @@ public class CallHomeManager {
 
   ApiHelper apiHelper;
 
-  public enum CollectionLevel{
+  public enum CollectionLevel {
     NONE,
     LOW,
     MEDIUM,
     HIGH;
 
-    public Boolean isDisabled(){
+    public Boolean isDisabled() {
       return toString().equals("NONE");
     }
 
-    public Boolean collectMore(){
+    public Boolean collectMore() {
       return ordinal() >= MEDIUM.ordinal();
     }
 
-    public Boolean collectAll(){
+    public Boolean collectAll() {
       return ordinal() == HIGH.ordinal();
     }
-
   }
 
   @Inject
-  public CallHomeManager(ApiHelper apiHelper, ConfigHelper configHelper){
+  public CallHomeManager(ApiHelper apiHelper, ConfigHelper configHelper) {
     this.apiHelper = apiHelper;
     this.configHelper = configHelper;
   }
@@ -64,7 +63,7 @@ public class CallHomeManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(CallHomeManager.class);
 
-  public void sendDiagnostics(Customer c){
+  public void sendDiagnostics(Customer c) {
     CollectionLevel callhomeLevel = CustomerConfig.getOrCreateCallhomeLevel(c.uuid);
     if (!callhomeLevel.isDisabled()) {
       LOG.info("Starting collecting diagnostics");
@@ -121,7 +120,8 @@ public class CallHomeManager {
     if (callhomeLevel.collectAll()) {
       // Collect Even More Stuff
     }
-    Map<String, Object> ywMetadata = configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata);
+    Map<String, Object> ywMetadata =
+        configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata);
     if (ywMetadata.get("yugaware_uuid") != null) {
       payload.put("yugaware_uuid", ywMetadata.get("yugaware_uuid").toString());
     }

@@ -28,8 +28,7 @@ import static org.mockito.Mockito.verify;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CloudCleanupTestTest extends CommissionerBaseTest {
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
 
   private UUID submitTask(List<String> regionList) {
     CloudCleanup.Params taskParams = new CloudCleanup.Params();
@@ -46,15 +45,17 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
       assertNull(r);
     }
 
-    zones.forEach(zone -> {
-      AvailabilityZone az = AvailabilityZone.getByCode(zone);
-      if (exists) {
-        assertNotNull(az);
-      } else {
-        assertNull(az);
-      }
-    });
+    zones.forEach(
+        zone -> {
+          AvailabilityZone az = AvailabilityZone.getByCode(zone);
+          if (exists) {
+            assertNotNull(az);
+          } else {
+            assertNull(az);
+          }
+        });
   }
+
   private void assertAccessKeyAndProvider(boolean exists) {
     List<AccessKey> accessKeyList = AccessKey.getAll(defaultProvider.uuid);
     defaultProvider = Provider.get(defaultProvider.uuid);

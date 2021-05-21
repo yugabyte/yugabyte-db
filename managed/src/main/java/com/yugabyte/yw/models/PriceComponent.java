@@ -16,9 +16,7 @@ import java.util.List;
 public class PriceComponent extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(PriceComponent.class);
 
-  @EmbeddedId
-  @Constraints.Required
-  private PriceComponentKey idKey;
+  @EmbeddedId @Constraints.Required private PriceComponentKey idKey;
 
   public String getProviderCode() {
     return this.idKey.providerCode;
@@ -43,7 +41,7 @@ public class PriceComponent extends Model {
   public PriceDetails priceDetails = new PriceDetails();
 
   private static final Finder<PriceComponentKey, PriceComponent> find =
-    new Finder<PriceComponentKey, PriceComponent>(PriceComponent.class) {};
+      new Finder<PriceComponentKey, PriceComponent>(PriceComponent.class) {};
 
   /**
    * Get a single specified pricing component for a given provider and region.
@@ -72,9 +70,7 @@ public class PriceComponent extends Model {
    * @return A list of pricing components in the cloud provider.
    */
   public static List<PriceComponent> findByProvider(Provider provider) {
-    return PriceComponent.find.query().where()
-        .eq("provider_code", provider.code)
-        .findList();
+    return PriceComponent.find.query().where().eq("provider_code", provider.code).findList();
   }
 
   /**
@@ -85,7 +81,9 @@ public class PriceComponent extends Model {
    * @return A list of pricing components in the cloud provider's region.
    */
   public static List<PriceComponent> findByRegion(Provider provider, Region region) {
-    return PriceComponent.find.query().where()
+    return PriceComponent.find
+        .query()
+        .where()
         .eq("provider_code", provider.code)
         .eq("region_code", region.code)
         .findList();
@@ -96,13 +94,13 @@ public class PriceComponent extends Model {
    *
    * @param providerCode Cloud provider that the pricing component belongs to.
    * @param regionCode Region in the cloud provider that the pricing component belongs to.
-   * @param componentCode The identifying code for the pricing component. Must be unique within
-   *                      the region.
+   * @param componentCode The identifying code for the pricing component. Must be unique within the
+   *     region.
    * @param priceDetails The pricing details of the component.
    * @return The newly created/updated pricing component.
    */
-  public static void upsert(String providerCode, String regionCode, String componentCode,
-                            PriceDetails priceDetails) {
+  public static void upsert(
+      String providerCode, String regionCode, String componentCode, PriceDetails priceDetails) {
     PriceComponent component = PriceComponent.get(providerCode, regionCode, componentCode);
     if (component == null) {
       component = new PriceComponent();
@@ -112,9 +110,7 @@ public class PriceComponent extends Model {
     component.setPriceDetails(details);
   }
 
-  /**
-   * The actual details of the pricing component.
-   */
+  /** The actual details of the pricing component. */
   public static class PriceDetails {
 
     // The unit on which the 'pricePerUnit' is based.
@@ -169,7 +165,5 @@ public class PriceComponent extends Model {
           break;
       }
     }
-
   }
-
 }

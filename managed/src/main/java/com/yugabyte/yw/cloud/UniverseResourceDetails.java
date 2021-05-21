@@ -91,8 +91,8 @@ public class UniverseResourceDetails {
       }
       Region region = Region.getByCode(provider, nodeDetails.cloudInfo.region);
 
-      PriceComponent instancePrice = PriceComponent.get(provider.code, region.code,
-              userIntent.instanceType);
+      PriceComponent instancePrice =
+          PriceComponent.get(provider.code, region.code, userIntent.instanceType);
       if (instancePrice == null) {
         continue;
       }
@@ -101,7 +101,8 @@ public class UniverseResourceDetails {
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
       // TODO(wesley): gcp options?
-      if (userIntent.deviceInfo.storageType != null && userIntent.providerType.equals(Common.CloudType.aws)) {
+      if (userIntent.deviceInfo.storageType != null
+          && userIntent.providerType.equals(Common.CloudType.aws)) {
         Integer numVolumes = userIntent.deviceInfo.numVolumes;
         Integer diskIops = userIntent.deviceInfo.diskIops;
         Integer volumeSize = userIntent.deviceInfo.volumeSize;
@@ -134,15 +135,15 @@ public class UniverseResourceDetails {
   }
 
   /**
-   * Create a UniverseResourceDetails object, which contains info on the various pricing and
-   * other sorts of resources used by this universe.
+   * Create a UniverseResourceDetails object, which contains info on the various pricing and other
+   * sorts of resources used by this universe.
    *
    * @param nodes Nodes that make up this universe.
    * @param params Parameters describing this universe.
    * @return a UniverseResourceDetails object containing info on the universe's resources.
    */
-  public static UniverseResourceDetails create(Collection<NodeDetails> nodes,
-                                               UniverseDefinitionTaskParams params) {
+  public static UniverseResourceDetails create(
+      Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params) {
     UniverseResourceDetails details = new UniverseResourceDetails();
     for (Cluster cluster : params.clusters) {
       details.addNumNodes(cluster.userIntent.numNodes);
@@ -154,13 +155,17 @@ public class UniverseResourceDetails {
           userIntent = params.getClusterByUuid(node.placementUuid).userIntent;
         }
         details.addVolumeCount(userIntent.deviceInfo.numVolumes);
-        details.addVolumeSizeGB(userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+        details.addVolumeSizeGB(
+            userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
         details.addAz(node.cloudInfo.az);
-        InstanceType instanceType = InstanceType.get(userIntent.providerType,
-                node.cloudInfo.instance_type);
+        InstanceType instanceType =
+            InstanceType.get(userIntent.providerType, node.cloudInfo.instance_type);
         if (instanceType == null) {
-          LOG.error("Couldn't find instance type " + node.cloudInfo.instance_type +
-                  " for provider " + userIntent.providerType);
+          LOG.error(
+              "Couldn't find instance type "
+                  + node.cloudInfo.instance_type
+                  + " for provider "
+                  + userIntent.providerType);
         } else {
           details.addMemSizeGB(instanceType.memSizeGB);
           details.addNumCores(instanceType.numCores);

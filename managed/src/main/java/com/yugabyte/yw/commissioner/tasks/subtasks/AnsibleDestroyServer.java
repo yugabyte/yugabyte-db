@@ -37,7 +37,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   protected AnsibleDestroyServer.Params taskParams() {
-    return (AnsibleDestroyServer.Params)taskParams;
+    return (AnsibleDestroyServer.Params) taskParams;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
@@ -49,14 +49,15 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       return;
     }
     // Persist the desired node information into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails.removeNode(nodeName);
-        LOG.info("Removed node " + nodeName + " from universe " + taskParams().universeUUID);
-      }
-    };
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            universeDetails.removeNode(nodeName);
+            LOG.info("Removed node " + nodeName + " from universe " + taskParams().universeUUID);
+          }
+        };
 
     Universe.saveDetails(taskParams().universeUUID, updater);
   }
@@ -67,8 +68,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     setNodeState(NodeDetails.NodeState.Removing);
     // Execute the ansible command.
     try {
-      ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
-        NodeManager.NodeCommandType.Destroy, taskParams());
+      ShellProcessHandler.ShellResponse response =
+          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams());
       logShellResponse(response);
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
@@ -77,12 +78,14 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
 
     Universe u = Universe.get(taskParams().universeUUID);
-    UserIntent userIntent = u.getUniverseDetails()
-        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
+    UserIntent userIntent =
+        u.getUniverseDetails()
+            .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)
+            .userIntent;
     NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
 
-    if (userIntent.providerType.equals(Common.CloudType.onprem) &&
-        univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {
+    if (userIntent.providerType.equals(Common.CloudType.onprem)
+        && univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {
       // Free up the node.
       try {
         NodeInstance providerNode = NodeInstance.getByName(taskParams().nodeName);

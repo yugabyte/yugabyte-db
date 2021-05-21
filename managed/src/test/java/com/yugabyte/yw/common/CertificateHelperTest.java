@@ -32,15 +32,13 @@ import java.security.cert.CertificateFactory;
 
 import java.security.cert.X509Certificate;
 
-
 import java.util.UUID;
 import java.util.Calendar;
 import java.util.Date;
 import static org.junit.Assert.*;
 
-
 @RunWith(MockitoJUnitRunner.class)
-public class CertificateHelperTest extends FakeDBApplication{
+public class CertificateHelperTest extends FakeDBApplication {
 
   private Customer c;
 
@@ -68,7 +66,7 @@ public class CertificateHelperTest extends FakeDBApplication{
       CertificateFactory factory = CertificateFactory.getInstance("X.509");
       X509Certificate cert = (X509Certificate) factory.generateCertificate(in);
       assertEquals(cert.getIssuerDN(), cert.getSubjectDN());
-    } catch (Exception e){
+    } catch (Exception e) {
       fail(e.getMessage());
     }
   }
@@ -78,28 +76,27 @@ public class CertificateHelperTest extends FakeDBApplication{
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
     UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
-    CertificateHelper.createClientCertificate(rootCA, String.format(certPath + "/%s",
-                                                                    rootCA),
-                                              "yugabyte", null, null);
+    CertificateHelper.createClientCertificate(
+        rootCA, String.format(certPath + "/%s", rootCA), "yugabyte", null, null);
     assertNotNull(CertificateInfo.get(rootCA));
     try {
       InputStream in = new FileInputStream(certPath + String.format("/%s/ca.root.crt", rootCA));
       CertificateFactory factory = CertificateFactory.getInstance("X.509");
       X509Certificate cert = (X509Certificate) factory.generateCertificate(in);
       assertEquals(cert.getIssuerDN(), cert.getSubjectDN());
-      FileInputStream is = new FileInputStream(new File(certPath +
-          String.format("/%s/yugabytedb.crt", rootCA)));
+      FileInputStream is =
+          new FileInputStream(new File(certPath + String.format("/%s/yugabytedb.crt", rootCA)));
       X509Certificate clientCer = (X509Certificate) factory.generateCertificate(is);
       clientCer.verify(cert.getPublicKey(), "BC");
-    } catch (Exception e){
+    } catch (Exception e) {
       fail(e.getMessage());
     }
   }
 
   @Test
-  public void testCreateCustomerCertToString() throws CertificateException,
-    NoSuchAlgorithmException,InvalidKeyException, NoSuchProviderException,
-    SignatureException, IOException {
+  public void testCreateCustomerCertToString()
+      throws CertificateException, NoSuchAlgorithmException, InvalidKeyException,
+          NoSuchProviderException, SignatureException, IOException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
     UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
@@ -114,8 +111,8 @@ public class CertificateHelperTest extends FakeDBApplication{
     Date certStart = cal.getTime();
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
-    JsonNode result = CertificateHelper.createClientCertificate(rootCA, null, "postgres",
-                                                                certStart, certExpiry);
+    JsonNode result =
+        CertificateHelper.createClientCertificate(rootCA, null, "postgres", certStart, certExpiry);
     String clientCert = result.get("yugabytedb.crt").asText();
     assertNotNull(clientCert);
     ByteArrayInputStream bytes = new ByteArrayInputStream(clientCert.getBytes());
@@ -125,8 +122,9 @@ public class CertificateHelperTest extends FakeDBApplication{
   }
 
   @Test
-  public void testCreateCustomerCertToFile() throws CertificateException, NoSuchAlgorithmException,
-    InvalidKeyException, NoSuchProviderException, SignatureException, IOException {
+  public void testCreateCustomerCertToFile()
+      throws CertificateException, NoSuchAlgorithmException, InvalidKeyException,
+          NoSuchProviderException, SignatureException, IOException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
     UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
@@ -141,8 +139,9 @@ public class CertificateHelperTest extends FakeDBApplication{
     Date certStart = cal.getTime();
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
-    JsonNode result = CertificateHelper.createClientCertificate(rootCA,
-        String.format("/tmp", rootCA), "postgres", certStart, certExpiry);
+    JsonNode result =
+        CertificateHelper.createClientCertificate(
+            rootCA, String.format("/tmp", rootCA), "postgres", certStart, certExpiry);
 
     is = new FileInputStream(new File(String.format("/tmp/yugabytedb.crt", rootCA)));
     X509Certificate clientCer = (X509Certificate) fact.generateCertificate(is);
@@ -159,12 +158,12 @@ public class CertificateHelperTest extends FakeDBApplication{
     UUID rootCA = null;
     CertificateInfo.Type type = CertificateInfo.Type.SelfSigned;
     try {
-      rootCA = CertificateHelper.uploadRootCA("test", c.uuid, "/tmp", "test_cert", "test_key",
-          certStart, certExpiry, type, null);
+      rootCA =
+          CertificateHelper.uploadRootCA(
+              "test", c.uuid, "/tmp", "test_cert", "test_key", certStart, certExpiry, type, null);
     } catch (Exception e) {
       fail(e.getMessage());
     }
     assertNotNull(CertificateInfo.get(rootCA));
   }
-
 }

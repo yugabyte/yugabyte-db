@@ -25,11 +25,16 @@ public class NodeDetailsTest {
 
   @Test
   public void testToString() {
-    assertThat(nd.toString(), allOf(notNullValue(),
-                                    equalTo("name: host-n1, cloudInfo: az-1.test-region.aws, type: "
-                                            + ApiUtils.UTIL_INST_TYPE + ", ip: host-n1, " +
-                                            "isMaster: false, isTserver: true, state: Live, " +
-                                            "azUuid: null, placementUuid: null")));
+    assertThat(
+        nd.toString(),
+        allOf(
+            notNullValue(),
+            equalTo(
+                "name: host-n1, cloudInfo: az-1.test-region.aws, type: "
+                    + ApiUtils.UTIL_INST_TYPE
+                    + ", ip: host-n1, "
+                    + "isMaster: false, isTserver: true, state: Live, "
+                    + "azUuid: null, placementUuid: null")));
   }
 
   @Test
@@ -85,23 +90,23 @@ public class NodeDetailsTest {
       } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
         assertEquals(ImmutableSet.of(NodeActionType.REMOVE), nd.getAllowedActions());
       } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
-        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE),
-            nd.getAllowedActions());
+        assertEquals(
+            ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE), nd.getAllowedActions());
       } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
         assertEquals(ImmutableSet.of(NodeActionType.REMOVE), nd.getAllowedActions());
       } else if (nodeState == NodeDetails.NodeState.Live) {
-        assertEquals(ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE),
-            nd.getAllowedActions());
+        assertEquals(
+            ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE), nd.getAllowedActions());
       } else if (nodeState == NodeDetails.NodeState.Stopped) {
-        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE),
-            nd.getAllowedActions());
+        assertEquals(
+            ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE), nd.getAllowedActions());
       } else if (nodeState == NodeDetails.NodeState.Removed) {
         assertEquals(
             ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE),
             nd.getAllowedActions());
       } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
-        assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE),
-            nd.getAllowedActions());
+        assertEquals(
+            ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), nd.getAllowedActions());
       } else {
         assertTrue(nd.getAllowedActions().isEmpty());
       }

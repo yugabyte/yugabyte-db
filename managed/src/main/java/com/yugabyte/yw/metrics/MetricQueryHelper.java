@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -31,22 +30,18 @@ import java.util.concurrent.Future;
 public class MetricQueryHelper {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryHelper.class);
-  public static final Integer STEP_SIZE =  100;
+  public static final Integer STEP_SIZE = 100;
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
 
-  @Inject
-  ApiHelper apiHelper;
+  @Inject ApiHelper apiHelper;
 
-  @Inject
-  YBMetricQueryComponent ybMetricQueryComponent;
+  @Inject YBMetricQueryComponent ybMetricQueryComponent;
   /**
    * Query prometheus for a given metricType and query params
-   * @param params, Query params like start, end timestamps, even filters
-   *                Ex: {"metricKey": "cpu_usage_user",
-   *                     "start": <start timestamp>,
-   *                     "end": <end timestamp>}
+   *
+   * @param params, Query params like start, end timestamps, even filters Ex: {"metricKey":
+   *     "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
    * @return MetricQueryResponse Object
    */
   public JsonNode query(List<String> metricKeys, Map<String, String> params) {
@@ -56,16 +51,15 @@ public class MetricQueryHelper {
 
   /**
    * Query prometheus for a given metricType and query params
-   * @param params, Query params like start, end timestamps, even filters
-   *                Ex: {"metricKey": "cpu_usage_user",
-   *                     "start": <start timestamp>,
-   *                     "end": <end timestamp>}
+   *
+   * @param params, Query params like start, end timestamps, even filters Ex: {"metricKey":
+   *     "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
    * @return MetricQueryResponse Object
    */
   public JsonNode query(
-    List<String> metricKeys,
-    Map<String, String> params,
-    Map<String, Map<String, String>> filterOverrides) {
+      List<String> metricKeys,
+      Map<String, String> params,
+      Map<String, Map<String, String>> filterOverrides) {
     if (metricKeys.isEmpty()) {
       throw new RuntimeException("Empty metricKeys data provided.");
     }
@@ -75,7 +69,7 @@ public class MetricQueryHelper {
       timeDifference = Long.parseLong(params.get("end")) - Long.parseLong(params.get("start"));
     } else {
       String startTime = params.remove("start").toString();
-      Integer endTime = Math.round(DateTime.now().getMillis()/1000);
+      Integer endTime = Math.round(DateTime.now().getMillis() / 1000);
       params.put("time", startTime);
       params.put("_", endTime.toString());
       timeDifference = endTime - Long.parseLong(startTime);
@@ -114,13 +108,12 @@ public class MetricQueryHelper {
         additionalFilters.putAll(specificFilters);
       }
 
-      Callable<JsonNode> callable = new MetricQueryExecutor(appConfig, apiHelper,
-                                                            queryParams, additionalFilters,
-                                                            ybMetricQueryComponent);
+      Callable<JsonNode> callable =
+          new MetricQueryExecutor(
+              appConfig, apiHelper, queryParams, additionalFilters, ybMetricQueryComponent);
       Future<JsonNode> future = threadPool.submit(callable);
       futures.add(future);
     }
-
 
     for (Future<JsonNode> future : futures) {
       JsonNode response = Json.newObject();
@@ -140,22 +133,20 @@ public class MetricQueryHelper {
     return responseJson;
   }
 
-
-
   /**
    * Query Prometheus via HTTP for metric values
    *
-   * The main difference between this and regular MetricQueryHelper::query
-   * is that it does not depend on the metric config being present in metrics.yml
+   * <p>The main difference between this and regular MetricQueryHelper::query is that it does not
+   * depend on the metric config being present in metrics.yml
    *
-   * promQueryExpression is a standard prom query expression of the form
+   * <p>promQueryExpression is a standard prom query expression of the form
    *
-   * metric_name{filter_name_optional="filter_value"}[time_expr_optional]
+   * <p>metric_name{filter_name_optional="filter_value"}[time_expr_optional]
    *
-   * for ex: 'up', or 'up{node_prefix="yb-test"}[10m]
-   * Without a time expression, only the most recent value is returned.
+   * <p>for ex: 'up', or 'up{node_prefix="yb-test"}[10m] Without a time expression, only the most
+   * recent value is returned.
    *
-   * The return type is a set of labels for each metric and an array of time-stamped values
+   * <p>The return type is a set of labels for each metric and an array of time-stamped values
    */
   public ArrayList<MetricQueryResponse.Entry> queryDirect(String promQueryExpression) {
     final String metricsUrl = appConfig.getString("yb.metrics.url");
@@ -166,13 +157,10 @@ public class MetricQueryHelper {
 
     HashMap<String, String> getParams = new HashMap<>();
     getParams.put("query", promQueryExpression);
-    final JsonNode responseJson = apiHelper.getRequest(
-                                    queryUrl,
-                                    new HashMap<>(), /*headers*/
-                                    getParams);
-    final MetricQueryResponse metricResponse = Json.fromJson(
-                                                  responseJson,
-                                                  MetricQueryResponse.class);
+    final JsonNode responseJson =
+        apiHelper.getRequest(queryUrl, new HashMap<>(), /*headers*/ getParams);
+    final MetricQueryResponse metricResponse =
+        Json.fromJson(responseJson, MetricQueryResponse.class);
     if (metricResponse.error != null || metricResponse.data == null) {
       throw new RuntimeException("Error querying prometheus metrics: " + responseJson.toString());
     }

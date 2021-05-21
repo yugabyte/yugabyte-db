@@ -51,8 +51,7 @@ import org.yb.client.ModifyMasterClusterConfigBlacklist;
 public class AddNodeToUniverseTest extends CommissionerBaseTest {
   public static final Logger LOG = LoggerFactory.getLogger(AddNodeToUniverseTest.class);
 
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
   Universe defaultUniverse;
   ShellProcessHandler.ShellResponse dummyShellResponse;
   ShellProcessHandler.ShellResponse preflightSuccess;
@@ -81,8 +80,10 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = gflags;
     userIntent.tserverGFlags = gflags;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
     // Change one of the nodes' state to removed.
     setDefaultNodeState(defaultUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
@@ -92,7 +93,8 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     try {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
-    } catch (Exception e) {}
+    } catch (Exception e) {
+    }
 
     mockWaits(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -102,7 +104,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     preflightSuccess = new ShellProcessHandler.ShellResponse();
     preflightSuccess.message = "{\"test\": true}";
     when(mockNodeManager.nodeCommand(eq(NodeCommandType.Precheck), any()))
-      .thenReturn(preflightSuccess);
+        .thenReturn(preflightSuccess);
     modifyBL = mock(ModifyMasterClusterConfigBlacklist.class);
   }
 
@@ -123,11 +125,15 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     };
   }
 
-  private void setDefaultNodeState(Universe universe, final NodeState desiredState,
-      String nodeName) {
-    Universe.saveDetails(universe.universeUUID, getNodeUpdater(nodeName, node -> {
-      node.state = desiredState;
-    }));
+  private void setDefaultNodeState(
+      Universe universe, final NodeState desiredState, String nodeName) {
+    Universe.saveDetails(
+        universe.universeUUID,
+        getNodeUpdater(
+            nodeName,
+            node -> {
+              node.state = desiredState;
+            }));
   }
 
   private TaskInfo submitTask(UUID universeUUID, String nodeName, int version) {
@@ -148,109 +154,105 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  List<TaskType> ADD_NODE_TASK_SEQUENCE = ImmutableList.of(
-    TaskType.SetNodeState,
-    TaskType.AnsibleConfigureServers,
-    TaskType.SetNodeState,
-    TaskType.AnsibleConfigureServers,
-    TaskType.AnsibleClusterServerCtl,
-    TaskType.UpdateNodeProcess,
-    TaskType.WaitForServer,
-    TaskType.SwamperTargetsFileUpdate,
-    TaskType.ModifyBlackList,
-    TaskType.WaitForLoadBalance,
-    TaskType.SetNodeState,
-    TaskType.UniverseUpdateSucceeded
-  );
+  List<TaskType> ADD_NODE_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLoadBalance,
+          TaskType.SetNodeState,
+          TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS = ImmutableList.of(
-    Json.toJson(ImmutableMap.of("state", "Adding")),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of("state", "ToJoinCluster")),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-    Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of("state", "Live")),
-    Json.toJson(ImmutableMap.of())
-  );
+  List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "ToJoinCluster")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Live")),
+          Json.toJson(ImmutableMap.of()));
 
-  List<TaskType> WITH_MASTER_UNDER_REPLICATED = ImmutableList.of(
-    TaskType.SetNodeState,
-    TaskType.AnsibleConfigureServers,
-    TaskType.SetNodeState,
-    TaskType.AnsibleConfigureServers,
-    TaskType.AnsibleClusterServerCtl,
-    TaskType.UpdateNodeProcess,
-    TaskType.WaitForServer,
-    TaskType.ChangeMasterConfig,
-    TaskType.AnsibleConfigureServers,
-    TaskType.AnsibleClusterServerCtl,
-    TaskType.UpdateNodeProcess,
-    TaskType.WaitForServer,
-    TaskType.SwamperTargetsFileUpdate,
-    TaskType.ModifyBlackList,
-    TaskType.WaitForLoadBalance,
-    TaskType.AnsibleConfigureServers,
-    TaskType.SetFlagInMemory,
-    TaskType.AnsibleConfigureServers,
-    TaskType.SetFlagInMemory,
-    TaskType.SetNodeState,
-    TaskType.UniverseUpdateSucceeded
-  );
+  List<TaskType> WITH_MASTER_UNDER_REPLICATED =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
+          TaskType.ChangeMasterConfig,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLoadBalance,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
+          TaskType.SetNodeState,
+          TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS = ImmutableList.of(
-    Json.toJson(ImmutableMap.of("state", "Adding")),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of("state", "ToJoinCluster")),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
-    Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-    Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of("state", "Live")),
-    Json.toJson(ImmutableMap.of())
-  );
+  List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "ToJoinCluster")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
+          Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Live")),
+          Json.toJson(ImmutableMap.of()));
 
-  private void assertAddNodeSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                     boolean masterUnderReplicated) {
+  private void assertAddNodeSequence(
+      Map<Integer, List<TaskInfo>> subTasksByPosition, boolean masterUnderReplicated) {
     int position = 0;
     if (masterUnderReplicated) {
-      for (TaskType taskType: WITH_MASTER_UNDER_REPLICATED) {
+      for (TaskType taskType : WITH_MASTER_UNDER_REPLICATED) {
         List<TaskInfo> tasks = subTasksByPosition.get(position);
         assertEquals("At position: " + position, taskType, tasks.get(0).getTaskType());
-        JsonNode expectedResults =
-            WITH_MASTER_UNDER_REPLICATED_RESULTS.get(position);
-        List<JsonNode> taskDetails = tasks.stream()
-            .map(t -> t.getTaskDetails())
-            .collect(Collectors.toList());
+        JsonNode expectedResults = WITH_MASTER_UNDER_REPLICATED_RESULTS.get(position);
+        List<JsonNode> taskDetails =
+            tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
         assertJsonEqual(expectedResults, taskDetails.get(0));
         position++;
       }
     } else {
-      for (TaskType taskType: ADD_NODE_TASK_SEQUENCE) {
+      for (TaskType taskType : ADD_NODE_TASK_SEQUENCE) {
         List<TaskInfo> tasks = subTasksByPosition.get(position);
         assertEquals(1, tasks.size());
         assertEquals("At position: " + position, taskType, tasks.get(0).getTaskType());
-        JsonNode expectedResults =
-            ADD_NODE_TASK_EXPECTED_RESULTS.get(position);
-        List<JsonNode> taskDetails = tasks.stream()
-            .map(t -> t.getTaskDetails())
-            .collect(Collectors.toList());
+        JsonNode expectedResults = ADD_NODE_TASK_EXPECTED_RESULTS.get(position);
+        List<JsonNode> taskDetails =
+            tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
         LOG.info(taskDetails.get(0).toString());
         assertJsonEqual(expectedResults, taskDetails.get(0));
         position++;
@@ -271,9 +273,13 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeWithUnderReplicatedMaster() {
     verify(mockNodeManager, never()).nodeCommand(any(), any());
-    Universe.saveDetails(defaultUniverse.universeUUID, getNodeUpdater(DEFAULT_NODE_NAME, node -> {
-      node.isMaster = false;
-    }));
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
+        getNodeUpdater(
+            DEFAULT_NODE_NAME,
+            node -> {
+              node.isMaster = false;
+            }));
 
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 4);
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
@@ -294,8 +300,10 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeWithUnderReplicatedMaster_WithReadOnlyCluster_NodeFromPrimary() {
     Universe universe = createUniverse("Demo");
-    universe = Universe.saveDetails(universe.universeUUID,
-        ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 1));
+    universe =
+        Universe.saveDetails(
+            universe.universeUUID,
+            ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 1));
     setDefaultGFlags(universe);
 
     // Change one of the nodes' state to removed.
@@ -304,16 +312,18 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(universe.universeUUID, DEFAULT_NODE_NAME, 4);
     verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition = subTasks.stream()
-        .collect(Collectors.groupingBy(w -> w.getPosition()));
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     assertAddNodeSequence(subTasksByPosition, true /* Master start is expected */);
   }
 
   @Test
   public void testAddNodeWithUnderReplicatedMaster_WithReadOnlyCluster_NodeFromReadReplica() {
     Universe universe = createUniverse("Demo");
-    universe = Universe.saveDetails(universe.universeUUID,
-        ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 1));
+    universe =
+        Universe.saveDetails(
+            universe.universeUUID,
+            ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 1));
     setDefaultGFlags(universe);
 
     // Change one of the nodes' state to removed.
@@ -322,30 +332,31 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(universe.universeUUID, "yb-tserver-0", 4);
     verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition = subTasks.stream()
-        .collect(Collectors.groupingBy(w -> w.getPosition()));
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     assertAddNodeSequence(subTasksByPosition, false /* Master start is unexpected */);
   }
 
   private void setDefaultGFlags(Universe universe) {
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        Map<String, String> gflags = new HashMap<>();
-        gflags.put("foo", "bar");
+    Universe.UniverseUpdater updater =
+        new Universe.UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            Map<String, String> gflags = new HashMap<>();
+            gflags.put("foo", "bar");
 
-        Cluster primaryCluster = universeDetails.getPrimaryCluster();
-        primaryCluster.userIntent.masterGFlags = gflags;
-        primaryCluster.userIntent.tserverGFlags = gflags;
+            Cluster primaryCluster = universeDetails.getPrimaryCluster();
+            primaryCluster.userIntent.masterGFlags = gflags;
+            primaryCluster.userIntent.tserverGFlags = gflags;
 
-        List<Cluster> readOnlyClusters = universeDetails.getReadOnlyClusters();
-        if (readOnlyClusters.size() > 0) {
-          readOnlyClusters.get(0).userIntent.masterGFlags = gflags;
-          readOnlyClusters.get(0).userIntent.tserverGFlags = gflags;
-        }
-      }
-    };
+            List<Cluster> readOnlyClusters = universeDetails.getReadOnlyClusters();
+            if (readOnlyClusters.size() > 0) {
+              readOnlyClusters.get(0).userIntent.masterGFlags = gflags;
+              readOnlyClusters.get(0).userIntent.tserverGFlags = gflags;
+            }
+          }
+        };
     Universe.saveDetails(universe.universeUUID, updater);
   }
 

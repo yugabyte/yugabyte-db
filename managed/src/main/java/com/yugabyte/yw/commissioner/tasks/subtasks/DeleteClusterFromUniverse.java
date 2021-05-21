@@ -35,13 +35,17 @@ public class DeleteClusterFromUniverse extends AbstractTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public String getName() {
-    return super.getName() + "'(" + taskParams().universeUUID + " " +
-        taskParams().clusterUUID + ")'";
+    return super.getName()
+        + "'("
+        + taskParams().universeUUID
+        + " "
+        + taskParams().clusterUUID
+        + ")'";
   }
 
   @Override
@@ -49,18 +53,19 @@ public class DeleteClusterFromUniverse extends AbstractTaskBase {
     try {
       LOG.info("Running {}", getName());
       // Create the update lambda.
-      Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-        @Override
-        public void run(Universe universe) {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          universeDetails.deleteCluster(taskParams().clusterUUID);
-          universe.setUniverseDetails(universeDetails);
-        }
-      };
+      Universe.UniverseUpdater updater =
+          new Universe.UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              universeDetails.deleteCluster(taskParams().clusterUUID);
+              universe.setUniverseDetails(universeDetails);
+            }
+          };
       Universe.saveDetails(taskParams().universeUUID, updater);
       LOG.info("Delete cluster {} done.", taskParams().clusterUUID);
     } catch (Exception e) {
-      String msg = getName() + " failed with exception "  + e.getMessage();
+      String msg = getName() + " failed with exception " + e.getMessage();
       LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }

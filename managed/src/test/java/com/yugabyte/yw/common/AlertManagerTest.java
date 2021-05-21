@@ -32,11 +32,9 @@ public class AlertManagerTest extends FakeDBApplication {
 
   private Customer defaultCustomer;
 
-  @Mock
-  private EmailHelper emailHelper;
+  @Mock private EmailHelper emailHelper;
 
-  @InjectMocks
-  private AlertManager am;
+  @InjectMocks private AlertManager am;
 
   @Before
   public void setUp() {
@@ -45,21 +43,30 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Test
   public void testSendEmail_DoesntFail_UniverseRemoved() throws MessagingException {
-    doTestSendEmail(UUID.randomUUID(), String.format("Common failure for customer '%s':\n%s.",
-        defaultCustomer.name, ALERT_TEST_MESSAGE));
+    doTestSendEmail(
+        UUID.randomUUID(),
+        String.format(
+            "Common failure for customer '%s':\n%s.", defaultCustomer.name, ALERT_TEST_MESSAGE));
   }
 
   @Test
   public void testSendEmail_UniverseExists() throws MessagingException {
     Universe u = ModelFactory.createUniverse();
-    doTestSendEmail(u.universeUUID,
+    doTestSendEmail(
+        u.universeUUID,
         String.format("Common failure for universe '%s':\n%s.", u.name, ALERT_TEST_MESSAGE));
   }
 
   private void doTestSendEmail(UUID universeUUID, String expectedContent)
       throws MessagingException {
-    Alert alert = Alert.create(defaultCustomer.uuid, universeUUID, Alert.TargetType.UniverseType,
-        "errorCode", "Warning", ALERT_TEST_MESSAGE);
+    Alert alert =
+        Alert.create(
+            defaultCustomer.uuid,
+            universeUUID,
+            Alert.TargetType.UniverseType,
+            "errorCode",
+            "Warning",
+            ALERT_TEST_MESSAGE);
     alert.sendEmail = true;
 
     String destination = "to@to.com";
@@ -70,8 +77,12 @@ public class AlertManagerTest extends FakeDBApplication {
 
     am.sendEmail(alert, "test state");
 
-    verify(emailHelper, times(1)).sendEmail(eq(defaultCustomer), anyString(), eq(destination),
-        eq(smtpData),
-        eq(Collections.singletonMap("text/plain; charset=\"us-ascii\"", expectedContent)));
+    verify(emailHelper, times(1))
+        .sendEmail(
+            eq(defaultCustomer),
+            anyString(),
+            eq(destination),
+            eq(smtpData),
+            eq(Collections.singletonMap("text/plain; charset=\"us-ascii\"", expectedContent)));
   }
 }

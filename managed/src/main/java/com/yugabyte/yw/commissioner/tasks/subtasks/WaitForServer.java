@@ -33,7 +33,7 @@ public class WaitForServer extends ServerSubTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override

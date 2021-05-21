@@ -37,7 +37,7 @@ public class WaitForLeadersOnPreferredOnly extends AbstractTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -61,7 +61,7 @@ public class WaitForLeadersOnPreferredOnly extends AbstractTaskBase {
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
-    
+
       ret = client.waitForAreLeadersOnPreferredOnlyCondition(TIMEOUT_SERVER_WAIT_MS);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());

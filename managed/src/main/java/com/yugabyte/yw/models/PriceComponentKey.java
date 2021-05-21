@@ -23,8 +23,8 @@ public class PriceComponentKey implements Serializable {
     if (object instanceof PriceComponentKey) {
       PriceComponentKey key = (PriceComponentKey) object;
       return (this.providerCode.equals(key.providerCode)
-              && this.regionCode.equals(key.regionCode)
-              && this.componentCode.equals(key.componentCode));
+          && this.regionCode.equals(key.regionCode)
+          && this.componentCode.equals(key.componentCode));
     }
     return false;
   }
@@ -34,8 +34,8 @@ public class PriceComponentKey implements Serializable {
     return providerCode.hashCode() + regionCode.hashCode() + componentCode.hashCode();
   }
 
-  public static PriceComponentKey create(String providerCode, String regionCode,
-                                         String componentCode) {
+  public static PriceComponentKey create(
+      String providerCode, String regionCode, String componentCode) {
     PriceComponentKey key = new PriceComponentKey();
     key.providerCode = providerCode;
     key.regionCode = regionCode;

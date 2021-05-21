@@ -21,8 +21,7 @@ import java.util.UUID;
 public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
 
-  @Inject
-  private CustomerConfigValidator configValidator;
+  @Inject private CustomerConfigValidator configValidator;
 
   public Result create(UUID customerUUID) {
     ObjectNode formData = (ObjectNode) request().body().asJson();
@@ -47,8 +46,8 @@ public class CustomerConfigController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
     }
     if (!customerConfig.delete()) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR,
-          "Customer Configuration could not be deleted.");
+      return ApiResponse.error(
+          INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
     }
     Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success("configUUID deleted");

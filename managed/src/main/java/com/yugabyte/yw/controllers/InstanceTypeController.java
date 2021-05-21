@@ -34,11 +34,9 @@ public class InstanceTypeController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
 
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
-  @Inject
-  CloudQueryHelper cloudQueryHelper;
+  @Inject CloudQueryHelper cloudQueryHelper;
 
   /**
    * GET endpoint for listing instance types
@@ -83,21 +81,24 @@ public class InstanceTypeController extends AuthenticatedController {
     }
 
     try {
-      InstanceType it = InstanceType.upsert(formData.get().getProviderCode(),
-                                            formData.get().getInstanceTypeCode(),
-                                            formData.get().numCores,
-                                            formData.get().memSizeGB,
-                                            formData.get().instanceTypeDetails);
+      InstanceType it =
+          InstanceType.upsert(
+              formData.get().getProviderCode(),
+              formData.get().getInstanceTypeCode(),
+              formData.get().numCores,
+              formData.get().memSizeGB,
+              formData.get().instanceTypeDetails);
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(it);
     } catch (Exception e) {
       LOG.error("Unable to create instance type {}: {}", formData.data(), e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create InstanceType" );
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create InstanceType");
     }
   }
 
   /**
    * DELETE endpoint for deleting instance types.
+   *
    * @param customerUUID, UUID of customer
    * @param providerUUID, UUID of provider
    * @param instanceTypeCode, Instance TaskType code.
@@ -124,12 +125,14 @@ public class InstanceTypeController extends AuthenticatedController {
       return ApiResponse.success(responseJson);
     } catch (Exception e) {
       LOG.error("Unable to delete instance type {}: {}", instanceTypeCode, e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete InstanceType: " + instanceTypeCode);
+      return ApiResponse.error(
+          INTERNAL_SERVER_ERROR, "Unable to delete InstanceType: " + instanceTypeCode);
     }
   }
 
   /**
    * Info endpoint for getting instance type information.
+   *
    * @param customerUUID, UUID of customer
    * @param providerUUID, UUID of provider.
    * @param instanceTypeCode, Instance type code.
@@ -155,28 +158,40 @@ public class InstanceTypeController extends AuthenticatedController {
 
   /**
    * Metadata endpoint for getting a list of all supported types of EBS volumes.
+   *
    * @return a list of all supported types of EBS volumes.
    */
   public Result getEBSTypes() {
-    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
-            .filter(name->name.getCloudType().equals(Common.CloudType.aws)).toArray()));
+    return ok(
+        Json.toJson(
+            Arrays.stream(PublicCloudConstants.StorageType.values())
+                .filter(name -> name.getCloudType().equals(Common.CloudType.aws))
+                .toArray()));
   }
 
   /**
    * Metadata endpoint for getting a list of all supported types of GCP disks.
+   *
    * @return a list of all supported types of GCP disks.
    */
   public Result getGCPTypes() {
-    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
-            .filter(name->name.getCloudType().equals(Common.CloudType.gcp)).toArray()));
+    return ok(
+        Json.toJson(
+            Arrays.stream(PublicCloudConstants.StorageType.values())
+                .filter(name -> name.getCloudType().equals(Common.CloudType.gcp))
+                .toArray()));
   }
 
   /**
    * Metadata endpoint for getting a list of all supported types of AZU disks.
+   *
    * @return a list of all supported types of AZU disks.
    */
   public Result getAZUTypes() {
-    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
-            .filter(name->name.getCloudType().equals(Common.CloudType.azu)).toArray()));
+    return ok(
+        Json.toJson(
+            Arrays.stream(PublicCloudConstants.StorageType.values())
+                .filter(name -> name.getCloudType().equals(Common.CloudType.azu))
+                .toArray()));
   }
 }

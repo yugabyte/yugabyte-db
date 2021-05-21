@@ -35,8 +35,7 @@ public class LiveQueryHelper {
   public static final Logger LOG = LoggerFactory.getLogger(LiveQueryHelper.class);
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
 
-  @Inject
-  ApiHelper apiHelper;
+  @Inject ApiHelper apiHelper;
 
   public JsonNode query(Universe universe) {
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
@@ -50,26 +49,27 @@ public class LiveQueryHelper {
     ycqlJson.putArray("queries");
     for (NodeDetails node : universe.getNodes()) {
       if (node.isActive() && node.isTserver) {
-        String ip = node.cloudInfo.private_ip == null ?
-          node.cloudInfo.private_dns :
-          node.cloudInfo.private_ip;
-        Callable<JsonNode> callable = new LiveQueryExecutor(
-          apiHelper,
-          node.nodeName,
-          ip,
-          node.ysqlServerHttpPort,
-          LiveQueryExecutor.QueryApi.YSQL
-        );
+        String ip =
+            node.cloudInfo.private_ip == null
+                ? node.cloudInfo.private_dns
+                : node.cloudInfo.private_ip;
+        Callable<JsonNode> callable =
+            new LiveQueryExecutor(
+                apiHelper,
+                node.nodeName,
+                ip,
+                node.ysqlServerHttpPort,
+                LiveQueryExecutor.QueryApi.YSQL);
         Future<JsonNode> future = threadPool.submit(callable);
         futures.add(future);
 
-        callable = new LiveQueryExecutor(
-          apiHelper,
-          node.nodeName,
-          ip,
-          node.yqlServerHttpPort,
-          LiveQueryExecutor.QueryApi.YCQL
-        );
+        callable =
+            new LiveQueryExecutor(
+                apiHelper,
+                node.nodeName,
+                ip,
+                node.yqlServerHttpPort,
+                LiveQueryExecutor.QueryApi.YCQL);
         future = threadPool.submit(callable);
         futures.add(future);
       }

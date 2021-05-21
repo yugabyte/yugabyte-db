@@ -20,8 +20,8 @@ import com.yugabyte.yw.models.TaskInfo;
 
 /**
  * This class is responsible for creating and running a task. It provides all the common
- * infrastructure across the different types of tasks. It creates and keeps an instance of the
- * ITask object that actually performs the work specific to the current task type.
+ * infrastructure across the different types of tasks. It creates and keeps an instance of the ITask
+ * object that actually performs the work specific to the current task type.
  */
 public class TaskRunner implements Runnable {
 
@@ -58,15 +58,13 @@ public class TaskRunner implements Runnable {
   /**
    * Creates the task runner along with the task object and persists the task info info.
    *
-   * @param taskType        : the task type
-   * @param claimTask       : if true, adds this process as the owner of the task being created
+   * @param taskType : the task type
+   * @param claimTask : if true, adds this process as the owner of the task being created
    * @return the TaskRunner object on which run can be called.
    * @throws InstantiationException
    * @throws IllegalAccessException
    */
-  public static TaskRunner createTask(TaskType taskType,
-                                      ITaskParams taskParams,
-                                      boolean claimTask)
+  public static TaskRunner createTask(TaskType taskType, ITaskParams taskParams, boolean claimTask)
       throws InstantiationException, IllegalAccessException {
 
     // Create the task runner object.
@@ -104,9 +102,7 @@ public class TaskRunner implements Runnable {
     return taskInfo.getTaskUUID();
   }
 
-  /**
-   * Serializes and saves the task object created so far in the persistent queue.
-   */
+  /** Serializes and saves the task object created so far in the persistent queue. */
   public void save() {
     taskInfo.save();
   }
@@ -172,6 +168,7 @@ public class TaskRunner implements Runnable {
 
   /**
    * Updates the task state and saves it to the persistent queue.
+   *
    * @param newState
    */
   private void updateTaskState(TaskInfo.State newState) {

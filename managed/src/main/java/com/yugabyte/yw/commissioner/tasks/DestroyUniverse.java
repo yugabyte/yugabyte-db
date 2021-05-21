@@ -33,7 +33,7 @@ public class DestroyUniverse extends UniverseTaskBase {
   }
 
   public Params params() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -53,14 +53,17 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       // Cleanup the kms_history table
       createDestroyEncryptionAtRestTask()
-              .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Update the DNS entry for primary cluster to mirror creation.
         Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-        createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                  primaryCluster.userIntent.providerType, primaryCluster.userIntent.provider,
-                                  primaryCluster.userIntent.universeName)
+        createDnsManipulationTask(
+                DnsManager.DnsCommandType.Delete,
+                params().isForceDelete,
+                primaryCluster.userIntent.providerType,
+                primaryCluster.userIntent.provider,
+                primaryCluster.userIntent.universeName)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.onprem)) {
@@ -73,15 +76,12 @@ public class DestroyUniverse extends UniverseTaskBase {
 
         // Create tasks to destroy the existing nodes.
         createDestroyServerTasks(
-          universe.getNodes(),
-          params().isForceDelete,
-          true /* delete node */
-        ).setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+                universe.getNodes(), params().isForceDelete, true /* delete node */)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
       // Create tasks to remove the universe entry from the Universe table.
-      createRemoveUniverseEntryTask()
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      createRemoveUniverseEntryTask().setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(true /* removeFile */);

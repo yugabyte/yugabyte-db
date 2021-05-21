@@ -30,33 +30,33 @@ import io.prometheus.client.hotspot.DefaultExports;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareVersion;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.YugawareMetadata;
 
-
-/**
- * We will use this singleton to do actions specific to the app environment, like
- * db seed etc.
- */
+/** We will use this singleton to do actions specific to the app environment, like db seed etc. */
 @Singleton
 public class AppInit {
 
   @Inject
-  public AppInit(Environment environment, Application application,
-                 ConfigHelper configHelper, ReleaseManager releaseManager,
-                 AWSInitializer awsInitializer, CustomerTaskManager taskManager, YamlWrapper yaml,
-                 ExtraMigrationManager extraMigrationManager) throws ReflectiveOperationException {
+  public AppInit(
+      Environment environment,
+      Application application,
+      ConfigHelper configHelper,
+      ReleaseManager releaseManager,
+      AWSInitializer awsInitializer,
+      CustomerTaskManager taskManager,
+      YamlWrapper yaml,
+      ExtraMigrationManager extraMigrationManager)
+      throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
 
     if (!environment.isTest()) {
       // Check if we have provider data, if not, we need to seed the database
-      if (Customer.find.query().where().findCount() == 0 &&
-          appConfig.getBoolean("yb.seedData", false)) {
+      if (Customer.find.query().where().findCount() == 0
+          && appConfig.getBoolean("yb.seedData", false)) {
         Logger.debug("Seed the Yugaware DB");
 
-        List<?> all = yaml.load(
-            environment.resourceAsStream("db_seed.yml"),
-            application.classloader()
-        );
+        List<?> all =
+            yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
         Ebean.saveAll(all);
       }
 
@@ -73,13 +73,13 @@ public class AppInit {
       }
 
       // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
-      String version = yaml.load(environment.resourceAsStream("version.txt"),
-                                  application.classloader());
+      String version =
+          yaml.load(environment.resourceAsStream("version.txt"), application.classloader());
       configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
-      Map <String, Object> ywMetadata = new HashMap<>();
+      Map<String, Object> ywMetadata = new HashMap<>();
       // Assign a new Yugaware UUID if not already present in the DB i.e. first install
-      Object ywUUID = configHelper.getConfig(YugawareMetadata)
-                                  .getOrDefault("yugaware_uuid", UUID.randomUUID());
+      Object ywUUID =
+          configHelper.getConfig(YugawareMetadata).getOrDefault("yugaware_uuid", UUID.randomUUID());
       ywMetadata.put("yugaware_uuid", ywUUID);
       ywMetadata.put("version", version);
       configHelper.loadConfigToDB(YugawareMetadata, ywMetadata);
@@ -89,9 +89,9 @@ public class AppInit {
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
           for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
-            if (instanceType.instanceTypeDetails != null &&
-                (instanceType.instanceTypeDetails.volumeDetailsList == null ||
-                    instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
+            if (instanceType.instanceTypeDetails != null
+                && (instanceType.instanceTypeDetails.volumeDetailsList == null
+                    || instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
               break;
             }
@@ -101,10 +101,8 @@ public class AppInit {
       }
 
       // Load metrics configurations.
-      Map<String, Object> configs = yaml.load(
-          environment.resourceAsStream("metrics.yml"),
-          application.classloader()
-      );
+      Map<String, Object> configs =
+          yaml.load(environment.resourceAsStream("metrics.yml"), application.classloader());
       MetricConfig.loadConfig(configs);
 
       // Enter all the configuration data. This is the first thing that should be
@@ -112,7 +110,7 @@ public class AppInit {
       configHelper.loadConfigsToDB(application);
 
       // Run and delete any extra migrations.
-      for (ExtraMigration m: ExtraMigration.getAll()) {
+      for (ExtraMigration m : ExtraMigration.getAll()) {
         m.run(extraMigrationManager);
       }
 
@@ -129,6 +127,6 @@ public class AppInit {
       CertificateHelper.createChecksums();
 
       Logger.info("AppInit completed");
-   }
+    }
   }
 }
