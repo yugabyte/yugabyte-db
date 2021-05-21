@@ -29,15 +29,12 @@ import java.util.stream.Collectors;
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
 
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
 
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
   public Result upload(UUID customerUUID) {
-    Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-                                                  .bindFromRequest();
+    Form<CertificateParams> formData = formFactory.form(CertificateParams.class).bindFromRequest();
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -59,18 +56,25 @@ public class CertificateController extends AuthenticatedController {
     } else {
       if (customCertInfo == null) {
         return ApiResponse.error(BAD_REQUEST, "Custom Cert Info must be provided.");
-      } else if (customCertInfo.nodeCertPath == null || customCertInfo.nodeKeyPath == null ||
-                 customCertInfo.rootCertPath == null) {
+      } else if (customCertInfo.nodeCertPath == null
+          || customCertInfo.nodeKeyPath == null
+          || customCertInfo.rootCertPath == null) {
         return ApiResponse.error(BAD_REQUEST, "Custom Cert Paths can't be empty.");
       }
     }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
     try {
-      UUID certUUID = CertificateHelper.uploadRootCA(
-                        label, customerUUID, appConfig.getString("yb.storage.path"),
-                        certContent, keyContent, certStart, certExpiry, certType,
-                        customCertInfo
-                      );
+      UUID certUUID =
+          CertificateHelper.uploadRootCA(
+              label,
+              customerUUID,
+              appConfig.getString("yb.storage.path"),
+              certContent,
+              keyContent,
+              certStart,
+              certExpiry,
+              certType,
+              customCertInfo);
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(certUUID);
     } catch (Exception e) {
@@ -80,8 +84,7 @@ public class CertificateController extends AuthenticatedController {
   }
 
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
-    Form<ClientCertParams> formData = formFactory.form(ClientCertParams.class)
-                                                 .bindFromRequest();
+    Form<ClientCertParams> formData = formFactory.form(ClientCertParams.class).bindFromRequest();
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -94,15 +97,13 @@ public class CertificateController extends AuthenticatedController {
     Date certExpiry = certExpiryMillis != 0L ? new Date(certExpiryMillis) : null;
 
     try {
-      JsonNode result = CertificateHelper.createClientCertificate(
-          rootCA, null, formData.get().username, certStart, certExpiry);
+      JsonNode result =
+          CertificateHelper.createClientCertificate(
+              rootCA, null, formData.get().username, certStart, certExpiry);
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(result);
     } catch (Exception e) {
-      LOG.error(
-        "Error generating client cert for customer {} rootCA {}",
-        customerUUID, rootCA, e
-      );
+      LOG.error("Error generating client cert for customer {} rootCA {}", customerUUID, rootCA, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't generate client cert.");
     }
   }
@@ -168,8 +169,7 @@ public class CertificateController extends AuthenticatedController {
   }
 
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
-    Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-        .bindFromRequest();
+    Form<CertificateParams> formData = formFactory.form(CertificateParams.class).bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }

@@ -63,19 +63,15 @@ public class EmailHelperTest extends FakeDBApplication {
 
   private static final int EMAIL_SMTP_PORT_SSL = 465;
 
-  @Rule
-  public MockitoRule rule = MockitoJUnit.rule();
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @Mock
-  private RuntimeConfigFactory configFactory;
+  @Mock private RuntimeConfigFactory configFactory;
 
-  @InjectMocks
-  private EmailHelper emailHelper;
+  @InjectMocks private EmailHelper emailHelper;
 
   private Customer defaultCustomer;
 
-  @Mock
-  private RuntimeConfig<Customer> mockCustomerConfig;
+  @Mock private RuntimeConfig<Customer> mockCustomerConfig;
 
   @Before
   public void setUp() {
@@ -99,17 +95,30 @@ public class EmailHelperTest extends FakeDBApplication {
   @Test
   public void testSendEmail_FilledSmtpData() throws MessagingException, IOException {
     SmtpData smtpData = EmailFixtures.createSmtpData();
-    doTestSendEmail(smtpData.smtpServer, smtpData.smtpPort, smtpData,
+    doTestSendEmail(
+        smtpData.smtpServer,
+        smtpData.smtpPort,
+        smtpData,
         "smtp:" + smtpData.smtpServer + ":" + String.valueOf(smtpData.smtpPort));
   }
 
-  private void doTestSendEmail(String serverHost, int serverPort, SmtpData smtpData,
-      String expectedSmtpServerName) throws MessagingException, IOException {
+  private void doTestSendEmail(
+      String serverHost, int serverPort, SmtpData smtpData, String expectedSmtpServerName)
+      throws MessagingException, IOException {
 
-    GreenMail mailServer = EmailFixtures.setupMailServer(serverHost, serverPort, smtpData.emailFrom,
-        smtpData.smtpUsername, smtpData.smtpPassword);
+    GreenMail mailServer =
+        EmailFixtures.setupMailServer(
+            serverHost,
+            serverPort,
+            smtpData.emailFrom,
+            smtpData.smtpUsername,
+            smtpData.smtpPassword);
     try {
-      emailHelper.sendEmail(defaultCustomer, EMAIL_SUBJECT, EMAIL_TO, smtpData,
+      emailHelper.sendEmail(
+          defaultCustomer,
+          EMAIL_SUBJECT,
+          EMAIL_TO,
+          smtpData,
           Collections.singletonMap("plain/text", EMAIL_TEXT));
 
       MimeMessage[] messages = mailServer.getReceivedMessages();
@@ -125,7 +134,8 @@ public class EmailHelperTest extends FakeDBApplication {
       MimeMultipart content = (MimeMultipart) m.getContent();
       assertEquals(1, content.getCount());
       assertEquals("plain/text", content.getBodyPart(0).getContentType());
-      assertEquals(EMAIL_TEXT,
+      assertEquals(
+          EMAIL_TEXT,
           IOUtils.toString(content.getBodyPart(0).getInputStream(), StandardCharsets.UTF_8.name()));
 
       assertEquals(mailServer.getSmtp().getName(), expectedSmtpServerName);
@@ -136,10 +146,7 @@ public class EmailHelperTest extends FakeDBApplication {
 
   @Test
   // @formatter:off
-  @Parameters({ "to@mail.com, false, 1",
-                "to@mail.com, true, 2",
-                ", true, 1",
-                ", false, 0" })
+  @Parameters({"to@mail.com, false, 1", "to@mail.com, true, 2", ", true, 1", ", false, 0"})
   // @formatter:on
   public void testGetDestinations(String emailTo, boolean sendAlertsToYb, int expectedCount) {
     ModelFactory.createAlertConfig(defaultCustomer, emailTo, sendAlertsToYb, false);
@@ -218,8 +225,8 @@ public class EmailHelperTest extends FakeDBApplication {
     smtpData.smtpPort = smtpPort;
     smtpData.useSSL = useSSL;
     String expectedSmtpServer = StringUtils.isEmpty(smtpServer) ? EMAIL_SMTP_SERVER : smtpServer;
-    int expectedSmtpPort = smtpPort == -1 ? (useSSL ? EMAIL_SMTP_PORT_SSL : EMAIL_SMTP_PORT)
-        : smtpPort;
+    int expectedSmtpPort =
+        smtpPort == -1 ? (useSSL ? EMAIL_SMTP_PORT_SSL : EMAIL_SMTP_PORT) : smtpPort;
 
     Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
     assertNotNull(props);

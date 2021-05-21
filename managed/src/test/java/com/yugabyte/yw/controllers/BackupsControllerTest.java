@@ -55,8 +55,8 @@ public class BackupsControllerTest extends FakeDBApplication {
   private JsonNode listBackups(UUID universeUUID) {
     String authToken = defaultUser.createAuthToken();
     String method = "GET";
-    String url = "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID +
-      "/backups";
+    String url =
+        "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/backups";
 
     Result r = FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
     assertOk(r);
@@ -84,16 +84,19 @@ public class BackupsControllerTest extends FakeDBApplication {
       authToken = user.createAuthToken();
     }
     String method = "POST";
-    String url = "/api/customers/" + defaultCustomer.uuid +
-      "/universes/" + universeUUID + "/backups/restore";
+    String url =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/universes/"
+            + universeUUID
+            + "/backups/restore";
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result deleteBackup(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "DELETE";
-    String url = "/api/customers/" + defaultCustomer.uuid +
-      "/backups";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/backups";
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
@@ -102,9 +105,9 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     JsonNode bodyJson = Json.newObject();
 
-    Result result = assertThrows(YWServiceException.class,
-      () -> restoreBackup(universeUUID, bodyJson, null))
-      .getResult();
+    Result result =
+        assertThrows(YWServiceException.class, () -> restoreBackup(universeUUID, bodyJson, null))
+            .getResult();
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "error", "Cannot find universe " + universeUUID);
@@ -163,8 +166,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testRestoreBackupWithReadOnlyUser() {
-    Users user = ModelFactory.testUser(defaultCustomer, "tc@test.com",
-      Users.Role.ReadOnly);
+    Users user = ModelFactory.testUser(defaultCustomer, "tc@test.com", Users.Role.ReadOnly);
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
     Backup b = Backup.create(defaultCustomer.uuid, bp);
@@ -189,15 +191,14 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
 
     long maxReqSizeInBytes =
-      app.config().getMemorySize("play.http.parser.maxMemoryBuffer").toBytes();
+        app.config().getMemorySize("play.http.parser.maxMemoryBuffer").toBytes();
 
     // minus 1000 so as to leave some room for other fields and headers etc.
     int keyspaceSz = (int) (maxReqSizeInBytes - 1000);
 
     // Intentionally use large keyspace field approaching (but not exceeding) 500k (which is
     // now a default for play.http.parser.maxMemoryBuffer)
-    String largeKeyspace = new String(new char[keyspaceSz])
-      .replace("\0", "#");
+    String largeKeyspace = new String(new char[keyspaceSz]).replace("\0", "#");
     bodyJson.put("keyspace", largeKeyspace);
     bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
@@ -238,9 +239,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
 
     long maxReqSizeInBytes =
-      app.config().getMemorySize("play.http.parser.maxMemoryBuffer").toBytes();
-    String largeKeyspace = new String(new char[(int) (maxReqSizeInBytes)])
-      .replace("\0", "#");
+        app.config().getMemorySize("play.http.parser.maxMemoryBuffer").toBytes();
+    String largeKeyspace = new String(new char[(int) (maxReqSizeInBytes)]).replace("\0", "#");
     bodyJson.put("keyspace", largeKeyspace);
     bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
@@ -248,8 +248,9 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("storageLocation", "s3://foo/bar");
 
     int aproxPayloadLength = bodyJson.toString().length();
-    assertTrue("Actual (approx) payload size " + aproxPayloadLength,
-      aproxPayloadLength > maxReqSizeInBytes && aproxPayloadLength < maxReqSizeInBytes + 1000);
+    assertTrue(
+        "Actual (approx) payload size " + aproxPayloadLength,
+        aproxPayloadLength > maxReqSizeInBytes && aproxPayloadLength < maxReqSizeInBytes + 1000);
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);

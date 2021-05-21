@@ -48,17 +48,15 @@ public class AuditTest extends FakeDBApplication {
     request = mock(Http.Request.class);
     Long id = 2L;
     play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    context = new Http.Context(
-      id, header, request, flashData, flashData, argData, contextComponents()
-    );
+    context =
+        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
     Http.Context.current.set(context);
     when(request.method()).thenReturn("PUT");
     when(request.path()).thenReturn("/api/customer/test/universe/test");
   }
 
   public Audit createEntry(UUID taskUUID, Users user) {
-    return Audit.create(user.uuid, user.customerUUID,
-        "/test/api/call", "PUT", null, taskUUID);
+    return Audit.create(user.uuid, user.customerUUID, "/test/api/call", "PUT", null, taskUUID);
   }
 
   @Test
@@ -66,7 +64,7 @@ public class AuditTest extends FakeDBApplication {
     for (long i = 0; i < 2; i++) {
       UUID randUUID = UUID.randomUUID();
       Audit entry = createEntry(randUUID, user);
-      assertSame(i+1, entry.getAuditID());
+      assertSame(i + 1, entry.getAuditID());
       assertEquals("/test/api/call", entry.getApiCall());
       assertEquals("PUT", entry.getApiMethod());
       assertEquals(randUUID, entry.getTaskUUID());
@@ -103,19 +101,15 @@ public class AuditTest extends FakeDBApplication {
 
   @Test
   public void testCreateAuditEntryWithPayload() {
-    ObjectNode basePayload = Json.newObject()
-      .put("foo", "bar")
-      .put("abc", "xyz");
+    ObjectNode basePayload = Json.newObject().put("foo", "bar").put("abc", "xyz");
 
     ObjectNode passwordChildNode = Json.newObject().put("password", "qwerty2");
-    JsonNode testPayload = basePayload.deepCopy()
-      .put("password", "qwerty")
-      .set("child", passwordChildNode);
+    JsonNode testPayload =
+        basePayload.deepCopy().put("password", "qwerty").set("child", passwordChildNode);
 
     ObjectNode expectedChildNode = Json.newObject().put("password", SECRET_REPLACEMENT);
-    JsonNode expectedPayload = basePayload.deepCopy()
-      .put("password", SECRET_REPLACEMENT)
-      .set("child", expectedChildNode);
+    JsonNode expectedPayload =
+        basePayload.deepCopy().put("password", SECRET_REPLACEMENT).set("child", expectedChildNode);
 
     auditService.createAuditEntry(context, request, testPayload);
     List<Audit> entries = Audit.getAll(customer.uuid);
@@ -131,9 +125,7 @@ public class AuditTest extends FakeDBApplication {
   @Test
   public void testCreateAuditEntryWithPayloadAndTaskUUID() {
     UUID randUUID = UUID.randomUUID();
-    ObjectNode testPayload = Json.newObject()
-            .put("foo", "bar")
-            .put("abc", "xyz");
+    ObjectNode testPayload = Json.newObject().put("foo", "bar").put("abc", "xyz");
     auditService.createAuditEntry(context, request, testPayload, randUUID);
     List<Audit> entries = Audit.getAll(customer.uuid);
     assertEquals(entries.size(), 1);

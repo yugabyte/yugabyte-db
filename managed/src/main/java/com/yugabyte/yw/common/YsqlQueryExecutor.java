@@ -28,7 +28,7 @@ public class YsqlQueryExecutor {
     String[] queryParts = queryString.split(" ");
     String command = queryParts[0].toUpperCase();
     if (command.equals("TRUNCATE") || command.equals("DROP"))
-      return  command + " " + queryParts[1].toUpperCase();
+      return command + " " + queryParts[1].toUpperCase();
     return command;
   }
 
@@ -55,16 +55,15 @@ public class YsqlQueryExecutor {
     return executeQuery(universe, queryParams, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD);
   }
 
-  public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams, String username,
-                               String password) {
+  public JsonNode executeQuery(
+      Universe universe, RunQueryFormData queryParams, String username, String password) {
     ObjectNode response = newObject();
 
     // TODO: implement execute query for CQL
     String ysqlEndpoints = universe.getYSQLServerAddresses();
-    String connectString =  String.format("jdbc:postgresql://%s/%s",
-        ysqlEndpoints.split(",")[0], queryParams.db_name);
-    try (Connection conn = DriverManager.getConnection(
-        connectString, username, password)) {
+    String connectString =
+        String.format("jdbc:postgresql://%s/%s", ysqlEndpoints.split(",")[0], queryParams.db_name);
+    try (Connection conn = DriverManager.getConnection(connectString, username, password)) {
       if (conn == null) {
         response.put("error", "Unable to connect to DB");
       } else {
@@ -75,8 +74,9 @@ public class YsqlQueryExecutor {
           List<Map<String, Object>> rows = resultSetToMap(result);
           response.put("result", toJson(rows));
         } else {
-          response.put("queryType", getQueryType(queryParams.query))
-                  .put("count", p.getUpdateCount());
+          response
+              .put("queryType", getQueryType(queryParams.query))
+              .put("count", p.getUpdateCount());
         }
       }
     } catch (SQLException e) {

@@ -13,6 +13,5 @@ package com.yugabyte.yw.forms;
 import play.data.validation.Constraints;
 
 public class RestorePlatformBackupFormData {
-  @Constraints.Required()
-  public String backup_file;
+  @Constraints.Required() public String backup_file;
 }

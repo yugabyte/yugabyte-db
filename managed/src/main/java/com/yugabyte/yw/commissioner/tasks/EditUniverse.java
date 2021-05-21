@@ -75,13 +75,17 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
         // Update the DNS entry for this universe, based in primary provider info.
         UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-        createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, primaryIntent.providerType,
-                primaryIntent.provider, primaryIntent.universeName)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        createDnsManipulationTask(
+                DnsManager.DnsCommandType.Edit,
+                false,
+                primaryIntent.providerType,
+                primaryIntent.provider,
+                primaryIntent.universeName)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
         createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       } else {
         errorString = "Preflight checks failed.";
       }
@@ -103,8 +107,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
 
-    LOG.info("Configure numNodes={}, Replication factor={}", userIntent.numNodes,
-             userIntent.replicationFactor);
+    LOG.info(
+        "Configure numNodes={}, Replication factor={}",
+        userIntent.numNodes,
+        userIntent.replicationFactor);
 
     Collection<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(nodes);
 
@@ -119,22 +125,23 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Update any tags on nodes that are not going to be removed and not being added.
     Cluster existingCluster = universe.getCluster(cluster.uuid);
     if (!cluster.areTagsSame(existingCluster)) {
-      LOG.info("Tags changed from '{}' to '{}'.", existingCluster.userIntent.instanceTags,
-               cluster.userIntent.instanceTags);
-      createUpdateInstanceTagsTasks(PlacementInfoUtil.getLiveNodes(nodes),
-                                    Util.getKeysNotPresent(existingCluster.userIntent.instanceTags,
-                                                           cluster.userIntent.instanceTags));
+      LOG.info(
+          "Tags changed from '{}' to '{}'.",
+          existingCluster.userIntent.instanceTags,
+          cluster.userIntent.instanceTags);
+      createUpdateInstanceTagsTasks(
+          PlacementInfoUtil.getLiveNodes(nodes),
+          Util.getKeysNotPresent(
+              existingCluster.userIntent.instanceTags, cluster.userIntent.instanceTags));
     }
 
     if (!nodesToProvision.isEmpty()) {
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createServerInfoTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
       createConfigureServerTasks(nodesToProvision, true /* isShell */)
@@ -159,8 +166,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
       if (!nodesToBeRemoved.containsAll(removeMasters)) {
         String errMsg = "If masters are being removed, all those nodes need removal too.";
-        LOG.error(errMsg + " masters: " + nodeNames(removeMasters) + " , but removing only " +
-                  nodeNames(nodesToBeRemoved));
+        LOG.error(
+            errMsg
+                + " masters: "
+                + nodeNames(removeMasters)
+                + " , but removing only "
+                + nodeNames(nodesToBeRemoved));
         throw new IllegalStateException(errMsg);
       }
     }
@@ -177,20 +188,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         throw new IllegalStateException(errMsg);
       }
 
-      createStartMasterTasks(newMasters)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createStartMasterTasks(newMasters).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for masters to be responsive.
       createWaitForServersTasks(newMasters, ServerType.MASTER)
-         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(nodes);
 
     if (!newTservers.isEmpty()) {
       // Start the tservers in the clusters.
-      createStartTServersTasks(newTservers)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createStartTServersTasks(newTservers).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for all tablet servers to be responsive.
       createWaitForServersTasks(newTservers, ServerType.TSERVER)
@@ -226,8 +235,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     if (!nodesToBeRemoved.isEmpty()) {
       // Wait for %age completion of the tablet move from master.
-      createWaitForDataMoveTask()
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     } else {
       if (!tserversToBeRemoved.isEmpty()) {
         String errMsg = "Universe shrink should have been handled using node decommision.";
@@ -235,12 +243,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         throw new IllegalStateException(errMsg);
       }
       // If only tservers are added, wait for load to balance across all tservers.
-      createWaitForLoadBalanceTask()
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
 
-    if (cluster.clusterType == ClusterType.PRIMARY &&
-        PlacementInfoUtil.didAffinitizedLeadersChange(
+    if (cluster.clusterType == ClusterType.PRIMARY
+        && PlacementInfoUtil.didAffinitizedLeadersChange(
             universe.getUniverseDetails().getPrimaryCluster().placementInfo,
             cluster.placementInfo)) {
       createWaitForLeadersOnPreferredOnlyTask();
@@ -251,8 +258,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration);
 
       // Wait for a master leader to be elected.
-      createWaitForMasterLeaderTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.
@@ -260,18 +266,25 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Change the master addresses in the conf file for the new tservers.
       createConfigureServerTasks(newTservers, false /* isShell */, true /* updateMasterAddrs */);
-      createSetFlagInMemoryTasks(newTservers, ServerType.TSERVER, true /* force flag update */,
-                                 null /* no gflag to update */, true /* updateMasterAddrs */);
+      createSetFlagInMemoryTasks(
+          newTservers,
+          ServerType.TSERVER,
+          true /* force flag update */,
+          null /* no gflag to update */,
+          true /* updateMasterAddrs */);
 
       // Change the master addresses in the conf file for the new masters.
-      createConfigureServerTasks(newMasters, false /* isShell */, true /* updateMasterAddrs */,
-                                 true /* isMaster */);
-      createSetFlagInMemoryTasks(newMasters, ServerType.MASTER, true /* force flag update */,
-                                 null /* no gflag to update */, true /* updateMasterAddrs */);
+      createConfigureServerTasks(
+          newMasters, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */);
+      createSetFlagInMemoryTasks(
+          newMasters,
+          ServerType.MASTER,
+          true /* force flag update */,
+          null /* no gflag to update */,
+          true /* updateMasterAddrs */);
 
       // Wait for the master leader to hear from all tservers.
-      createWaitForTServerHeartBeatsTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
@@ -282,8 +295,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * Fills in the series of steps needed to move the masters using the node names. The
-   * actual node details (such as ip addresses) are found at runtime by querying the database.
+   * Fills in the series of steps needed to move the masters using the node names. The actual node
+   * details (such as ip addresses) are found at runtime by querying the database.
    */
   private void createMoveMastersTasks(SubTaskGroupType subTask) {
     // Get the list of node names to add as masters.

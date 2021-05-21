@@ -18,8 +18,7 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
  */
 @Singleton
 public class ExtraMigrationManager extends DevopsBase {
-  @Inject
-  TemplateManager templateManager;
+  @Inject TemplateManager templateManager;
 
   @Override
   protected String getCommandType() {
@@ -27,13 +26,17 @@ public class ExtraMigrationManager extends DevopsBase {
   }
 
   private void recreateProvisionScripts() {
-    for (AccessKey accessKey: AccessKey.getAll()) {
+    for (AccessKey accessKey : AccessKey.getAll()) {
       Provider p = Provider.get(accessKey.getProviderUUID());
       if (p != null && p.code.equals(onprem.name())) {
         AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
         templateManager.createProvisionTemplate(
-          accessKey, keyInfo.airGapInstall, keyInfo.passwordlessSudoAccess,
-          keyInfo.installNodeExporter, keyInfo.nodeExporterPort, keyInfo.nodeExporterUser);
+            accessKey,
+            keyInfo.airGapInstall,
+            keyInfo.passwordlessSudoAccess,
+            keyInfo.installNodeExporter,
+            keyInfo.nodeExporterPort,
+            keyInfo.nodeExporterUser);
       }
     }
   }
@@ -45,5 +48,4 @@ public class ExtraMigrationManager extends DevopsBase {
   public void R__Recreate_Provision_Script_Extra_Migrations() {
     recreateProvisionScripts();
   }
-
 }

@@ -18,15 +18,15 @@ import com.yugabyte.yw.common.kms.util.KeyProvider;
 import static org.junit.Assert.assertEquals;
 
 public class KmsConfigTest extends FakeDBApplication {
-    @Test
-    public void testCreateAndListConfig() {
-        UUID customerUUID = UUID.randomUUID();
-        KmsConfig config = KmsConfig.createKMSConfig(
-                customerUUID,
-                KeyProvider.AWS,
-                Json.newObject().put("test_key", "test_val"),
-                "some config name"
-        );
-        assertEquals(1, KmsConfig.listKMSConfigs(customerUUID).size());
-    }
+  @Test
+  public void testCreateAndListConfig() {
+    UUID customerUUID = UUID.randomUUID();
+    KmsConfig config =
+        KmsConfig.createKMSConfig(
+            customerUUID,
+            KeyProvider.AWS,
+            Json.newObject().put("test_key", "test_val"),
+            "some config name");
+    assertEquals(1, KmsConfig.listKMSConfigs(customerUUID).size());
+  }
 }

@@ -18,30 +18,26 @@ import java.util.UUID;
 import java.util.Map;
 
 public class EncryptionAtRestKeyParams extends UniverseTaskParams {
-    public static OpType opTypeFromString(String opTypeString) {
-        return opTypeString == null ? OpType.UNDEFINED : OpType.valueOf(opTypeString);
-    }
+  public static OpType opTypeFromString(String opTypeString) {
+    return opTypeString == null ? OpType.UNDEFINED : OpType.valueOf(opTypeString);
+  }
 
-    public static EncryptionAtRestKeyParams bindFromFormData(
-            UUID universeUUID,
-            ObjectNode formData
-    ) {
-        EncryptionAtRestKeyParams params = new EncryptionAtRestKeyParams();
-        if (formData.get("kmsConfigUUID") != null) {
-            params.encryptionAtRestConfig.kmsConfigUUID =
-                    UUID.fromString(formData.get("kmsConfigUUID").asText());
-            if (formData.get("key_type") != null) {
-                params.encryptionAtRestConfig.type =
-                        Enum.valueOf(KeyType.class, formData.get("key_type").asText());
-            }
-            if (formData.get("key_op") != null) {
-                params.encryptionAtRestConfig.opType =
-                        opTypeFromString(formData.get("key_op").asText());
-            }
-        } else {
-            throw new IllegalArgumentException("kmsConfigUUID is a required field");
-        }
-        params.universeUUID = universeUUID;
-        return params;
+  public static EncryptionAtRestKeyParams bindFromFormData(UUID universeUUID, ObjectNode formData) {
+    EncryptionAtRestKeyParams params = new EncryptionAtRestKeyParams();
+    if (formData.get("kmsConfigUUID") != null) {
+      params.encryptionAtRestConfig.kmsConfigUUID =
+          UUID.fromString(formData.get("kmsConfigUUID").asText());
+      if (formData.get("key_type") != null) {
+        params.encryptionAtRestConfig.type =
+            Enum.valueOf(KeyType.class, formData.get("key_type").asText());
+      }
+      if (formData.get("key_op") != null) {
+        params.encryptionAtRestConfig.opType = opTypeFromString(formData.get("key_op").asText());
+      }
+    } else {
+      throw new IllegalArgumentException("kmsConfigUUID is a required field");
     }
+    params.universeUUID = universeUUID;
+    return params;
+  }
 }

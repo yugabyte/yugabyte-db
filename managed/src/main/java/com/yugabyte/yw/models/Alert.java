@@ -24,9 +24,7 @@ import java.util.*;
 @Entity
 public class Alert extends Model {
 
-  /**
-   * These are the possible targets for the alert.
-   */
+  /** These are the possible targets for the alert. */
   public enum TargetType {
     @EnumValue("UniverseType")
     UniverseType,
@@ -98,8 +96,7 @@ public class Alert extends Model {
   @Enumerated(EnumType.STRING)
   public State state;
 
-  @Constraints.Required
-  public boolean sendEmail;
+  @Constraints.Required public boolean sendEmail;
 
   public UUID definitionUUID;
 
@@ -107,8 +104,14 @@ public class Alert extends Model {
   private static final Finder<UUID, Alert> find = new Finder<UUID, Alert>(Alert.class) {};
 
   public static Alert create(
-    UUID customerUUID, UUID targetUUID, TargetType targetType, String errCode,
-    String type, String message, boolean sendEmail, UUID definitionUUID) {
+      UUID customerUUID,
+      UUID targetUUID,
+      TargetType targetType,
+      String errCode,
+      String type,
+      String message,
+      boolean sendEmail,
+      UUID definitionUUID) {
     Alert alert = new Alert();
     alert.uuid = UUID.randomUUID();
     alert.customerUUID = customerUUID;
@@ -126,18 +129,13 @@ public class Alert extends Model {
   }
 
   public static Alert create(
-    UUID customerUUID, UUID targetUUID, TargetType targetType, String errCode,
-    String type, String message) {
-    return Alert.create(
-      customerUUID,
-      targetUUID,
-      targetType,
-      errCode,
-      type,
-      message,
-      false,
-      null
-    );
+      UUID customerUUID,
+      UUID targetUUID,
+      TargetType targetType,
+      String errCode,
+      String type,
+      String message) {
+    return Alert.create(customerUUID, targetUUID, targetType, errCode, type, message, false, null);
   }
 
   public static Alert create(UUID customerUUID, String errCode, String type, String message) {
@@ -151,14 +149,15 @@ public class Alert extends Model {
   }
 
   public JsonNode toJson() {
-    ObjectNode json = Json.newObject()
-      .put("uuid", uuid.toString())
-      .put("customerUUID", customerUUID.toString())
-      .put("createTime", createTime.toString())
-      .put("errCode", errCode)
-      .put("type", type)
-      .put("message", message)
-      .put("state", state.name());
+    ObjectNode json =
+        Json.newObject()
+            .put("uuid", uuid.toString())
+            .put("customerUUID", customerUUID.toString())
+            .put("createTime", createTime.toString())
+            .put("errCode", errCode)
+            .put("type", type)
+            .put("message", message)
+            .put("state", state.name());
     return json;
   }
 
@@ -167,58 +166,61 @@ public class Alert extends Model {
   }
 
   public static Boolean exists(String errCode, UUID targetUUID) {
-    return find.query().where().eq("err_code", errCode)
-                               .eq("target_uuid", targetUUID).findCount() != 0;
+    return find.query().where().eq("err_code", errCode).eq("target_uuid", targetUUID).findCount()
+        != 0;
   }
 
   public static List<Alert> getActiveCustomerAlerts(UUID customerUUID, UUID definitionUUID) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .in("state", State.CREATED, State.ACTIVE)
-      .eq("definition_uuid", definitionUUID)
-      .findList();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .in("state", State.CREATED, State.ACTIVE)
+        .eq("definition_uuid", definitionUUID)
+        .findList();
   }
 
   public static List<Alert> list(UUID customerUUID) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .orderBy("create_time desc")
-      .findList();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .orderBy("create_time desc")
+        .findList();
   }
 
   public static List<Alert> list(UUID customerUUID, String errCode) {
-    return find.query().where().eq("customer_uuid", customerUUID)
-                               .eq("errCode", errCode).findList();
+    return find.query().where().eq("customer_uuid", customerUUID).eq("errCode", errCode).findList();
   }
 
   public static List<Alert> listToActivate() {
-    return find.query().where()
-      .eq("state", State.CREATED)
-      .findList();
+    return find.query().where().eq("state", State.CREATED).findList();
   }
 
   public static List<Alert> listActive(UUID customerUUID) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("state", State.ACTIVE)
-      .orderBy("create_time desc")
-      .findList();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("state", State.ACTIVE)
+        .orderBy("create_time desc")
+        .findList();
   }
 
   public static List<Alert> listActiveCustomerAlerts(UUID customerUUID) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("state", State.ACTIVE)
-      .eq("err_code", "CUSTOMER_ALERT")
-      .findList();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("state", State.ACTIVE)
+        .eq("err_code", "CUSTOMER_ALERT")
+        .findList();
   }
 
   public static List<Alert> list(UUID customerUUID, String errCode, UUID targetUUID) {
-    return find.query().where().eq("customer_uuid", customerUUID)
-                               .like("err_code", errCode)
-                               .eq("target_uuid", targetUUID)
-                               .orderBy("create_time desc")
-                               .findList();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .like("err_code", errCode)
+        .eq("target_uuid", targetUUID)
+        .orderBy("create_time desc")
+        .findList();
   }
 
   public static Alert get(UUID alertUUID) {
@@ -226,11 +228,12 @@ public class Alert extends Model {
   }
 
   public static Alert get(UUID customerUUID, UUID targetUUID, TargetType targetType) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("target_uuid", targetUUID)
-      .eq("target_type", targetType)
-      .findOne();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("target_uuid", targetUUID)
+        .eq("target_type", targetType)
+        .findOne();
   }
 
   public void setState(State state) {

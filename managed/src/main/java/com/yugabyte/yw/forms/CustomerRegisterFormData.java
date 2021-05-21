@@ -2,14 +2,10 @@
 
 package com.yugabyte.yw.forms;
 
-
 import play.data.validation.Constraints;
 import java.util.Map;
 
-
-/**
- * This class will be used by the API and UI Form Elements to validate constraints are met
- */
+/** This class will be used by the API and UI Form Elements to validate constraints are met */
 public class CustomerRegisterFormData {
   @Constraints.Required()
   @Constraints.MaxLength(15)
@@ -32,7 +28,7 @@ public class CustomerRegisterFormData {
 
   public Map features;
 
-  static public class AlertingData {
+  public static class AlertingData {
     @Constraints.Email
     @Constraints.MinLength(5)
     public String alertingEmail;
@@ -48,7 +44,7 @@ public class CustomerRegisterFormData {
     public Boolean reportBackupFailures = false;
   }
 
-  static public class SmtpData {
+  public static class SmtpData {
     public String smtpServer = null;
 
     public int smtpPort = -1;
@@ -131,6 +127,8 @@ public class CustomerRegisterFormData {
 
   public SmtpData smtpData;
 
-  @Constraints.Pattern(message="Must be one of NONE, LOW, MEDIUM, HIGH", value="\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
+  @Constraints.Pattern(
+      message = "Must be one of NONE, LOW, MEDIUM, HIGH",
+      value = "\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
   public String callhomeLevel = "MEDIUM";
 }
