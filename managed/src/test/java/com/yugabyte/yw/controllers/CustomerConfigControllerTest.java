@@ -208,22 +208,6 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertBadRequest(result, "Invalid configUUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
   }
-  
-  public void testValidPasswordPolicy() {
-    Result result = testPasswordPolicy(8, 1, 1, 1, 1);
-    assertOk(result);
-    assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
-    assertAuditEntry(1, defaultCustomer.uuid);
-  }
-
-  @Test
-  public void testNegativePasswordPolicy() {
-    Result result = testPasswordPolicy(8, -1, 1, 1, 1);
-    assertBadRequest(result,
-      "{\"password policy\":[\"Minimal number of uppercase letters should be > 0\"]}");
-    assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
-    assertAuditEntry(0, defaultCustomer.uuid);
-  }
 
   @Test
   public void testEditWithBackupLocation() {
@@ -244,31 +228,5 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     // SHould be updated and the API response should give asked data.
     assertEquals("A-*****EW", json.get("data").get("ACCESS_KEY").textValue());
     assertEquals("********", json.get("data").get("ACCESS_SECRET").textValue());
-  }
-  
-  public void testInvalidPasswordPolicy() {
-    Result result = testPasswordPolicy(8, 3, 3, 2, 1);
-    assertBadRequest(result, "{\"password policy\":[\"Minimal length should be not less than" +
-      " the sum of minimal counts for upper case, lower case, digits and special characters\"]}");
-    assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
-    assertAuditEntry(0, defaultCustomer.uuid);
-  }
-
-  private Result testPasswordPolicy(int minLength, int minUpperCase, int minLowerCase,
-                                    int minDigits, int minSpecialCharacters) {
-    PasswordPolicyFormData passwordPolicyFormData = new PasswordPolicyFormData();
-    passwordPolicyFormData.setMinLength(minLength);
-    passwordPolicyFormData.setMinUppercase(minUpperCase);
-    passwordPolicyFormData.setMinLowercase(minLowerCase);
-    passwordPolicyFormData.setMinDigits(minDigits);
-    passwordPolicyFormData.setMinSpecialCharacters(minSpecialCharacters);
-
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("name", "password policy");
-    bodyJson.set("data", Json.toJson(passwordPolicyFormData));
-    bodyJson.put("type", "PASSWORD_POLICY");
-    String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", url,
-      defaultUser.createAuthToken(), bodyJson);
   }
 }
