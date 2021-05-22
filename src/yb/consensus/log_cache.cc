@@ -99,7 +99,7 @@ const std::string kParentMemTrackerId = "log_cache"s;
 typedef vector<const ReplicateMsg*>::const_iterator MsgIter;
 
 LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
-                   const scoped_refptr<log::Log>& log,
+                   const log::LogPtr& log,
                    const MemTrackerPtr& server_tracker,
                    const string& local_uuid,
                    const string& tablet_id)
@@ -148,7 +148,7 @@ void LogCache::Init(const OpIdPB& preceding_op) {
   min_pinned_op_index_ = next_sequential_op_index_;
 }
 
-Result<LogCache::PrepareAppendResult> LogCache::PrepareAppendOperations(const ReplicateMsgs& msgs) {
+LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateMsgs& msgs) {
   // SpaceUsed is relatively expensive, so do calculations outside the lock
   PrepareAppendResult result;
   std::vector<CacheEntry> entries_to_insert;
@@ -194,7 +194,7 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
                                   const StatusCallback& callback) {
   PrepareAppendResult prepare_result;
   if (!msgs.empty()) {
-    prepare_result = VERIFY_RESULT(PrepareAppendOperations(msgs));
+    prepare_result = PrepareAppendOperations(msgs);
   }
 
   Status log_status = log_->AsyncAppendReplicates(
@@ -424,6 +424,22 @@ void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {
 
 int64_t LogCache::BytesUsed() const {
   return tracker_->consumption();
+}
+
+Result<OpId> LogCache::TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type) {
+  constexpr int kStepSize = 20;
+  for (auto end = max_allowed_index; end > 0; end -= kStepSize) {
+    auto result = VERIFY_RESULT(ReadOps(
+        std::max<int64_t>(0, end - kStepSize), end, std::numeric_limits<int>::max()));
+    for (auto it = result.messages.end(); it != result.messages.begin();) {
+      --it;
+      if ((**it).op_type() == op_type) {
+        return OpId::FromPB((**it).id());
+      }
+    }
+  }
+  return STATUS_FORMAT(NotFound, "Operation of type $0 not found before $1",
+                       OperationType_Name(op_type), max_allowed_index);
 }
 
 string LogCache::StatsString() const {

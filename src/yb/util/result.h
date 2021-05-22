@@ -25,6 +25,7 @@ namespace yb {
 
 template<class TValue>
 struct ResultTraits {
+  typedef TValue ValueType;
   typedef TValue Stored;
   typedef const TValue* ConstPointer;
   typedef TValue* Pointer;
@@ -39,6 +40,7 @@ struct ResultTraits {
 
 template<class TValue>
 struct ResultTraits<TValue&> {
+  typedef TValue& ValueType;
   typedef TValue* Stored;
   typedef const TValue* ConstPointer;
   typedef TValue* Pointer;
@@ -53,7 +55,8 @@ struct ResultTraits<TValue&> {
 template<class TValue>
 class NODISCARD_CLASS Result {
  public:
-  typedef ResultTraits<TValue> Traits;
+  using Traits = ResultTraits<TValue>;
+  using ValueType = typename Traits::ValueType;
 
   Result(const Result& rhs) : success_(rhs.success_) {
     if (success_) {

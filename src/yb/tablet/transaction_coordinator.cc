@@ -222,8 +222,8 @@ class TransactionState {
 
     if (replicating_ != nullptr) {
       auto replicating_op_id = replicating_->consensus_round()->id();
-      if (replicating_op_id.IsInitialized()) {
-        if (OpId::FromPB(replicating_op_id) != data.op_id) {
+      if (!replicating_op_id.empty()) {
+        if (replicating_op_id != data.op_id) {
           LOG_WITH_PREFIX(DFATAL)
               << "Replicated unexpected operation, replicating: " << AsString(replicating_)
               << ", replicated: " << AsString(data);

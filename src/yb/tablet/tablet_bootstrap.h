@@ -43,7 +43,7 @@ namespace tablet {
 CHECKED_STATUS BootstrapTabletImpl(
     const BootstrapTabletData& data,
     TabletPtr* rebuilt_tablet,
-    scoped_refptr<log::Log>* rebuilt_log,
+    log::LogPtr* rebuilt_log,
     consensus::ConsensusBootstrapInfo* results);
 
 }  // namespace tablet

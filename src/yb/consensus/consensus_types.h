@@ -36,17 +36,17 @@ class ConsensusAppendCallback {
   // committed_op_id - committed operation id.
   //
   // Should initialize appropriate replicate message.
-  virtual void HandleConsensusAppend(const yb::OpId& op_id, const yb::OpId& committed_op_id) = 0;
+  virtual void HandleConsensusAppend(const OpId& op_id, const OpId& committed_op_id) = 0;
+
+  // Invoked when appropriate operation failed to replicate.
+  virtual void ReplicationFinished(
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids) = 0;
+
   virtual ~ConsensusAppendCallback() {}
 };
 
 struct ConsensusOptions {
   std::string tablet_id;
-};
-
-struct SplitOpInfo {
-  OpId op_id;
-  std::array<TabletId, kNumSplitParts> child_tablet_ids;
 };
 
 } // namespace consensus

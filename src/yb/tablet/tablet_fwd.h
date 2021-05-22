@@ -40,6 +40,7 @@ class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
 class Operation;
+class OperationFilter;
 class SnapshotCoordinator;
 class SnapshotOperationState;
 class SplitOperationState;

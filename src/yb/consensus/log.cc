@@ -642,7 +642,7 @@ Status Log::RollOver() {
   return Status::OK();
 }
 
-Status Log::Reserve(LogEntryTypePB type,
+void Log::Reserve(LogEntryTypePB type,
                     LogEntryBatchPB* entry_batch,
                     LogEntryBatch** reserved_entry) {
   TRACE_EVENT0("log", "Log::Reserve");
@@ -669,7 +669,6 @@ Status Log::Reserve(LogEntryTypePB type,
   // TODO (perf) Use a ring buffer instead of a blocking queue and set
   // 'reserved_entry' to a pre-allocated slot in the buffer.
   *reserved_entry = new_entry_batch.release();
-  return Status::OK();
 }
 
 Status Log::TEST_AsyncAppendWithReplicates(
@@ -715,7 +714,7 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
   }
 
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(REPLICATE, &batch, &reserved_entry_batch));
+  Reserve(REPLICATE, &batch, &reserved_entry_batch);
 
   // If we're able to reserve, set the vector of replicate shared pointers in the LogEntryBatch.
   // This will make sure there's a reference for each replicate while we're appending.
@@ -1052,7 +1051,7 @@ Status Log::WaitUntilAllFlushed() {
   LogEntryBatchPB entry_batch;
   entry_batch.add_entry()->set_type(log::FLUSH_MARKER);
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(FLUSH_MARKER, &entry_batch, &reserved_entry_batch));
+  Reserve(FLUSH_MARKER, &entry_batch, &reserved_entry_batch);
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
   return s.Wait();

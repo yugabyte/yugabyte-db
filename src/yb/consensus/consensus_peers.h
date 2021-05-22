@@ -62,10 +62,6 @@ class Messenger;
 class PeriodicTimer;
 }
 
-namespace log {
-class Log;
-}
-
 namespace consensus {
 
 // A peer in consensus (local or remote).

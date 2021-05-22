@@ -76,13 +76,11 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
                                  Consensus* consensus,
                                  Log* log,
                                  Preparer* preparer,
-                                 OperationOrderVerifier* order_verifier,
                                  TableType table_type)
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
       log_(log),
       preparer_(preparer),
-      order_verifier_(order_verifier),
       trace_(new Trace()),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
@@ -122,10 +120,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
   }
 
   if (term == OpId::kUnknownTerm && operation_) {
-    auto state = operation_->state();
-    if (state->use_mvcc()) {
-      state->tablet()->mvcc_manager()->AddFollowerPending(state->hybrid_time(), state->op_id());
-    }
+    operation_->state()->AddedToFollower();
   }
 
   return result;
@@ -190,18 +185,13 @@ void OperationDriver::ExecuteAsync() {
 
 void OperationDriver::HandleConsensusAppend(const OpId& op_id, const OpId& committed_op_id) {
   ADOPT_TRACE(trace());
-  auto* state = operation_->state();
-  if (state->use_mvcc()) {
-    state->set_hybrid_time(state->tablet()->mvcc_manager()->AddLeaderPending(op_id));
-  } else {
-    state->TrySetHybridTimeFromClock();
-  }
-  DCHECK(!GetOpId().valid());
+  CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
-  if (!StartOperation()) {
-    return;
-  }
-  state->LeaderInit(op_id, committed_op_id);
+
+  auto* state = operation_->state();
+  state->AddedToLeader(op_id, committed_op_id);
+
+  StartOperation();
 }
 
 void OperationDriver::PrepareAndStartTask() {
@@ -272,33 +262,11 @@ Status OperationDriver::PrepareAndStart() {
 OperationDriver::~OperationDriver() {
 }
 
-void OperationDriver::ReplicationFailed(const Status& replication_status) {
-  {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    if (replication_state_ == REPLICATION_FAILED) {
-      return;
-    }
-    CHECK_EQ(replication_state_, REPLICATING);
-    operation_status_ = replication_status;
-    replication_state_ = REPLICATION_FAILED;
-  }
-  HandleFailure();
-}
-
-void OperationDriver::HandleFailure(Status status) {
+void OperationDriver::HandleFailure(const Status& status) {
   ReplicationState repl_state_copy;
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    if (!status.ok()) {
-      if (!operation_status_.ok()) {
-        LOG(DFATAL) << "Operation already failed with: " << operation_status_ << ", new status: "
-                    << status << ", state: " << replication_state_;
-      }
-      operation_status_ = status;
-    } else {
-      status = operation_status_;
-    }
     repl_state_copy = replication_state_;
   }
 
@@ -313,14 +281,6 @@ void OperationDriver::HandleFailure(Status status) {
     {
       VLOG_WITH_PREFIX(1) << "Operation " << ToString() << " failed prior to "
           "replication success: " << status;
-      auto state = operation_->state();
-      if (state->use_mvcc()) {
-        auto hybrid_time = state->hybrid_time_even_if_unset();
-        if (hybrid_time.is_valid()) {
-          state->tablet()->mvcc_manager()->Aborted(hybrid_time, GetOpId());
-        }
-      }
-
       operation_->Aborted(status);
       operation_tracker_->Release(this, nullptr /* applied_op_ids */);
       return;
@@ -337,20 +297,20 @@ void OperationDriver::HandleFailure(Status status) {
 
 void OperationDriver::ReplicationFinished(
     const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
-  auto op_id_local = OpId::FromPB(DCHECK_NOTNULL(mutable_state()->consensus_round())->id());
-  LOG_IF(DFATAL, status.ok() && op_id_local.empty()) << "Empty op id after replication";
-  LOG_IF(DFATAL, !GetOpId().valid()) << "Invalid op id replication";
+  LOG_IF(DFATAL, status.ok() && !GetOpId().valid()) << "Invalid op id after replication";
 
   PrepareState prepare_state_copy;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    mutable_state()->set_op_id(op_id_local);
+    if (replication_state_ == REPLICATION_FAILED) {
+      LOG_IF(DFATAL, status.ok()) << "Successfully replicated operation that was previously failed";
+      return;
+    }
     CHECK_EQ(replication_state_, REPLICATING);
     if (status.ok()) {
       replication_state_ = REPLICATED;
     } else {
       replication_state_ = REPLICATION_FAILED;
-      operation_status_ = status;
     }
     prepare_state_copy = prepare_state_;
   }
@@ -380,9 +340,12 @@ void OperationDriver::ReplicationFinished(
     }
   }
 
-  // We likely need to do cleanup if this fails so for now just
-  // CHECK_OK
-  CHECK_OK(ApplyOperation(leader_term, applied_op_ids));
+  if (status.ok()) {
+    TRACE_EVENT_FLOW_BEGIN0("operation", "ApplyTask", this);
+    ApplyTask(leader_term, applied_op_ids);
+  } else {
+    HandleFailure(status);
+  }
 }
 
 void OperationDriver::Abort(const Status& status) {
@@ -392,7 +355,6 @@ void OperationDriver::Abort(const Status& status) {
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     repl_state_copy = replication_state_;
-    operation_status_ = status;
   }
 
   // If the state is not NOT_REPLICATING we abort immediately and the operation
@@ -401,33 +363,8 @@ void OperationDriver::Abort(const Status& status) {
   // Apply hasn't started yet this prevents it from starting, but if it has then
   // the operation runs to completion.
   if (repl_state_copy == NOT_REPLICATING) {
-    HandleFailure();
+    HandleFailure(status);
   }
-}
-
-Status OperationDriver::ApplyOperation(int64_t leader_term, OpIds* applied_op_ids) {
-  {
-    std::unique_lock<simple_spinlock> lock(lock_);
-    DCHECK_EQ(prepare_state_, PREPARED);
-    if (operation_status_.ok()) {
-      DCHECK_EQ(replication_state_, REPLICATED);
-      order_verifier_->CheckApply(op_id_copy_.load(boost::memory_order_relaxed).index,
-                                  prepare_physical_hybrid_time_);
-    } else {
-      DCHECK_EQ(replication_state_, REPLICATION_FAILED);
-      DCHECK(!operation_status_.ok());
-      lock.unlock();
-      HandleFailure();
-      return Status::OK();
-    }
-  }
-
-  TRACE_EVENT_FLOW_BEGIN0("operation", "ApplyTask", this);
-
-  // RocksDB-backed tables require that we apply changes in the same order they appear in the Raft
-  // log.
-  ApplyTask(leader_term, applied_op_ids);
-  return Status::OK();
 }
 
 void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {

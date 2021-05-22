@@ -158,8 +158,7 @@ class RaftConsensusSpy : public RaftConsensus {
                     parent_mem_tracker,
                     mark_dirty_clbk,
                     YQL_TABLE_TYPE,
-                    nullptr /* retryable_requests */,
-                    SplitOpInfo()) {
+                    nullptr /* retryable_requests */) {
     // These "aliases" allow us to count invocations and assert on them.
     ON_CALL(*this, StartConsensusOnlyRoundUnlocked(_))
         .WillByDefault(Invoke(this,
@@ -173,11 +172,11 @@ class RaftConsensusSpy : public RaftConsensus {
     return RaftConsensus::AppendNewRoundToQueueUnlocked(round);
   }
 
-  MOCK_METHOD1(AppendNewRoundsToQueueUnlocked, Status(
-      const std::vector<scoped_refptr<ConsensusRound>>& rounds));
+  MOCK_METHOD2(AppendNewRoundsToQueueUnlocked, Status(
+      const ConsensusRounds& rounds, size_t* processed_rounds));
   Status AppendNewRoundsToQueueUnlockedConcrete(
-      const std::vector<scoped_refptr<ConsensusRound>>& rounds) {
-    return RaftConsensus::AppendNewRoundsToQueueUnlocked(rounds);
+      const ConsensusRounds& rounds, size_t* processed_rounds) {
+    return RaftConsensus::AppendNewRoundsToQueueUnlocked(rounds, processed_rounds);
   }
 
   MOCK_METHOD1(StartConsensusOnlyRoundUnlocked, Status(const ReplicateMsgPtr& msg));
@@ -284,7 +283,7 @@ class RaftConsensusTest : public YBTest {
 
     ON_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
         .WillByDefault(Invoke(this, &RaftConsensusTest::MockAppendNewRound));
-    ON_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
+    ON_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_, _))
         .WillByDefault(Invoke(this, &RaftConsensusTest::MockAppendNewRounds));
   }
 
@@ -303,11 +302,11 @@ class RaftConsensusTest : public YBTest {
     return consensus_->AppendNewRoundToQueueUnlockedConcrete(round);
   }
 
-  Status MockAppendNewRounds(const std::vector<scoped_refptr<ConsensusRound>>& rounds) {
+  Status MockAppendNewRounds(const ConsensusRounds& rounds, size_t* processed_rounds) {
     for (const auto& round : rounds) {
       rounds_.push_back(round);
     }
-    RETURN_NOT_OK(consensus_->AppendNewRoundsToQueueUnlockedConcrete(rounds));
+    RETURN_NOT_OK(consensus_->AppendNewRoundsToQueueUnlockedConcrete(rounds, processed_rounds));
     for (const auto& round : rounds) {
       LOG(INFO) << "Round append: " << round->id() << ", ReplicateMsg: "
                 << round->replicate_msg()->ShortDebugString();
@@ -417,7 +416,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
       .Times(1);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
       .Times(1);
-  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
+  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_, _))
       .Times(11);
   EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _))
       .Times(22).WillRepeatedly(Return(Status::OK()));
@@ -430,9 +429,9 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
   OpId committed_index;
   OpId last_applied_op_id;
   consensus_->TEST_UpdateMajorityReplicated(
-      OpId::FromPB(rounds_[0]->id()), &committed_index, &last_applied_op_id);
-  ASSERT_EQ(OpId::FromPB(rounds_[0]->id()), committed_index);
-  ASSERT_EQ(last_applied_op_id, OpId::FromPB(rounds_[0]->id()));
+      rounds_[0]->id(), &committed_index, &last_applied_op_id);
+  ASSERT_EQ(rounds_[0]->id(), committed_index);
+  ASSERT_EQ(last_applied_op_id, rounds_[0]->id());
 
   // Append 10 rounds
   for (int i = 0; i < 10; i++) {
@@ -440,8 +439,8 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
     // queue reports majority replicated index in the leader's term
     // committed index should move accordingly.
     consensus_->TEST_UpdateMajorityReplicated(
-        OpId::FromPB(round->id()), &committed_index, &last_applied_op_id);
-    ASSERT_EQ(last_applied_op_id, OpId::FromPB(round->id()));
+        round->id(), &committed_index, &last_applied_op_id);
+    ASSERT_EQ(last_applied_op_id, round->id());
   }
 }
 
@@ -456,7 +455,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
       .Times(1);
   EXPECT_CALL(*queue_, SetLeaderMode(_, _, _, _))
       .Times(2);
-  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
+  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_, _))
       .Times(3);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
       .Times(2);
@@ -470,9 +469,9 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   OpId committed_index;
   OpId last_applied_op_id;
   consensus_->TEST_UpdateMajorityReplicated(
-      OpId::FromPB(rounds_[0]->id()), &committed_index, &last_applied_op_id);
-  ASSERT_EQ(OpId::FromPB(rounds_[0]->id()), committed_index);
-  ASSERT_EQ(last_applied_op_id, OpId::FromPB(rounds_[0]->id()));
+      rounds_[0]->id(), &committed_index, &last_applied_op_id);
+  ASSERT_EQ(rounds_[0]->id(), committed_index);
+  ASSERT_EQ(last_applied_op_id, rounds_[0]->id());
 
   // Append another round in the current term (besides the original config round).
   scoped_refptr<ConsensusRound> round = AppendNoOpRound();
@@ -486,7 +485,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   OpId new_committed_index;
   OpId new_last_applied_op_id;
   consensus_->TEST_UpdateMajorityReplicated(
-      OpId::FromPB(round->id()), &new_committed_index, &new_last_applied_op_id);
+      round->id(), &new_committed_index, &new_last_applied_op_id);
   ASSERT_EQ(committed_index, new_committed_index);
   ASSERT_EQ(last_applied_op_id, new_last_applied_op_id);
 
@@ -495,15 +494,15 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   // Now notify that the last change config was committed, this should advance the
   // commit index to the id of the last change config.
   consensus_->TEST_UpdateMajorityReplicated(
-      OpId::FromPB(last_config_round->id()), &committed_index, &last_applied_op_id);
+      last_config_round->id(), &committed_index, &last_applied_op_id);
 
   DumpRounds();
-  ASSERT_EQ(OpId::FromPB(last_config_round->id()), committed_index);
-  ASSERT_EQ(last_applied_op_id, OpId::FromPB(last_config_round->id()));
+  ASSERT_EQ(last_config_round->id(), committed_index);
+  ASSERT_EQ(last_applied_op_id, last_config_round->id());
 }
 
 // Asserts that a ConsensusRound has an OpId set in its ReplicateMsg.
-MATCHER(HasOpId, "") { return arg->id().IsInitialized(); }
+MATCHER(HasOpId, "") { return !arg->id().empty(); }
 
 // These matchers assert that a Status object is of a certain type.
 MATCHER(IsOk, "") { return arg.ok(); }
@@ -608,7 +607,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
 
 MATCHER_P2(RoundHasOpId, term, index, "") {
   LOG(INFO) << "expected: " << MakeOpId(term, index) << ", actual: " << arg->id();
-  return arg->id().term() == term && arg->id().index() == index;
+  return arg->id().term == term && arg->id().index == index;
 }
 
 // Tests the case where a leader is elected and pushed a sequence of

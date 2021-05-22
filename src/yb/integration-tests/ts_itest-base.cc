@@ -296,15 +296,14 @@ void TabletServerIntegrationTestBase::GetOnlyLiveFollowerReplicas(
 int64_t TabletServerIntegrationTestBase::GetFurthestAheadReplicaIdx(
     const std::string& tablet_id,
     const std::vector<itest::TServerDetails*>& replicas) {
-  std::vector<OpIdPB> op_ids;
-  CHECK_OK(GetLastOpIdForEachReplica(tablet_id, replicas, consensus::RECEIVED_OPID,
-                                     MonoDelta::FromSeconds(10), &op_ids));
+  auto op_ids = CHECK_RESULT(GetLastOpIdForEachReplica(
+      tablet_id, replicas, consensus::RECEIVED_OPID, MonoDelta::FromSeconds(10)));
 
   int64 max_index = 0;
   int max_replica_index = -1;
   for (int i = 0; i < op_ids.size(); i++) {
-    if (op_ids[i].index() > max_index) {
-      max_index = op_ids[i].index();
+    if (op_ids[i].index > max_index) {
+      max_index = op_ids[i].index;
       max_replica_index = i;
     }
   }

@@ -16,7 +16,9 @@
 #ifndef YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
 #define YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
 
-#include <yb/tserver/tserver_service.pb.h>
+#include "yb/tserver/tserver_service.pb.h"
+
+#include "yb/tablet/operation_filter.h"
 
 #include "yb/tablet/operations/operation.h"
 
@@ -27,18 +29,16 @@ class TabletSplitter;
 
 // Operation Context for the SplitTablet operation.
 // Keeps track of the Operation states (request, result, ...).
-class SplitOperationState : public OperationState {
+class SplitOperationState : public OperationState, public OperationFilter {
  public:
   // Creates SplitOperationState for SplitTablet operation for `tablet`. Remembers
   // `tablet_splitter` in order to use it for actual execution of tablet splitting.
   // `consensus_for_abort` is only used when aborting operation.
   SplitOperationState(
-      Tablet* tablet, consensus::RaftConsensus* consensus_for_abort,
-      TabletSplitter* tablet_splitter, const tserver::SplitTabletRequestPB* request = nullptr);
+      Tablet* tablet, TabletSplitter* tablet_splitter,
+      const tserver::SplitTabletRequestPB* request = nullptr);
 
   const tserver::SplitTabletRequestPB* request() const override { return request_; }
-
-  consensus::RaftConsensus* raft_consensus() { return consensus_; }
 
   TabletSplitter& tablet_splitter() const { return *tablet_splitter_; }
 
@@ -46,8 +46,19 @@ class SplitOperationState : public OperationState {
 
   std::string ToString() const override;
 
+  static bool ShouldAllowOpAfterSplitTablet(const consensus::OperationType op_type);
+
+  static CHECKED_STATUS RejectionStatus(
+      OpId split_op_id, OpId rejected_op_id, consensus::OperationType op_type,
+      const TabletId& child1, const TabletId& child2);
+
  private:
-  consensus::RaftConsensus* const consensus_;
+  void AddedAsPending() override;
+  void RemovedFromPending() override;
+
+  CHECKED_STATUS CheckOperationAllowed(
+      const OpId& id, consensus::OperationType op_type) const override;
+
   TabletSplitter* const tablet_splitter_;
   const tserver::SplitTabletRequestPB* request_;
 };

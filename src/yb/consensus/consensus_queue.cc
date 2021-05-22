@@ -147,7 +147,6 @@ DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidat
 namespace yb {
 namespace consensus {
 
-using log::AsyncLogReader;
 using log::Log;
 using std::unique_ptr;
 using rpc::Messenger;
@@ -1602,6 +1601,11 @@ Status PeerMessageQueue::FlushLogIndex() {
 
 void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
   log_cache_.TrackOperationsMemory(op_ids);
+}
+
+Result<OpId> PeerMessageQueue::TEST_GetLastOpIdWithType(
+    int64_t max_allowed_index, OperationType op_type) {
+  return log_cache_.TEST_GetLastOpIdWithType(max_allowed_index, op_type);
 }
 
 }  // namespace consensus

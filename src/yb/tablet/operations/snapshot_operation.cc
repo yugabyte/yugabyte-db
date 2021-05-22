@@ -37,7 +37,7 @@ using yb::tserver::TabletSnapshotOpRequestPB;
 
 string SnapshotOperationState::ToString() const {
   return Format("SnapshotOperationState { hybrid_time: $0 request: $1 }",
-                hybrid_time(), request());
+                hybrid_time_even_if_unset(), request());
 }
 
 Result<std::string> SnapshotOperationState::GetSnapshotDir() const {
@@ -85,7 +85,6 @@ bool SnapshotOperationState::CheckOperationRequirements() {
   }
 
   // LogPrefix() calls ToString() which needs correct hybrid_time.
-  TrySetHybridTimeFromClock();
   LOG_WITH_PREFIX(WARNING) << status;
   TRACE("Requirements was not satisfied for snapshot operation: $0", operation());
   // Run the callback, finish RPC and return the error to the sender.

@@ -82,7 +82,7 @@ string UpdateTxnOperation::ToString() const {
 
 Status UpdateTxnOperation::DoAborted(const Status& status) {
   if (state()->tablet()->transaction_coordinator()) {
-    LOG_WITH_PREFIX(INFO) << "Aborted";
+    LOG_WITH_PREFIX(INFO) << "Aborted: " << status;
     TransactionCoordinator::AbortedData data = {
       *state()->request(),
       state()->op_id(),

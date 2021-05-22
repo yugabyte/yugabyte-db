@@ -43,8 +43,11 @@
 #include "yb/rocksdb/memory_monitor.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/schema.h"
+
+#include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log.pb.h"
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/server/clock.h"
@@ -59,11 +62,6 @@ namespace yb {
 class MetricRegistry;
 class Partition;
 class PartitionSchema;
-
-namespace log {
-class Log;
-class LogAnchorRegistry;
-}
 
 namespace consensus {
 struct ConsensusBootstrapInfo;
@@ -180,7 +178,7 @@ struct BootstrapTabletData {
 CHECKED_STATUS BootstrapTablet(
     const BootstrapTabletData& data,
     TabletPtr* rebuilt_tablet,
-    scoped_refptr<log::Log>* rebuilt_log,
+    log::LogPtr* rebuilt_log,
     consensus::ConsensusBootstrapInfo* consensus_info);
 
 }  // namespace tablet
