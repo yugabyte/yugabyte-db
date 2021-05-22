@@ -97,8 +97,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   class ConsensusFaultHooks;
 
   // Creates RaftConsensus.
-  // split_op_info is the parameters of split tablet Raft operation requesting split of this
-  // tablet or unset.
   static std::shared_ptr<RaftConsensus> Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -115,12 +113,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests,
-    const SplitOpInfo& split_op_info);
+    RetryableRequests* retryable_requests);
 
   // Creates RaftConsensus.
-  // split_op_info is the parameters of split tablet Raft operation requesting split of this
-  // tablet or unset.
   RaftConsensus(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -137,8 +132,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests,
-    const SplitOpInfo& split_op_info);
+    RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus();
 
@@ -160,7 +154,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                           LeaderStepDownResponsePB* resp) override;
 
   CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) override;
-  CHECKED_STATUS ReplicateBatch(ConsensusRounds* rounds) override;
+  CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) override;
 
   CHECKED_STATUS Update(
       ConsensusRequestPB* request,
@@ -223,10 +217,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   yb::OpId GetAllAppliedOpId();
 
-  yb::OpId GetSplitOpId() override;
-
-  std::array<TabletId, kNumSplitParts> GetSplitChildTabletIds() override;
-
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
 
@@ -266,6 +256,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     return majority_num_sst_files_.load(std::memory_order_acquire);
   }
 
+  // Returns last op id from log cache with specified op id type and operation type.
+  Result<OpId> TEST_GetLastOpIdWithType(OpIdType opid_type, OperationType op_type);
+
   int64_t TEST_LeaderTerm() const;
 
  protected:
@@ -281,9 +274,13 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // As a leader, append a new ConsensusRound to the queue.
   // Only virtual and protected for mocking purposes.
-  virtual CHECKED_STATUS AppendNewRoundToQueueUnlocked(const scoped_refptr<ConsensusRound>& round);
+  virtual CHECKED_STATUS AppendNewRoundToQueueUnlocked(const ConsensusRoundPtr& round);
+
+  // processed_rounds - out value for number of rounds that were processed.
   virtual CHECKED_STATUS AppendNewRoundsToQueueUnlocked(
-      const std::vector<scoped_refptr<ConsensusRound>>& rounds);
+      const ConsensusRounds& rounds, size_t* processed_rounds);
+
+  CHECKED_STATUS CheckLeasesUnlocked(const ConsensusRoundPtr& round);
 
   // As a follower, start a consensus round not associated with a Operation.
   // Only virtual and protected for mocking purposes.
@@ -302,6 +299,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
  private:
   friend class ReplicaState;
   friend class RaftConsensusQuorumTest;
+
+  // processed_rounds - out value for number of rounds that were processed.
+  CHECKED_STATUS DoReplicateBatch(const ConsensusRounds& rounds, size_t* processed_rounds);
 
   CHECKED_STATUS DoStartElection(const LeaderElectionData& data, PreElected preelected);
 

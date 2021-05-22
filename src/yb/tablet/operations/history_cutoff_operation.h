@@ -25,7 +25,7 @@ class HistoryCutoffOperationState : public OperationStateBase<consensus::History
   explicit HistoryCutoffOperationState(Args&&... args)
       : OperationStateBase(std::forward<Args>(args)...) {}
 
-  CHECKED_STATUS Replicated(int64_t leader_term);
+  CHECKED_STATUS Apply(int64_t leader_term);
 
  private:
   void UpdateRequestFromConsensusRound() override;

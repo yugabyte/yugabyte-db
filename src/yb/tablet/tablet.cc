@@ -72,6 +72,7 @@
 #include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -115,6 +116,7 @@
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/bloom_filter.h"
@@ -323,6 +325,25 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
   const std::string log_prefix_;
 };
 
+class Tablet::CompletedSplitOperationFilter : public OperationFilter {
+ public:
+  explicit CompletedSplitOperationFilter(std::reference_wrapper<const RaftGroupMetadata> metadata)
+      : metadata_(metadata) {}
+
+  CHECKED_STATUS CheckOperationAllowed(
+      const OpId& op_id, consensus::OperationType op_type) const override {
+    if (SplitOperationState::ShouldAllowOpAfterSplitTablet(op_type)) {
+      return Status::OK();
+    }
+
+    auto children = metadata_.split_child_tablet_ids();
+    return SplitOperationState::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
+  }
+
+ private:
+  const RaftGroupMetadata& metadata_;
+};
+
 Tablet::Tablet(const TabletInitData& data)
     : key_schema_(data.metadata->schema()->CreateKeyProjection()),
       metadata_(data.metadata),
@@ -415,6 +436,10 @@ Tablet::Tablet(const TabletInitData& data)
   snapshots_ = std::make_unique<TabletSnapshots>(this);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
+
+  if (metadata_->tablet_data_state() == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    SplitDone();
+  }
 }
 
 Tablet::~Tablet() {
@@ -860,6 +885,15 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
     transaction_participant_->CompleteShutdown();
   }
 
+  if (completed_split_log_anchor_) {
+    WARN_NOT_OK(log_anchor_registry_->Unregister(completed_split_log_anchor_.get()),
+                "Unregister split anchor");
+  }
+
+  if (completed_split_operation_filter_) {
+    UnregisterOperationFilter(completed_split_operation_filter_.get());
+  }
+
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
   // Shutdown the RocksDB instance for this table, if present.
@@ -1208,7 +1242,7 @@ bool IsSchemaVersionCompatible(uint32_t current_version, const Request& request)
   if (request.is_compatible_with_previous_version() &&
       request.schema_version() == current_version + 1) {
     DVLOG(1) << (FLAGS_yql_allow_compatible_schema_versions ? " " : "Not ")
-             << " Accepting request that is ahead of us by 1 version " << yb::ToString(request);
+             << " Accepting request that is ahead of us by 1 version " << AsString(request);
     return FLAGS_yql_allow_compatible_schema_versions;
   }
 
@@ -1322,7 +1356,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
                << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
                << table_info->schema_version << " vs req's : " << req->schema_version()
                << " is req compatible with prev version: "
-               << req->is_compatible_with_previous_version() << " for " << yb::ToString(req);
+               << req->is_compatible_with_previous_version() << " for " << AsString(req);
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
       resp->set_error_message(Format(
           "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
@@ -1331,7 +1365,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
           req->is_compatible_with_previous_version()));
     } else {
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
-               << yb::ToString(req);
+               << AsString(req);
       auto write_op = std::make_unique<QLWriteOperation>(
           std::shared_ptr<Schema>(table_info, &table_info->schema),
           table_info->index_map, unique_index_key_schema_.get_ptr(),
@@ -1382,8 +1416,8 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
       ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
       ql_write_op->response()->set_error_message(
           Format("Duplicate value disallowed by unique index $0", metadata_->table_name()));
-      DVLOG(1) << "Could not apply the given operation " << yb::ToString(ql_write_op->request())
-               << " due to " << yb::ToString(ql_write_op->response());
+      DVLOG(1) << "Could not apply the given operation " << AsString(ql_write_op->request())
+               << " due to " << AsString(ql_write_op->response());
     } else if (ql_write_op->rowblock() != nullptr) {
       // If the QL write op returns a rowblock, move the op to the transaction state to return the
       // rows data as a sidecar after the transaction completes.
@@ -1517,7 +1551,7 @@ void Tablet::UpdateQLIndexesFlushed(
     auto* index_response = index_op->mutable_response();
 
     if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
-      DVLOG(1) << "Got status " << index_response->status() << " for " << yb::ToString(index_op);
+      DVLOG(1) << "Got status " << index_response->status() << " for " << AsString(index_op);
       response->set_status(index_response->status());
       response->set_error_message(std::move(*index_response->mutable_error_message()));
     }
@@ -2079,7 +2113,7 @@ Status Tablet::BackfillIndexesForYsql(
   }
   LOG(INFO) << "Begin " << __func__
             << " at " << read_time
-            << " for " << yb::ToString(indexes);
+            << " for " << AsString(indexes);
 
   if (!backfill_from.empty()) {
     return STATUS(
@@ -2188,7 +2222,7 @@ Status Tablet::BackfillIndexes(
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
   }
   LOG(INFO) << "Begin BackfillIndexes at " << read_time << " for "
-            << yb::ToString(indexes);
+            << AsString(indexes);
 
   // For the specific index that we are interested in, set up a scan job to scan all the
   // rows in this tablet and update the index accordingly.
@@ -2274,7 +2308,7 @@ Status Tablet::BackfillIndexes(
   RETURN_NOT_OK(FlushIndexBatchIfRequired(
       &index_requests, /* forced */ true, read_time, &last_flushed_at, failed_indexes));
   *backfilled_until = resume_backfill_from;
-  LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << yb::ToString(index_ids)
+  LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << AsString(index_ids)
             << " until "
             << (backfilled_until->empty() ? "<end of the tablet>" : b2a_hex(*backfilled_until));
   return Status::OK();
@@ -2396,8 +2430,8 @@ Status Tablet::FlushWithRetries(
         continue;
       }
 
-      VLOG(2) << "Got response " << yb::ToString(write_op->response())
-              << " for " << yb::ToString(write_op->request());
+      VLOG(2) << "Got response " << AsString(write_op->response())
+              << " for " << AsString(write_op->request());
       if (write_op->response().status() !=
           QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
         failed_indexes->insert(write_op->table()->id());
@@ -2419,7 +2453,7 @@ Status Tablet::FlushWithRetries(
   } while (!pending_ops.empty() && --retries_left > 0);
 
   if (!failed_indexes->empty()) {
-    VLOG_WITH_PREFIX(1) << "Failed due to non-retryable errors " << yb::ToString(*failed_indexes);
+    VLOG_WITH_PREFIX(1) << "Failed due to non-retryable errors " << AsString(*failed_indexes);
   }
   if (!pending_ops.empty()) {
     for (auto write_op : pending_ops) {
@@ -2428,7 +2462,7 @@ Status Tablet::FlushWithRetries(
       error_msg_cnts[error_message]++;
     }
     VLOG_WITH_PREFIX(1) << "Failed indexes including retryable and non-retryable errors are "
-                        << yb::ToString(*failed_indexes);
+                        << AsString(*failed_indexes);
   }
   return (
       failed_indexes->empty()
@@ -2436,7 +2470,7 @@ Status Tablet::FlushWithRetries(
           : STATUS_SUBSTITUTE(
                 IllegalState,
                 "Backfilling op failed for $0 requests after $1 retries with errors: $2",
-                pending_ops.size(), num_retries, yb::ToString(error_msg_cnts)));
+                pending_ops.size(), num_retries, AsString(error_msg_cnts)));
 }
 
 ScopedRWOperationPause Tablet::PauseReadWriteOperations(Stop stop) {
@@ -3410,6 +3444,37 @@ Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
   // TODO: we can add more checks here to verify block contents/checksums
 
   return Status::OK();
+}
+
+void Tablet::SplitDone() {
+  if (completed_split_operation_filter_) {
+    LOG_WITH_PREFIX(DFATAL) << "Already have split operation filter";
+    return;
+  }
+
+  completed_split_operation_filter_ = std::make_unique<CompletedSplitOperationFilter>(*metadata_);
+  operation_filters_.push_back(*completed_split_operation_filter_);
+
+  completed_split_log_anchor_ = std::make_unique<log::LogAnchor>();
+
+  log_anchor_registry_->Register(
+      metadata_->split_op_id().index, "Splitted tablet", completed_split_log_anchor_.get());
+}
+
+Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
+  for (const auto& filter : operation_filters_) {
+    RETURN_NOT_OK(filter.CheckOperationAllowed(op_id, op_type));
+  }
+
+  return Status::OK();
+}
+
+void Tablet::RegisterOperationFilter(OperationFilter* filter) {
+  operation_filters_.push_back(*filter);
+}
+
+void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
+  operation_filters_.erase(operation_filters_.iterator_to(*filter));
 }
 
 // ------------------------------------------------------------------------------------------------
