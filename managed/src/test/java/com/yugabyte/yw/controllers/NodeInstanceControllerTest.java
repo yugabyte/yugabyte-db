@@ -1,43 +1,37 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.mockito.Matchers.any;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.contentAsString;
-
-import java.util.Set;
-import java.util.LinkedList;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-
 import org.mockito.Mockito;
 import play.libs.Json;
 import play.mvc.Result;
+
+import java.util.LinkedList;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
 
 public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
@@ -382,8 +376,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
-    Universe u = ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId());
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    Universe u =
+        Universe.saveDetails(
+            ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId())
+                .universeUUID,
+            ApiUtils.mockUniverseUpdater());
     setInTransitNode(u.universeUUID);
 
     Set<NodeDetails> nodes =
@@ -398,14 +395,18 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REMOVE, false);
     assertBadRequest(
         invalidRemove,
-        "Cannot REMOVE " + curNode.nodeName + " as it will under replicate the masters.");
+        "Cannot REMOVE "
+            + curNode.nodeName
+            + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
 
     Result invalidStop =
         performNodeAction(
             customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.STOP, false);
     assertBadRequest(
         invalidStop,
-        "Cannot STOP " + curNode.nodeName + " as it will under replicate the masters.");
+        "Cannot STOP "
+            + curNode.nodeName
+            + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
     assertAuditEntry(0, customer.uuid);
   }
 
