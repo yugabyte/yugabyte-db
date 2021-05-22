@@ -14,6 +14,7 @@ import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -150,19 +151,12 @@ public class NodeInstanceController extends AuthenticatedController {
     NodeActionType nodeAction = formData.get().nodeAction;
 
     // Check deleting/removing a node will not go below the RF
+    // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
     if (nodeAction == NodeActionType.STOP || nodeAction == NodeActionType.REMOVE) {
-      if (!universe.isNodeActionAllowed(nodeName, nodeAction)) {
-        String errMsg =
-            "Cannot "
-                + nodeAction.name()
-                + " "
-                + nodeName
-                + " as it will under replicate the masters.";
-        LOG.error(errMsg);
-        throw new YWServiceException(BAD_REQUEST, errMsg);
-      }
+      // Always check this?? For now leaving it as is since it breaks many tests
+      new AllowedActionsHelper(universe, universe.getNode(nodeName))
+          .allowedOrBadRequest(nodeAction);
     }
-
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER) {

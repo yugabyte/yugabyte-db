@@ -5,17 +5,13 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -135,54 +131,6 @@ public class Universe extends Model {
       return null;
     }
     return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
-  }
-
-  @VisibleForTesting
-  Set<NodeActionType> getNodeActions(NodeDetails node, Collection<NodeDetails> nodes) {
-    if (node.state == null) {
-      return new HashSet<>();
-    }
-    Set<NodeActionType> actions = new HashSet<>();
-    switch (node.state) {
-        // Unexpected/abnormal states.
-      case ToBeAdded:
-      case Adding:
-        actions.add(NodeActionType.DELETE);
-        break;
-      case ToJoinCluster:
-      case ToBeRemoved:
-        actions.add(NodeActionType.REMOVE);
-        break;
-      case SoftwareInstalled:
-        actions.addAll(Arrays.asList(NodeActionType.START, NodeActionType.DELETE));
-        break;
-
-        // Expected/normal states.
-      case Live:
-        actions.addAll(
-            Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY));
-        if (!node.isMaster && Util.areMastersUnderReplicated(node, this)) {
-          actions.add(NodeActionType.START_MASTER);
-        }
-        break;
-      case Stopped:
-        actions.addAll(
-            Arrays.asList(NodeActionType.START, NodeActionType.RELEASE, NodeActionType.QUERY));
-        break;
-      case Removed:
-        actions.addAll(
-            Arrays.asList(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE));
-        break;
-      case Decommissioned:
-        actions.addAll(Arrays.asList(NodeActionType.ADD, NodeActionType.DELETE));
-        break;
-      default:
-        // Nothing here
-    }
-    if (nodes.size() == 1) {
-      actions.removeAll(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
-    }
-    return actions;
   }
 
   public void resetVersion() {
@@ -762,7 +710,7 @@ public class Universe extends Model {
    * @return cluster info from the universe which contains this node.
    */
   public static Cluster getCluster(Universe universe, String nodeName) {
-    if (!nodeName.contains(READONLY)) {
+    if (!nodeName.contains(READONLY)) { // BAD
       return universe.getUniverseDetails().getPrimaryCluster();
     }
 
@@ -773,39 +721,6 @@ public class Universe extends Model {
     }
 
     return null;
-  }
-
-  /**
-   * Checks if node is allowed to perform the action without under-replicating master nodes in the
-   * universe.
-   *
-   * @return whether the node is allowed to perform the action.
-   */
-  public boolean isNodeActionAllowed(String nodeName, NodeActionType action) {
-    NodeDetails node = getNode(nodeName);
-    Cluster curCluster = getCluster(node.placementUuid);
-
-    if (node.isMaster
-        && (action == NodeActionType.STOP || action == NodeActionType.REMOVE)
-        && (curCluster.clusterType == ClusterType.PRIMARY)) {
-      long numMasterNodesUp =
-          universeDetails
-              .getNodesInCluster(curCluster.uuid)
-              .stream()
-              .filter((n) -> n.isMaster && n.state == NodeDetails.NodeState.Live)
-              .count();
-      if (numMasterNodesUp <= (curCluster.userIntent.replicationFactor + 1) / 2) {
-        return false;
-      }
-    }
-
-    if (action == NodeActionType.START_MASTER) {
-      return (!node.isMaster
-          && (node.state == NodeDetails.NodeState.Live)
-          && Util.areMastersUnderReplicated(node, this));
-    }
-
-    return getNodeActions(node, getNodes()).contains(action);
   }
 
   /**
