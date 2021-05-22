@@ -29,7 +29,7 @@ void HistoryCutoffOperationState::UpdateRequestFromConsensusRound() {
   UseRequest(&consensus_round()->replicate_msg()->history_cutoff());
 }
 
-Status HistoryCutoffOperationState::Replicated(int64_t leader_term) {
+Status HistoryCutoffOperationState::Apply(int64_t leader_term) {
   HybridTime history_cutoff(request()->history_cutoff());
 
   VLOG_WITH_PREFIX(2) << "History cutoff replicated " << op_id() << ": " << history_cutoff;
@@ -62,7 +62,7 @@ Status HistoryCutoffOperation::Prepare() {
 Status HistoryCutoffOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   VLOG_WITH_PREFIX(2) << "Replicated";
 
-  return state()->Replicated(leader_term);
+  return state()->Apply(leader_term);
 }
 
 string HistoryCutoffOperation::ToString() const {
