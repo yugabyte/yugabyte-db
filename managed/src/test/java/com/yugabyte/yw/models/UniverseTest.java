@@ -2,7 +2,6 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
@@ -17,6 +16,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -118,7 +118,7 @@ public class UniverseTest extends FakeDBApplication {
             numNodes,
             60L,
             TimeUnit.SECONDS,
-            new LinkedBlockingQueue<Runnable>(),
+            new LinkedBlockingQueue<>(),
             namedThreadFactory);
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     assertEquals(0, u.getNodes().size());
@@ -129,7 +129,7 @@ public class UniverseTest extends FakeDBApplication {
     executor.shutdown();
     try {
       executor.awaitTermination(120, TimeUnit.SECONDS);
-    } catch (InterruptedException e1) {
+    } catch (InterruptedException ignored) {
     }
     Universe updUniv = Universe.getOrBadRequest(u.universeUUID);
     assertEquals(numNodes, updUniv.getNodes().size());
@@ -140,42 +140,39 @@ public class UniverseTest extends FakeDBApplication {
   public void testSaveDetails() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            universeDetails = new UniverseDefinitionTaskParams();
-            UserIntent userIntent = new UserIntent();
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails;
+          universeDetails = new UniverseDefinitionTaskParams();
+          UserIntent userIntent = new UserIntent();
 
-            // Create some subnets.
-            List<String> subnets = new ArrayList<String>();
-            subnets.add("subnet-1");
-            subnets.add("subnet-2");
-            subnets.add("subnet-3");
+          // Create some subnets.
+          List<String> subnets = new ArrayList<>();
+          subnets.add("subnet-1");
+          subnets.add("subnet-2");
+          subnets.add("subnet-3");
 
-            // Add a desired number of nodes.
-            userIntent.numNodes = 5;
-            universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-            for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-              NodeDetails node = new NodeDetails();
-              node.nodeName = "host-n" + idx;
-              node.cloudInfo = new CloudSpecificInfo();
-              node.cloudInfo.cloud = "aws";
-              node.cloudInfo.az = "az-" + idx;
-              node.cloudInfo.region = "test-region";
-              node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
-              node.cloudInfo.private_ip = "host-n" + idx;
-              node.state = NodeDetails.NodeState.Live;
-              node.isTserver = true;
-              if (idx <= 3) {
-                node.isMaster = true;
-              }
-              node.nodeIdx = idx;
-              universeDetails.nodeDetailsSet.add(node);
+          // Add a desired number of nodes.
+          userIntent.numNodes = 5;
+          universeDetails.nodeDetailsSet = new HashSet<>();
+          for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeName = "host-n" + idx;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.cloud = "aws";
+            node.cloudInfo.az = "az-" + idx;
+            node.cloudInfo.region = "test-region";
+            node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
+            node.cloudInfo.private_ip = "host-n" + idx;
+            node.state = NodeState.Live;
+            node.isTserver = true;
+            if (idx <= 3) {
+              node.isMaster = true;
             }
-            universeDetails.upsertPrimaryCluster(userIntent, null);
-            universe.setUniverseDetails(universeDetails);
+            node.nodeIdx = idx;
+            universeDetails.nodeDetailsSet.add(node);
           }
+          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universe.setUniverseDetails(universeDetails);
         };
     u = Universe.saveDetails(u.universeUUID, updater);
 
@@ -241,36 +238,33 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
 
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            universeDetails = new UniverseDefinitionTaskParams();
-            UserIntent userIntent = new UserIntent();
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails;
+          universeDetails = new UniverseDefinitionTaskParams();
+          UserIntent userIntent = new UserIntent();
 
-            // Add a desired number of nodes.
-            userIntent.numNodes = 3;
-            universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-            for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-              NodeDetails node = new NodeDetails();
-              node.nodeName = "host-n" + idx;
-              node.cloudInfo = new CloudSpecificInfo();
-              node.cloudInfo.cloud = "aws";
-              node.cloudInfo.az = "az-" + idx;
-              node.cloudInfo.region = "test-region";
-              node.cloudInfo.subnet_id = "subnet-" + idx;
-              node.cloudInfo.private_ip = "host-n" + idx;
-              node.state = NodeDetails.NodeState.Live;
-              node.isTserver = true;
-              if (idx <= 3) {
-                node.isMaster = true;
-              }
-              node.nodeIdx = idx;
-              universeDetails.upsertPrimaryCluster(userIntent, null);
-              universeDetails.nodeDetailsSet.add(node);
+          // Add a desired number of nodes.
+          userIntent.numNodes = 3;
+          universeDetails.nodeDetailsSet = new HashSet<>();
+          for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeName = "host-n" + idx;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.cloud = "aws";
+            node.cloudInfo.az = "az-" + idx;
+            node.cloudInfo.region = "test-region";
+            node.cloudInfo.subnet_id = "subnet-" + idx;
+            node.cloudInfo.private_ip = "host-n" + idx;
+            node.state = NodeState.Live;
+            node.isTserver = true;
+            if (idx <= 3) {
+              node.isMaster = true;
             }
-            universe.setUniverseDetails(universeDetails);
+            node.nodeIdx = idx;
+            universeDetails.upsertPrimaryCluster(userIntent, null);
+            universeDetails.nodeDetailsSet.add(node);
           }
+          universe.setUniverseDetails(universeDetails);
         };
     u = Universe.saveDetails(u.universeUUID, updater);
     String masterAddrs = u.getMasterAddresses();
@@ -628,21 +622,17 @@ public class UniverseTest extends FakeDBApplication {
     assertEquals(
         expectedResult,
         nodeHasAction(nodeDetailsSet, nodeToTest, NodeActionType.START_MASTER.name()));
-    assertEquals(expectedResult, u.isNodeActionAllowed(nodeToTest, NodeActionType.START_MASTER));
   }
 
   // Updates the node state
   private void updateNode(Universe u, String nodeName, NodeState newState, boolean newIsMaster) {
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            for (NodeDetails node : u.getUniverseDetails().nodeDetailsSet) {
-              if (StringUtils.equals(node.nodeName, nodeName)) {
-                node.state = newState;
-                node.isMaster = newIsMaster;
-                break;
-              }
+        universe -> {
+          for (NodeDetails node : u.getUniverseDetails().nodeDetailsSet) {
+            if (StringUtils.equals(node.nodeName, nodeName)) {
+              node.state = newState;
+              node.isMaster = newIsMaster;
+              break;
             }
           }
         };
@@ -668,7 +658,7 @@ public class UniverseTest extends FakeDBApplication {
   private static boolean jsonArrayHasItem(JsonNode arr, String value) {
     assertNotNull(arr);
     assertTrue(arr.isArray());
-    for (JsonNode item : (ArrayNode) arr) {
+    for (JsonNode item : arr) {
       if (StringUtils.equals(item.asText(), value)) {
         return true;
       }
@@ -683,18 +673,20 @@ public class UniverseTest extends FakeDBApplication {
 
     for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
       nd.state = nodeState;
-      Set<NodeActionType> allowedActions = u.getNodeActions(nd, u.getNodes());
+      Set<NodeActionType> allowedActions = new AllowedActionsHelper(u, nd).listAllowedActions();
 
       if (nodeState == NodeDetails.NodeState.ToBeAdded) {
         assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Adding) {
         assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
-        assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+        // Cannot REMOVE host-n1: As it will under replicate the masters.
+        assertEquals(ImmutableSet.of(), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
         assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
-        assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+        // Cannot REMOVE host-n1: As it will under replicate the masters.
+        assertEquals(ImmutableSet.of(), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Live) {
         assertEquals(
             ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY),
@@ -734,7 +726,7 @@ public class UniverseTest extends FakeDBApplication {
 
     for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
       nd.state = nodeState;
-      Set<NodeActionType> actions = u.getNodeActions(nd, u.getNodes());
+      Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
       assertEquals(nd.isRemovable(), actions.contains(NodeActionType.DELETE));
     }
   }
@@ -743,7 +735,7 @@ public class UniverseTest extends FakeDBApplication {
   public void testGetNodeActions_NoStopAndRemoveForOneNodeUniverse() {
     Universe u = createUniverseWithNodes(1 /* rf */, 1 /* numNodes */, true /* setMasters */);
     NodeDetails nd = u.getNodes().iterator().next();
-    Set<NodeActionType> actions = u.getNodeActions(nd, u.getNodes());
+    Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
     assertFalse(actions.contains(NodeActionType.REMOVE));
     assertFalse(actions.contains(NodeActionType.STOP));
   }
