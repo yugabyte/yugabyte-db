@@ -37,7 +37,9 @@
 
 #include <boost/atomic.hpp>
 
+#include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_types.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
 #include "yb/tablet/operations/operation.h"
@@ -49,13 +51,8 @@
 namespace yb {
 class ThreadPool;
 
-namespace log {
-class Log;
-} // namespace log
-
 namespace tablet {
 class MvccManager;
-class OperationOrderVerifier;
 class OperationTracker;
 class OperationDriver;
 class Preparer;
@@ -117,7 +114,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
                   consensus::Consensus* consensus,
                   log::Log* log,
                   Preparer* preparer,
-                  OperationOrderVerifier* order_verifier,
                   TableType table_type_);
 
   // Perform any non-constructor initialization. Sets the operation
@@ -149,7 +145,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   //
   // see comment in the interface for an important TODO.
   void ReplicationFinished(
-      const Status& status, int64_t leader_term, OpIds* applied_op_ids);
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids) override;
 
   std::string ToString() const;
 
@@ -167,7 +163,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   Trace* trace() { return trace_.get(); }
 
-  void HandleConsensusAppend(const yb::OpId& op_id, const yb::OpId& committed_op_id) override;
+  void HandleConsensusAppend(const OpId& op_id, const OpId& committed_op_id) override;
 
   bool is_leader_side() {
     // TODO: switch state to an atomic.
@@ -186,13 +182,10 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // is a bit more complicated due to batching.
   void PrepareAndStartTask();
 
-  // This should be called in case of a failure to submit the operation for replication.
-  void ReplicationFailed(const Status& replication_status);
-
   // Handle a failure in any of the stages of the operation.
   // In some cases, this will end the operation and call its callback.
   // In others, where we can't recover, this will FATAL.
-  void HandleFailure(Status status = Status::OK());
+  void HandleFailure(const Status& status);
 
   consensus::Consensus* consensus() { return consensus_; }
 
@@ -236,9 +229,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Starts operation, returns false is we should NOT continue processing the operation.
   bool StartOperation();
 
-  // Performs status checks and calls ApplyTask.
-  CHECKED_STATUS ApplyOperation(int64_t leader_term, OpIds* applied_op_ids);
-
   // Calls Operation::Apply() followed by Consensus::Commit() with the
   // results from the Apply().
   void ApplyTask(int64_t leader_term, OpIds* applied_op_ids);
@@ -256,9 +246,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   consensus::Consensus* const consensus_;
   log::Log* const log_;
   Preparer* const preparer_;
-  OperationOrderVerifier* const order_verifier_;
-
-  Status operation_status_;
 
   // Lock that synchronizes access to the operation's state.
   mutable simple_spinlock lock_;
