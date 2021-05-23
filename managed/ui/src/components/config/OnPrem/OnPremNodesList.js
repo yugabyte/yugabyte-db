@@ -73,9 +73,9 @@ class OnPremNodesList extends Component {
     }, {});
 
     // function takes in node list and returns node object keyed by zone
-    const getInstancesKeyedByZone = function (instances, region, zoneList) {
+    const getInstancesKeyedByZone = (instances, region, zoneList) => {
       if (isNonEmptyArray(instances[region])) {
-        return instances[region].reduce(function (acc, val) {
+        return instances[region].reduce((acc, val) => {
           if (isNonEmptyObject(val) && isNonEmptyString(val.zone)) {
             const currentZone = val.zone.trim();
             const instanceName = isNonEmptyString(val.instanceName) ? val.instanceName.trim() : '';
@@ -116,17 +116,19 @@ class OnPremNodesList extends Component {
       Object.keys(vals.instances).forEach(region => {
         vals.instances[region].forEach((az, index) => {
           // Check if IP address is already in use by other node instance
-          if (existingNodeIps.has(az.instanceTypeIP.trim())) {
-            // If array exists then there are multiple errors
-            if (!Array.isArray(errors.instances[region])) {
-              errors.instances[region] = [];
+          if (az.instanceTypeIP) {
+            if (existingNodeIps.has(az.instanceTypeIP.trim())) {
+              // If array exists then there are multiple errors
+              if (!Array.isArray(errors.instances[region])) {
+                errors.instances[region] = [];
+              }
+              errors.instances[region][index] = {
+                instanceTypeIP: `Duplicate IP error: ${az.instanceTypeIP}`
+              };
+            } else {
+              // Add node instance to Set
+              existingNodeIps.add(az.instanceTypeIP.trim());
             }
-            errors.instances[region][index] = {
-              instanceTypeIP: `Duplicate IP error: ${az.instanceTypeIP}`
-            };
-          } else {
-            // Add node instance to Set
-            existingNodeIps.add(az.instanceTypeIP.trim());
           }
         });
       });

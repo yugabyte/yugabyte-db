@@ -508,7 +508,7 @@ MultiThreadedReader::MultiThreadedReader(int64_t num_keys, int num_reader_thread
                                          const KeyIndexSet* inserted_keys,
                                          const KeyIndexSet* failed_keys, atomic_bool* stop_flag,
                                          int value_size, int max_num_read_errors,
-                                         bool stop_on_empty_read)
+                                         MultiThreadedReaderOptions options)
     : MultiThreadedAction(
           "readers", num_keys, 0, num_reader_threads, 1, session_factory->ClientId(),
           stop_flag, value_size),
@@ -519,7 +519,7 @@ MultiThreadedReader::MultiThreadedReader(int64_t num_keys, int num_reader_thread
       num_reads_(0),
       num_read_errors_(0),
       max_num_read_errors_(max_num_read_errors),
-      stop_on_empty_read_(stop_on_empty_read) {}
+      options_(options) {}
 
 void MultiThreadedReader::RunActionThread(int reader_index) {
   unique_ptr<SingleThreadedReader> reader_loop(session_factory_->GetReader(this, reader_index));
@@ -545,16 +545,23 @@ void MultiThreadedReader::RunStatsThread() {
 }
 
 void MultiThreadedReader::IncrementReadErrorCount(ReadStatus read_status) {
-  DCHECK(read_status != ReadStatus::OK);
+  DCHECK(read_status != ReadStatus::kOk);
 
   if (++num_read_errors_ > max_num_read_errors_) {
     LOG(ERROR) << "Exceeded the maximum number of read errors (" << max_num_read_errors_ << ")!";
+    read_status_stopped_ = read_status;
     Stop();
   }
-
-  if (stop_on_empty_read_ && read_status == ReadStatus::NO_ROWS) {
-    LOG(ERROR) << "No empty reads allowed!";
-    Stop();
+  for (const auto& option_and_status :
+       {std::make_pair(MultiThreadedReaderOption::kStopOnEmptyRead, ReadStatus::kNoRows),
+        std::make_pair(MultiThreadedReaderOption::kStopOnInvalidRead, ReadStatus::kInvalidRead),
+        std::make_pair(MultiThreadedReaderOption::kStopOnExtraRead, ReadStatus::kExtraRows)}) {
+    if (options_.Test(option_and_status.first) && read_status == option_and_status.second) {
+      LOG(ERROR) << "Stopping due to not allowed read status: " << AsString(read_status);
+      read_status_stopped_ = read_status;
+      Stop();
+      return;
+    }
   }
 }
 
@@ -615,21 +622,21 @@ ReadStatus YBSingleThreadedReader::PerformRead(
     if (row_block->row_count() == 0) {
       LOG(ERROR) << "No rows found for key #" << key_index
                  << " (read hybrid_time: " << read_ts << ")";
-      return ReadStatus::NO_ROWS;
+      return ReadStatus::kNoRows;
     }
     if (row_block->row_count() != 1) {
       LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": "
                  << row_block->row_count() << " (expected to find 1 row), read hybrid_time: "
                  << read_ts;
-      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
-      return ReadStatus::OTHER_ERROR;
+      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::kOtherError);
+      return ReadStatus::kOtherError;
     }
     auto row = row_block->rows()[0];
     if (row.column(0).binary_value() != key_str) {
       LOG(ERROR) << "Invalid key returned by the read operation: '" << row.column(0).binary_value()
                  << "', expected: '" << key_str << "', read hybrid_time: " << read_ts;
-      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
-      return ReadStatus::OTHER_ERROR;
+      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::kOtherError);
+      return ReadStatus::kOtherError;
     }
     auto returned_value = row.column(1).binary_value();
     if (returned_value != expected_value_str) {
@@ -637,13 +644,13 @@ ReadStatus YBSingleThreadedReader::PerformRead(
                  << "': " << FormatWithSize(returned_value)
                  << ", expected: " << FormatWithSize(expected_value_str)
                  << ", read hybrid_time: " << read_ts;
-      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
-      return ReadStatus::OTHER_ERROR;
+      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::kOtherError);
+      return ReadStatus::kOtherError;
     }
     break;
   }
 
-  return ReadStatus::OK;
+  return ReadStatus::kOk;
 }
 
 void YBSingleThreadedReader::CloseSession() { CHECK_OK(session_->Close()); }
@@ -663,12 +670,12 @@ ReadStatus RedisSingleThreadedReader::PerformRead(
     LOG(INFO) << "Read the wrong value for #" << key_index << " from redis "
               << " key : " << key_str << " value : " << value_str
               << " expected : " << expected_value_str;
-    return ReadStatus::OTHER_ERROR;
+    return ReadStatus::kOtherError;
   }
 
   VLOG(2) << "Reader " << reader_index_ << " Successfully read key #" << key_index << " from redis "
           << " key : " << key_str << " value : " << value_str;
-  return ReadStatus::OK;
+  return ReadStatus::kOk;
 }
 
 void SingleThreadedReader::Run() {
@@ -694,7 +701,7 @@ void SingleThreadedReader::Run() {
 
     // Read operation returning zero rows is treated as a read error.
     // See: https://yugabyte.atlassian.net/browse/ENG-1272
-    if (read_status == ReadStatus::NO_ROWS) {
+    if (read_status == ReadStatus::kNoRows) {
       multi_threaded_reader_->IncrementReadErrorCount(read_status);
     }
   }

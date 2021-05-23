@@ -37,7 +37,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   virtual ~CatalogManager();
   void CompleteShutdown();
 
-  CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(lock_);
+  CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(mutex_);
 
   // API to start a snapshot creation.
   CHECKED_STATUS CreateSnapshot(const CreateSnapshotRequestPB* req,
@@ -174,7 +174,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   friend class UniverseReplicationLoader;
 
   CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id)
-      REQUIRES(lock_);
+      REQUIRES(mutex_);
 
   // Per table structure for external cluster snapshot importing to this cluster.
   // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
@@ -278,7 +278,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) override;
   CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
 
-  void CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
+  void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
+  void CleanupHiddenTablets(
+      const std::vector<TabletInfoPtr>& hidden_tablets,
+      const ScheduleMinRestoreTime& schedule_min_restore_time);
+  // Will filter tables content, so pass it by value here.
+  void CleanupHiddenTables(std::vector<TableInfoPtr> tables);
 
   rpc::Scheduler& Scheduler() override;
 
@@ -307,7 +312,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Find CDC streams for a table.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id);
 
-  bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override;
+  bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 
   CHECKED_STATUS FillHeartbeatResponseEncryption(const SysClusterConfigEntryPB& cluster_config,
                                                  const TSHeartbeatRequestPB* req,

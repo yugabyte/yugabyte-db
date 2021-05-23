@@ -187,9 +187,6 @@ class OperationState {
   // Sets the hybrid_time for the transaction
   void set_hybrid_time(const HybridTime& hybrid_time);
 
-  // If this operation does not have hybrid time yet, then it will be inited from clock.
-  void TrySetHybridTimeFromClock();
-
   HybridTime hybrid_time() const {
     std::lock_guard<simple_spinlock> l(mutex_);
     DCHECK(hybrid_time_.is_valid());
@@ -225,20 +222,27 @@ class OperationState {
   void CompleteWithStatus(const Status& status) const;
   void SetError(const Status& status, tserver::TabletServerErrorPB::Code code) const;
 
-  // Initialize operation at leader side.
-  // op_id - operation id.
-  // committed_op_id - current committed operation id.
-  void LeaderInit(const OpId& op_id, const OpId& committed_op_id);
-
   // Whether we should use MVCC Manager to track this operation.
   virtual bool use_mvcc() const {
     return false;
   }
 
+  // Initialize operation at leader side.
+  // op_id - operation id.
+  // committed_op_id - current committed operation id.
+  virtual void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+
+  virtual void AddedToFollower();
+  virtual void Aborted();
+  virtual void Replicated();
+
   virtual ~OperationState();
 
  protected:
   explicit OperationState(Tablet* tablet);
+
+  virtual void AddedAsPending() {}
+  virtual void RemovedFromPending() {}
 
   // The tablet peer that is coordinating this transaction.
   Tablet* tablet_;

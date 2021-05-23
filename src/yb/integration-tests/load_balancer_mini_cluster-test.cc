@@ -128,7 +128,8 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
       }
     }
     return foundReplica;
-  }, MonoDelta::FromMilliseconds(test_bg_task_wait_ms * 2), "WaitForAddTaskToBeProcessed"));
+  }, MonoDelta::FromMilliseconds(test_bg_task_wait_ms * 2 * kTimeMultiplier),
+      "WaitForAddTaskToBeProcessed"));
 
   // Modify GetAllReportedDescriptors so that it does not report the new tserver
   // (this could happen normally from a late heartbeat).

@@ -7,7 +7,7 @@ beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
 menu:
   latest:
-    identifier: point-in-time-restore
+    identifier: point-in-time-restore-2-ysql
     parent: backup-restore
     weight: 704
 isTocNested: true
@@ -16,15 +16,15 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/point-in-time-restore-ysql" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
     <a href="/latest/manage/backup-restore/point-in-time-restore-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/manage/backup-restore/point-in-time-restore-ysql" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
     </a>
   </li>
 </ul>
@@ -35,7 +35,7 @@ _Point-in-time restores_ (also referred to here as PITR) and _incremental backup
 
 Point-in-time restores and incremental backups depend on _full backups_ (also referred to as base backups). A full backup, as the name suggests, is a complete transactional backup of data up to a certain point in time. The entire data set in the database is backed up for all of the namespaces and tables you selected. Full backups are resource-intensive, and can consume considerable amounts of CPU time, bandwidth, and disk space.
 
-To learn more about YugabyteDB's point-in-time restore feature, refer to the [Recovery scenarios](#recovery-scenarios), [Features](#features), [Use cases](#use-cases), and [Limitations](#limitations) sections on this page.
+To learn more about YugabyteDB's point-in-time restore feature, refer to the [Recovery scenarios](#recovery-scenarios), [Features](#features), [Use cases](#use-cases), and [Limitations](#limitations) sections on this page. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin#backup-and-snapshot-commands) section of the yb-admin documentation.
 
 ## Try out the PITR feature
 
@@ -72,7 +72,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -81,26 +81,42 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (4 rows)
     ```
 
-1. At a terminal prompt, create a snapshot of the table from a shell prompt:
+1. At a terminal prompt, create a snapshot schedule for the database from a shell prompt. In this example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_database_snapshot yugabyte
+    $ bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
-    Started snapshot creation: bb5fc435-a2b9-4f3a-a510-0bacc6aebccf
+    {
+        "schedule_id": "0e4ceb83-fe3d-43da-83c3-013a8ef592ca"
+    }
     ```
 
-1. Verify that the snapshot is complete:
+1. Verify that a snapshot has happened:
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ bin/yb-admin list_snapshot_schedules
     ```
 
     ```output
-    Snapshot UUID                         State
-    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
-    No snapshot restorations
+    {
+        "schedules": [
+            {
+                "id": "0e4ceb83-fe3d-43da-83c3-013a8ef592ca",
+                "options": {
+                    "interval": "60.000s",
+                    "retention": "600.000s"
+                },
+                "snapshots": [
+                    {
+                        "id": "8d588cb7-13f2-4bda-b584-e9be47a144c5",
+                        "snapshot_time_utc": "2021-05-07T20:16:08.492330+0000"
+                    }
+                ]
+            }
+        ]
+    }
     ```
 
 ### Restore from an absolute time
@@ -133,7 +149,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             9999 | Wrong Name     | Marketing  |  10000
@@ -143,7 +159,24 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (5 rows)
     ```
 
-1. At a terminal prompt, list snapshots:
+1. Restore the snapshot schedule to the timestamp you obtained before you deleted the data, at a terminal prompt.
+
+    <br/>
+
+    Multiply the timestamp you obtained earlier by 1,000,000 (1 million). A shortcut is to remove the decimal point, and add a zero (0) to the end. So, the example earlier of `1617670679.18510` becomes `1617670679185100`.
+
+    ```sh
+    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1617670679185100
+    ```
+
+    ```output
+    {
+        "snapshot_id": "2287921b-1cf9-4bbc-ad38-e309f86f72e9",
+        "restoration_id": "1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb"
+    }
+    ```
+
+1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
     $ bin/yb-admin list_snapshots
@@ -151,31 +184,15 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
     ```output
     Snapshot UUID                         State
-    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
-    No snapshot restorations
-    ```
-
-1. Restore the latest snapshot to the timestamp you obtained before you deleted the data:
-
-    <br/>
-
-    Multiply the timestamp you obtained earlier by 1,000,000 (1 million). A shortcut is to remove the decimal point, and add a zero (0) to the end. So, the example earlier of `1617670679.18510` becomes `1617670679185100`.
-
-    ```sh
-    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf 1617670679185100
-    ```
-
-1. Verify the restoration is in `RESTORED` state:
-
-    ```sh
-    $ bin/yb-admin list_snapshots
-    ```
-
-    ```output
-    Snapshot UUID                     State
-    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
+    8d588cb7-13f2-4bda-b584-e9be47a144c5  COMPLETE
+    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
+    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
+    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
+    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
+    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
+    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
     Restoration UUID                      State
-    bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
+    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
     ```
 
 1. In the YSQL shell, verify the data is restored, without a row for employee 9999:
@@ -185,7 +202,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -236,7 +253,14 @@ Relative times can be in any of the following formats (again, note that you can 
 1. At a terminal prompt, restore the snapshot you created earlier:
 
     ```sh
-    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf minus "5m"
+    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca minus "5m"
+    ```
+
+    ```output
+    {
+        "snapshot_id": "6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30",
+        "restoration_id": "f4256380-4f63-4937-830f-5be135d97717"
+    }
     ```
 
 1. Verify the restoration is in `RESTORED` state:
@@ -246,10 +270,20 @@ Relative times can be in any of the following formats (again, note that you can 
     ```
 
     ```output
-    Snapshot UUID                     State
-    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
+    Snapshot UUID                         State
+    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
+    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
+    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
+    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
+    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
+    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
+    04b1e139-2c78-411d-bf0d-f8ee81263912  COMPLETE
+    6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30  COMPLETE
+    42e84f67-d517-4ed6-b571-d3b11059cfa6  COMPLETE
+    395e3e97-c259-46dd-a3ef-1b5441c6de10  COMPLETE
     Restoration UUID                      State
-    bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
+    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
+    f4256380-4f63-4937-830f-5be135d97717  RESTORED
     ```
 
 1. Verify the data is restored, with a row for employee 1223:
@@ -259,7 +293,7 @@ Relative times can be in any of the following formats (again, note that you can 
     ```
 
     ```output
-    employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary 
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -361,7 +395,5 @@ This is a BETA feature, and is in active development. Currently, you can **resto
 
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
-* Automatic configuration
-* Support for undoing metadata operations, such as CREATE, ALTER, TRUNCATE, or DROP TABLE
-* Schedules to take snapshots at user-defined intervals
+* Support for undoing YSQL metadata operations, such as CREATE, ALTER, TRUNCATE, or DROP TABLE
 * Options to restore with different granularities, such as a single YSQL database or the whole YCQL dataset.

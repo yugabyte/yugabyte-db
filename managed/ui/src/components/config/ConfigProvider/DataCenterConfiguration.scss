@@ -455,10 +455,10 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  column-gap: 8px;
 
   .disable-delete {
     display: inline-block;
-    margin: 4px 20px 4px auto;
     font-size: inherit;
 
     .fa-ban {

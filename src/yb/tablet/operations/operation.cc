@@ -62,17 +62,18 @@ std::string Operation::LogPrefix() const {
 Status Operation::Replicated(int64_t leader_term) {
   Status complete_status = Status::OK();
   RETURN_NOT_OK(DoReplicated(leader_term, &complete_status));
-  auto* state = this->state();
-  if (state->use_mvcc()) {
-    state->tablet()->mvcc_manager()->Replicated(state->hybrid_time(), state->op_id());
-  }
+  auto state = this->state();
+  state->Replicated();
   state->Release();
   state->CompleteWithStatus(complete_status);
   return Status::OK();
 }
 
 void Operation::Aborted(const Status& status) {
-  state()->CompleteWithStatus(DoAborted(status));
+  VLOG_WITH_PREFIX_AND_FUNC(4) << status;
+  auto state = this->state();
+  state->Aborted();
+  state->CompleteWithStatus(DoAborted(status));
 }
 
 void OperationState::CompleteWithStatus(const Status& status) const {
@@ -91,10 +92,9 @@ OperationState::OperationState(Tablet* tablet)
     : tablet_(tablet) {
 }
 
-void OperationState::set_consensus_round(
-    const scoped_refptr<consensus::ConsensusRound>& consensus_round) {
+void OperationState::set_consensus_round(const consensus::ConsensusRoundPtr& consensus_round) {
   consensus_round_ = consensus_round;
-  op_id_ = OpId::FromPB(consensus_round_->id());
+  op_id_ = consensus_round_->id();
   UpdateRequestFromConsensusRound();
 }
 
@@ -106,13 +106,6 @@ void OperationState::set_hybrid_time(const HybridTime& hybrid_time) {
   std::lock_guard<simple_spinlock> l(mutex_);
   DCHECK(!hybrid_time_.is_valid());
   hybrid_time_ = hybrid_time;
-}
-
-void OperationState::TrySetHybridTimeFromClock() {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  if (!hybrid_time_.is_valid()) {
-    hybrid_time_ = tablet_->clock()->Now();
-  }
 }
 
 std::string OperationState::LogPrefix() const {
@@ -128,13 +121,53 @@ std::string OperationState::ConsensusRoundAsString() const {
   return AsString(consensus_round());
 }
 
-void OperationState::LeaderInit(const OpId& op_id, const OpId& committed_op_id) {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  auto* replicate_msg = consensus_round_->replicate_msg().get();
-  op_id.ToPB(replicate_msg->mutable_id());
-  committed_op_id.ToPB(replicate_msg->mutable_committed_op_id());
-  replicate_msg->set_hybrid_time(hybrid_time_.ToUint64());
-  replicate_msg->set_monotonic_counter(*tablet()->monotonic_counter());
+void OperationState::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
+  HybridTime hybrid_time;
+  if (use_mvcc()) {
+    hybrid_time = tablet_->mvcc_manager()->AddLeaderPending(op_id);
+  } else {
+    hybrid_time = tablet_->clock()->Now();
+  }
+
+  {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    hybrid_time_ = hybrid_time;
+    op_id_ = op_id;
+    auto* replicate_msg = consensus_round_->replicate_msg().get();
+    op_id.ToPB(replicate_msg->mutable_id());
+    committed_op_id.ToPB(replicate_msg->mutable_committed_op_id());
+    replicate_msg->set_hybrid_time(hybrid_time_.ToUint64());
+    replicate_msg->set_monotonic_counter(*tablet()->monotonic_counter());
+  }
+
+  AddedAsPending();
+}
+
+void OperationState::AddedToFollower() {
+  if (use_mvcc()) {
+    tablet()->mvcc_manager()->AddFollowerPending(hybrid_time(), op_id());
+  }
+
+  AddedAsPending();
+}
+
+void OperationState::Aborted() {
+  if (use_mvcc()) {
+    auto hybrid_time = hybrid_time_even_if_unset();
+    if (hybrid_time.is_valid()) {
+      tablet()->mvcc_manager()->Aborted(hybrid_time, op_id());
+    }
+  }
+
+  RemovedFromPending();
+}
+
+void OperationState::Replicated() {
+  if (use_mvcc()) {
+    tablet()->mvcc_manager()->Replicated(hybrid_time(), op_id());
+  }
+
+  RemovedFromPending();
 }
 
 void OperationState::Release() {

@@ -540,7 +540,13 @@ class WritableFile {
   //
   // For implementation specific quirks and details, see comments in
   // implementation source code (e.g., env_posix.cc)
-  virtual CHECKED_STATUS AppendVector(const std::vector<Slice>& data_vector) = 0;
+  CHECKED_STATUS AppendVector(const std::vector<Slice>& data_vector);
+
+  virtual CHECKED_STATUS AppendSlices(const Slice* slices, size_t num) = 0;
+
+  CHECKED_STATUS AppendSlices(const Slice* begin, const Slice* end) {
+    return AppendSlices(begin, end - begin);
+  }
 
   virtual CHECKED_STATUS Close() = 0;
 
@@ -578,8 +584,8 @@ class WritableFileWrapper : public WritableFile {
 
   CHECKED_STATUS PreAllocate(uint64_t size) override { return target_->PreAllocate(size); }
   CHECKED_STATUS Append(const Slice& data) override { return target_->Append(data); }
-  CHECKED_STATUS AppendVector(const std::vector<Slice>& data_vector) override {
-    return target_->AppendVector(data_vector);
+  CHECKED_STATUS AppendSlices(const Slice* slices, size_t num) override {
+    return target_->AppendSlices(slices, num);
   }
   CHECKED_STATUS Close() override { return target_->Close(); }
   CHECKED_STATUS Flush(FlushMode mode) override { return target_->Flush(mode); }

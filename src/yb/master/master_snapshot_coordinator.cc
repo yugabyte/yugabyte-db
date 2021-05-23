@@ -545,8 +545,8 @@ class MasterSnapshotCoordinator::Impl {
     } else if ((**it).ShouldUpdate(*new_entry)) {
       map->replace(it, std::move(new_entry));
     } else {
-      LOG(INFO) << __func__ << " ignore because of version check, existing: "
-                << (**it).ToString() << ", loaded: " << new_entry->ToString();
+      VLOG_WITH_FUNC(1) << "Ignore because of version check, existing: " << (**it).ToString()
+                        << ", loaded: " << new_entry->ToString();
     }
 
     return Status::OK();
@@ -693,7 +693,7 @@ class MasterSnapshotCoordinator::Impl {
       WARN_NOT_OK(ExecuteScheduleOperation(operation, leader_term),
                   Format("Failed to execute operation on $0", operation.schedule_id));
     }
-    context_.CleanupHiddenTablets(data.schedule_min_restore_time);
+    context_.CleanupHiddenObjects(data.schedule_min_restore_time);
   }
 
   SnapshotState* BoundingSnapshot(const SnapshotScheduleId& schedule_id, Bound bound)

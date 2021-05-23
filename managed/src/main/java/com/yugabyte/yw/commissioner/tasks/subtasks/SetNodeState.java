@@ -25,20 +25,27 @@ public class SetNodeState extends NodeTaskBase {
   }
 
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public String toString() {
-    return super.getName() + "(" + taskParams().nodeName + ", " +
-           taskParams().state.toString() + ")";
+    return super.getName()
+        + "("
+        + taskParams().nodeName
+        + ", "
+        + taskParams().state.toString()
+        + ")";
   }
 
   @Override
   public void run() {
     try {
-      LOG.info("Updating node {} state to {} in universe {}.",
-               taskParams().nodeName, taskParams().state, taskParams().universeUUID);
+      LOG.info(
+          "Updating node {} state to {} in universe {}.",
+          taskParams().nodeName,
+          taskParams().state,
+          taskParams().universeUUID);
       setNodeState(taskParams().state);
     } catch (Exception e) {
       throw new RuntimeException(e);

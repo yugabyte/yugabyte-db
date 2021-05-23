@@ -82,6 +82,8 @@ set(DOCDB_SRCS
         shared_lock_manager.cc
         subdocument.cc
         subdoc_reader.cc
+        transaction_dump.cc
+        transaction_status_cache.cc
         value.cc
         kv_debug.cc
         )

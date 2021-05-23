@@ -2472,4 +2472,15 @@ Status ExternalTabletServer::Restart(bool start_cql_proxy) {
   return Start(start_cql_proxy);
 }
 
+Status RestartAllMasters(ExternalMiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_masters(); ++i) {
+    cluster->master(i)->Shutdown();
+  }
+  for (int i = 0; i != cluster->num_masters(); ++i) {
+    RETURN_NOT_OK(cluster->master(i)->Restart());
+  }
+
+  return Status::OK();
+}
+
 }  // namespace yb

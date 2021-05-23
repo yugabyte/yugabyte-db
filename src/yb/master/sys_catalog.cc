@@ -580,8 +580,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests */,
-          consensus::SplitOpInfo()),
+          nullptr /* retryable_requests */),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),

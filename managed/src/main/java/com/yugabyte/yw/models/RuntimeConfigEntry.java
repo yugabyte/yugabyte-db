@@ -19,8 +19,7 @@ import static java.util.stream.Collectors.toMap;
 public class RuntimeConfigEntry extends Model {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfigEntry.class);
 
-  @EmbeddedId
-  private final RuntimeConfigEntryKey idKey;
+  @EmbeddedId private final RuntimeConfigEntryKey idKey;
 
   private String value;
 
@@ -42,12 +41,10 @@ public class RuntimeConfigEntry extends Model {
   }
 
   private static final Finder<UUID, RuntimeConfigEntry> findInScope =
-    new Finder<UUID, RuntimeConfigEntry>(RuntimeConfigEntry.class) {
-    };
+      new Finder<UUID, RuntimeConfigEntry>(RuntimeConfigEntry.class) {};
 
   private static final Finder<RuntimeConfigEntryKey, RuntimeConfigEntry> findOne =
-    new Finder<RuntimeConfigEntryKey, RuntimeConfigEntry>(RuntimeConfigEntry.class) {
-    };
+      new Finder<RuntimeConfigEntryKey, RuntimeConfigEntry>(RuntimeConfigEntry.class) {};
 
   public static List<RuntimeConfigEntry> getAll(UUID scope) {
     return findInScope.query().where().eq("scope_uuid", scope).findList();
@@ -58,11 +55,10 @@ public class RuntimeConfigEntry extends Model {
   }
 
   public static Map<String, String> getAsMapForScope(UUID scope) {
-    List<RuntimeConfigEntry> scopedValues =
-      getAll(scope);
+    List<RuntimeConfigEntry> scopedValues = getAll(scope);
     return scopedValues
-      .stream()
-      .collect(toMap(RuntimeConfigEntry::getPath, RuntimeConfigEntry::getValue));
+        .stream()
+        .collect(toMap(RuntimeConfigEntry::getPath, RuntimeConfigEntry::getValue));
   }
 
   @Transactional
@@ -121,9 +117,6 @@ public class RuntimeConfigEntry extends Model {
 
   @Override
   public String toString() {
-    return "RuntimeConfigEntry{" +
-      "idKey=" + idKey +
-      ", value='" + value + '\'' +
-      '}';
+    return "RuntimeConfigEntry{" + "idKey=" + idKey + ", value='" + value + '\'' + '}';
   }
 }

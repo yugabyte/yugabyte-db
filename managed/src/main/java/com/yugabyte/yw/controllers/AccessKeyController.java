@@ -9,8 +9,7 @@ import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.AccessKeyFormData;
-import com.yugabyte.yw.forms.YWSuccess;
-import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -34,14 +33,11 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
 public class AccessKeyController extends AuthenticatedController {
 
-  @Inject
-  ValidatingFormFactory formFactory;
+  @Inject ValidatingFormFactory formFactory;
 
-  @Inject
-  AccessManager accessManager;
+  @Inject AccessManager accessManager;
 
-  @Inject
-  TemplateManager templateManager;
+  @Inject TemplateManager templateManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
@@ -71,16 +67,17 @@ public class AccessKeyController extends AuthenticatedController {
     String keyCode = formData.get().keyCode;
     String keyContent = formData.get().keyContent;
     AccessManager.KeyType keyType = formData.get().keyType;
-    String sshUser =  formData.get().sshUser;
-    Integer sshPort =  formData.get().sshPort;
+    String sshUser = formData.get().sshUser;
+    Integer sshPort = formData.get().sshPort;
     boolean airGapInstall = formData.get().airGapInstall;
     boolean skipProvisioning = formData.get().skipProvisioning;
     AccessKey accessKey;
 
     LOG.info(
-      "Creating access key {} for customer {}, provider {}.",
-      keyCode, customerUUID, providerUUID
-    );
+        "Creating access key {} for customer {}, provider {}.",
+        keyCode,
+        customerUUID,
+        providerUUID);
 
     // Check if a public/private key was uploaded as part of the request
     Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
@@ -90,9 +87,16 @@ public class AccessKeyController extends AuthenticatedController {
       if (keyType == null || uploadedFile == null) {
         return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
       }
-      accessKey = accessManager.uploadKeyFile(
-          region.uuid, uploadedFile, keyCode, keyType, sshUser, sshPort, airGapInstall,
-          skipProvisioning);
+      accessKey =
+          accessManager.uploadKeyFile(
+              region.uuid,
+              uploadedFile,
+              keyCode,
+              keyType,
+              sshUser,
+              sshPort,
+              airGapInstall,
+              skipProvisioning);
     } else if (keyContent != null && !keyContent.isEmpty()) {
       if (keyType == null) {
         return ApiResponse.error(BAD_REQUEST, "keyType params required.");
@@ -102,25 +106,31 @@ public class AccessKeyController extends AuthenticatedController {
       Files.write(tempFile, keyContent.getBytes());
 
       // Upload temp file to create the access key and return success/failure
-      accessKey = accessManager.uploadKeyFile(
-          regionUUID, tempFile.toFile(), keyCode, keyType, sshUser, sshPort, airGapInstall,
-          skipProvisioning);
+      accessKey =
+          accessManager.uploadKeyFile(
+              regionUUID,
+              tempFile.toFile(),
+              keyCode,
+              keyType,
+              sshUser,
+              sshPort,
+              airGapInstall,
+              skipProvisioning);
     } else {
-      accessKey = accessManager.addKey(
-          regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
+      accessKey =
+          accessManager.addKey(regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
     }
 
     // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
     // and create a preprovision script
     if (region.provider.code.equals(onprem.name())) {
       templateManager.createProvisionTemplate(
-        accessKey,
-        airGapInstall,
-        formData.get().passwordlessSudoAccess,
-        formData.get().installNodeExporter,
-        formData.get().nodeExporterPort,
-        formData.get().nodeExporterUser
-      );
+          accessKey,
+          airGapInstall,
+          formData.get().passwordlessSudoAccess,
+          formData.get().installNodeExporter,
+          formData.get().nodeExporterPort,
+          formData.get().nodeExporterUser);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(accessKey);
@@ -131,11 +141,9 @@ public class AccessKeyController extends AuthenticatedController {
     Provider.getOrBadRequest(customerUUID, providerUUID);
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
     LOG.info(
-      "Deleting access key {} for customer {}, provider {}",
-      keyCode, customerUUID, providerUUID
-    );
+        "Deleting access key {} for customer {}, provider {}", keyCode, customerUUID, providerUUID);
 
-    accessKey.deleteOrThrow(); 
+    accessKey.deleteOrThrow();
     auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success("Deleted KeyCode: " + keyCode);
   }
