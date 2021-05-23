@@ -38,13 +38,13 @@ public class AuditController extends AuthenticatedController {
    */
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
-    Audit entry = Audit.getOrBadRequest(customerUUID, taskUUID);
+    Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
     return ApiResponse.success(entry);
   }
 
   public Result getUserFromTask(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
-    Audit entry = Audit.getOrBadRequest(customerUUID, taskUUID);
+    Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
     Users user = Users.get(entry.getUserUUID());
     return ApiResponse.success(user);
   }
