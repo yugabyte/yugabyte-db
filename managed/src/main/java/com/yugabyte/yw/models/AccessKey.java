@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 package com.yugabyte.yw.models;
+
 import play.mvc.Http;
 import play.mvc.Result;
 import io.ebean.*;
@@ -71,9 +72,9 @@ public class AccessKey extends Model {
   }
 
   public void deleteOrThrow() {
-    if(!super.delete()) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR,
-          "Delete unsuccessfull for : " + this.idKey);
+    if (!super.delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Delete unsuccessfull for : " + this.idKey);
     }
   }
 
