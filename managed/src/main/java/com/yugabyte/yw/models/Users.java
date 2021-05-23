@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.models;
 
-import com.yugabyte.yw.common.YWServiceException;
-
 import java.util.Date;
 import java.util.UUID;
 import java.util.List;
