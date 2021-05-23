@@ -2277,7 +2277,6 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
         errcode == ErrorCode::INVALID_ARGUMENTS        ||
         errcode == ErrorCode::OBJECT_NOT_FOUND         ||
         errcode == ErrorCode::TYPE_NOT_FOUND) {
-
       if (errcode == ErrorCode::INVALID_ARGUMENTS) {
         // Check the table schema is up-to-date.
         const shared_ptr<client::YBTable> table = GetTableFromStatement(parse_tree.root().get());
