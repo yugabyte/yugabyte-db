@@ -82,6 +82,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     BACKFILL_TABLE,
     ASYNC_SPLIT_TABLET,
     START_ELECTION,
+    ASYNC_GET_TABLET_SPLIT_KEY,
   };
 
   virtual Type type() const = 0;
@@ -101,6 +102,10 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   // Whether task was started by the LB.
   virtual bool started_by_lb() const {
     return false;
+  }
+
+  std::string ToString() const {
+    return Format("{ type: $0 description: $1 }", type(), description());
   }
 
  protected:

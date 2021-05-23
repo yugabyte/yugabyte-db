@@ -51,7 +51,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -71,12 +71,17 @@ public class SetFlagInMemory extends ServerSubTaskBase {
       if (gflags == null) {
         throw new IllegalArgumentException("Gflags cannot be null during a setFlag operation.");
       }
-      for (Entry<String, String> gflag: gflags.entrySet()) {
-        boolean setSuccess = client.setFlag(hp, gflag.getKey(), gflag.getValue(),
-                                            taskParams().force);
+      for (Entry<String, String> gflag : gflags.entrySet()) {
+        boolean setSuccess =
+            client.setFlag(hp, gflag.getKey(), gflag.getValue(), taskParams().force);
         if (!setSuccess) {
-          throw new RuntimeException("Could not set gflag " + gflag + " for " +
-                                     taskParams().serverType + " on node " + taskParams().nodeName);
+          throw new RuntimeException(
+              "Could not set gflag "
+                  + gflag
+                  + " for "
+                  + taskParams().serverType
+                  + " on node "
+                  + taskParams().nodeName);
         }
       }
     } catch (Exception e) {

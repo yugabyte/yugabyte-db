@@ -21,18 +21,19 @@ public class AuditController extends AuthenticatedController {
 
   /**
    * GET endpoint for listing all audit entries for a user.
+   *
    * @return JSON response with audit entries belonging to the user.
    */
   public Result list(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-
-    List<Audit> auditList = Audit.getAllUserEntries(user.uuid);
+    List<Audit> auditList = auditService().getAllUserEntries(user.uuid);
     return ApiResponse.success(auditList);
   }
 
   /**
    * GET endpoint for getting the user associated with a task.
+   *
    * @return JSON response with the corresponding audit entry.
    */
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {

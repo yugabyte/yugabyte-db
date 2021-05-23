@@ -60,7 +60,7 @@ showAsideToc: true
 
 </ul>
 
-## 1. Create a new security group (optional)
+## Create a new security group (optional)
 
 In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the Yugabyte Platform machine. You will at minimum need to:
 
@@ -79,7 +79,7 @@ You should see something like the screenshot below. Click **Create** next.
 
 ![Create security group](/images/ee/aws-setup/yugaware-aws-create-sg.png)
 
-## 2. Create a new IAM role (optional)
+## Create an IAM role (optional)
 
 In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to your AWS infrastructure is required. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
 
@@ -135,25 +135,68 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
 }
 ```
 
-## 3. Provision an instance for Yugabyte Platform
+## Provision an instance for Yugabyte Platform
 
-Create an instance to run the Yugabyte Platform server. In order to do so, go to **EC2 > Instances** and click **Launch Instance**. Fill in the following values.
+Create an instance to run the Yugabyte Platform server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
 
-- Change the boot disk image to `Ubuntu 16.04` and continue to the next step.
-![Pick OS Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
+- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: <br><br>
+![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
-- Choose `c5.xlarge` (4 vCPUs are recommended for production) as the machine type. Continue to the next step.
+- Select c5.xlarge as the instance type (4 vCPUs are recommended for production). 
 
-- Choose the VPC, subnet and other settings as appropriate. Make sure to enable the **Auto-assign Public IP** setting, otherwise this machine would not be accessible from outside AWS. If you created an IAM role above, or already had one that you would like to use, provide that under **IAM role**. Continue to the next step.
+- Define the VPC, subnet, and other settings as required. 
 
-- Increase the root storage volume size to at least `100GiB`. Continue to the next step.
+  Ensure that **Auto-assign Public IP** is enabled (if it is disabled, the instance would not be accessible from outside AWS). 
 
-- Add a tag to name the machine. You can set key to `Name` and value to `yugaware-1`. Continue to the next step.
+  If you created an IAM role, as described in [Create an IAM role](#create-an-iam-role-(optional)), or already had the IAM role that you would like to use, include this information under **IAM role**. See [Deploy the YugabyteDB universe using an IAM role](#deploy-the-yugabytedb-universe-using-an-iam-role) for more information.
 
-- Select the `yugaware-sg` security group created in the previous step (or the custom name you chose when setting up the security groups). Launch the instance.
+- Increase the root storage volume size to at least 100GiB.
 
-- Pick an existing key pair (or create a new one) in order to access the machine. Make sure you have the ssh access key. This is important to enable `ssh` access to this machine. In this example, assume that the key pair is `~/.ssh/yugaware.pem`.
+- Add a tag to name the instance. You can set key to `Name` and value to `yugaware-1`.
 
-Finally, click **Launch** to launch the Yugabyte Platform server. You should see a machine being created as shown in the image below.
+- Select the `yugaware-sg` security group created in the previous step (or the custom name you chose when setting up the security groups), and then launch the instance.
 
-![Pick OS Image](/images/ee/aws-setup/yugaware-machine-creation.png)
+- Pick an existing key pair or create a new one in order to access the instance. 
+
+  Ensure that you have the SSH access key because it is required for enabling `ssh` access to the computer. In this example, assume that the key pair is `~/.ssh/yugaware.pem`.
+
+- Click **Launch** to launch the Yugabyte Platform server. 
+
+  You should see an instance being created, as shown in the following illustration:<br><br>
+
+  ![Image](/images/ee/aws-setup/yugaware-machine-creation.png)
+
+### Deploy the YugabyteDB universe using an IAM role
+
+If you are planning to use an IAM role while deploying the universe in your AWS account, you need to attach the IAM role to the Yugabyte Platform VM before launching the instance, as follows:
+
+1. Navigate to **EC2 > New Instance > Confirm Instance Details > Attach the IAM role**.
+2. Set the **IAM role** field to your IAM role (for example, ec2-admin-access).
+3. Set the **Metadata accessible** field to Enabled.
+4. Set the **Metadata version** field to V1 and V2 (token optional).
+5. Set the **Metadata token response hop limit** field to 3, as per the following illustration:
+
+  ![AIM for AWS](/images/ee/aws-setup/iam-for-aws.png)
+
+If you are configuring an existing instance of Yugabyte Platform, start by attaching the IAM role as follows:
+
+1. Navigate to **EC2 > Instances**.
+2. Select the instance.
+3. Navigate to **Actions > Security > Modify IAM role**.
+4. Add the IAM role.
+5. Click **Save**.
+
+Then execute the following command to change metadata options (replace `NNNNNNN` with the instance ID and `us-west-2` with the region in which this EC2 VM is deployed):
+
+```shell
+aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-response-hop-limit 3 --http-endpoint enabled --region us-west-2
+```
+
+For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html). 
+
+When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws), you need to  complete the following fields in the **Cloud Provider Configuration > AWS** screen: 
+
+- Set the **Credential Type** field to Use IAM Role on instance.
+- Set the **VPC Setup** field to Create a new VPC.
+- Add **US West 1** as a region.
+- Click **Save**.

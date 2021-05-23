@@ -17,6 +17,7 @@ import javax.persistence.*;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
@@ -52,8 +53,7 @@ public class Audit extends Model {
   }
 
   // The task creation time.
-  @CreatedTimestamp
-  private final Date timestamp;
+  @CreatedTimestamp private final Date timestamp;
 
   public Date getTimestamp() {
     return this.timestamp;
@@ -104,28 +104,7 @@ public class Audit extends Model {
     this.timestamp = new Date();
   }
 
-  public static final Finder<UUID, Audit> find = new Finder<UUID, Audit>(Audit.class) {
-  };
-
-  public static void createAuditEntry(Http.Context ctx, Http.Request request) {
-    createAuditEntry(ctx, request, null, null);
-  }
-
-  public static void createAuditEntry(Http.Context ctx, Http.Request request, JsonNode params) {
-    createAuditEntry(ctx, request, params, null);
-  }
-
-  public static void createAuditEntry(Http.Context ctx, Http.Request request, UUID taskUUID) {
-    createAuditEntry(ctx, request, null, taskUUID);
-  }
-
-  public static void createAuditEntry(
-    Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
-    Users user = (Users) ctx.args.get("user");
-    String method = request.method();
-    String path = request.path();
-    Audit entry = Audit.create(user.uuid, user.customerUUID, path, method, params, taskUUID);
-  }
+  public static final Finder<UUID, Audit> find = new Finder<UUID, Audit>(Audit.class) {};
 
   /**
    * Create new audit entry.
@@ -133,12 +112,12 @@ public class Audit extends Model {
    * @return Newly Created Audit table entry.
    */
   public static Audit create(
-    UUID userUUID,
-    UUID customerUUID,
-    String apiCall,
-    String apiMethod,
-    JsonNode body,
-    UUID taskUUID) {
+      UUID userUUID,
+      UUID customerUUID,
+      String apiCall,
+      String apiMethod,
+      JsonNode body,
+      UUID taskUUID) {
     Audit entry = new Audit();
     entry.customerUUID = customerUUID;
     entry.userUUID = userUUID;
@@ -172,5 +151,9 @@ public class Audit extends Model {
 
   public static List<Audit> getAllUserEntries(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
+  public static void forEachEntry(Consumer<Audit> consumer) {
+    find.query().findEach(consumer);
   }
 }

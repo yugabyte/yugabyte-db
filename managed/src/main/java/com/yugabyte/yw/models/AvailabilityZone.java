@@ -19,8 +19,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 @Entity
 public class AvailabilityZone extends Model {
 
-  @Id
-  public UUID uuid;
+  @Id public UUID uuid;
 
   @Column(length = 25, nullable = false)
   public String code;
@@ -74,12 +73,9 @@ public class AvailabilityZone extends Model {
     return this.config == null ? new HashMap<>() : this.config;
   }
 
-  /**
-   * Query Helper for Availability Zone with primary key
-   */
+  /** Query Helper for Availability Zone with primary key */
   public static final Finder<UUID, AvailabilityZone> find =
-    new Finder<UUID, AvailabilityZone>(AvailabilityZone.class) {
-    };
+      new Finder<UUID, AvailabilityZone>(AvailabilityZone.class) {};
 
   public static AvailabilityZone create(Region region, String code, String name, String subnet) {
     AvailabilityZone az = new AvailabilityZone();
@@ -101,20 +97,24 @@ public class AvailabilityZone extends Model {
 
   public static AvailabilityZone getByCode(Provider provider, String code) {
     return maybeGetByCode(provider, code)
-      .orElseThrow(() -> new RuntimeException(
-        "AZ by code: " + code + " and provider " + provider.code + " NOT FOUND "));
+        .orElseThrow(
+            () ->
+                new RuntimeException(
+                    "AZ by code: " + code + " and provider " + provider.code + " NOT FOUND "));
   }
 
   public static Optional<AvailabilityZone> maybeGetByCode(Provider provider, String code) {
-    return getAllByCode(code).stream()
-      .filter(az -> az.getProvider().uuid.equals(provider.uuid))
-      .findFirst();
+    return getAllByCode(code)
+        .stream()
+        .filter(az -> az.getProvider().uuid.equals(provider.uuid))
+        .findFirst();
   }
 
   public static AvailabilityZone getOrBadRequest(UUID zoneUuid) {
     return maybeGet(zoneUuid)
-      .orElseThrow(() -> new YWServiceException(
-        BAD_REQUEST, "Invalid AvailabilityZone UUID: " + zoneUuid));
+        .orElseThrow(
+            () ->
+                new YWServiceException(BAD_REQUEST, "Invalid AvailabilityZone UUID: " + zoneUuid));
   }
 
   // TODO getOrNull should be replaced by maybeGet or getOrBadRequest
@@ -124,18 +124,18 @@ public class AvailabilityZone extends Model {
   }
 
   public static Optional<AvailabilityZone> maybeGet(UUID zoneUuid) {
-    return AvailabilityZone.find.query().
-      fetch("region")
-      .fetch("region.provider")
-      .where()
-      .idEq(zoneUuid)
-      .findOneOrEmpty();
+    return AvailabilityZone.find
+        .query()
+        .fetch("region")
+        .fetch("region.provider")
+        .where()
+        .idEq(zoneUuid)
+        .findOneOrEmpty();
   }
 
   @JsonBackReference
   public Provider getProvider() {
-    String providerQuery =
-      "select p.uuid, p.code, p.name from provider p where p.uuid = :p_uuid";
+    String providerQuery = "select p.uuid, p.code, p.name from provider p where p.uuid = :p_uuid";
     RawSql rawSql = RawSqlBuilder.parse(providerQuery).create();
     Query<Provider> query = Ebean.find(Provider.class);
     query.setRawSql(rawSql);
@@ -145,14 +145,24 @@ public class AvailabilityZone extends Model {
 
   @Override
   public String toString() {
-    return "AvailabilityZone{" +
-      "uuid=" + uuid +
-      ", code='" + code + '\'' +
-      ", name='" + name + '\'' +
-      ", region=" + region +
-      ", active=" + active +
-      ", subnet='" + subnet + '\'' +
-      ", config=" + config +
-      '}';
+    return "AvailabilityZone{"
+        + "uuid="
+        + uuid
+        + ", code='"
+        + code
+        + '\''
+        + ", name='"
+        + name
+        + '\''
+        + ", region="
+        + region
+        + ", active="
+        + active
+        + ", subnet='"
+        + subnet
+        + '\''
+        + ", config="
+        + config
+        + '}';
   }
 }

@@ -38,11 +38,11 @@ public class CustomerConfigValidator {
 
   private static final String NAME_AZURE = "AZ";
 
-  private static final String[] S3_URL_SCHEMES = { "http", "https", "s3" };
+  private static final String[] S3_URL_SCHEMES = {"http", "https", "s3"};
 
-  private static final String[] GCS_URL_SCHEMES = { "http", "https", "gs" };
+  private static final String[] GCS_URL_SCHEMES = {"http", "https", "gs"};
 
-  private static final String[] AZ_URL_SCHEMES = { "http", "https" };
+  private static final String[] AZ_URL_SCHEMES = {"http", "https"};
 
   private static final String AWS_HOST_BASE_FIELDNAME = "AWS_HOST_BASE";
 
@@ -52,7 +52,7 @@ public class CustomerConfigValidator {
 
   private final Validator validator;
 
-  public static abstract class ConfigValidator {
+  public abstract static class ConfigValidator {
 
     protected final String type;
 
@@ -72,7 +72,7 @@ public class CustomerConfigValidator {
     protected abstract void doValidate(JsonNode data, ObjectNode errorsCollector);
   }
 
-  public static abstract class ConfigFieldValidator extends ConfigValidator {
+  public abstract static class ConfigFieldValidator extends ConfigValidator {
 
     protected final String fieldName;
 
@@ -83,8 +83,8 @@ public class CustomerConfigValidator {
 
     @Override
     public void doValidate(JsonNode data, ObjectNode errorsCollector) {
-        JsonNode value = data.get(fieldName);
-        doValidate(value == null ? "" : value.asText(), errorsCollector);
+      JsonNode value = data.get(fieldName);
+      doValidate(value == null ? "" : value.asText(), errorsCollector);
     }
 
     protected abstract void doValidate(String value, ObjectNode errorsCollector);
@@ -106,14 +106,13 @@ public class CustomerConfigValidator {
         Set<ConstraintViolation<T>> violations = validator.validate(config);
         if (!violations.isEmpty()) {
           ArrayNode errors = Json.newArray();
-          violations.stream()
-            .map(ConstraintViolation::getMessage)
-            .forEach(errors::add);
+          violations.stream().map(ConstraintViolation::getMessage).forEach(errors::add);
           errorsCollector.set(name, errors);
         }
       } catch (RuntimeException | JsonProcessingException e) {
-        errorsCollector.set(name, Json.newArray()
-          .add("Invalid json for type '" + configClass.getSimpleName() + "'."));
+        errorsCollector.set(
+            name,
+            Json.newArray().add("Invalid json for type '" + configClass.getSimpleName() + "'."));
       }
     }
   }
@@ -143,8 +142,8 @@ public class CustomerConfigValidator {
 
     private final boolean emptyAllowed;
 
-    public ConfigValidatorUrl(String type, String name, String fieldName, String[] schemes,
-        boolean emptyAllowed) {
+    public ConfigValidatorUrl(
+        String type, String name, String fieldName, String[] schemes, boolean emptyAllowed) {
       super(type, name, fieldName);
       this.emptyAllowed = emptyAllowed;
       urlValidator = new UrlValidator(schemes, UrlValidator.ALLOW_LOCAL_URLS);
@@ -162,8 +161,9 @@ public class CustomerConfigValidator {
       boolean valid = false;
       try {
         URI uri = new URI(value);
-        valid = urlValidator
-            .isValid(StringUtils.isEmpty(uri.getScheme()) ? DEFAULT_SCHEME + value : value);
+        valid =
+            urlValidator.isValid(
+                StringUtils.isEmpty(uri.getScheme()) ? DEFAULT_SCHEME + value : value);
       } catch (URISyntaxException e) {
       }
 
@@ -178,18 +178,24 @@ public class CustomerConfigValidator {
   @Inject
   public CustomerConfigValidator(Validator validator) {
     this.validator = validator;
-    validators.add(new ConfigValidatorRegEx(STORAGE.name(), NAME_NFS, BACKUP_LOCATION_FIELDNAME,
-        NFS_PATH_REGEXP));
-    validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME,
-        S3_URL_SCHEMES, false));
-    validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_S3, AWS_HOST_BASE_FIELDNAME,
-        S3_URL_SCHEMES, true));
-    validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME,
-        GCS_URL_SCHEMES, false));
-    validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_AZURE, BACKUP_LOCATION_FIELDNAME,
-        AZ_URL_SCHEMES, false));
-    validators.add(new ConfigObjectValidator<>(
-      PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
+    validators.add(
+        new ConfigValidatorRegEx(
+            STORAGE.name(), NAME_NFS, BACKUP_LOCATION_FIELDNAME, NFS_PATH_REGEXP));
+    validators.add(
+        new ConfigValidatorUrl(
+            STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME, S3_URL_SCHEMES, false));
+    validators.add(
+        new ConfigValidatorUrl(
+            STORAGE.name(), NAME_S3, AWS_HOST_BASE_FIELDNAME, S3_URL_SCHEMES, true));
+    validators.add(
+        new ConfigValidatorUrl(
+            STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME, GCS_URL_SCHEMES, false));
+    validators.add(
+        new ConfigValidatorUrl(
+            STORAGE.name(), NAME_AZURE, BACKUP_LOCATION_FIELDNAME, AZ_URL_SCHEMES, false));
+    validators.add(
+        new ConfigObjectValidator<>(
+            PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
   }
 
   public ObjectNode validateFormData(JsonNode formData) {
@@ -212,17 +218,15 @@ public class CustomerConfigValidator {
   }
 
   /**
-   * Validates data which is contained in formData.
-   * During the procedure it calls all the registered validators. Errors are collected and
-   * returned back as a result. Empty result object means no errors.
+   * Validates data which is contained in formData. During the procedure it calls all the registered
+   * validators. Errors are collected and returned back as a result. Empty result object means no
+   * errors.
    *
-   * Currently are checked:
-   *  - NFS - NFS Storage Path (against regexp NFS_PATH_REGEXP);
-   *  - S3/AWS - S3 Bucket, S3 Bucket Host Base (both as URLs);
-   *  - GCS - GCS Bucket (as URL);
-   *  - AZURE - Container URL (as URL).
+   * <p>Currently are checked: - NFS - NFS Storage Path (against regexp NFS_PATH_REGEXP); - S3/AWS -
+   * S3 Bucket, S3 Bucket Host Base (both as URLs); - GCS - GCS Bucket (as URL); - AZURE - Container
+   * URL (as URL).
    *
-   * The URLs validation allows empty scheme. In such case the check is made with DEFAULT_SCHEME
+   * <p>The URLs validation allows empty scheme. In such case the check is made with DEFAULT_SCHEME
    * added before the URL.
    *
    * @param formData
@@ -230,8 +234,13 @@ public class CustomerConfigValidator {
    */
   public ObjectNode validateDataContent(JsonNode formData) {
     ObjectNode errorJson = Json.newObject();
-    validators.forEach(v -> v.validate(formData.get("type").asText(), formData.get("name").asText(),
-        formData.get("data"), errorJson));
+    validators.forEach(
+        v ->
+            v.validate(
+                formData.get("type").asText(),
+                formData.get("name").asText(),
+                formData.get("data"),
+                errorJson));
     return errorJson;
   }
 }

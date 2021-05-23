@@ -42,6 +42,10 @@ namespace yb {
 // on const pointers (i.e. "this" in a const method).
 size_t malloc_usable_size(const void* obj);
 
+// Wrapper for malloc() which checks the return pointer.
+// If the pointer is nullptr, assert with the requested size.
+char* malloc_with_check(size_t size);
+
 } // namespace yb
 
 #endif // YB_UTIL_MALLOC_H

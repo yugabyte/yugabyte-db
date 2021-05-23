@@ -607,6 +607,17 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
+YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
+                          const YBCPgOid table_oid,
+                          YBCPgStatement *handle) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->NewAnalyze(table_id, handle));
+}
+
+YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count) {
+  return ToYBCStatus(pgapi->ExecAnalyze(handle, rows_count));
+}
+
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,

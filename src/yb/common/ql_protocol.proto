@@ -46,6 +46,21 @@ message QLColumnValuePB {
 // very beginning of the next tablet. (TODO: we need to return the clean snapshot time in this case
 // also).
 //
+// RowCounter message.
+// - These state variables are exchanged between users and CQL server when query result is paged.
+// - DocDB does not use these.
+message QLSelectRowCounterPB {
+  // The following counters represent LIMIT and OFFSET clause in SELECT and their status.
+  //   SELECT ... FROM table LIMIT xxx OFFSET yyy;
+  // - When a field value == -1, that field is not used.
+  // - When a field value >= 0, it is valid.
+  // - Example: If "select_limit == 0", users are querying zero rows.
+  optional int64 select_limit = 1 [default = -1];
+  optional int64 select_offset = 2 [default = -1];
+  optional int64 read_count = 3 [default = 0];
+  optional int64 skip_count = 4 [default = 0];
+}
+
 message QLPagingStatePB {
   // Table UUID to verify the same table still exists when continuing in the next fetch.
   optional bytes table_id = 1;
@@ -74,6 +89,18 @@ message QLPagingStatePB {
 
   // Used read time.
   optional ReadHybridTimePB read_time = 8;
+
+  // SELECT row counters.
+  // NOTE:
+  // - The select-row-counter is always applied to the entire SELECT statement.
+  // - The rest of the counters might be applied to just one batch. When indexed query returns
+  //   data in batches, and these counters would be for just one specific batch.
+  //
+  // Example on nested query.
+  //   SELECT <data> FROM <table> WHERE <keys> IN (SELECT <keys> FROM <index> WHERE hash IN <set>)
+  //   - The <row_counter> is used for query "SELECT <data>".
+  //   - The rest of the counters are for nested query "SELECT <keys>".
+  optional QLSelectRowCounterPB row_counter = 9;
 }
 
 //-------------------------------------- Column request --------------------------------------

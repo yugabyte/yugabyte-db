@@ -43,6 +43,12 @@ class SysCatalogWriter {
         PersistentDataEntryClass::type(), item->id(), old_pb, new_pb, op_type);
   }
 
+  template <class Item>
+  CHECKED_STATUS MutateItem(const scoped_refptr<Item>& item,
+                            QLWriteRequestPB::QLStmtType op_type) {
+    return MutateItem(item.get(), op_type);
+  }
+
   // Insert a row into a Postgres sys catalog table.
   CHECKED_STATUS InsertPgsqlTableRow(const Schema& source_schema,
                                      const QLTableRow& source_row,
