@@ -163,6 +163,18 @@ CassandraRowIterator CassandraRow::CreateIterator() const {
   return CassandraRowIterator(cass_iterator_from_row(cass_row_));
 }
 
+std::string CassandraRow::RenderToString(const std::string& separator) {
+  std::string result;
+  auto iter = CreateIterator();
+  while (iter.Next()) {
+    if (!result.empty()) {
+      result += separator;
+    }
+    result += iter.Value().ToString();
+  }
+  return result;
+}
+
 void CassandraRow::TakeIterator(CassIteratorPtr iterator) {
   cass_iterator_ = std::move(iterator);
 }
@@ -181,6 +193,20 @@ void CassandraIterator::MoveToRow(CassandraRow* row) {
 
 CassandraIterator CassandraResult::CreateIterator() const {
   return CassandraIterator(cass_iterator_from_result(cass_result_.get()));
+}
+
+std::string CassandraResult::RenderToString(
+    const std::string& line_separator, const std::string& value_separator) const {
+  std::string result;
+  auto iter = CreateIterator();
+  while (iter.Next()) {
+    auto row = iter.Row();
+    if (!result.empty()) {
+      result += ";";
+    }
+    result += row.RenderToString();
+  }
+  return result;
 }
 
 bool CassandraFuture::Ready() const {
@@ -315,6 +341,10 @@ Result<CassandraResult> CassandraSession::ExecuteWithResult(const CassandraState
   return future.Result();
 }
 
+Result<std::string> CassandraSession::ExecuteAndRenderToString(const std::string& statement) {
+  return VERIFY_RESULT(ExecuteWithResult(statement)).RenderToString();
+}
+
 CassandraFuture CassandraSession::ExecuteGetFuture(const CassandraStatement& statement) {
   return CassandraFuture(
       cass_session_execute(cass_session_.get(), statement.cass_statement_.get()));
@@ -373,11 +403,18 @@ CassandraStatement CassandraPrepared::Bind() {
 const MonoDelta kCassandraTimeOut = RegularBuildVsSanitizers(12s, 60s);
 
 CppCassandraDriver::CppCassandraDriver(
-    const std::vector<std::string>& hosts, uint16_t port, bool use_partition_aware_routing) {
+    const std::vector<std::string>& hosts, uint16_t port,
+    UsePartitionAwareRouting use_partition_aware_routing) {
 
   // Enable detailed tracing inside driver.
   if (VLOG_IS_ON(4)) {
     cass_log_set_level(CASS_LOG_TRACE);
+  } else if (VLOG_IS_ON(3)) {
+    cass_log_set_level(CASS_LOG_DEBUG);
+  } else if (VLOG_IS_ON(2)) {
+    cass_log_set_level(CASS_LOG_INFO);
+  } else if (VLOG_IS_ON(1)) {
+    cass_log_set_level(CASS_LOG_WARN);
   }
 
   auto hosts_str = JoinStrings(hosts, ",");

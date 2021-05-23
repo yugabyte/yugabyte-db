@@ -49,7 +49,7 @@ void CqlTestBase::SetUp() {
   ASSERT_OK(cql_server_->Start());
 
   driver_ = std::make_unique<CppCassandraDriver>(
-      std::vector<std::string>{ cql_host }, cql_port, false);
+      std::vector<std::string>{ cql_host }, cql_port, UsePartitionAwareRouting::kFalse);
 }
 
 void CqlTestBase::DoTearDown() {
