@@ -24,6 +24,7 @@
 
 #include "yb/util/date_time.h"
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -188,8 +189,9 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
       for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
         hosts.push_back(cluster_->tablet_server(i)->bind_host());
       }
+      LOG(INFO) << "CQL hosts: " << AsString(hosts);
       cql_driver_ = std::make_unique<CppCassandraDriver>(
-          hosts, cluster_->tablet_server(0)->cql_rpc_port(), true);
+          hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kTrue);
     }
     auto result = VERIFY_RESULT(cql_driver_->CreateSession());
     if (!db_name.empty()) {
@@ -211,6 +213,11 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   void TestUndeleteTable(bool restart_masters);
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->bind_to_unique_loopback_addresses = true;
+    options->use_same_ts_ports = true;
+  }
 
   std::unique_ptr<CppCassandraDriver> cql_driver_;
 };
@@ -428,6 +435,56 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
       "SELECT key FROM test_table WHERE value = 'value'"));
 
   ASSERT_EQ(res, 1);
+}
+
+// This test is for schema version patching after restore.
+// Consider the following scenario, w/o patching:
+//
+// 1) Create table.
+// 2) Add text column to table. Schema version - 1.
+// 3) Insert values into table. Each CQL proxy suppose schema version 1 for this table.
+// 4) Restore to time between (1) and (2). Schema version - 0.
+// 5) Add int column to table. Schema version - 1.
+// 6) Try insert values with wrong type into table.
+//
+// So table has schema version 1, but new column is INT.
+// CQL proxy suppose schema version is also 1, but the last column is TEXT.
+TEST_F(YbAdminSnapshotScheduleTest, AlterTable) {
+  const auto kKeys = Range(10);
+
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+
+  for (auto key : kKeys) {
+    ASSERT_OK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value) VALUES ($0, 'A')", key)));
+  }
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "ALTER TABLE test_table ADD value2 TEXT"));
+
+  for (auto key : kKeys) {
+    ASSERT_OK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value, value2) VALUES ($0, 'B', 'X')", key)));
+  }
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "ALTER TABLE test_table ADD value2 INT"));
+
+  for (auto key : kKeys) {
+    // It would succeed on some TServers if we would not refresh metadata after restore.
+    // But it should not succeed because of last column type.
+    ASSERT_NOK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value, value2) VALUES ($0, 'D', 'Y')", key)));
+  }
 }
 
 }  // namespace tools

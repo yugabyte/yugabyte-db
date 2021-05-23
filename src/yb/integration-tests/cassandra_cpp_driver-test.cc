@@ -106,7 +106,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
       hosts.push_back(cluster_->tablet_server(i)->bind_host());
     }
     driver_.reset(new CppCassandraDriver(
-        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting()));
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), use_partition_aware_routing()));
 
     // Create and use default keyspace.
     auto deadline = CoarseMonoClock::now() + 15s;
@@ -148,8 +148,8 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     return 1;
   }
 
-  virtual bool UsePartitionAwareRouting() {
-    return true;
+  virtual UsePartitionAwareRouting use_partition_aware_routing() {
+    return UsePartitionAwareRouting::kTrue;
   }
 
  protected:
@@ -198,10 +198,10 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
     };
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 
  protected:
@@ -1956,7 +1956,7 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
   }
   for (int i = 0; i <= kNumLoops; i++) {
     drivers.emplace_back(new CppCassandraDriver(
-        hosts, cluster_->tablet_server(0)->cql_rpc_port(), false /*UsePartitionAwareRouting()*/));
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kFalse));
   }
 
   for (int i = 0; i <= kNumLoops; i++) {
@@ -2442,10 +2442,10 @@ class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {
     return {"--tablet_server_svc_queue_length=10"s, "--max_time_in_queue_ms=-1"s};
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
@@ -2488,10 +2488,10 @@ class CppCassandraDriverTransactionalWriteTest : public CppCassandraDriverTest {
     return {"--TEST_transaction_inject_flushed_delay_ms=10"s};
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
@@ -2524,10 +2524,10 @@ class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTestNoPartit
     return 3;
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
@@ -2632,10 +2632,10 @@ class CppCassandraDriverTestPartitionsVtableCache : public CppCassandraDriverTes
     return flags;
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 
   int table_idx_ = 0;
@@ -2696,10 +2696,10 @@ class CppCassandraDriverRejectionTest : public CppCassandraDriverTest {
             "--linear_backoff_ms=10"};
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
@@ -2800,10 +2800,10 @@ class CppCassandraDriverSmallSoftLimitTest : public CppCassandraDriverTest {
     };
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
