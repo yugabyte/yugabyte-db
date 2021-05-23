@@ -36,8 +36,7 @@ import java.util.stream.Collectors;
 public class AccessManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
 
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
   private static final String PEM_PERMISSIONS = "r--------";
@@ -53,7 +52,7 @@ public class AccessManager extends DevopsBase {
     PRIVATE;
 
     public String getExtension() {
-      switch(this) {
+      switch (this) {
         case PUBLIC:
           return ".pub";
         case PRIVATE:
@@ -68,10 +67,10 @@ public class AccessManager extends DevopsBase {
     File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
-    synchronized(this) {
+    synchronized (this) {
       if (!keyBasePathName.exists() && !keyBasePathName.mkdirs() && !keyBasePathName.exists()) {
-        throw new RuntimeException("Key path " +
-            keyBasePathName.getAbsolutePath() + " doesn't exist.");
+        throw new RuntimeException(
+            "Key path " + keyBasePathName.getAbsolutePath() + " doesn't exist.");
       }
     }
 
@@ -87,10 +86,10 @@ public class AccessManager extends DevopsBase {
     File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
-    synchronized(this) {
+    synchronized (this) {
       if (!keyBasePathName.exists() && !keyBasePathName.mkdirs() && !keyBasePathName.exists()) {
-        throw new RuntimeException("Key path " +
-            keyBasePathName.getAbsolutePath() + " doesn't exist.");
+        throw new RuntimeException(
+            "Key path " + keyBasePathName.getAbsolutePath() + " doesn't exist.");
       }
     }
 
@@ -103,10 +102,15 @@ public class AccessManager extends DevopsBase {
   }
 
   // This method would upload the provided key file to the provider key file path.
-  public AccessKey uploadKeyFile(UUID regionUUID, File uploadedFile,
-                                 String keyCode, KeyType keyType,
-                                 String sshUser, Integer sshPort,
-                                 boolean airGapInstall, boolean skipProvisioning) {
+  public AccessKey uploadKeyFile(
+      UUID regionUUID,
+      File uploadedFile,
+      String keyCode,
+      KeyType keyType,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning) {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     // Removing paths from keyCode.
@@ -120,7 +124,7 @@ public class AccessManager extends DevopsBase {
     if (!Files.exists(source)) {
       throw new RuntimeException("Key file " + source.getFileName() + " not found.");
     }
-    if (Files.exists(destination) ) {
+    if (Files.exists(destination)) {
       throw new RuntimeException("File " + destination.getFileName() + " already exists.");
     }
 
@@ -155,10 +159,15 @@ public class AccessManager extends DevopsBase {
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
-  public AccessKey saveAndAddKey(UUID regionUUID, String keyContents,
-                                    String keyCode, KeyType keyType,
-                                    String sshUser, Integer sshPort,
-                                    boolean airGapInstall, boolean skipProvisioning) {
+  public AccessKey saveAndAddKey(
+      UUID regionUUID,
+      String keyContents,
+      String keyCode,
+      KeyType keyType,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning) {
     AccessKey key = null;
     Path tempFile = null;
 
@@ -166,12 +175,19 @@ public class AccessManager extends DevopsBase {
       tempFile = Files.createTempFile(keyCode, keyType.getExtension());
       Files.write(tempFile, keyContents.getBytes());
 
-      key = uploadKeyFile(regionUUID, tempFile.toFile(), keyCode,
-        keyType, sshUser, sshPort, airGapInstall, skipProvisioning);
+      key =
+          uploadKeyFile(
+              regionUUID,
+              tempFile.toFile(),
+              keyCode,
+              keyType,
+              sshUser,
+              sshPort,
+              airGapInstall,
+              skipProvisioning);
 
       File pemFile = new File(key.getKeyInfo().privateKey);
-      key = addKey(regionUUID, keyCode, pemFile, sshUser, sshPort, airGapInstall,
-        skipProvisioning);
+      key = addKey(regionUUID, keyCode, pemFile, sshUser, sshPort, airGapInstall, skipProvisioning);
     } catch (NoSuchFileException ioe) {
       LOG.error(ioe.getMessage(), ioe);
     } catch (IOException ioe) {
@@ -192,18 +208,33 @@ public class AccessManager extends DevopsBase {
   // This method would create a public/private key file and upload that to
   // the provider cloud account. And store the credentials file in the keyFilePath
   // and return the file names. It will also create the vault file.
-  public AccessKey addKey(UUID regionUUID, String keyCode, Integer sshPort, boolean airGapInstall,
-                          boolean skipProvisioning) {
+  public AccessKey addKey(
+      UUID regionUUID,
+      String keyCode,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning) {
     return addKey(regionUUID, keyCode, null, null, sshPort, airGapInstall, skipProvisioning);
   }
 
-  public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser,
-      Integer sshPort, boolean airGapInstall) {
+  public AccessKey addKey(
+      UUID regionUUID,
+      String keyCode,
+      File privateKeyFile,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall) {
     return addKey(regionUUID, keyCode, privateKeyFile, sshUser, sshPort, airGapInstall, false);
   }
 
-  public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser,
-      Integer sshPort, boolean airGapInstall, boolean skipProvisioning) {
+  public AccessKey addKey(
+      UUID regionUUID,
+      String keyCode,
+      File privateKeyFile,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -273,7 +304,7 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Invalid Region UUID: " + regionUUID);
     }
 
-    switch(Common.CloudType.valueOf(region.provider.code)) {
+    switch (Common.CloudType.valueOf(region.provider.code)) {
       case aws:
       case azu:
       case gcp:
@@ -293,8 +324,11 @@ public class AccessManager extends DevopsBase {
     if (Common.CloudType.valueOf(provider.code) == Common.CloudType.aws) {
       ObjectMapper mapper = play.libs.Json.newDefaultMapper();
       ArrayNode ret = mapper.getNodeFactory().arrayNode();
-      regions.stream().map(r -> deleteKey(provider.uuid, r.uuid, keyCode))
-        .collect(Collectors.toList()).forEach(ret::add);
+      regions
+          .stream()
+          .map(r -> deleteKey(provider.uuid, r.uuid, keyCode))
+          .collect(Collectors.toList())
+          .forEach(ret::add);
       return ret;
     } else {
       return deleteKey(provider.uuid, regions.get(0).uuid, keyCode);
@@ -314,17 +348,17 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException(response.get("error").asText());
     }
     return response;
-}
+  }
 
-  public String createCredentialsFile(UUID providerUUID, JsonNode credentials)
-      throws IOException {
+  public String createCredentialsFile(UUID providerUUID, JsonNode credentials) throws IOException {
     ObjectMapper mapper = new ObjectMapper();
     String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
     mapper.writeValue(new File(credentialsFilePath), credentials);
     return credentialsFilePath;
   }
 
-  public String createKubernetesConfig(String path, Map<String, String> config, boolean edit) throws IOException {
+  public String createKubernetesConfig(String path, Map<String, String> config, boolean edit)
+      throws IOException {
     // Grab the kubernetes config file name and file content and create the physical file.
     String configFileName = config.remove("KUBECONFIG_NAME");
     String configFileContent = config.remove("KUBECONFIG_CONTENT");
@@ -349,14 +383,17 @@ public class AccessManager extends DevopsBase {
     return configFile.toAbsolutePath().toString();
   }
 
-  public String createPullSecret(UUID providerUUID, Map<String, String> config, boolean edit) throws IOException {
+  public String createPullSecret(UUID providerUUID, Map<String, String> config, boolean edit)
+      throws IOException {
     // Grab the kubernetes config file name and file content and create the physical file.
     String pullSecretFileName = config.remove("KUBECONFIG_PULL_SECRET_NAME");
     String pullSecretFileContent = config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
     if (pullSecretFileName == null) {
-      throw new RuntimeException("Missing KUBECONFIG_PULL_SECRET_NAME data in the provider config.");
+      throw new RuntimeException(
+          "Missing KUBECONFIG_PULL_SECRET_NAME data in the provider config.");
     } else if (pullSecretFileContent == null) {
-      throw new RuntimeException("Missing KUBECONFIG_PULL_SECRET_CONTENT data in the provider config.");
+      throw new RuntimeException(
+          "Missing KUBECONFIG_PULL_SECRET_CONTENT data in the provider config.");
     }
     String pullSecretFilePath = getOrCreateKeyFilePath(providerUUID);
     Path pullSecretFile = Paths.get(pullSecretFilePath, Util.getFileName(pullSecretFileName));

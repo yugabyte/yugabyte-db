@@ -96,42 +96,39 @@ public class EncryptionAtRestController extends AuthenticatedController {
         return ApiResponse.success(kmsConfig);
     }
 
-    public Result listKMSConfigs(UUID customerUUID) {
-        LOG.info(String.format(
-                "Listing KMS configurations for customer %s",
-                customerUUID.toString()
-        ));
-        List<JsonNode> kmsConfigs = KmsConfig.listKMSConfigs(customerUUID)
-                .stream()
-                .map(configModel -> {
-                    ObjectNode result = null;
-                    ObjectNode credentials = keyManager.getServiceInstance(
-                      configModel.keyProvider.name()
-                    ).getAuthConfig(configModel.configUUID);
-                    if (credentials != null) {
-                        result = Json.newObject();
-                        ObjectNode metadata = Json.newObject();
-                        metadata.put("configUUID", configModel.configUUID.toString());
-                        metadata.put("provider", configModel.keyProvider.name());
-                        metadata.put(
-                                "in_use",
-                                EncryptionAtRestUtil.configInUse(configModel.configUUID)
-                        );
-                        metadata.put(
-                            "universeDetails",
-                            EncryptionAtRestUtil.getUniverses(configModel.configUUID)
-                    );
-                        metadata.put("name", configModel.name);
-                        result.put("credentials", CommonUtils.maskConfig(credentials));
-                        result.put("metadata", metadata);
-                    }
-                    return result;
+  public Result listKMSConfigs(UUID customerUUID) {
+    LOG.info(String.format("Listing KMS configurations for customer %s", customerUUID.toString()));
+    List<JsonNode> kmsConfigs =
+        KmsConfig.listKMSConfigs(customerUUID)
+            .stream()
+            .map(
+                configModel -> {
+                  ObjectNode result = null;
+                  ObjectNode credentials =
+                      keyManager
+                          .getServiceInstance(configModel.keyProvider.name())
+                          .getAuthConfig(configModel.configUUID);
+                  if (credentials != null) {
+                    result = Json.newObject();
+                    ObjectNode metadata = Json.newObject();
+                    metadata.put("configUUID", configModel.configUUID.toString());
+                    metadata.put("provider", configModel.keyProvider.name());
+                    metadata.put(
+                        "in_use", EncryptionAtRestUtil.configInUse(configModel.configUUID));
+                    metadata.put(
+                        "universeDetails",
+                        EncryptionAtRestUtil.getUniverses(configModel.configUUID));
+                    metadata.put("name", configModel.name);
+                    result.put("credentials", CommonUtils.maskConfig(credentials));
+                    result.put("metadata", metadata);
+                  }
+                  return result;
                 })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
 
-        return ApiResponse.success(kmsConfigs);
-    }
+    return ApiResponse.success(kmsConfigs);
+  }
 
     public Result deleteKMSConfig(UUID customerUUID, UUID configUUID) {
         LOG.info(String.format(
@@ -248,5 +245,5 @@ public class EncryptionAtRestController extends AuthenticatedController {
         return ApiResponse.success(Json.newObject().put(
           "reference", keyRef
         ));
-    }
+  }
 }

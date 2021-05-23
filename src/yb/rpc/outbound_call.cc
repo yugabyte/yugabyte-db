@@ -54,6 +54,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
@@ -171,6 +172,9 @@ void InvokeCallbackTask::Done(const Status& status) {
         "Failed to schedule invoking callback on response for request $0 to $1: $2",
         call_->remote_method(), call_->hostname(), status);
     call_->SetThreadPoolFailure(status);
+    // We are in the shutdown path, with the threadpool closing, so allow IO and wait.
+    ThreadRestrictions::SetWaitAllowed(true);
+    ThreadRestrictions::SetIOAllowed(true);
     call_->InvokeCallbackSync();
   }
   // Clear the call, since it holds OutboundCall object.

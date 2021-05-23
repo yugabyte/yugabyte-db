@@ -26,16 +26,18 @@ public class UniverseDefinitionTaskParamsResp {
 
   private final Set<NodeDetailsResp> nodeDetailsSet;
 
-  public UniverseDefinitionTaskParamsResp(UniverseDefinitionTaskParams universeDefinitionTaskParams,
-                                          Universe universe) {
+  public UniverseDefinitionTaskParamsResp(
+      UniverseDefinitionTaskParams universeDefinitionTaskParams, Universe universe) {
     this.delegate = universeDefinitionTaskParams;
     if (universeDefinitionTaskParams.nodeDetailsSet == null) {
       nodeDetailsSet = null;
     } else {
       nodeDetailsSet =
-        universeDefinitionTaskParams.nodeDetailsSet.stream()
-          .map(nodeDetails -> new NodeDetailsResp(nodeDetails, universe))
-          .collect(Collectors.toSet());
+          universeDefinitionTaskParams
+              .nodeDetailsSet
+              .stream()
+              .map(nodeDetails -> new NodeDetailsResp(nodeDetails, universe))
+              .collect(Collectors.toSet());
     }
   }
 

@@ -47,36 +47,36 @@ public class PauseUniverse extends UniverseTaskBase {
 
       Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
       Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
-      
+
       for (NodeDetails node : tserverNodes) {
-        createTServerTaskForNode(node, "stop").setSubTaskGroupType(
-            SubTaskGroupType.StoppingNodeProcesses);
+        createTServerTaskForNode(node, "stop")
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
-      createStopMasterTasks(masterNodes).setSubTaskGroupType(
-          SubTaskGroupType.StoppingNodeProcesses);
-          
+      createStopMasterTasks(masterNodes)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to pause the existing nodes.
-        createPauseServerTasks(universe.getNodes()).setSubTaskGroupType(
-            SubTaskGroupType.PauseUniverse);
+        createPauseServerTasks(universe.getNodes())
+            .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       }
       createSwamperTargetUpdateTask(false);
       // Mark universe task state to success.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Run all the tasks.
       subTaskGroupQueue.run();
 
-      Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-        @Override
-        public void run(Universe universe) {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          universeDetails.universePaused = true;
-          universe.setUniverseDetails(universeDetails);
-        }
-      };
+      Universe.UniverseUpdater updater =
+          new Universe.UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              universeDetails.universePaused = true;
+              universe.setUniverseDetails(universeDetails);
+            }
+          };
       saveUniverseDetails(updater);
-      
+
       unlockUniverseForUpdate();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);

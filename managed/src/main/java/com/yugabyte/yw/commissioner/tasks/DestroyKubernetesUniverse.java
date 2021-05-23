@@ -61,22 +61,26 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
       // Cleanup the kms_history table
       createDestroyEncryptionAtRestTask()
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       // Try to unify this with the edit remove pods/deployments flow. Currently delete is
       // tied down to a different base class which makes params porting not straight-forward.
-      SubTaskGroup helmDeletes = new SubTaskGroup(
-          KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
+      SubTaskGroup helmDeletes =
+          new SubTaskGroup(
+              KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
       helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
-      SubTaskGroup volumeDeletes = new SubTaskGroup(
-          KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
+      SubTaskGroup volumeDeletes =
+          new SubTaskGroup(
+              KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
       volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
-      SubTaskGroup namespaceDeletes = new SubTaskGroup(
-          KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(), executor);
+      SubTaskGroup namespaceDeletes =
+          new SubTaskGroup(
+              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(),
+              executor);
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
-      
+
       for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
         UUID azUUID = entry.getKey();
         String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
@@ -87,17 +91,23 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
         if (runHelmDelete || namespace != null) {
           // Delete the helm deployments.
-          helmDeletes.addTask(createDestroyKubernetesTask(
-              universe.getUniverseDetails().nodePrefix, azName, config,
-              KubernetesCommandExecutor.CommandType.HELM_DELETE,
-              providerUUID));
+          helmDeletes.addTask(
+              createDestroyKubernetesTask(
+                  universe.getUniverseDetails().nodePrefix,
+                  azName,
+                  config,
+                  KubernetesCommandExecutor.CommandType.HELM_DELETE,
+                  providerUUID));
         }
 
         // Delete the PVCs created for this AZ.
-        volumeDeletes.addTask(createDestroyKubernetesTask(
-            universe.getUniverseDetails().nodePrefix, azName, config,
-            KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
-            providerUUID));
+        volumeDeletes.addTask(
+            createDestroyKubernetesTask(
+                universe.getUniverseDetails().nodePrefix,
+                azName,
+                config,
+                KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
+                providerUUID));
 
         // TODO(bhavin192): delete the pull secret as well? As of now,
         // we depend on the fact that, deleting the namespace will
@@ -112,10 +122,13 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         // Delete the namespaces of the deployments only if those were
         // created by us.
         if (namespace == null) {
-          namespaceDeletes.addTask(createDestroyKubernetesTask(
-              universe.getUniverseDetails().nodePrefix, azName, config,
-              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
-              providerUUID));
+          namespaceDeletes.addTask(
+              createDestroyKubernetesTask(
+                  universe.getUniverseDetails().nodePrefix,
+                  azName,
+                  config,
+                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
+                  providerUUID));
         }
       }
 
@@ -145,16 +158,18 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     LOG.info("Finished {} task.", getName());
   }
 
-  protected KubernetesCommandExecutor
-      createDestroyKubernetesTask(String nodePrefix, String az, Map<String, String> config,
-                                  KubernetesCommandExecutor.CommandType commandType,
-                                  UUID providerUUID) {
+  protected KubernetesCommandExecutor createDestroyKubernetesTask(
+      String nodePrefix,
+      String az,
+      Map<String, String> config,
+      KubernetesCommandExecutor.CommandType commandType,
+      UUID providerUUID) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.commandType = commandType;
     params.nodePrefix = nodePrefix;
     params.providerUUID = providerUUID;
     if (az != null) {
-      params.nodePrefix = String.format("%s-%s", nodePrefix, az);  
+      params.nodePrefix = String.format("%s-%s", nodePrefix, az);
     }
     if (config != null) {
       params.config = config;

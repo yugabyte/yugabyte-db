@@ -37,6 +37,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/client/forward_rpc.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 
@@ -237,6 +238,9 @@ double TEST_delay_create_transaction_probability = 0;
 namespace yb {
 namespace tserver {
 
+
+using client::internal::ForwardReadRpc;
+using client::internal::ForwardWriteRpc;
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
@@ -680,9 +684,12 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   // Wait for SafeTime to get past read_at;
   const HybridTime read_at(req->read_at_hybrid_time());
-  const auto safe_time = tablet.peer->tablet()->SafeTime(
-      tablet::RequireLease::kTrue, read_at, deadline);
+  DVLOG(1) << "Waiting for safe time to be past " << read_at;
+  const auto safe_time =
+      tablet.peer->tablet()->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
+  DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
+    LOG(ERROR) << "Could not get a good enough safe time " << safe_time.ToString();
     SetupErrorAndRespond(
         resp->mutable_error(),
         safe_time.status(),
@@ -908,16 +915,16 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
 
   // If the current schema is newer than the one in the request reject the request.
   if (schema_version > req->schema_version()) {
-    LOG(ERROR) << "Tablet " << req->tablet_id() << " has a newer schema "
+    LOG(ERROR) << "Tablet " << req->tablet_id() << " has a newer schema"
                << " version=" << schema_version
                << " req->schema_version()=" << req->schema_version()
                << "\n current-schema=" << tablet_schema.ToString()
-               << "\n request-schema=" << req_schema.ToString() << " (wtf?)";
+               << "\n request-schema=" << req_schema.ToString();
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS_SUBSTITUTE(
             InvalidArgument, "Tablet has a newer schema Tab $0. Req $1 vs Existing version : $2",
-            req->tablet_id(), req->DebugString(), schema_version),
+            req->tablet_id(), req->schema_version(), schema_version),
         TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, &context);
     return;
   }
@@ -1234,6 +1241,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   LOG(INFO) << "T " << req->tablet_id() << " P " << server_->permanent_uuid()
             << ": Processing DeleteTablet with delete_type " << TabletDataState_Name(delete_type)
             << (req->has_reason() ? (" (" + req->reason() + ")") : "")
+            << (req->hide_only() ? " (Hide only)" : "")
             << " from " << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
@@ -2839,6 +2847,30 @@ scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
   }
   return nullptr;
 }
+
+TabletServerForwardServiceImpl::TabletServerForwardServiceImpl(TabletServiceImpl *impl,
+                                                               TabletServerIf *server)
+  : TabletServerForwardServiceIf(server->MetricEnt()),
+    server_(server) {
+}
+
+void TabletServerForwardServiceImpl::Write(const WriteRequestPB* req,
+                                           WriteResponsePB* resp,
+                                           rpc::RpcContext context) {
+  // Forward the rpc to the required Tserver.
+  std::shared_ptr<ForwardWriteRpc> forward_rpc =
+    std::make_shared<ForwardWriteRpc>(req, resp, std::move(context), server_->client());
+  forward_rpc->SendRpc();
+}
+
+void TabletServerForwardServiceImpl::Read(const ReadRequestPB* req,
+                                          ReadResponsePB* resp,
+                                          rpc::RpcContext context) {
+  std::shared_ptr<ForwardReadRpc> forward_rpc =
+    std::make_shared<ForwardReadRpc>(req, resp, std::move(context), server_->client());
+  forward_rpc->SendRpc();
+}
+
 
 }  // namespace tserver
 }  // namespace yb
