@@ -155,6 +155,7 @@ public class EncryptionAtRestUtil {
         KmsHistoryId.TargetType.UNIVERSE_KEY);
   }
 
+  @Deprecated
   public static KmsHistory getActiveKey(UUID universeUUID) {
     KmsHistory activeHistory = null;
     try {
@@ -232,42 +233,12 @@ public class EncryptionAtRestUtil {
         Base64.getEncoder().encodeToString(keyRef));
   }
 
-    @Deprecated
-    public static KmsHistory getActiveKey(UUID universeUUID) {
-        KmsHistory activeHistory = null;
-        try {
-            activeHistory = KmsHistory.getActiveHistory(
-                    universeUUID,
-                    KmsHistoryId.TargetType.UNIVERSE_KEY
-            );
-        } catch (Exception e) {
-            final String errMsg = "Could not get key ref";
-            LOG.error(errMsg, e);
-        }
-        return activeHistory;
-    }
-
     public static KmsHistory getActiveKeyOrBadRequest(UUID universeUUID) {
       KmsHistory activeKey = getActiveKey(universeUUID);
       if(activeKey == null) {
         throw new YWServiceException(BAD_REQUEST, "Could not retrieve ActiveKey");
       }
       return activeKey;
-    }
-
-    public static KmsHistory getLatestConfigKey(UUID universeUUID, UUID configUUID) {
-        KmsHistory latestHistory = null;
-        try {
-            latestHistory = KmsHistory.getLatestConfigHistory(
-                    universeUUID,
-                    configUUID,
-                    KmsHistoryId.TargetType.UNIVERSE_KEY
-            );
-        } catch (Exception e) {
-            final String errMsg = "Could not get key ref";
-            LOG.error(errMsg, e);
-        }
-        return latestHistory;
     }
 
   public static List<KmsHistory> getAllUniverseKeys(UUID universeUUID) {
