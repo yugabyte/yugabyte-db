@@ -261,7 +261,10 @@ public class AccessManagerTest extends FakeDBApplication {
     } catch (RuntimeException re) {
       assertThat(
           re.getMessage(),
-          allOf(notNullValue(), equalTo("YBCloud command access (add-key) failed to execute.")));
+          allOf(
+              notNullValue(),
+              equalTo(
+                  "Parsing of Region failed with : YBCloud command access (add-key) failed to execute.")));
     }
     Mockito.verify(shellProcessHandler, times(1)).run(anyList(), anyMap(), anyString());
   }

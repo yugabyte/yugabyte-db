@@ -118,7 +118,10 @@ public class AccessManager extends DevopsBase {
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     // Removing paths from keyCode.
     keyCode = Util.getFileName(keyCode);
-    AccessKey accessKey = AccessKey.getOrBadRequest(region.provider.uuid, keyCode);
+    AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
+    if (accessKey != null) {
+      throw new YWServiceException(BAD_REQUEST, "Duplicate Access KeyCode: " + keyCode);
+    }
     Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
     if (!Files.exists(source)) {
@@ -260,7 +263,7 @@ public class AccessManager extends DevopsBase {
     if (response.has("error")) {
       throw new YWServiceException(
           INTERNAL_SERVER_ERROR,
-          "Parsing or Region failed with : " + response.get("error").asText());
+          "Parsing of Region failed with : " + response.get("error").asText());
     }
 
     if (accessKey == null) {
