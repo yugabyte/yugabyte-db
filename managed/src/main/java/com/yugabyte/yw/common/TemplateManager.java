@@ -103,7 +103,7 @@ public class TemplateManager extends DevopsBase {
       accessKey.setKeyInfo(keyInfo);
       accessKey.save();
     } else {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.stringify(result));
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, result);
     }
   }
 }

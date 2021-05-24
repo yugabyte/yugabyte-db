@@ -85,7 +85,7 @@ public class AccessKeyController extends AuthenticatedController {
       Http.MultipartFormData.FilePart filePart = multiPartBody.getFile("keyFile");
       File uploadedFile = (File) filePart.getFile();
       if (keyType == null || uploadedFile == null) {
-        return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
+        throw new YWServiceException(BAD_REQUEST, "keyType and keyFile params required.");
       }
       accessKey =
           accessManager.uploadKeyFile(
@@ -99,7 +99,7 @@ public class AccessKeyController extends AuthenticatedController {
               skipProvisioning);
     } else if (keyContent != null && !keyContent.isEmpty()) {
       if (keyType == null) {
-        return ApiResponse.error(BAD_REQUEST, "keyType params required.");
+        throw new YWServiceException(BAD_REQUEST, "keyType params required.");
       }
       // Create temp file and fill with content
       Path tempFile = Files.createTempFile(keyCode, keyType.getExtension());

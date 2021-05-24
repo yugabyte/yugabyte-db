@@ -225,6 +225,7 @@ public class Region extends Model {
     return region;
   }
 
+  @Deprecated
   public static Region get(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     String regionQuery =
         " select r.uuid, r.code, r.name"

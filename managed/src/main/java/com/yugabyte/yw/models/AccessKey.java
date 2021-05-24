@@ -93,6 +93,7 @@ public class AccessKey extends Model {
     return accessKey;
   }
 
+  @Deprecated
   public static AccessKey get(UUID providerUUID, String keyCode) {
     return find.byId(AccessKeyId.create(providerUUID, keyCode));
   }
