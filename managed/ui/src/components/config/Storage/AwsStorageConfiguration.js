@@ -4,23 +4,10 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
 import { Field } from 'redux-form';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull, isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 const required = (value) => (value ? undefined : 'This field is required.');
-
-/**
- * This method is used to validate the Access and the Secret key.
- *
- * @param {any} value Input value.
- * @param {boolean} iamRoleEnabled IAM enabled state.
- * @returns "This field is required."
- */
-const validateKeys = (value, iamRoleEnabled) => {
-  if (!isDefinedNotNull(value) && !iamRoleEnabled) {
-    return 'This field is required.';
-  }
-};
 
 class AwsStorageConfiguration extends Component {
   /**
@@ -43,22 +30,11 @@ class AwsStorageConfiguration extends Component {
     }
   };
 
-  disabledInputFields = (config, isEdited, iamRoleEnabled = false) => {
-    if (
-      ((!isEmptyObject(config) && isEdited) || (isEmptyObject(config) && !isEdited)) &&
-      !iamRoleEnabled
-    ) {
-      return false;
-    } else {
-      return true;
-    }
-  };
-
   componentDidMount = () => {
     const {
-      customerConfigs: { data }
+      customerConfigs
     } = this.props;
-    const s3Config = data.find((config) => config.name === 'S3');
+    const s3Config = customerConfigs?.data.find((config) => config.name === 'S3');
     const config = s3Config ? s3Config.data : {};
     if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === 'true') {
       this.setState({ iamRoleEnabled: true });
@@ -110,13 +86,30 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Key</div>
             </Col>
             <Col lg={9}>
-              <Field
-                name="AWS_ACCESS_KEY_ID"
-                placeHolder="AWS Access Key"
-                component={YBTextInputWithLabel}
-                validate={(value) => validateKeys(value, iamRoleEnabled)}
-                isReadOnly={this.disableInputFields(isEdited, 'AWS_ACCESS_KEY_ID', iamRoleEnabled)}
-              />
+              {iamRoleEnabled ? (
+                <Field
+                  name="AWS_ACCESS_KEY_ID"
+                  placeHolder="AWS Access Key"
+                  component={YBTextInputWithLabel}
+                  isReadOnly={this.disableInputFields(
+                    isEdited,
+                    'AWS_ACCESS_KEY_ID',
+                    iamRoleEnabled
+                  )}
+                />
+              ) : (
+                <Field
+                  name="AWS_ACCESS_KEY_ID"
+                  placeHolder="AWS Access Key"
+                  component={YBTextInputWithLabel}
+                  validate={required}
+                  isReadOnly={this.disableInputFields(
+                    isEdited,
+                    'AWS_ACCESS_KEY_ID',
+                    iamRoleEnabled
+                  )}
+                />
+              )}
             </Col>
           </Row>
           <Row className="config-provider-row">
@@ -124,13 +117,30 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Secret</div>
             </Col>
             <Col lg={9}>
-              <Field
-                name="AWS_SECRET_ACCESS_KEY"
-                placeHolder="AWS Access Secret"
-                component={YBTextInputWithLabel}
-                validate={(value) => validateKeys(value, iamRoleEnabled)}
-                isReadOnly={this.disableInputFields(isEdited, 'AWS_SECRET_ACCESS_KEY', iamRoleEnabled)}
-              />
+              {iamRoleEnabled ? (
+                <Field
+                  name="AWS_SECRET_ACCESS_KEY"
+                  placeHolder="AWS Access Secret"
+                  component={YBTextInputWithLabel}
+                  isReadOnly={this.disableInputFields(
+                    isEdited,
+                    'AWS_SECRET_ACCESS_KEY',
+                    iamRoleEnabled
+                  )}
+                />
+              ) : (
+                <Field
+                  name="AWS_SECRET_ACCESS_KEY"
+                  placeHolder="AWS Access Secret"
+                  component={YBTextInputWithLabel}
+                  validate={required}
+                  isReadOnly={this.disableInputFields(
+                    isEdited,
+                    'AWS_SECRET_ACCESS_KEY',
+                    iamRoleEnabled
+                  )}
+                />
+              )}
             </Col>
           </Row>
           <Row className="config-provider-row">

@@ -15,7 +15,10 @@ import { storageConfigTypes } from './ConfigType';
 import { ConfigControls } from './ConfigControls';
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
+import gcsLogo from './images/gcs-logo.png';
+import nfsIcon from './images/nfs.svg';
 import { Formik } from 'formik';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 const getTabTitle = (configName) => {
   switch (configName) {
