@@ -233,13 +233,13 @@ public class EncryptionAtRestUtil {
         Base64.getEncoder().encodeToString(keyRef));
   }
 
-    public static KmsHistory getActiveKeyOrBadRequest(UUID universeUUID) {
-      KmsHistory activeKey = getActiveKey(universeUUID);
-      if(activeKey == null) {
-        throw new YWServiceException(BAD_REQUEST, "Could not retrieve ActiveKey");
-      }
-      return activeKey;
+  public static KmsHistory getActiveKeyOrBadRequest(UUID universeUUID) {
+    KmsHistory activeKey = getActiveKey(universeUUID);
+    if (activeKey == null) {
+      throw new YWServiceException(BAD_REQUEST, "Could not retrieve ActiveKey");
     }
+    return activeKey;
+  }
 
   public static List<KmsHistory> getAllUniverseKeys(UUID universeUUID) {
     return KmsHistory.getAllTargetKeyRefs(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);

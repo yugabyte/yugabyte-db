@@ -13,6 +13,8 @@ import static org.mockito.Mockito.*;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.*;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import java.util.Set;
 import java.util.LinkedList;
@@ -180,8 +182,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetNodeWithInvalidUuid() {
-    Result r = getNode(UUID.randomUUID());
-    checkNotOk(r, "Null content"); // TODO(API): This should cause 4XX not 500
+    UUID uuid = UUID.randomUUID();
+    Result r = assertThrows(YWServiceException.class, () -> getNode(uuid)).getResult();
+    String expectedError = "Invalid Node UUID: " + uuid;
+    assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -257,7 +261,9 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateFailureDuplicateIp() {
-    Result failedReq = createNode(zone.uuid, node.getDetails());
+    Result failedReq =
+        assertThrows(YWServiceException.class, () -> createNode(zone.uuid, node.getDetails()))
+            .getResult();
     checkNotOk(failedReq, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -284,14 +290,21 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstanceWithInvalidProviderValidInstanceIP() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result r = deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP);
-    assertBadRequest(r, "Invalid Provider UUID: " + invalidProviderUUID);
+    Result r =
+        assertThrows(
+                YWServiceException.class,
+                () -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP))
+            .getResult();
+    assertBadRequest(r, "Cannot find universe " + invalidProviderUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteInstanceWithValidProviderInvalidInstanceIP() {
-    Result r = deleteInstance(customer.uuid, provider.uuid, "abc");
+    Result r =
+        assertThrows(
+                YWServiceException.class, () -> deleteInstance(customer.uuid, provider.uuid, "abc"))
+            .getResult();
     assertBadRequest(r, "Node Not Found");
     assertAuditEntry(0, customer.uuid);
   }
@@ -317,12 +330,21 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testMissingNodeActionParam() {
     verify(mockCommissioner, times(0)).submit(any(), any());
-    Universe u = ModelFactory.createUniverse();
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(u.universeUUID);
+    final Universe u = ModelFactory.createUniverse();
+    Universe universe = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(universe.universeUUID);
     customer.save();
     Result r =
-        performNodeAction(customer.uuid, u.universeUUID, "host-n1", NodeActionType.DELETE, true);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    performNodeAction(
+                        customer.uuid,
+                        universe.universeUUID,
+                        "host-n1",
+                        NodeActionType.DELETE,
+                        true))
+            .getResult();
     assertBadRequest(r, "{\"nodeAction\":[\"This field is required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
@@ -382,27 +404,45 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
-    Universe u = ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId());
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    setInTransitNode(u.universeUUID);
+    final Universe u =
+        ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId());
+    Universe universe = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    setInTransitNode(universe.universeUUID);
 
     Set<NodeDetails> nodes =
-        u.getMasters()
+        universe
+            .getMasters()
             .stream()
             .filter((n) -> n.state == NodeState.Live)
             .collect(Collectors.toSet());
 
     NodeDetails curNode = nodes.iterator().next();
     Result invalidRemove =
-        performNodeAction(
-            customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REMOVE, false);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    performNodeAction(
+                        customer.uuid,
+                        universe.universeUUID,
+                        curNode.nodeName,
+                        NodeActionType.REMOVE,
+                        false))
+            .getResult();
     assertBadRequest(
         invalidRemove,
         "Cannot REMOVE " + curNode.nodeName + " as it will under replicate the masters.");
 
     Result invalidStop =
-        performNodeAction(
-            customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.STOP, false);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    performNodeAction(
+                        customer.uuid,
+                        universe.universeUUID,
+                        curNode.nodeName,
+                        NodeActionType.STOP,
+                        false))
+            .getResult();
     assertBadRequest(
         invalidStop,
         "Cannot STOP " + curNode.nodeName + " as it will under replicate the masters.");
