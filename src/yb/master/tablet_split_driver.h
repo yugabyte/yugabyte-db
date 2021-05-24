@@ -11,26 +11,21 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H
-#define YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H
+#ifndef YB_MASTER_TABLET_SPLIT_DRIVER_H
+#define YB_MASTER_TABLET_SPLIT_DRIVER_H
 
-#include <memory>
-
-#include "yb/tserver/heartbeater.h"
+#include "yb/common/entity_ids.h"
+#include "yb/master/catalog_entity_info.h"
 
 namespace yb {
-namespace tserver {
+namespace master {
 
-class TabletSplitHeartbeatDataProvider : public PeriodicalHeartbeatDataProvider {
+class TabletSplitDriverIf {
  public:
-  explicit TabletSplitHeartbeatDataProvider(TabletServer* server);
-
- private:
-  void DoAddData(
-      const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) override;
+  virtual ~TabletSplitDriverIf() {}
+  virtual CHECKED_STATUS SplitTablet(const TabletId& tablet_id) = 0;
 };
 
-} // namespace tserver
-} // namespace yb
-
-#endif // YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H
+}  // namespace master
+}  // namespace yb
+#endif // YB_MASTER_TABLET_SPLIT_DRIVER_H
