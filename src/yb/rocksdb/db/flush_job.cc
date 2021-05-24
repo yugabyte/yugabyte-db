@@ -87,6 +87,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
                    const EnvOptions& env_options, VersionSet* versions,
                    InstrumentedMutex* db_mutex,
                    std::atomic<bool>* shutting_down,
+                   std::atomic<bool>* disable_flush_on_shutdown,
                    std::vector<SequenceNumber> existing_snapshots,
                    SequenceNumber earliest_write_conflict_snapshot,
                    MemTableFilter mem_table_flush_filter,
@@ -103,6 +104,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       versions_(versions),
       db_mutex_(db_mutex),
       shutting_down_(shutting_down),
+      disable_flush_on_shutdown_(disable_flush_on_shutdown),
       existing_snapshots_(std::move(existing_snapshots)),
       earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
       mem_table_flush_filter_(std::move(mem_table_flush_filter)),
@@ -175,10 +177,10 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   // This will release and re-acquire the mutex.
   auto fnum = WriteLevel0Table(mems, edit, &meta);
 
-  if (fnum.ok() &&
-      (shutting_down_->load(std::memory_order_acquire) || cfd_->IsDropped())) {
-    fnum = STATUS(ShutdownInProgress,
-        "Database shutdown or Column family drop during flush");
+  if (fnum.ok() && ((shutting_down_->load(std::memory_order_acquire) &&
+                     disable_flush_on_shutdown_->load(std::memory_order_acquire)) ||
+                    cfd_->IsDropped())) {
+    fnum = STATUS(ShutdownInProgress, "Database shutdown or Column family drop during flush");
   }
 
   if (!fnum.ok()) {

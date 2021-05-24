@@ -85,7 +85,7 @@ void Mutex::Unlock() {
 
 void Mutex::AssertHeld() {
 #ifndef NDEBUG
-  assert(locked_);
+  DCHECK(locked_);
 #endif
 }
 
