@@ -292,7 +292,7 @@ public class Backup extends Model {
     Set<Universe> universes = new HashSet<Universe>();
     for (UUID universeUUID : universeUUIDs) {
       try {
-        universes.add(Universe.get(universeUUID));
+        universes.add(Universe.getOrBadRequest(universeUUID));
       }
       // backup exist but universe does not.We are ignoring such backups.
       catch(Exception e){ 
