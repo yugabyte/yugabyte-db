@@ -61,6 +61,9 @@
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/system_tablet.h"
+#include "yb/master/tablet_split_candidate_filter.h"
+#include "yb/master/tablet_split_driver.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
@@ -153,7 +156,10 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
 // the state of each tablet on a given tablet-server.
 //
 // Thread-safe.
-class CatalogManager : public tserver::TabletPeerLookupIf {
+class CatalogManager :
+    public tserver::TabletPeerLookupIf,
+    public TabletSplitCandidateFilterIf,
+    public TabletSplitDriverIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
@@ -747,7 +753,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return *encryption_manager_;
   }
 
-  CHECKED_STATUS SplitTablet(const TabletId& tablet_id);
+  CHECKED_STATUS SplitTablet(const TabletId& tablet_id) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -790,6 +796,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
 
   void CheckTableDeleted(const TableInfoPtr& table);
+
+  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) const override;
+
+  bool ShouldSplitValidCandidate(const TabletReplicaDriveInfo& drive_info) const override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1522,6 +1532,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   ServerRegistrationPB server_registration_;
 
   BlacklistSet BlacklistSetFromPB();
+
+  TabletSplitManager tablet_split_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
