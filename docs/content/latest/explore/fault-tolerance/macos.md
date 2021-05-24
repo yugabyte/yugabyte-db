@@ -13,7 +13,7 @@ menu:
   latest:
     identifier: fault-tolerance-1-macos
     parent: explore
-    weight: 500
+    weight: 215
 isTocNested: true
 showAsideToc: true
 ---
