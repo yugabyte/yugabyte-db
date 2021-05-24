@@ -25,5 +25,4 @@ public class UserTaskDetailsTest {
       assertFalse(StringUtils.isEmpty(details.getDescription()));
     }
   }
-
 }

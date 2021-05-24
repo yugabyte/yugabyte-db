@@ -111,7 +111,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
       hosts.push_back(cluster_->tablet_server(i)->bind_host());
     }
     driver_.reset(new CppCassandraDriver(
-        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting()));
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), use_partition_aware_routing()));
 
     // Create and use default keyspace.
     auto deadline = CoarseMonoClock::now() + 15s;
@@ -153,8 +153,8 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     return 1;
   }
 
-  virtual bool UsePartitionAwareRouting() {
-    return true;
+  virtual UsePartitionAwareRouting use_partition_aware_routing() {
+    return UsePartitionAwareRouting::kTrue;
   }
 
  protected:
@@ -203,10 +203,10 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
     };
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 
  protected:
@@ -264,6 +264,49 @@ class CppCassandraDriverTestIndexMultipleChunks : public CppCassandraDriverTestI
     flags.push_back("--TEST_backfill_paging_size=2");
     return flags;
   }
+};
+
+class CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves
+    : public CppCassandraDriverTestIndexMultipleChunks {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
+    flags.push_back("--enable_load_balancing=true");
+    flags.push_back("--index_backfill_rpc_max_retries=0");
+    // We do not want backfill to fail because of any throttling.
+    flags.push_back("--index_backfill_rpc_timeout_ms=180000");
+    return flags;
+  }
+
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
+    flags.push_back("--backfill_index_rate_rows_per_sec=10");
+    flags.push_back("--backfill_index_write_batch_size=2");
+    return flags;
+  }
+
+  void SetUp() override {
+    CppCassandraDriverTestIndex::SetUp();
+    thread_holder_.AddThreadFunctor([this] {
+      const auto kNumTServers = cluster_->num_tablet_servers();
+      constexpr auto kSleepTimeMs = 5000;
+      for (int i = 0; !thread_holder_.stop_flag(); i++) {
+        const auto tserver_id = i % kNumTServers;
+        ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+            cluster_->master(), cluster_->tablet_server(tserver_id)));
+        SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+        ASSERT_OK(cluster_->EmptyBlacklist(cluster_->master()));
+      }
+    });
+  }
+
+  void TearDown() override {
+    thread_holder_.Stop();
+    CppCassandraDriverTestIndex::TearDown();
+  }
+
+ private:
+  TestThreadHolder thread_holder_;
 };
 
 class CppCassandraDriverTestIndexSlowBackfill : public CppCassandraDriverTestIndex {
@@ -1862,6 +1905,13 @@ TEST_F_EX(CppCassandraDriverTest, TestTableBackfillInChunks,
                          IncludeAllColumns::kTrue, UserEnforced::kFalse);
 }
 
+TEST_F_EX(
+    CppCassandraDriverTest, TestTableBackfillWithLeaderMoves,
+    CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves) {
+  TestBackfillIndexTable(
+      this, PKOnlyIndex::kFalse, IsUnique::kFalse, IncludeAllColumns::kTrue, UserEnforced::kFalse);
+}
+
 TEST_F_EX(CppCassandraDriverTest, TestTableBackfillUniqueInChunks,
           CppCassandraDriverTestIndexMultipleChunks) {
   TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
@@ -1964,16 +2014,17 @@ TEST_F_EX(
       session2.ExecuteGetFuture("create index test_table_index_by_k2 on test_table (k2);");
   const YBTableName index_table_name2(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_k2");
 
+  const auto kMaxWait = kTimeMultiplier * 90s;
   perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
-      CoarseMonoClock::now() + 90s, 50ms));
+      CoarseMonoClock::now() + kMaxWait, 50ms));
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   LOG(INFO) << "Index table " << index_table_name.ToString()
             << " created to INDEX_PERM_READ_WRITE_AND_DELETE";
 
   perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
-      CoarseMonoClock::now() + 90s, 50ms));
+      CoarseMonoClock::now() + kMaxWait, 50ms));
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   LOG(INFO) << "Index " << index_table_name2.ToString()
             << " created to INDEX_PERM_READ_WRITE_AND_DELETE";
@@ -2026,7 +2077,7 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
   }
   for (int i = 0; i <= kNumLoops; i++) {
     drivers.emplace_back(new CppCassandraDriver(
-        hosts, cluster_->tablet_server(0)->cql_rpc_port(), false /*UsePartitionAwareRouting()*/));
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kFalse));
   }
 
   for (int i = 0; i <= kNumLoops; i++) {
@@ -2512,10 +2563,10 @@ class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {
     return {"--tablet_server_svc_queue_length=10"s, "--max_time_in_queue_ms=-1"s};
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
@@ -2558,10 +2609,10 @@ class CppCassandraDriverTransactionalWriteTest : public CppCassandraDriverTest {
     return {"--TEST_transaction_inject_flushed_delay_ms=10"s};
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
@@ -2594,10 +2645,10 @@ class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTestNoPartit
     return 3;
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
@@ -2702,10 +2753,10 @@ class CppCassandraDriverTestPartitionsVtableCache : public CppCassandraDriverTes
     return flags;
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 
   int table_idx_ = 0;
@@ -2766,10 +2817,10 @@ class CppCassandraDriverRejectionTest : public CppCassandraDriverTest {
             "--linear_backoff_ms=10"};
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
@@ -2870,10 +2921,10 @@ class CppCassandraDriverSmallSoftLimitTest : public CppCassandraDriverTest {
     };
   }
 
-  bool UsePartitionAwareRouting() override {
+  UsePartitionAwareRouting use_partition_aware_routing() override {
     // Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
-    return false;
+    return UsePartitionAwareRouting::kFalse;
   }
 };
 
