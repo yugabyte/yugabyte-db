@@ -1638,7 +1638,7 @@ class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
     options->extra_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
-    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=8");
   }
 };
 
@@ -1652,6 +1652,7 @@ TEST_F_EX(PgLibPqTest,
   const int starting_num_tablet_servers = cluster_->num_tablet_servers();
   ExternalMiniClusterOptions opts;
   std::map<std::string, int> ts_loads;
+  static const int tserver_unresponsive_timeout_ms = 8000;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -1702,24 +1703,18 @@ TEST_F_EX(PgLibPqTest,
   // Remove a tablet server.
   cluster_->tablet_server(0)->Shutdown();
 
-  // Wait for load balancing.  This should move the remaining tablet-peers off the dead tserver.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
-        return !is_idle;
-      },
-      kTimeout,
-      "wait for load balancer to be active"));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        return client->IsLoadBalancerIdle();
-      },
-      kTimeout,
-      "wait for load balancer to be idle"));
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return cluster_->is_ts_stale(0);
+  },
+  MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
+  "Is TS dead",
+  MonoDelta::FromSeconds(1)));
 
-  // Collect colocation tablet replica locations.
-  {
-    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+  // Collect colocation tablet replica locations and verify that load has been moved off
+  // from the dead TS.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    master::TabletLocationsPB tablet_locations = VERIFY_RESULT(GetColocatedTabletLocations(
         client.get(),
         kDatabaseName,
         kTimeout));
@@ -1727,18 +1722,21 @@ TEST_F_EX(PgLibPqTest,
     for (const auto& replica : tablet_locations.replicas()) {
       ts_loads[replica.ts_info().permanent_uuid()]++;
     }
-  }
-
-  // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
-  // which is shut down.
-  ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
-  for (const auto& entry : ts_loads) {
-    ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
-    ASSERT_NOTNULL(ts);
-    ASSERT_NE(ts, cluster_->tablet_server(0));
-    ASSERT_EQ(entry.second, 1);
-    LOG(INFO) << "found ts " << entry.first << " has " << entry.second << " replicas";
-  }
+    // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
+    // which is shut down.
+    if (ts_loads.size() != starting_num_tablet_servers) {
+      return false;
+    }
+    for (const auto& entry : ts_loads) {
+      ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
+      if (ts == nullptr || ts == cluster_->tablet_server(0) || entry.second != 1) {
+        return false;
+      }
+    }
+    return true;
+  },
+  kTimeout,
+  "Wait for load to be moved off from tserver 0"));
 }
 
 // Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.

@@ -12,6 +12,7 @@
 //
 
 #include "yb/integration-tests/load_balancer_test_util.h"
+#include "yb/master/ts_manager.h"
 
 namespace yb {
 namespace integration_tests {
@@ -30,6 +31,22 @@ bool AreLoadsBalanced(const std::vector<uint32_t>& tserver_loads) {
       }
     }
     return (max_load - min_load) < 2;
+}
+
+bool AreLoadsAsExpected(const std::unordered_map<master::TabletServerId, int>& tserver_loads,
+                        const std::unordered_set<master::TabletServerId>& zero_load_tservers) {
+  std::vector<uint32_t> non_zero_loads;
+  bool is_zero_load_non_zero = false;
+  for (const auto& load : tserver_loads) {
+    LOG(INFO) << "Load of ts: " << load.first << ", load: " << load.second;
+    if (zero_load_tservers.count(load.first)) {
+      is_zero_load_non_zero = load.second > 0;
+    } else {
+      non_zero_loads.push_back(load.second);
+    }
+  }
+
+  return !is_zero_load_non_zero && AreLoadsBalanced(non_zero_loads);
 }
 
 }  // namespace integration_tests

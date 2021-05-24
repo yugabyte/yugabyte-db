@@ -15,6 +15,7 @@
 #define YB_INTEGRATION_TESTS_LOAD_BALANCER_TEST_UTIL_H_
 
 #include <gtest/gtest.h>
+#include "yb/master/ts_manager.h"
 
 namespace yb {
 namespace integration_tests {
@@ -23,6 +24,11 @@ namespace integration_tests {
 
 // Checks the loads given and ensure that they are within one of each other.
 bool AreLoadsBalanced(const std::vector<uint32_t>& tserver_loads);
+
+// Checks that the loads of tservers specified in zero_load_tservers is 0 and
+// whether the remaining non-zero loads are balanced.
+bool AreLoadsAsExpected(const std::unordered_map<master::TabletServerId, int>& tserver_loads,
+                        const std::unordered_set<master::TabletServerId>& zero_load_tservers = {});
 
 }  // namespace integration_tests
 }  // namespace yb
