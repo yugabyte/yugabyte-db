@@ -111,7 +111,8 @@ public class Commissioner {
 
   public ObjectNode getStatusOrBadRequest(UUID taskUUID) {
     return mayGetStatus(taskUUID)
-        .orElseThrow(() -> new YWServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
+        .orElseThrow(
+            () -> new YWServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
   }
 
   public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
@@ -138,8 +139,8 @@ public class Commissioner {
     }
 
     // We are not able to find the task. Report an error.
-    LOG.error("Error fetching Task Progress for " + taskUUID +
-      ", TaskInfo with that taskUUID not found");
+    LOG.error(
+        "Error fetching Task Progress for " + taskUUID + ", TaskInfo with that taskUUID not found");
     return Optional.empty();
   }
 
