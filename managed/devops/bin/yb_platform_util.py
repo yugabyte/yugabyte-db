@@ -8,7 +8,6 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-
 import json
 import os
 import copy
@@ -27,12 +26,12 @@ else:
 
 SUCCESS = "success"
 FAIL = "failed"
+PROGRESS_BAR = 100
 script_path = os.path.dirname(os.path.abspath( __file__ ))
 
 
 def exception_handling(func):
     def inner_function(*args, **kwargs):
-
         try:
             return func(*args, **kwargs)
         except HTTPError as e:
@@ -84,7 +83,7 @@ class YBUniverse():
                 response = urllib2.urlopen(request, json.dumps(data).encode('utf-8'))
             else:
                 response = urllib2.urlopen(request)
-            return response
+            return self.__convert_unicode_json(json.load(response))
         else:
             import urllib.request
             if not is_delete:
@@ -98,7 +97,7 @@ class YBUniverse():
                 response = urllib.request.urlopen(request, json.dumps(data).encode('utf-8'))
             else:
                 response = urllib.request.urlopen(request)
-            return response
+            return self.__convert_unicode_json(json.load(response))
     
 
     def __convert_unicode_json(self, data):
@@ -130,8 +129,7 @@ class YBUniverse():
         :return: None
         """
         universe_url = '{0}/api/v1/customers/{1}/universes'.format(self.base_url, self.customer_uuid)
-        response = self.__call_api(universe_url)
-        data = self.__convert_unicode_json(json.load(response))
+        data = self.__call_api(universe_url)
         for universe in data:
             if universe.get('name') == universe_name:
                 del universe['pricePerHour']
@@ -141,7 +139,8 @@ class YBUniverse():
     
     def __create_universe_config(self, universe_data):
         """
-        Create the universe config data from the json file.
+        Create the universe config data from the json file. 
+        Remove extra fields from universe details before saving to the file.
 
         :param universe_data: Stored universe data.
         :return: Configured universe json.
@@ -174,6 +173,7 @@ class YBUniverse():
     def __get_cluster_list(clusters, excluded_keys):
         """
         Method to modify payload for create API. Modify user Intent inside cluster list.
+        Remove extra fields from clusters_list before saving to the file.
 
         :param clusters: List of clusters.
         :param excluded_keys: Keys to be excluded
@@ -209,8 +209,7 @@ class YBUniverse():
         """
         universe_config_url = '{0}/api/v1/customers/{1}/universes/{2}'.format(
             self.base_url, self.customer_uuid, universe_uuid)
-        response = self.__call_api(universe_config_url)
-        return self.__convert_unicode_json(json.load(response))
+        return self.__call_api(universe_config_url)
     
 
     def __create_universe_from_config(self, universe_config):
@@ -221,8 +220,7 @@ class YBUniverse():
         :return: None
         """
         universe_create_url = '{0}/api/v1/customers/{1}/universes'.format(self.base_url, self.customer_uuid)
-        response = self.__call_api(universe_create_url, universe_config)
-        universe_json = self.__convert_unicode_json(json.loads(response.read()))
+        universe_json = self.__call_api(universe_create_url, universe_config)
         return universe_json['taskUUID']
 
 
@@ -257,9 +255,7 @@ class YBUniverse():
         """
         universe_config_url = '{0}/api/v1/customers/{1}/universe_configure'.format(
             self.base_url, self.customer_uuid)
-        response = self.__call_api(universe_config_url, configure_json)
-        universe_config_json = self.__convert_unicode_json(json.loads(response.read()))
-        return universe_config_json
+        return self.__call_api(universe_config_url, configure_json)
 
 
     def __get_universe_list(self):
@@ -269,14 +265,13 @@ class YBUniverse():
         :return: List of universe name and UUID
         """
         universe_url = '{0}/api/v1/customers/{1}/universes'.format(self.base_url, self.customer_uuid)
-        response = self.__call_api(universe_url)
-        universe_data = self.__convert_unicode_json(json.loads(response.read()))
+        universe_data = self.__call_api(universe_url)
         universes = []
-        for each in universe_data:
-            universe = {}
-            universe['name'] = each.get('name')
-            universe['universeUUID'] = each.get('universeUUID')
-            universes.append(universe)
+        for each_universe in universe_data: 
+            universes.append({
+                'name': each_universe.get('name'),
+                'universeUUID': each_universe.get('universeUUID')
+            })
         print(json.dumps(universes))
     
 
@@ -324,9 +319,8 @@ class YBUniverse():
 
         :return: None
         """
-        toolbar_width = 100
-        # each hash represents 2 % of the progress
-        sys.stdout.write("[%s]"%(("-")*toolbar_width))
+        # each hash represents 1 % of the progress
+        sys.stdout.write("[%s]"%(("-")*PROGRESS_BAR))
         sys.stdout.write("0%\n")
         sys.stdout.flush()
         # TODO Remove sleep once create task details API gives proper response.
@@ -334,12 +328,15 @@ class YBUniverse():
         time.sleep(10)
         while True:
             progress = self.__get_task_details(task_id)
-            sys.stdout.write("[%s]"%(("-")*toolbar_width))
+            sys.stdout.write("[%s]"%(("-")*PROGRESS_BAR))
             sys.stdout.write("{0}%".format(progress))
-            sys.stdout.write("\r") # return to start of line
+            # return to start of line
+            sys.stdout.write("\r")
             sys.stdout.flush()
-            sys.stdout.write("[")#Overwrite over the existing text from the start 
-            sys.stdout.write("#"*(progress))# number of # denotes the progress completed
+            #Overwrite over the existing text from the start 
+            sys.stdout.write("[")
+            # number of # denotes the progress completed
+            sys.stdout.write("#"*(progress))
             sys.stdout.write('\n')
             sys.stdout.flush()
             if progress == 100:
@@ -355,8 +352,7 @@ class YBUniverse():
         :return: None
         """
         task_url = '{0}/api/v1/customers/{1}/tasks/{2}'.format(self.base_url, self.customer_uuid, task_id)
-        response = self.__call_api(task_url)
-        task_json = self.__convert_unicode_json(json.loads(response.read()))
+        task_json = self.__call_api(task_url)
         if task_json.get('status') == 'Running':
             return int(task_json.get('percent'))
         elif task_json.get('status') == 'Success':
@@ -398,12 +394,10 @@ class YBUniverse():
 
         if self.args.force:
             universe_delete_url += '?isForceDelete=true'
-        response = self.__call_api(universe_delete_url, is_delete=True)
-        universe_json = self.__convert_unicode_json(json.loads(response.read()))
+        universe_json = self.__call_api(universe_delete_url, is_delete=True)
         task_id = universe_json['taskUUID']
 
-        print('Universe delete requested successfully.')
-        print('Use {0} as task id to get status of universe.'.format(task_id))
+        print('Universe delete requested successfully. Use {0} as task id to get status of universe.'.format(task_id))
         if not self.args.no_wait:
             self.__task_progress_bar(task_id)
 
@@ -418,8 +412,7 @@ class YBUniverse():
         universe_delete_url = '{0}/api/v1/customers/{1}/universes/find/{2}'.format(
             self.base_url, self.customer_uuid, universe_name)
 
-        response = self.__call_api(universe_delete_url)
-        self.__convert_unicode_json(json.loads(response.read()))
+        self.__call_api(universe_delete_url)
         
 
     def create_universe(self):
@@ -446,8 +439,7 @@ class YBUniverse():
         universe_config_json = self.__post_universe_config(universe_config_json)
         if universe_config_json:
             task_id = self.__create_universe_from_config(universe_config_json)
-            print('Universe create requested successfully.')
-            print('Use {0} as task id to get status of universe.'.format(task_id))
+            print('Universe create requested successfully. Use {0} as task id to get status of universe.'.format(task_id))
             if not self.args.no_wait:
                 self.__task_progress_bar(task_id)
         else:
@@ -460,14 +452,16 @@ class YBUniverse():
 
         :return: None
         """
-        customer_url = '{0}/api/v1/customers'.format(self.base_url)
-        response = self.__call_api(customer_url)
-        data = self.__convert_unicode_json(json.load(response))
-        if (len(data) == 1):
-            self.customer_uuid = str(data[0])
+        if self.args.customer_uuid:
+            self.customer_uuid = self.args.customer_uuid
         else:
-            sys.stderr.write('Muliple customer UUID present, Please provide customer UUID')
-            exit()
+            customer_url = '{0}/api/v1/customers'.format(self.base_url)
+            data = self.__call_api(customer_url)
+            if (len(data) == 1):
+                self.customer_uuid = str(data[0])
+            else:
+                sys.stderr.write('Muliple customer UUID present, Please provide customer UUID')
+                exit()
 
 
     def get_regions_data(self):
@@ -477,22 +471,21 @@ class YBUniverse():
         :return: All available regions
         """
         provider_url = '{0}/api/v1/customers/{1}/regions'.format(self.base_url, self.customer_uuid)
-        response = self.__call_api(provider_url)
-        region_data = self.__convert_unicode_json(json.loads(response.read()))
+        region_data = self.__call_api(provider_url)
         regions = []
-        for each in region_data:
+        for each_region in region_data:
             zones = []
-            for each_zone in each.get('zones'):
-                zone = {}
-                zone['name'] = each_zone.get('name')
-                zone['uuid'] = each_zone.get('uuid')
-                zones.append(zone)
-            region = {}
-            region['zones'] = zones
-            region['region_name'] = each.get('name')
-            region['uuid'] = each.get('uuid')
-            region['provider'] = each.get('provider').get('code')
-            regions.append(region)
+            for each_zone in each_region.get('zones'):
+                zones.append({
+                    'zone_name': each_zone.get('name'),
+                    'zone_uuid': each_zone.get('uuid')
+                })
+            regions.append({
+                'zones': zones,
+                'region_name': each_region.get('name'),
+                'region_uuid': each_region.get('uuid'),
+                'provider': each_region.get('provider').get('code')
+            })
         print(json.dumps(regions))
     
 
@@ -503,14 +496,13 @@ class YBUniverse():
         :return: All available providers
         """
         provider_url = '{0}/api/v1/customers/{1}/providers'.format(self.base_url, self.customer_uuid)
-        response = self.__call_api(provider_url)
-        provider_data = self.__convert_unicode_json(json.loads(response.read()))
+        provider_data = self.__call_api(provider_url)
         providers = []
-        for each in provider_data:
-            provider = {}
-            provider['name'] = each.get('name')
-            provider['uuid'] = each.get('uuid')
-            providers.append(provider)
+        for each_provider in provider_data:
+            providers.append({
+                'name': each_provider.get('name'),
+                'uuid' : each_provider.get('uuid')
+            })
         print(json.dumps(providers))
 
 
@@ -562,6 +554,9 @@ class YBUniverse():
 
         :return: None
         """
+        if not self.args.task:
+            print("Task id required to get task status. Use \`-t|--task <task_id>\` to pass task_id.")
+            exit()
         self.__task_progress_bar(self.args.task)
     
 
