@@ -101,7 +101,7 @@ public class NodeInstanceController extends AuthenticatedController {
       return ApiResponse.success(nodes);
     }
     throw new YWServiceException(
-      BAD_REQUEST, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
+        BAD_REQUEST, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
   }
 
   /**
@@ -153,26 +153,26 @@ public class NodeInstanceController extends AuthenticatedController {
     if (nodeAction == NodeActionType.STOP || nodeAction == NodeActionType.REMOVE) {
       if (!universe.isNodeActionAllowed(nodeName, nodeAction)) {
         String errMsg =
-          "Cannot "
-            + nodeAction.name()
-            + " "
-            + nodeName
-            + " as it will under replicate the masters.";
+            "Cannot "
+                + nodeAction.name()
+                + " "
+                + nodeName
+                + " as it will under replicate the masters.";
         LOG.error(errMsg);
         throw new YWServiceException(BAD_REQUEST, errMsg);
       }
     }
 
     if (nodeAction == NodeActionType.ADD
-      || nodeAction == NodeActionType.START
-      || nodeAction == NodeActionType.START_MASTER) {
+        || nodeAction == NodeActionType.START
+        || nodeAction == NodeActionType.START_MASTER) {
       taskParams.clusters = universe.getUniverseDetails().clusters;
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
-          String.format(
-            "The certificate %s needs info. Update the cert" + " and retry.",
-            CertificateInfo.get(taskParams.rootCA).label);
+            String.format(
+                "The certificate %s needs info. Update the cert" + " and retry.",
+                CertificateInfo.get(taskParams.rootCA).label);
         LOG.error(errMsg);
         throw new YWServiceException(BAD_REQUEST, errMsg);
       }
@@ -185,27 +185,27 @@ public class NodeInstanceController extends AuthenticatedController {
     }
 
     LOG.info(
-      "{} Node {} in universe={}: name={} at version={}.",
-      nodeAction.toString(false),
-      nodeName,
-      universe.universeUUID,
-      universe.name,
-      universe.version);
+        "{} Node {} in universe={}: name={} at version={}.",
+        nodeAction.toString(false),
+        nodeName,
+        universe.universeUUID,
+        universe.name,
+        universe.version);
 
     UUID taskUUID = commissioner.submit(nodeAction.getCommissionerTask(), taskParams);
     CustomerTask.create(
-      customer,
-      universe.universeUUID,
-      taskUUID,
-      CustomerTask.TargetType.Node,
-      nodeAction.getCustomerTask(),
-      nodeName);
+        customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Node,
+        nodeAction.getCustomerTask(),
+        nodeName);
     LOG.info(
-      "Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
-      taskUUID,
-      universe.universeUUID,
-      universe.name,
-      nodeName);
+        "Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
+        taskUUID,
+        universe.universeUUID,
+        universe.name,
+        nodeName);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     return new YWResults.YWTask(taskUUID).asResult();
   }
