@@ -25,7 +25,7 @@ import javax.persistence.Id;
 import java.util.*;
 
 import com.yugabyte.yw.common.Util;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.*;
 
 @Entity
 public class CustomerConfig extends Model {
@@ -65,7 +65,7 @@ public class CustomerConfig extends Model {
 
   @Id public UUID configUUID;
 
-  @Column(length=100, nullable = true)
+  @Column(length = 100, nullable = true)
   public String configName;
 
   @Column(nullable = false)
@@ -116,10 +116,10 @@ public class CustomerConfig extends Model {
 
   public ArrayNode getUniverseDetails() {
     Set<Universe> universes = new HashSet<>();
-    if (this.type==ConfigType.STORAGE){ 
+    if (this.type == ConfigType.STORAGE) {
       universes = Backup.getAssociatedUniverses(this.configUUID);
     }
-  return Util.getUniverseDetails(universes);
+    return Util.getUniverseDetails(universes);
   }
 
   @Override

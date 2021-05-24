@@ -272,30 +272,46 @@ public class Backup extends Model {
 
   public static Set<Universe> getAssociatedUniverses(UUID configUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
-    List<Backup> backupList = find.query().where()
-        .in("state", new Object[] {BackupState.Completed, BackupState.InProgress})
-        .findList();
-    backupList = backupList.stream()
-        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(configUUID) &&
-            universeUUIDs.add(b.getBackupInfo().universeUUID))
-        .collect(Collectors.toList());
-        
-    List<Schedule> scheduleList = Schedule.find.query().where()
-        .in("task_type", new Object[] { TaskType.BackupUniverse, TaskType.MultiTableBackup})
-        .eq("status", "Active")
-        .findList();
-    scheduleList = scheduleList.stream()
-        .filter(s -> s.getTaskParams().path("storageConfigUUID").asText()
-        .equals(configUUID.toString()) &&
-            universeUUIDs.add(UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
-        .collect(Collectors.toList());
+    List<Backup> backupList =
+        find.query()
+            .where()
+            .in("state", new Object[] {BackupState.Completed, BackupState.InProgress})
+            .findList();
+    backupList =
+        backupList
+            .stream()
+            .filter(
+                b ->
+                    b.getBackupInfo().storageConfigUUID.equals(configUUID)
+                        && universeUUIDs.add(b.getBackupInfo().universeUUID))
+            .collect(Collectors.toList());
+
+    List<Schedule> scheduleList =
+        Schedule.find
+            .query()
+            .where()
+            .in("task_type", new Object[] {TaskType.BackupUniverse, TaskType.MultiTableBackup})
+            .eq("status", "Active")
+            .findList();
+    scheduleList =
+        scheduleList
+            .stream()
+            .filter(
+                s ->
+                    s.getTaskParams()
+                            .path("storageConfigUUID")
+                            .asText()
+                            .equals(configUUID.toString())
+                        && universeUUIDs.add(
+                            UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
+            .collect(Collectors.toList());
     Set<Universe> universes = new HashSet<Universe>();
     for (UUID universeUUID : universeUUIDs) {
       try {
         universes.add(Universe.getOrBadRequest(universeUUID));
       }
       // backup exist but universe does not.We are ignoring such backups.
-      catch(Exception e){ 
+      catch (Exception e) {
       }
     }
     return universes;
