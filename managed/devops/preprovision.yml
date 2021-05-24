@@ -1,0 +1,45 @@
+# Copyright 2021 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: "Pre-provisioning tasks"
+  hosts: "{{ yb_ansible_host }}"
+  become: yes
+  become_method: sudo
+  tasks:
+    # have to save this in another var since it won't play well with overriding
+    # ansible_ssh_pipelining in the task below
+    - set_fact:
+        disable_requiretty: "{{ ansible_ssh_pipelining }}"
+
+    - name: disable requiretty in /etc/sudoers
+      lineinfile:
+        dest: /etc/sudoers.d/yb_sudoers
+        create: yes
+        mode: 0440
+        line: "{{ [ssh_user, yb_server_ssh_user, user_name] |
+          select('defined') | unique | map('regex_replace', '(.*)', 'Defaults:\\1 !requiretty') |
+          join('\n') }}"
+      vars:
+        ansible_ssh_pipelining: no
+      when: disable_requiretty
+    # https://cloud.google.com/compute/docs/troubleshooting/known-issues#known_issues_for_linux_vm_instances
+    - name: Fix google-cloud yum repo settings for GCP VM
+      replace:
+        dest: "/etc/yum.repos.d/google-cloud.repo"
+        regexp: 'repo_gpgcheck=1'
+        replace: 'repo_gpgcheck=0'
+      when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
+    # Ensure Python 2.x is installed.
+    # http://stackoverflow.com/questions/32429259/ansible-fails-with-bin-sh-1-usr-bin-python-not-found
+    - name: 'install python 2.x'
+      raw: if grep Ubuntu /etc/issue >/dev/null; then sudo apt-get -y install python; fi
+    - name: Install policycoreutils-python
+      package:
+        name: policycoreutils-python
+        state: present
+      when: machine_image is match(".*centos-7-v20210217")

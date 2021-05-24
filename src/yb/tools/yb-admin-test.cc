@@ -34,28 +34,40 @@
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/date_time/posix_time/time_parsers.hpp>
 
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/json_util.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_verifier.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
-#include "yb/integration-tests/ts_itest-base.h"
-#include "yb/master/master_defaults.h"
 
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_backup.pb.h"
+
+#include "yb/tools/admin-test-base.h"
+
+#include "yb/util/date_time.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/random_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace tools {
@@ -74,16 +86,6 @@ using itest::TServerDetails;
 using strings::Substitute;
 
 namespace {
-
-Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name) {
-  auto it = value.FindMember(name);
-  if (it == value.MemberEnd()) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
-
-static const char* const kAdminToolName = "yb-admin";
 
 //  Helper to check hosts list by requesting cluster config via yb-admin and parse its output:
 //
@@ -149,37 +151,8 @@ class BlacklistChecker {
 
 } // namespace
 
-class AdminCliTest : public tserver::TabletServerIntegrationTestBase {
- protected:
-  // Figure out where the admin tool is.
-  std::string GetAdminToolPath() const;
-
-  template <class... Args>
-  Result<std::string> CallAdmin(Args&&... args) {
-    std::string result;
-    RETURN_NOT_OK(Subprocess::Call(
-        ToStringVector(
-            GetAdminToolPath(), "-master_addresses", cluster_->master()->bound_rpc_addr(),
-            std::forward<Args>(args)...),
-        &result));
-    return result;
-  }
-
-  template <class... Args>
-  Result<rapidjson::Document> CallJsonAdmin(Args&&... args) {
-    auto raw = VERIFY_RESULT(CallAdmin(std::forward<Args>(args)...));
-    rapidjson::Document result;
-    if (result.Parse(raw.c_str(), raw.length()).HasParseError()) {
-      return STATUS_FORMAT(
-          InvalidArgument, "Failed to parse json output $0: $1", result.GetParseError(), raw);
-    }
-    return result;
-  }
+class AdminCliTest : public AdminTestBase {
 };
-
-string AdminCliTest::GetAdminToolPath() const {
-  return GetToolPath(kAdminToolName);
-}
 
 // Test yb-admin config change while running a workload.
 // 1. Instantiate external mini cluster with 3 TS.
@@ -464,37 +437,6 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   output = ASSERT_RESULT(CallAdmin("list_snapshots", "SHOW_DETAILS"));
   ASSERT_NE(output.find(extra_table.table_name()), string::npos);
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
-}
-
-TEST_F(AdminCliTest, SnapshotSchedule) {
-  BuildAndStart();
-
-  auto out = ASSERT_RESULT(CallJsonAdmin(
-      "create_snapshot_schedule", 0.1, 10, kTableName.namespace_name(), kTableName.table_name()));
-
-  std::string schedule_id = ASSERT_RESULT(Get(out, "schedule_id")).get().GetString();
-  LOG(INFO) << "Schedule id: " << schedule_id;
-  std::this_thread::sleep_for(20s);
-
-  ASSERT_OK(WaitFor([this, schedule_id]() -> Result<bool> {
-    auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_schedules"));
-    const auto& schedules = VERIFY_RESULT(Get(out, "schedules")).get().GetArray();
-    SCHECK_EQ(schedules.Size(), 1, IllegalState, "Wrong schedules number");
-    auto first_schedule_id = VERIFY_RESULT(Get(schedules[0], "id")).get().GetString();
-    SCHECK_EQ(schedule_id, first_schedule_id, IllegalState, "Wrong schedule id");
-    const auto& snapshots = VERIFY_RESULT(Get(schedules[0], "snapshots")).get().GetArray();
-
-    if (snapshots.Size() < 2) {
-      return false;
-    }
-    std::string first_snapshot_hybrid_time = VERIFY_RESULT(
-        Get(snapshots[0], "snapshot_time_utc")).get().GetString();
-    std::string second_previous_snapshot_hybrid_time = VERIFY_RESULT(
-        Get(snapshots[1], "previous_snapshot_time_utc")).get().GetString();
-    SCHECK_EQ(first_snapshot_hybrid_time, second_previous_snapshot_hybrid_time, IllegalState,
-              "Wrong previous_snapshot_hybrid_time");
-    return true;
-  }, 20s, "At least 2 snapshots"));
 }
 
 TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {

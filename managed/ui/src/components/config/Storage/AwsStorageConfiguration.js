@@ -43,6 +43,28 @@ class AwsStorageConfiguration extends Component {
     }
   };
 
+  disabledInputFields = (config, isEdited, iamRoleEnabled = false) => {
+    if (
+      ((!isEmptyObject(config) && isEdited) || (isEmptyObject(config) && !isEdited)) &&
+      !iamRoleEnabled
+    ) {
+      return false;
+    } else {
+      return true;
+    }
+  };
+
+  componentDidMount = () => {
+    const {
+      customerConfigs: { data }
+    } = this.props;
+    const s3Config = data.find((config) => config.name === 'S3');
+    const config = s3Config ? s3Config.data : {};
+    if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === 'true') {
+      this.setState({ iamRoleEnabled: true });
+    }
+  };
+
   render() {
     const { isEdited, iamInstanceToggle, iamRoleEnabled } = this.props;
 

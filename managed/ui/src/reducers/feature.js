@@ -1,11 +1,13 @@
 import { TOGGLE_FEATURE } from '../actions/feature';
 
 const initialStateFeatureInTest = {
-  pausedUniverse: false
+  pausedUniverse: false,
+  addListMultiProvider: false
 };
 
 const initialStateFeatureReleased = {
-  pausedUniverse: false
+  pausedUniverse: false,
+  addListMultiProvider: false
 };
 
 export const FeatureFlag = (

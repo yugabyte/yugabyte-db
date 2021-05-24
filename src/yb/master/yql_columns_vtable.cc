@@ -51,8 +51,7 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
 Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables, true);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
   for (scoped_refptr<TableInfo> table : tables) {
 
     // Skip non-YQL tables.
@@ -64,12 +63,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     RETURN_NOT_OK(table->GetSchema(&schema));
 
     // Get namespace for table.
-    NamespaceIdentifierPB nsId;
-    nsId.set_id(table->namespace_id());
-    scoped_refptr<NamespaceInfo> nsInfo;
-    RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
+    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+        table->namespace_id()));
 
-    const string& keyspace_name = nsInfo->name();
+    const string& keyspace_name = ns_info->name();
     const string& table_name = table->name();
 
     // Fill in the hash keys first.

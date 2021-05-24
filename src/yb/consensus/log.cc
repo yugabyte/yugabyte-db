@@ -69,6 +69,7 @@
 #include "yb/util/random.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/thread.h"
@@ -622,6 +623,7 @@ Status Log::CloseCurrentSegment() {
 
 Status Log::RollOver() {
   SCOPED_LATENCY_METRIC(metrics_, roll_latency);
+  RSTATUS_DCHECK(active_segment_, InternalError, "Called RollOver without active segment.");
 
   // Check if any errors have occurred during allocation
   RETURN_NOT_OK(allocation_status_.Get());
@@ -640,7 +642,7 @@ Status Log::RollOver() {
   return Status::OK();
 }
 
-Status Log::Reserve(LogEntryTypePB type,
+void Log::Reserve(LogEntryTypePB type,
                     LogEntryBatchPB* entry_batch,
                     LogEntryBatch** reserved_entry) {
   TRACE_EVENT0("log", "Log::Reserve");
@@ -667,7 +669,6 @@ Status Log::Reserve(LogEntryTypePB type,
   // TODO (perf) Use a ring buffer instead of a blocking queue and set
   // 'reserved_entry' to a pre-allocated slot in the buffer.
   *reserved_entry = new_entry_batch.release();
-  return Status::OK();
 }
 
 Status Log::TEST_AsyncAppendWithReplicates(
@@ -713,7 +714,7 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
   }
 
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(REPLICATE, &batch, &reserved_entry_batch));
+  Reserve(REPLICATE, &batch, &reserved_entry_batch);
 
   // If we're able to reserve, set the vector of replicate shared pointers in the LogEntryBatch.
   // This will make sure there's a reference for each replicate while we're appending.
@@ -1050,7 +1051,7 @@ Status Log::WaitUntilAllFlushed() {
   LogEntryBatchPB entry_batch;
   entry_batch.add_entry()->set_type(log::FLUSH_MARKER);
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(FLUSH_MARKER, &entry_batch, &reserved_entry_batch));
+  Reserve(FLUSH_MARKER, &entry_batch, &reserved_entry_batch);
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
   return s.Wait();
@@ -1319,7 +1320,7 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
                         Format("Failed to create tablet WAL dir $0", dest_wal_dir));
   // Make sure log segments we have so far are immutable, so we can hardlink them instead of
   // copying.
-  if (footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0) {
+  if (active_segment_ && footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0) {
     // If active log segment has entries - close it and rollover to next one, so this one become
     // immutable. If active log segment empty - we will just skip it.
     RETURN_NOT_OK(AllocateSegmentAndRollOver());
@@ -1329,8 +1330,9 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
   auto* const env = options_.env;
   const auto files = VERIFY_RESULT(env->GetChildren(wal_dir_, ExcludeDots::kTrue));
 
-  const auto active_segment_filename =
-      FsManager::GetWalSegmentFileName(active_segment_sequence_number_);
+  boost::optional<std::string> active_segment_filename = active_segment_
+      ? boost::make_optional(FsManager::GetWalSegmentFileName(active_segment_sequence_number_))
+      : boost::none;
 
   for (const auto& file : files) {
     const auto src_path = JoinPathSegments(wal_dir_, file);

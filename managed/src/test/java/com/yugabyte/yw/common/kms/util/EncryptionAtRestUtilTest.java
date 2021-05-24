@@ -34,43 +34,35 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
     encryptionUtil = new EncryptionAtRestUtil();
     testCustomer = ModelFactory.testCustomer();
     testUniverse = ModelFactory.createUniverse();
-    testKMSConfig = KmsConfig.createKMSConfig(
-      testCustomer.uuid,
-      KeyProvider.AWS,
-      Json.newObject().put("test_key", "test_val"),
-      "some config name"
-    );
+    testKMSConfig =
+        KmsConfig.createKMSConfig(
+            testCustomer.uuid,
+            KeyProvider.AWS,
+            Json.newObject().put("test_key", "test_val"),
+            "some config name");
   }
 
   @Test
   public void testGenerateSalt() {
-    String salt = encryptionUtil
-      .generateSalt(testCustomer.uuid, KeyProvider.SMARTKEY);
+    String salt = encryptionUtil.generateSalt(testCustomer.uuid, KeyProvider.SMARTKEY);
     assertNotNull(salt);
   }
 
   @Test
   public void testMaskAndUnmaskConfigData() {
     JsonNode originalObj = Json.newObject().put("test_key", "test_val");
-    ObjectNode encryptedObj = encryptionUtil.maskConfigData(
-      testCustomer.uuid,
-      originalObj,
-      KeyProvider.SMARTKEY
-    );
-    JsonNode unencryptedObj = encryptionUtil.unmaskConfigData(
-      testCustomer.uuid,
-      encryptedObj,
-      KeyProvider.SMARTKEY
-    );
+    ObjectNode encryptedObj =
+        encryptionUtil.maskConfigData(testCustomer.uuid, originalObj, KeyProvider.SMARTKEY);
+    JsonNode unencryptedObj =
+        encryptionUtil.unmaskConfigData(testCustomer.uuid, encryptedObj, KeyProvider.SMARTKEY);
     assertEquals(originalObj.get("test_key").asText(), unencryptedObj.get("test_key").asText());
   }
 
   @Test
   public void testGetUniverseKeyCacheEntryNoEntry() {
-    assertNull(encryptionUtil.getUniverseKeyCacheEntry(
-      UUID.randomUUID(),
-      new String("some_key_ref").getBytes())
-    );
+    assertNull(
+        encryptionUtil.getUniverseKeyCacheEntry(
+            UUID.randomUUID(), new String("some_key_ref").getBytes()));
   }
 
   @Test
@@ -80,11 +72,9 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
     byte[] keyVal = new String("some_key_val").getBytes();
     encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
     assertEquals(
-      Base64.getEncoder().encodeToString(keyVal),
-      Base64.getEncoder().encodeToString(
-        encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)
-      )
-    );
+        Base64.getEncoder().encodeToString(keyVal),
+        Base64.getEncoder()
+            .encodeToString(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)));
   }
 
   @Test
@@ -94,19 +84,15 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
     byte[] keyVal = new String("some_key_val").getBytes();
     encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
     assertEquals(
-      Base64.getEncoder().encodeToString(keyVal),
-      Base64.getEncoder().encodeToString(
-        encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)
-      )
-    );
+        Base64.getEncoder().encodeToString(keyVal),
+        Base64.getEncoder()
+            .encodeToString(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)));
     keyVal = new String("some_new_key_val").getBytes();
     encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
     assertEquals(
-      Base64.getEncoder().encodeToString(keyVal),
-      Base64.getEncoder().encodeToString(
-        encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)
-      )
-    );
+        Base64.getEncoder().encodeToString(keyVal),
+        Base64.getEncoder()
+            .encodeToString(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)));
   }
 
   @Test
@@ -116,11 +102,9 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
     byte[] keyVal = new String("some_key_val").getBytes();
     encryptionUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
     assertEquals(
-      Base64.getEncoder().encodeToString(keyVal),
-      Base64.getEncoder().encodeToString(
-        encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)
-      )
-    );
+        Base64.getEncoder().encodeToString(keyVal),
+        Base64.getEncoder()
+            .encodeToString(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef)));
     encryptionUtil.removeUniverseKeyCacheEntry(universeUUID);
     assertNull(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef));
   }
@@ -134,24 +118,18 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
   @Test
   public void testGetNumKeyRotations() {
     encryptionUtil.addKeyRef(
-      testUniverse.universeUUID,
-      testKMSConfig.configUUID,
-      "some_key_ref".getBytes()
-    );
-    int numRotations = encryptionUtil.getNumKeyRotations(
-      testUniverse.universeUUID, testKMSConfig.configUUID);
+        testUniverse.universeUUID, testKMSConfig.configUUID, "some_key_ref".getBytes());
+    int numRotations =
+        encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, testKMSConfig.configUUID);
     assertEquals(1, numRotations);
   }
 
   @Test
   public void testClearUniverseKeyHistory() {
     encryptionUtil.addKeyRef(
-      testUniverse.universeUUID,
-      testKMSConfig.configUUID,
-      "some_key_ref".getBytes()
-    );
-    int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID,
-      testKMSConfig.configUUID);
+        testUniverse.universeUUID, testKMSConfig.configUUID, "some_key_ref".getBytes());
+    int numRotations =
+        encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, testKMSConfig.configUUID);
     assertEquals(numRotations, 1);
     encryptionUtil.removeKeyRotationHistory(testUniverse.universeUUID, testKMSConfig.configUUID);
     numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);

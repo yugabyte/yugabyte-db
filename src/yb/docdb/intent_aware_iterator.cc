@@ -27,6 +27,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/kv_debug.h"
+#include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -35,9 +36,6 @@
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
-
-DEFINE_bool(TEST_transaction_allow_rerequest_status, true,
-            "Allow rerequest transaction status when try again is received.");
 
 namespace yb {
 namespace docdb {
@@ -87,115 +85,6 @@ void AppendStrongWrite(KeyBytes* out) {
 }
 
 } // namespace
-
-// For locally committed transactions returns commit time if committed at specified time or
-// HybridTime::kMin otherwise. For other transactions returns HybridTime::kInvalid.
-HybridTime TransactionStatusCache::GetLocalCommitTime(const TransactionId& transaction_id) {
-  auto local_commit_time = txn_context_opt_->txn_status_manager.LocalCommitTime(transaction_id);
-  return local_commit_time.is_valid()
-      ? local_commit_time <= read_time_.global_limit ? local_commit_time : HybridTime::kMin
-      : local_commit_time;
-}
-
-Result<HybridTime> TransactionStatusCache::GetCommitTime(const TransactionId& transaction_id) {
-  auto it = cache_.find(transaction_id);
-  if (it != cache_.end()) {
-    return it->second;
-  }
-
-  auto result = DoGetCommitTime(transaction_id);
-  if (result.ok()) {
-    cache_.emplace(transaction_id, *result);
-  }
-  return result;
-}
-
-Status StatusWaitTimedOut(const TransactionId& transaction_id) {
-  return STATUS_FORMAT(
-      TimedOut, "Timed out waiting for transaction status: $0", transaction_id);
-}
-
-Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& transaction_id) {
-  HybridTime local_commit_time = GetLocalCommitTime(transaction_id);
-  if (local_commit_time.is_valid()) {
-    return local_commit_time;
-  }
-
-  // Since TransactionStatusResult does not have default ctor we should init it somehow.
-  TransactionStatusResult txn_status(TransactionStatus::ABORTED, HybridTime());
-  const auto kMaxWait = 50ms * kTimeMultiplier;
-  const auto kRequestTimeout = kMaxWait;
-  bool retry_allowed = FLAGS_TEST_transaction_allow_rerequest_status;
-  CoarseBackoffWaiter waiter(deadline_, kMaxWait);
-  static const std::string kRequestReason = "get commit time"s;
-  for(;;) {
-    auto txn_status_promise = std::make_shared<std::promise<Result<TransactionStatusResult>>>();
-    auto future = txn_status_promise->get_future();
-    auto callback = [txn_status_promise](Result<TransactionStatusResult> result) {
-      txn_status_promise->set_value(std::move(result));
-    };
-    txn_context_opt_->txn_status_manager.RequestStatusAt(
-        {&transaction_id, read_time_.read, read_time_.global_limit, read_time_.serial_no,
-              &kRequestReason,
-              TransactionLoadFlags{TransactionLoadFlag::kCleanup},
-              callback});
-    auto wait_start = CoarseMonoClock::now();
-    auto future_status = future.wait_until(
-        retry_allowed ? wait_start + kRequestTimeout : deadline_);
-    if (future_status == std::future_status::ready) {
-      auto txn_status_result = future.get();
-      if (txn_status_result.ok()) {
-        txn_status = *txn_status_result;
-        break;
-      }
-      if (txn_status_result.status().IsNotFound()) {
-        // We have intent w/o metadata, that means that transaction was already cleaned up.
-        LOG(WARNING) << "Intent for transaction w/o metadata: " << transaction_id;
-        return HybridTime::kMin;
-      }
-      LOG(WARNING)
-          << "Failed to request transaction " << transaction_id << " status: "
-          <<  txn_status_result.status();
-      if (!txn_status_result.status().IsTryAgain()) {
-        return std::move(txn_status_result.status());
-      }
-      if (!waiter.Wait()) {
-        return StatusWaitTimedOut(transaction_id);
-      }
-    } else {
-      LOG(INFO) << "TXN: " << transaction_id << ": Timed out waiting txn status, waited: "
-                << MonoDelta(CoarseMonoClock::now() - wait_start)
-                << ", future status: " << to_underlying(future_status)
-                << ", left to deadline: " << MonoDelta(deadline_ - CoarseMonoClock::now());
-      if (waiter.ExpiredNow()) {
-        return StatusWaitTimedOut(transaction_id);
-      }
-      waiter.NextAttempt();
-    }
-    DCHECK(retry_allowed);
-  }
-  VLOG(4) << "Transaction_id " << transaction_id << " at " << read_time_
-          << ": status: " << TransactionStatus_Name(txn_status.status)
-          << ", status_time: " << txn_status.status_time;
-  // There could be case when transaction was committed and applied between previous call to
-  // GetLocalCommitTime, in this case coordinator does not know transaction and will respond
-  // with ABORTED status. So we recheck whether it was committed locally.
-  if (txn_status.status == TransactionStatus::ABORTED) {
-    if (txn_status.status_time && txn_status.status_time != HybridTime::kMax) {
-      // It is possible that this node not yet received APPLY, so it is possible that
-      // we would not have local commit time even for committed transaction.
-      // Waiting for safe time to be sure that we APPLY was processed if present.
-      // See https://github.com/YugaByte/yugabyte-db/issues/7729 for details.
-      RETURN_NOT_OK(txn_context_opt_->txn_status_manager.WaitForSafeTime(
-          txn_status.status_time, deadline_));
-    }
-    local_commit_time = GetLocalCommitTime(transaction_id);
-    return local_commit_time.is_valid() ? local_commit_time : HybridTime::kMin;
-  } else {
-    return txn_status.status == TransactionStatus::COMMITTED ? txn_status.status_time
-        : HybridTime::kMin;
-  }
-}
 
 namespace {
 
@@ -701,6 +590,12 @@ Result<FetchKeyResult> IntentAwareIterator::FetchKey() {
           << ", regular: " << IsEntryRegular()
           << ", with time: " << result.write_time
           << ", while read bounds are: " << read_time_;
+
+  YB_TRANSACTION_DUMP(
+      Read, txn_op_context_ ? txn_op_context_->transaction_id : TransactionId::Nil(),
+      read_time_, result.write_time, result.same_transaction,
+      result.key.size(), result.key, value().size(), value());
+
   return result;
 }
 

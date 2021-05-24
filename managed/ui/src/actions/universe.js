@@ -210,9 +210,12 @@ export function resetUniverseList() {
   };
 }
 
-export function deleteUniverse(universeUUID, isForceDelete) {
+export function deleteUniverse(universeUUID, isForceDelete, isDeleteBackups) {
   const customerUUID = localStorage.getItem('customerId');
-  const deleteRequestPayload = { isForceDelete: isForceDelete };
+  const deleteRequestPayload = {
+    isForceDelete,
+    isDeleteBackups
+  };
   const request = axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`, {
     params: deleteRequestPayload
   });
@@ -722,4 +725,10 @@ export function updateAlertDefinition(alertDefinitionUUID, data) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${alertDefinitionUUID}`;
   return axios.put(endpoint, data);
+}
+
+export function downloadLogs(universeUUID, nodeName) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/${nodeName}/download_logs`;
+  window.open(endpoint, '_blank');
 }

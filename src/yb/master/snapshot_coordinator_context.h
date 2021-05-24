@@ -39,6 +39,9 @@ namespace master {
 using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
 
+using ScheduleMinRestoreTime =
+    std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>;
+
 YB_STRONGLY_TYPED_BOOL(SendMetadata);
 
 // Context class for MasterSnapshotCoordinator.
@@ -63,24 +66,22 @@ class SnapshotCoordinatorContext {
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
       TabletSnapshotOperationCallback callback) = 0;
 
-  virtual Result<SysRowEntries> CollectEntries(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
-      bool add_indexes,
-      bool include_parent_colocated_table,
-      bool succeed_if_create_in_progress) = 0;
+  virtual Result<SysRowEntries> CollectEntriesForSnapshot(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
   virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
-  virtual CHECKED_STATUS RestoreSysCatalog(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at, const OpId& op_id,
-      HybridTime write_time, const SnapshotScheduleFilterPB& filter) = 0;
+  virtual CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) = 0;
+  virtual CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) = 0;
+
+  virtual void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
 
   virtual const Schema& schema() = 0;
 
-  virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
+  virtual void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
   virtual rpc::Scheduler& Scheduler() = 0;
 
-  virtual bool IsLeader() = 0;
+  virtual int64_t LeaderTerm() = 0;
 
   virtual server::Clock* Clock() = 0;
 

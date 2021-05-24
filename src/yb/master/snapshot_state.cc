@@ -112,11 +112,11 @@ Status SnapshotState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
 }
 
 Status SnapshotState::TryStartDelete() {
-  if (AllInState(SysSnapshotEntryPB::DELETED)) {
-    return STATUS(NotFound, "The snapshot was deleted", id_.ToString(),
-                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
-  }
-  if (delete_started_ || HasInState(SysSnapshotEntryPB::DELETING)) {
+  if (initial_state() == SysSnapshotEntryPB::DELETING || delete_started_) {
+    if (AllInState(SysSnapshotEntryPB::DELETED)) {
+      return STATUS(NotFound, "The snapshot was deleted", id_.ToString(),
+                    MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
+    }
     return STATUS(NotFound, "The snapshot is being deleted", id_.ToString(),
                   MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
@@ -180,7 +180,7 @@ Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
   return tablet::CreateSnapshotData {
     .snapshot_hybrid_time = snapshot_hybrid_time_,
     .hybrid_time = state.hybrid_time(),
-    .op_id = OpId::FromPB(state.op_id()),
+    .op_id = state.op_id(),
     .snapshot_dir = VERIFY_RESULT(state.GetSnapshotDir()),
     .schedule_id = schedule_id_,
   };

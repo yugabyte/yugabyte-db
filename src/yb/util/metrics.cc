@@ -725,7 +725,8 @@ CHECKED_STATUS StringGauge::WriteForPrometheus(
 //
 // This implementation is optimized by using a striped counter. See LongAdder for details.
 
-scoped_refptr<Counter> CounterPrototype::Instantiate(const scoped_refptr<MetricEntity>& entity) {
+scoped_refptr<Counter> CounterPrototype::Instantiate(
+    const scoped_refptr<MetricEntity>& entity) const {
   return entity->FindOrCreateCounter(this);
 }
 
@@ -768,7 +769,8 @@ CHECKED_STATUS Counter::WriteForPrometheus(
     return Status::OK();
   }
 
-  return writer->WriteSingleEntry(attr, prototype_->name(), value());
+  return writer->WriteSingleEntry(attr, prototype_->name(), value(),
+                                  prototype()->aggregation_function());
 }
 
 //
@@ -776,7 +778,7 @@ CHECKED_STATUS Counter::WriteForPrometheus(
 //
 
 scoped_refptr<MillisLag> MillisLagPrototype::Instantiate(
-    const scoped_refptr<MetricEntity>& entity) {
+    const scoped_refptr<MetricEntity>& entity) const {
   return entity->FindOrCreateMillisLag(this);
 }
 
@@ -809,7 +811,8 @@ Status MillisLag::WriteForPrometheus(
     return Status::OK();
   }
 
-  return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms());
+  return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms(),
+                                  prototype()->aggregation_function());
 }
 
 AtomicMillisLag::AtomicMillisLag(const MillisLagPrototype* proto)
@@ -855,7 +858,7 @@ HistogramPrototype::HistogramPrototype(const MetricPrototype::CtorArgs& args,
 }
 
 scoped_refptr<Histogram> HistogramPrototype::Instantiate(
-    const scoped_refptr<MetricEntity>& entity) {
+    const scoped_refptr<MetricEntity>& entity) const {
   return entity->FindOrCreateHistogram(this);
 }
 
@@ -915,27 +918,34 @@ CHECKED_STATUS Histogram::WriteForPrometheus(
   std::string hist_name = prototype_->name();
   auto copy_of_attr = attr;
   RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_sum", snapshot.TotalSum()));
+        copy_of_attr, hist_name + "_sum", snapshot.TotalSum(),
+        prototype()->aggregation_function()));
   RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_count", snapshot.TotalCount()));
+        copy_of_attr, hist_name + "_count", snapshot.TotalCount(),
+        prototype()->aggregation_function()));
 
   // Copy the label map to add the quatiles.
   if (export_percentiles_ && FLAGS_expose_metric_histogram_percentiles) {
     copy_of_attr["quantile"] = "p50";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(50)));
+                                           snapshot.ValueAtPercentile(50),
+                                           prototype()->aggregation_function()));
     copy_of_attr["quantile"] = "p95";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(95)));
+                                           snapshot.ValueAtPercentile(95),
+                                           prototype()->aggregation_function()));
     copy_of_attr["quantile"] = "p99";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(99)));
+                                           snapshot.ValueAtPercentile(99),
+                                           prototype()->aggregation_function()));
     copy_of_attr["quantile"] = "mean";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.MeanValue()));
+                                           snapshot.MeanValue(),
+                                           prototype()->aggregation_function()));
     copy_of_attr["quantile"] = "max";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.MaxValue()));
+                                           snapshot.MaxValue(),
+                                           prototype()->aggregation_function()));
   }
   return Status::OK();
 }

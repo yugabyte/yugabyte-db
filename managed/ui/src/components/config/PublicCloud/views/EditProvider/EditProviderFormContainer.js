@@ -9,6 +9,7 @@ import {
   fetchCloudMetadata
 } from '../../../../../actions/cloud';
 import EditProviderForm from './EditProviderForm';
+import { fetchUniverseList, fetchUniverseListResponse } from '../../../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -20,6 +21,11 @@ const mapDispatchToProps = (dispatch) => {
 
     reloadCloudMetadata: () => {
       dispatch(fetchCloudMetadata());
+    },
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList()).then((response) => {
+        dispatch(fetchUniverseListResponse(response.payload));
+      });
     }
   };
 };
@@ -32,11 +38,12 @@ function mapStateToProps(state, ownProps) {
       secretKey: ownProps.sshKey,
       hostedZoneId: ownProps.hostedZoneId
     },
-    editProvider: state.cloud.editProvider
+    editProvider: state.cloud.editProvider,
+    universeList: state.universe.universeList
   };
 }
 
-const validate = (values, props) => {
+export const validateEditProvider = (values, props) => {
   const errors = {};
   if (!isNonEmptyString(values.hostedZoneId)) {
     errors.hostedZoneId = 'Cannot be empty';
@@ -46,7 +53,7 @@ const validate = (values, props) => {
 
 const editProviderForm = reduxForm({
   form: 'EditProviderForm',
-  validate,
+  validate: validateEditProvider,
   fields: ['hostedZoneId']
 });
 

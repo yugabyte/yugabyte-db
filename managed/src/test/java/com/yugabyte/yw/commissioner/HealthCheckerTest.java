@@ -4,56 +4,37 @@ package com.yugabyte.yw.commissioner;
 
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
-
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.AlertManager;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.EmailFixtures;
-import com.yugabyte.yw.common.EmailHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.HealthManager;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.HealthManager.ClusterInfo;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Alert.TargetType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.HealthCheck;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.ebean.Model;
+import io.prometheus.client.CollectorRegistry;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.mockito.ArgumentCaptor;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
-
 import scala.concurrent.ExecutionContext;
 
-import java.util.*;
-
 import javax.mail.MessagingException;
-
-import io.prometheus.client.CollectorRegistry;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -68,16 +49,11 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private HealthChecker healthChecker;
 
-  @Mock
-  private ActorSystem mockActorSystem;
-  @Mock
-  private play.Configuration mockConfig;
-  @Mock
-  private ExecutionContext mockExecutionContext;
-  @Mock
-  private HealthManager mockHealthManager;
-  @Mock
-  private Scheduler mockScheduler;
+  @Mock private ActorSystem mockActorSystem;
+  @Mock private play.Configuration mockConfig;
+  @Mock private ExecutionContext mockExecutionContext;
+  @Mock private HealthManager mockHealthManager;
+  @Mock private Scheduler mockScheduler;
 
   private Customer defaultCustomer;
   private Provider defaultProvider;
@@ -90,14 +66,11 @@ public class HealthCheckerTest extends FakeDBApplication {
   private CollectorRegistry testRegistry;
   private HealthCheckerReport report;
 
-  @Mock
-  private EmailHelper mockEmailHelper;
+  @Mock private EmailHelper mockEmailHelper;
 
-  @Mock
-  private AlertManager mockAlertManager;
+  @Mock private AlertManager mockAlertManager;
 
-  @Mock
-  Config mockRuntimeConfig;
+  @Mock Config mockRuntimeConfig;
 
   @Before
   public void setUp() {
@@ -108,11 +81,14 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
 
     ShellResponse dummyShellResponse =
-      ShellResponse.create(
-        0,
-        ("{''error'': false, ''data'': [ {''node'':''" + dummyNode +
-          "'', ''has_error'': true, ''message'':''" + dummyCheck +
-          "'' } ] }").replace("''", "\"") );
+        ShellResponse.create(
+            0,
+            ("{''error'': false, ''data'': [ {''node'':''"
+                    + dummyNode
+                    + "'', ''has_error'': true, ''message'':''"
+                    + dummyCheck
+                    + "'' } ] }")
+                .replace("''", "\""));
 
     when(mockHealthManager.runCommand(any(), any(), any())).thenReturn(dummyShellResponse);
 
@@ -122,42 +98,39 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);
 
     // Finally setup the mocked instance.
-    healthChecker = new HealthChecker(
-      mockActorSystem,
-      mockConfig,
-      mockExecutionContext,
-      mockHealthManager,
-      testRegistry,
-      report,
-      mockEmailHelper,
-      mockAlertManager,
-      null,
-      null
-    ) {
-      @Override
-      RuntimeConfig<Model> getRuntimeConfig() {
-        return new RuntimeConfig<>(mockRuntimeConfig);
-      }
-    };
+    healthChecker =
+        new HealthChecker(
+            mockActorSystem,
+            mockConfig,
+            mockExecutionContext,
+            mockHealthManager,
+            testRegistry,
+            report,
+            mockEmailHelper,
+            mockAlertManager,
+            null,
+            null) {
+          @Override
+          RuntimeConfig<Model> getRuntimeConfig() {
+            return new RuntimeConfig<>(mockRuntimeConfig);
+          }
+        };
   }
 
   private Universe setupUniverse(String name) {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.sshPort = 3333;
-    accessKey = AccessKey.create(
-      defaultProvider.uuid,
-      "key-" + name,
-      keyInfo);
+    accessKey = AccessKey.create(defaultProvider.uuid, "key-" + name, keyInfo);
 
     universe = ModelFactory.createUniverse(name, defaultCustomer.getCustomerId());
     // Universe modifies customer, so we need to refresh our in-memory view of this reference.
     defaultCustomer = Customer.get(defaultCustomer.uuid);
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
-      universe.getUniverseDetails().getPrimaryCluster().userIntent;
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     userIntent.accessKeyCode = accessKey.getKeyCode();
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
-    return Universe.get(universe.universeUUID);
+    return Universe.getOrBadRequest(universe.universeUUID);
   }
 
   private Universe setupK8sUniverse(String name) {
@@ -170,17 +143,19 @@ public class HealthCheckerTest extends FakeDBApplication {
     kubernetesProvider.setConfig(config);
     // Universe modifies customer, so we need to refresh our in-memory view of this reference.
     defaultCustomer = Customer.get(defaultCustomer.uuid);
-    universe = ModelFactory.createUniverse(name, UUID.randomUUID(),
-      defaultCustomer.getCustomerId(),
-      Common.CloudType.kubernetes, pi);
+    universe =
+        ModelFactory.createUniverse(
+            name,
+            UUID.randomUUID(),
+            defaultCustomer.getCustomerId(),
+            Common.CloudType.kubernetes,
+            pi);
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode());
-    return Universe.get(universe.universeUUID);
+    return Universe.getOrBadRequest(universe.universeUUID);
   }
 
   private void setupAlertingData(
-    String alertingEmail,
-    boolean sendAlertsToYb,
-    boolean reportOnlyErrors) {
+      String alertingEmail, boolean sendAlertsToYb, boolean reportOnlyErrors) {
 
     AlertingData data = new AlertingData();
     data.sendAlertsToYb = sendAlertsToYb;
@@ -201,43 +176,41 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(email, false, false);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
-    u.setConfig(config);
+    u.updateConfig(config);
     return u;
   }
 
-
   private void verifyHealthManager(int invocationsCount) {
-    verify(mockHealthManager, times(invocationsCount)).runCommand(
-      eq(defaultProvider),
-      any(),
-      eq(0L)
-    );
+    verify(mockHealthManager, times(invocationsCount))
+        .runCommand(eq(defaultProvider), any(), eq(0L));
   }
 
   private void verifyK8sHealthManager() {
     ArgumentCaptor<List> expectedClusters = ArgumentCaptor.forClass(List.class);
-    verify(mockHealthManager, times(1)).runCommand(
-      eq(kubernetesProvider),
-      expectedClusters.capture(),
-      eq(0L)
-    );
-    HealthManager.ClusterInfo cluster = (HealthManager.ClusterInfo) expectedClusters.getValue().get(0);
+    verify(mockHealthManager, times(1))
+        .runCommand(eq(kubernetesProvider), expectedClusters.capture(), eq(0L));
+    HealthManager.ClusterInfo cluster =
+        (HealthManager.ClusterInfo) expectedClusters.getValue().get(0);
     assertEquals(cluster.namespaceToConfig.get("univ1"), "foo");
     assertEquals(cluster.ysqlPort, 5433);
     assertEquals(expectedClusters.getValue().size(), 1);
   }
 
-  private void testSingleUniverse(Universe u, String expectedEmail, boolean shouldFail,
-      int invocationsCount) {
+  private void testSingleUniverse(
+      Universe u, String expectedEmail, boolean shouldFail, int invocationsCount) {
     setupAlertingData(expectedEmail, false, false);
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, true, false, expectedEmail)
-    );
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, expectedEmail));
     verifyHealthManager(invocationsCount);
 
-    String[] labels = { HealthChecker.kUnivUUIDLabel, HealthChecker.kUnivNameLabel,
-      HealthChecker.kNodeLabel, HealthChecker.kCheckLabel };
-    String [] labelValues = { u.universeUUID.toString(), u.name, dummyNode, dummyCheck };
+    String[] labels = {
+      HealthChecker.kUnivUUIDLabel,
+      HealthChecker.kUnivNameLabel,
+      HealthChecker.kNodeLabel,
+      HealthChecker.kCheckLabel
+    };
+    String[] labelValues = {u.universeUUID.toString(), u.name, dummyNode, dummyCheck};
     Double val = testRegistry.getSampleValue(HealthChecker.kUnivMetricName, labels, labelValues);
     if (shouldFail) {
       assertNull(val);
@@ -247,9 +220,8 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   private void testSingleK8sUniverse(Universe u) {
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, true, false, null)
-    );
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
     verifyK8sHealthManager();
   }
 
@@ -286,28 +258,20 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     // enable report only errors
     setupAlertingData(null, true, true);
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, false, true, YB_ALERT_TEST_EMAIL)
-    );
-    verify(mockHealthManager, times(1)).runCommand(
-      eq(defaultProvider),
-      any(),
-      eq(0L)
-    );
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, false, true, YB_ALERT_TEST_EMAIL));
+    verify(mockHealthManager, times(1)).runCommand(eq(defaultProvider), any(), eq(0L));
 
     // Erase stored into DB data to avoid DuplicateKeyException.
     HealthCheck.keepOnlyLast(u.universeUUID, 0);
 
     // disable report only errors
     setupAlertingData(null, true, false);
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, false, false, YB_ALERT_TEST_EMAIL)
-    );
-    verify(mockHealthManager, times(2)).runCommand(
-      eq(defaultProvider),
-      any(),
-      eq(0L)
-    );
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, false, false, YB_ALERT_TEST_EMAIL));
+    verify(mockHealthManager, times(2)).runCommand(eq(defaultProvider), any(), eq(0L));
   }
 
   @Test
@@ -367,17 +331,16 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testMultipleUniversesTogether() {
-    Universe u1 =setupUniverse("univ1");
+    Universe u1 = setupUniverse("univ1");
     Universe u2 = setupUniverse("univ2");
     setupAlertingData(null, false, false);
     healthChecker.checkAllUniverses(defaultCustomer, customerConfig, true);
     try {
       // Wait for scheduled health checks to run.
-      while (
-        !healthChecker.runningHealthChecks.get(u1.universeUUID).isDone()
-          || !healthChecker.runningHealthChecks.get(u2.universeUUID).isDone()
-      ) {}
-    } catch (Exception ignored) {}
+      while (!healthChecker.runningHealthChecks.get(u1.universeUUID).isDone()
+          || !healthChecker.runningHealthChecks.get(u2.universeUUID).isDone()) {}
+    } catch (Exception ignored) {
+    }
     verifyHealthManager(2);
   }
 
@@ -396,12 +359,14 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testInvalidUniverseNullDetails() {
     Universe u = setupUniverse("test");
     // Set the details to null.
-    Universe.saveDetails(u.universeUUID, new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe univ) {
-        univ.setUniverseDetails(null);
-      };
-    });
+    Universe.saveDetails(
+        u.universeUUID,
+        new Universe.UniverseUpdater() {
+          @Override
+          public void run(Universe univ) {
+            univ.setUniverseDetails(null);
+          };
+        });
     setupAlertingData(null, false, false);
     // Add a reference to this on the customer anyway.
     validateNoDevopsCall();
@@ -411,14 +376,16 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testInvalidUniverseUpdateInProgress() {
     Universe u = setupUniverse("test");
     // Set updateInProgress to true.
-    Universe.saveDetails(u.universeUUID, new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe univ) {
-        UniverseDefinitionTaskParams details = univ.getUniverseDetails();
-        details.updateInProgress = true;
-        univ.setUniverseDetails(details);
-      };
-    });
+    Universe.saveDetails(
+        u.universeUUID,
+        new Universe.UniverseUpdater() {
+          @Override
+          public void run(Universe univ) {
+            UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+            details.updateInProgress = true;
+            univ.setUniverseDetails(details);
+          };
+        });
     setupAlertingData(null, false, false);
     validateNoDevopsCall();
   }
@@ -427,15 +394,18 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testInvalidUniverseBadProvider() {
     Universe u = setupUniverse("test");
     // Setup an invalid provider.
-    Universe.saveDetails(u.universeUUID, new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe univ) {
-        UniverseDefinitionTaskParams details = univ.getUniverseDetails();
-        UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
-        userIntent.provider = UUID.randomUUID().toString();
-        univ.setUniverseDetails(details);
-      };
-    });
+    Universe.saveDetails(
+        u.universeUUID,
+        new Universe.UniverseUpdater() {
+          @Override
+          public void run(Universe univ) {
+            UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+            UniverseDefinitionTaskParams.UserIntent userIntent =
+                details.getPrimaryCluster().userIntent;
+            userIntent.provider = UUID.randomUUID().toString();
+            univ.setUniverseDetails(details);
+          };
+        });
     setupAlertingData(null, false, false);
     validateNoDevopsCall();
   }
@@ -463,23 +433,17 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker.checkCustomer(defaultCustomer);
     try {
       while (!healthChecker.runningHealthChecks.get(u.universeUUID).isDone()) {}
-    } catch (Exception ignored) {}
-    verify(mockHealthManager, times(1)).runCommand(
-      any(),
-      any(),
-      any()
-    );
+    } catch (Exception ignored) {
+    }
+    verify(mockHealthManager, times(1)).runCommand(any(), any(), any());
     // If we run right afterwards, none of the timers should be hit again, so total hit with any
     // args should still be 1.
     healthChecker.checkCustomer(defaultCustomer);
     try {
       while (!healthChecker.runningHealthChecks.get(u.universeUUID).isDone()) {}
-    } catch (Exception ignored) {}
-    verify(mockHealthManager, times(1)).runCommand(
-      any(),
-      any(),
-      any()
-    );
+    } catch (Exception ignored) {
+    }
+    verify(mockHealthManager, times(1)).runCommand(any(), any(), any());
     try {
       Thread.sleep(waitMs);
     } catch (InterruptedException e) {
@@ -489,12 +453,9 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker.checkCustomer(defaultCustomer);
     try {
       while (!healthChecker.runningHealthChecks.get(u.universeUUID).isDone()) {}
-    } catch (Exception ignored) {}
-    verify(mockHealthManager, times(2)).runCommand(
-      any(),
-      any(),
-      any()
-    );
+    } catch (Exception ignored) {
+    }
+    verify(mockHealthManager, times(2)).runCommand(any(), any(), any());
     // Another cycle later, we should be running yet another test, but now with status update.
     try {
       Thread.sleep(waitMs);
@@ -505,26 +466,16 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker.checkCustomer(defaultCustomer);
     try {
       while (!healthChecker.runningHealthChecks.get(u.universeUUID).isDone()) {}
-    } catch (Exception ignored) {}
-    verify(mockHealthManager, times(3)).runCommand(
-      any(),
-      any(),
-      any()
-    );
+    } catch (Exception ignored) {
+    }
+    verify(mockHealthManager, times(3)).runCommand(any(), any(), any());
   }
 
   @Test
   public void testScriptFailure() {
-    ShellResponse dummyShellResponseFail =
-      ShellResponse.create(
-        1,
-        "Should error");
+    ShellResponse dummyShellResponseFail = ShellResponse.create(1, "Should error");
 
-    when(mockHealthManager.runCommand(
-      any(),
-      any(),
-      any()
-    )).thenReturn(dummyShellResponseFail);
+    when(mockHealthManager.runCommand(any(), any(), any())).thenReturn(dummyShellResponseFail);
     Universe u = setupUniverse("univ1");
     setupAlertingData(null, false, false);
     testSingleUniverse(u, null, true, 1);
@@ -556,15 +507,10 @@ public class HealthCheckerTest extends FakeDBApplication {
     details.nodeDetailsSet.add(nd);
     setupAlertingData(null, true, false);
 
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, true, false, null)
-    );
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
     ArgumentCaptor<List> expectedClusters = ArgumentCaptor.forClass(List.class);
-    verify(mockHealthManager, times(1)).runCommand(
-        any(),
-        expectedClusters.capture(),
-        any()
-      );
+    verify(mockHealthManager, times(1)).runCommand(any(), expectedClusters.capture(), any());
 
     HealthManager.ClusterInfo clusterInfo = (ClusterInfo) expectedClusters.getValue().get(0);
     assertEquals(enabledYEDIS, clusterInfo.redisPort == 1234);
@@ -574,23 +520,26 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testInvalidUniverseBadProviderAlertSent() throws MessagingException {
     Universe u = setupUniverse("test");
     // Update the universe with null details.
-    Universe.saveDetails(u.universeUUID, new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe univ) {
-        univ.setUniverseDetails(null);
-      };
-    });
+    Universe.saveDetails(
+        u.universeUUID,
+        new Universe.UniverseUpdater() {
+          @Override
+          public void run(Universe univ) {
+            univ.setUniverseDetails(null);
+          };
+        });
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
     // Imitate error while sending the email.
-    doThrow(new MessagingException("TestException")).when(mockEmailHelper).sendEmail(any(), any(),
-        any(), any(), any());
+    doThrow(new MessagingException("TestException"))
+        .when(mockEmailHelper)
+        .sendEmail(any(), any(), any(), any(), any());
     when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
         .thenReturn(EmailFixtures.createSmtpData());
 
     assertEquals(0, Alert.list(defaultCustomer.uuid).size());
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL)
-    );
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
     verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     // To check that alert is created.
@@ -604,9 +553,9 @@ public class HealthCheckerTest extends FakeDBApplication {
     Universe u = setupUniverse("test");
     when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
         .thenReturn(EmailFixtures.createSmtpData());
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL)
-    );
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
     verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     verify(report, times(1)).asHtml(eq(u), any(), anyBoolean());
@@ -614,10 +563,15 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   private void mockGoodHealthResponse() {
-    ShellResponse dummyShellResponse = ShellResponse.create(0,
-        ("{''error'': false, ''data'': [ {''node'':''" + dummyNode
-            + "'', ''has_error'': false, ''message'':''" + dummyCheck + "'' } ] }").replace("''",
-                "\""));
+    ShellResponse dummyShellResponse =
+        ShellResponse.create(
+            0,
+            ("{''error'': false, ''data'': [ {''node'':''"
+                    + dummyNode
+                    + "'', ''has_error'': false, ''message'':''"
+                    + dummyCheck
+                    + "'' } ] }")
+                .replace("''", "\""));
     when(mockHealthManager.runCommand(any(), any(), any())).thenReturn(dummyShellResponse);
   }
 
@@ -630,22 +584,41 @@ public class HealthCheckerTest extends FakeDBApplication {
     mockGoodHealthResponse();
 
     // alert1 is in state ACTIVE.
-    Alert alert1 = Alert.create(defaultCustomer.uuid, u.universeUUID, TargetType.UniverseType,
-        HealthChecker.ALERT_ERROR_CODE, "Warning", "Test 1");
+    Alert alert1 =
+        Alert.create(
+            defaultCustomer.uuid,
+            u.universeUUID,
+            TargetType.UniverseType,
+            HealthChecker.ALERT_ERROR_CODE,
+            "Warning",
+            "Test 1");
     alert1.setState(State.ACTIVE);
     alert1.save();
     // alert1 is in state CREATED.
-    Alert alert2 = Alert.create(defaultCustomer.uuid, u.universeUUID, TargetType.UniverseType,
-        HealthChecker.ALERT_ERROR_CODE, "Warning", "Test 2");
+    Alert alert2 =
+        Alert.create(
+            defaultCustomer.uuid,
+            u.universeUUID,
+            TargetType.UniverseType,
+            HealthChecker.ALERT_ERROR_CODE,
+            "Warning",
+            "Test 2");
     // alert3 should not be updated as it has another errCode.
-    Alert alert3 = Alert.create(defaultCustomer.uuid, u.universeUUID, TargetType.UniverseType,
-        "Another Error Code", "Warning", "Test 3");
+    Alert alert3 =
+        Alert.create(
+            defaultCustomer.uuid,
+            u.universeUUID,
+            TargetType.UniverseType,
+            "Another Error Code",
+            "Warning",
+            "Test 3");
 
-    doCallRealMethod().when(mockAlertManager).resolveAlerts(defaultCustomer.uuid, u.universeUUID,
-        HealthChecker.ALERT_ERROR_CODE);
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL)
-    );
+    doCallRealMethod()
+        .when(mockAlertManager)
+        .resolveAlerts(defaultCustomer.uuid, u.universeUUID, HealthChecker.ALERT_ERROR_CODE);
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
     assertEquals(State.RESOLVED, Alert.get(alert1.uuid).state);
     assertEquals(State.RESOLVED, Alert.get(alert2.uuid).state);
@@ -667,15 +640,15 @@ public class HealthCheckerTest extends FakeDBApplication {
     details.nodeDetailsSet.add(nd);
     setupAlertingData(null, true, false);
 
-    healthChecker.checkSingleUniverse(new HealthChecker.CheckSingleUniverseParams(
-      u, defaultCustomer, true, false, null)
-    );
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
     verify(mockHealthManager, never()).runCommand(any(), any(), any());
 
-    List<Alert> alerts = Alert.list(defaultCustomer.uuid, HealthChecker.ALERT_ERROR_CODE,
-        u.universeUUID);
+    List<Alert> alerts =
+        Alert.list(defaultCustomer.uuid, HealthChecker.ALERT_ERROR_CODE, u.universeUUID);
     assertEquals(1, alerts.size());
-    assertEquals(alerts.get(0).message,
+    assertEquals(
+        alerts.get(0).message,
         String.format(
             "Can't run health check for the universe due to missing IP address for node %s.",
             nd.nodeName));

@@ -65,16 +65,49 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     return *backup_service_proxy_.get();
   }
 
-  Status RunAdminToolCommand(const std::initializer_list<string>& args) {
-    std::stringstream command;
-    command << GetToolPath("yb-admin") << " --master_addresses "
-            << cluster_->GetMasterAddresses();
-    for (const auto& a : args) {
-      command << " " << a;
+  template <class... Args>
+  Result<std::string> RunAdminToolCommand(Args&&... args) {
+    auto command = ToStringVector(
+            GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
+            std::forward<Args>(args)...);
+    std::string result;
+    LOG(INFO) << "Run tool: " << AsString(command);
+    RETURN_NOT_OK(Subprocess::Call(command, &result));
+    return result;
+  }
+
+  template <class... Args>
+  Result<rapidjson::Document> RunAdminToolCommandJson(Args&&... args) {
+    auto raw = VERIFY_RESULT(RunAdminToolCommand(std::forward<Args>(args)...));
+    rapidjson::Document result;
+    if (result.Parse(raw.c_str(), raw.length()).HasParseError()) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Failed to parse json output $0: $1", result.GetParseError(), raw);
     }
-    const auto command_str = command.str();
-    LOG(INFO) << "Run tool: " << command_str;
-    return Subprocess::Call(command_str);
+    return result;
+  }
+
+  CHECKED_STATUS WaitForRestoreSnapshot() {
+    return WaitFor([this]() -> Result<bool> {
+      auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
+      auto it = document.FindMember("restorations");
+      if (it == document.MemberEnd()) {
+        LOG(INFO) << "No restorations";
+        return false;
+      }
+      auto value = it->value.GetArray();
+      for (const auto& restoration : value) {
+        auto state_it = restoration.FindMember("state");
+        if (state_it == restoration.MemberEnd()) {
+          return STATUS(NotFound, "'state' not found");
+        }
+        if (state_it->value.GetString() != "RESTORED"s) {
+          return false;
+        }
+      }
+      return true;
+    },
+    30s, "Waiting for snapshot restore to complete");
   }
 
   Result<size_t> NumTables(const string& table_name) const;
@@ -94,15 +127,15 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
 };
 
 TEST_F(AdminCliTest, TestNonTLS) {
-  ASSERT_OK(RunAdminToolCommand({"list_all_masters"}));
+  ASSERT_OK(RunAdminToolCommand("list_all_masters"));
 }
 
 // TODO: Enabled once ENG-4900 is resolved.
 TEST_F(AdminCliTest, DISABLED_TestTLS) {
   const auto sub_dir = JoinPathSegments("ent", "test_certs");
   auto root_dir = env_util::GetRootDir(sub_dir) + "/../../";
-  ASSERT_OK(RunAdminToolCommand({
-    "--certs_dir_name", JoinPathSegments(root_dir, sub_dir), "list_all_masters"}));
+  ASSERT_OK(RunAdminToolCommand(
+    "--certs_dir_name", JoinPathSegments(root_dir, sub_dir), "list_all_masters"));
 }
 
 TEST_F(AdminCliTest, TestCreateSnapshot) {
@@ -121,7 +154,7 @@ TEST_F(AdminCliTest, TestCreateSnapshot) {
   ASSERT_EQ(resp.snapshots_size(), 0);
 
   // Create snapshot of default table that gets created.
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
 
   rpc.Reset();
   ASSERT_OK(BackupServiceProxy().ListSnapshots(req, &resp, &rpc));
@@ -158,24 +191,6 @@ Result<string> GetCompletedSnapshot(MasterBackupServiceProxy* proxy,
   }
 
   return SnapshotIdToString(resp.snapshots(idx).id());
-}
-
-Result<ListSnapshotsResponsePB> WaitForRestoreSnapshot(MasterBackupServiceProxy* proxy) {
-  ListSnapshotsRequestPB req;
-  ListSnapshotsResponsePB resp;
-  RETURN_NOT_OK(
-      WaitFor([proxy, &req, &resp]() -> Result<bool> {
-            RpcController rpc;
-            RETURN_NOT_OK(proxy->ListSnapshots(req, &resp, &rpc));
-            for (auto const& snapshot : resp.snapshots()) {
-              if (snapshot.entry().state() == SysSnapshotEntryPB::RESTORING) {
-                return false;
-              }
-            }
-            return true;
-          },
-          30s, "Waiting for snapshot restore to complete"));
-  return resp;
 }
 
 Result<size_t> AdminCliTest::NumTables(const string& table_name) const {
@@ -215,7 +230,7 @@ void AdminCliTest::CheckAndDeleteImportedTable(const string& keyspace,
 void AdminCliTest::ImportTableAs(const string& snapshot_file,
                                  const string& keyspace,
                                  const string& table_name) {
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file, keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file, keyspace, table_name));
   CheckAndDeleteImportedTable(keyspace, table_name);
 }
 
@@ -225,21 +240,21 @@ TEST_F(AdminCliTest, TestImportSnapshot) {
   const string& keyspace = table_.name().namespace_name();
 
   // Create snapshot of default table that gets created.
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
   const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
 
   string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
   const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_snapshot.dat");
-  ASSERT_OK(RunAdminToolCommand({"export_snapshot", snapshot_id, snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
 
   // Import snapshot into the existing table.
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
   CheckAndDeleteImportedTable(keyspace, table_name, /* same_ids */ true);
 
   // Import snapshot into original table from the snapshot.
   // (The table was deleted by the call above.)
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
   CheckAndDeleteImportedTable(keyspace, table_name);
 
   // Import snapshot into non existing namespace.
@@ -258,15 +273,15 @@ TEST_F(AdminCliTest, TestExportImportSnapshot) {
   const string& keyspace = table_.name().namespace_name();
 
   // Create snapshot of default table that gets created.
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
   const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
 
   string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
   const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_snapshot.dat");
-  ASSERT_OK(RunAdminToolCommand({"export_snapshot", snapshot_id, snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
   // Import below will not create a new table - reusing the old one.
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file, keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file, keyspace, table_name));
 
   const YBTableName yb_table_name(YQL_DATABASE_CQL, keyspace, table_name);
   CheckImportedTable(table_.get(), yb_table_name, /* same_ids */ true);
@@ -284,7 +299,7 @@ TEST_F(AdminCliTest, TestRestoreSnapshotBasic) {
 
   // Create snapshot of default table that gets created.
   LOG(INFO) << "Creating snapshot";
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
   const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
 
@@ -293,8 +308,8 @@ TEST_F(AdminCliTest, TestRestoreSnapshotBasic) {
 
   // Restore snapshot into the existing table.
   LOG(INFO) << "Restoring snapshot";
-  ASSERT_OK(RunAdminToolCommand({"restore_snapshot", snapshot_id}));
-  ASSERT_RESULT(WaitForRestoreSnapshot(&BackupServiceProxy()));
+  ASSERT_OK(RunAdminToolCommand("restore_snapshot", snapshot_id));
+  ASSERT_OK(WaitForRestoreSnapshot());
   LOG(INFO) << "Restored snapshot";
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -312,14 +327,14 @@ TEST_F(AdminCliTest, TestRestoreSnapshotHybridTime) {
   ASSERT_OK(WriteRow(CreateSession(), 2, 2));
 
   // Create snapshot of default table that gets created.
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
   const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
 
   // Restore snapshot into the existing table.
-  ASSERT_OK(RunAdminToolCommand({"restore_snapshot", snapshot_id,
-      std::to_string(hybrid_time.GetPhysicalValueMicros())}));
-  ASSERT_RESULT(WaitForRestoreSnapshot(&BackupServiceProxy()));
+  ASSERT_OK(RunAdminToolCommand("restore_snapshot", snapshot_id,
+      std::to_string(hybrid_time.GetPhysicalValueMicros())));
+  ASSERT_OK(WaitForRestoreSnapshot());
 
   // Row before HybridTime present, row after should be missing now.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -341,13 +356,13 @@ TEST_F(AdminCliTest, TestRestoreSnapshotTimestamp) {
   ASSERT_OK(WriteRow(CreateSession(), 2, 2));
 
   // Create snapshot of default table that gets created.
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
   const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
 
   // Restore snapshot into the existing table.
-  ASSERT_OK(RunAdminToolCommand({"restore_snapshot", snapshot_id, timestamp }));
-  ASSERT_RESULT(WaitForRestoreSnapshot(&BackupServiceProxy()));
+  ASSERT_OK(RunAdminToolCommand("restore_snapshot", snapshot_id, timestamp));
+  ASSERT_OK(WaitForRestoreSnapshot());
 
   // Row before Timestamp present, row after should be missing now.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -361,36 +376,28 @@ TEST_F(AdminCliTest, TestRestoreSnapshotInterval) {
   const string& table_name = table_.name().table_name();
   const string& keyspace = table_.name().namespace_name();
 
+  auto clock = cluster_->mini_tablet_server(0)->server()->Clock();
   ASSERT_OK(WriteRow(CreateSession(), 1, 1));
-  auto pre_sleep_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  auto pre_sleep_ht = clock->Now();
   auto write_wait = 5s;
   std::this_thread::sleep_for(write_wait);
   ASSERT_OK(WriteRow(CreateSession(), 2, 2));
 
   // Create snapshot of default table that gets created.
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
   const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
 
   // Restore snapshot into the existing table.
-  constexpr auto kWaitTimeout = 15s;
-  ASSERT_OK(WaitFor([this, &pre_sleep_ht, &snapshot_id, &write_wait]() -> Result<bool> {
-    auto restore_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
-    auto interval = restore_ht.GetPhysicalValueMicros() - pre_sleep_ht.GetPhysicalValueMicros();
-    auto i_str = std::to_string(interval/1000000) + "s";
-    RETURN_NOT_OK(RunAdminToolCommand({"restore_snapshot", snapshot_id, "minus", i_str}));
-    RETURN_NOT_OK(WaitForRestoreSnapshot(&BackupServiceProxy()));
+  auto restore_ht = clock->Now();
+  auto interval = restore_ht.GetPhysicalValueMicros() - pre_sleep_ht.GetPhysicalValueMicros();
+  auto i_str = std::to_string(interval/1000000) + "s";
+  ASSERT_OK(RunAdminToolCommand("restore_snapshot", snapshot_id, "minus", i_str));
+  ASSERT_OK(WaitForRestoreSnapshot());
 
-    // Ensure the snapshot was restored before Now() - interval passed our sleep_for window.
-    auto finish_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
-    return finish_ht.PhysicalDiff(restore_ht) < std::chrono::microseconds(write_wait).count();
-  }, kWaitTimeout * kTimeMultiplier, "Snapshot restored in time."));
-
-  // Row before Timestamp present, row after should be missing now.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return SelectRow(CreateSession(), 1).ok() &&
-           !SelectRow(CreateSession(), 2).ok();
-  }, 20s, "Waiting for row from restored snapshot."));
+  ASSERT_OK(SelectRow(CreateSession(), 1));
+  auto select2 = SelectRow(CreateSession(), 2);
+  ASSERT_NOK(select2);
 }
 
 void AdminCliTest::CheckImportedTableWithIndex(const string& keyspace,
@@ -435,87 +442,87 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   ASSERT_EQ(2, ASSERT_RESULT(NumTables(table_name)));
 
   // Create snapshot of default table and the attached index that gets created.
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
   auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
 
   string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
   const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_snapshot.dat");
-  ASSERT_OK(RunAdminToolCommand({"export_snapshot", snapshot_id, snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
 
   // Import table and index into the existing table and index.
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex(keyspace, table_name, index_name, /* same_ids */ true);
 
   // Import table and index with original names - not providing any names.
   // (The table was deleted by the call above.)
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex(keyspace, table_name, index_name);
 
   // Import table and index with original names - using the old names.
-  ASSERT_OK(RunAdminToolCommand({
-      "import_snapshot", snapshot_file, keyspace, table_name, index_name}));
+  ASSERT_OK(RunAdminToolCommand(
+      "import_snapshot", snapshot_file, keyspace, table_name, index_name));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex(keyspace, table_name, index_name);
 
   // Import table and index with original names - providing only old table name.
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file, keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file, keyspace, table_name));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex(keyspace, table_name, index_name);
 
   // Renaming table and index, but keeping the same keyspace.
-  ASSERT_OK(RunAdminToolCommand({
-      "import_snapshot", snapshot_file, keyspace, "new_" + table_name, "new_" + index_name}));
+  ASSERT_OK(RunAdminToolCommand(
+      "import_snapshot", snapshot_file, keyspace, "new_" + table_name, "new_" + index_name));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex(keyspace, "new_" + table_name, "new_" + index_name);
 
   // Keeping the same table and index names, but renaming the keyspace.
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file, "new_" + keyspace}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file, "new_" + keyspace));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex("new_" + keyspace, table_name, index_name);
 
   // Repeat previous keyspace renaming case, but pass explicitly the same table name
   // (and skip index name).
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file, "new_" + keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file, "new_" + keyspace, table_name));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex("new_" + keyspace, table_name, index_name);
 
   // Import table and index into a new keyspace with old table and index names.
-  ASSERT_OK(RunAdminToolCommand({
-      "import_snapshot", snapshot_file, "new_" + keyspace, table_name, index_name}));
+  ASSERT_OK(RunAdminToolCommand(
+      "import_snapshot", snapshot_file, "new_" + keyspace, table_name, index_name));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex("new_" + keyspace, table_name, index_name);
 
   // Rename only index and keyspace, but keep the main table name.
-  ASSERT_OK(RunAdminToolCommand({
-      "import_snapshot", snapshot_file, "new_" + keyspace, table_name, "new_" + index_name}));
+  ASSERT_OK(RunAdminToolCommand(
+      "import_snapshot", snapshot_file, "new_" + keyspace, table_name, "new_" + index_name));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex("new_" + keyspace, table_name, "new_" + index_name);
 
   // Import table and index with renaming into a new keyspace.
-  ASSERT_OK(RunAdminToolCommand({
+  ASSERT_OK(RunAdminToolCommand(
       "import_snapshot", snapshot_file, "new_" + keyspace,
-      "new_" + table_name, "new_" + index_name}));
+      "new_" + table_name, "new_" + index_name));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
   CheckImportedTableWithIndex("new_" + keyspace, "new_" + table_name, "new_" + index_name);
 
   // Renaming table only, no new name for the index - expecting error.
-  ASSERT_NOK(RunAdminToolCommand({
-      "import_snapshot", snapshot_file, keyspace, "new_" + table_name}));
-  ASSERT_NOK(RunAdminToolCommand({
-      "import_snapshot", snapshot_file, "new_" + keyspace, "new_" + table_name}));
+  ASSERT_NOK(RunAdminToolCommand(
+      "import_snapshot", snapshot_file, keyspace, "new_" + table_name));
+  ASSERT_NOK(RunAdminToolCommand(
+      "import_snapshot", snapshot_file, "new_" + keyspace, "new_" + table_name));
 }
 
 TEST_F(AdminCliTest, TestExportImportIndexSnapshot) {
@@ -556,16 +563,16 @@ TEST_F(AdminCliTest, TestFailedRestoration) {
   const string& keyspace = table_.name().namespace_name();
 
   // Create snapshot of default table that gets created.
-  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
   const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
   LOG(INFO) << "Created snapshot: " << snapshot_id;
 
   string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
   const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_snapshot.dat");
-  ASSERT_OK(RunAdminToolCommand({"export_snapshot", snapshot_id, snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
   // Import below will not create a new table - reusing the old one.
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file}));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
 
   const YBTableName yb_table_name(YQL_DATABASE_CQL, keyspace, table_name);
   CheckImportedTable(table_.get(), yb_table_name, /* same_ids */ true);
@@ -577,7 +584,7 @@ TEST_F(AdminCliTest, TestFailedRestoration) {
   }
   LOG(INFO) << "Imported snapshot: " << new_snapshot_id;
 
-  ASSERT_OK(RunAdminToolCommand({"restore_snapshot", new_snapshot_id}));
+  ASSERT_OK(RunAdminToolCommand("restore_snapshot", new_snapshot_id));
 
   const SysSnapshotEntryPB::State state = ASSERT_RESULT(WaitForRestoration(&BackupServiceProxy()));
   LOG(INFO) << "Restoration: " << SysSnapshotEntryPB::State_Name(state);

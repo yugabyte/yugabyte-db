@@ -27,12 +27,17 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 
+DEFINE_bool(use_node_hostname_for_local_tserver, false,
+    "Connect to local t-server by using host name instead of local IP");
+
 // A macro for logging the function name and the state of the current transaction.
 // This macro is not enclosed in do { ... } while (true) because we want to be able to write
 // additional information into the same log message.
 #define VLOG_TXN_STATE(vlog_level) \
     VLOG(vlog_level) << __func__ << ": " << TxnStateDebugStr() \
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
+
+DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
 
 namespace {
 
@@ -216,10 +221,18 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
   } else {
     if (tserver_shared_object_) {
       if (!tablet_server_proxy_) {
-        LOG(INFO) << "Using TServer endpoint: " << (**tserver_shared_object_).endpoint();
+        boost::optional<MonoDelta> resolve_cache_timeout;
+        const auto& tserver_shared_data_ = **tserver_shared_object_;
+        HostPort host_port(tserver_shared_data_.endpoint());
+        if (FLAGS_use_node_hostname_for_local_tserver) {
+          host_port = HostPort(tserver_shared_data_.host().ToBuffer(),
+                               tserver_shared_data_.endpoint().port());
+          resolve_cache_timeout = MonoDelta::kMax;
+        }
+        LOG(INFO) << "Using TServer host_port: " << host_port;
         tablet_server_proxy_ = std::make_unique<tserver::TabletServerServiceProxy>(
-          &async_client_init_->client()->proxy_cache(),
-          HostPort((**tserver_shared_object_).endpoint()));
+            &async_client_init_->client()->proxy_cache(), host_port,
+            nullptr /* protocol */, resolve_cache_timeout);
       }
       tserver::TakeTransactionRequestPB req;
       tserver::TakeTransactionResponsePB resp;

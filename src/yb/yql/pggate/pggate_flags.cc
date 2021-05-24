@@ -88,17 +88,10 @@ DEFINE_bool(ysql_beta_features, false,
 
 // Per-feature flags -- only relevant if ysql_beta_features is false.
 
-DEFINE_bool(ysql_beta_feature_extension, false,
-            "Whether to enable the 'extension' ysql beta feature");
-
 DEFINE_bool(ysql_beta_feature_tablegroup, true,
             "Whether to enable the incomplete 'tablegroup' ysql beta feature");
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
-
-DEFINE_bool(ysql_enable_manual_sys_table_txn_ctl, false,
-            "Enable manual transaction control for YSQL system tables. Mostly needed for testing. "
-            "This flag should go away once full transactional DDL is implemented.");
 
 DEFINE_bool(ysql_serializable_isolation_for_ddl_txn, false,
             "Whether to use serializable isolation for separate DDL-only transactions. "
@@ -114,3 +107,19 @@ DEFINE_int32(ysql_max_write_restart_attempts, 20,
 
 DEFINE_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
+
+// Flag for disabling runContext to Postgres's portal. Currently, each portal has two contexts.
+// - PortalContext whose lifetime lasts for as long as the Portal object.
+// - TmpContext whose lifetime lasts until one associated row of SELECT result set is sent out.
+//
+// We add one more context "ybRunContext".
+// - Its lifetime will begin when PortalRun() is called to process a user statement request until
+//   the end of the PortalRun() process.
+// - A SELECT might be queried in small batches, and each batch is processed by one call to
+//   PortalRun(). The "ybRunContext" is used for values that are private to one batch.
+// - Use boolean experimental flag just in case introducing "ybRunContext" is a wrong idea.
+DEFINE_bool(ysql_disable_portal_run_context, false, "Whether to use portal ybRunContext.");
+
+DEFINE_bool(ysql_allow_analyze_cmd, false,
+            "Whether to allow ANALYZE cmd to run basic row count estimation.");
+TAG_FLAG(ysql_allow_analyze_cmd, hidden);

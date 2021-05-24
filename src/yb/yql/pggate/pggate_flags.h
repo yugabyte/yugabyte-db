@@ -38,11 +38,11 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_suppress_unsupported_error);
 
 DECLARE_bool(ysql_beta_features);
-DECLARE_bool(ysql_beta_feature_extension);
 DECLARE_bool(ysql_beta_feature_tablegroup);
-DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
+DECLARE_bool(ysql_disable_portal_run_context);
+DECLARE_bool(ysql_allow_analyze_cmd);
 
 #endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H

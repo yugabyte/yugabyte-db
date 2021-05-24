@@ -33,11 +33,15 @@ DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
+
 namespace yb {
 namespace client {
 
 using Schedules = google::protobuf::RepeatedPtrField<master::SnapshotScheduleInfoPB>;
 constexpr auto kSnapshotInterval = 10s * kTimeMultiplier;
+constexpr auto kSnapshotRetention = 20h;
+
+YB_STRONGLY_TYPED_BOOL(WaitSnapshot);
 
 class SnapshotScheduleTest : public SnapshotTestBase {
  public:
@@ -50,7 +54,13 @@ class SnapshotScheduleTest : public SnapshotTestBase {
   }
 
   Result<SnapshotScheduleId> CreateSchedule(
-      MonoDelta interval = kSnapshotInterval, MonoDelta retention = 20h) {
+      MonoDelta interval = kSnapshotInterval, MonoDelta retention = kSnapshotRetention) {
+    return CreateSchedule(WaitSnapshot::kFalse, interval, retention);
+  }
+
+  Result<SnapshotScheduleId> CreateSchedule(
+      WaitSnapshot wait_snapshot,
+      MonoDelta interval = kSnapshotInterval, MonoDelta retention = kSnapshotRetention) {
     rpc::RpcController controller;
     controller.set_timeout(60s);
     master::CreateSnapshotScheduleRequestPB req;
@@ -61,7 +71,11 @@ class SnapshotScheduleTest : public SnapshotTestBase {
     tables.Add()->set_table_id(table_.table()->id());
     master::CreateSnapshotScheduleResponsePB resp;
     RETURN_NOT_OK(MakeBackupServiceProxy().CreateSnapshotSchedule(req, &resp, &controller));
-    return FullyDecodeSnapshotScheduleId(resp.snapshot_schedule_id());
+    auto id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(resp.snapshot_schedule_id()));
+    if (wait_snapshot) {
+      RETURN_NOT_OK(WaitScheduleSnapshot(id));
+    }
+    return id;
   }
 
   Result<Schedules> ListSchedules(const SnapshotScheduleId& id = SnapshotScheduleId::Nil()) {
@@ -82,19 +96,48 @@ class SnapshotScheduleTest : public SnapshotTestBase {
     return std::move(resp.schedules());
   }
 
-  CHECKED_STATUS WaitScheduleSnapshot(const SnapshotScheduleId& schedule_id) {
-    return WaitFor([this, schedule_id]() -> Result<bool> {
+  Result<TxnSnapshotId> PickSuitableSnapshot(
+      const SnapshotScheduleId& schedule_id, HybridTime hybrid_time) {
+    auto schedules = VERIFY_RESULT(ListSchedules(schedule_id));
+    SCHECK_EQ(schedules.size(), 1, IllegalState,
+              Format("Expected exactly one schedule with id $0", schedule_id));
+    const auto& schedule = schedules[0];
+    for (const auto& snapshot : schedule.snapshots()) {
+      auto prev_ht = HybridTime::FromPB(snapshot.entry().previous_snapshot_hybrid_time());
+      auto cur_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+      auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
+      if (hybrid_time > prev_ht && hybrid_time <= cur_ht) {
+        return id;
+      }
+      LOG(INFO) << __func__ << " rejected " << id << " (" << prev_ht << "-" << cur_ht << "] for "
+                << hybrid_time;
+    }
+    return STATUS_FORMAT(NotFound, "Not found suitable snapshot for $0", hybrid_time);
+  }
+
+  CHECKED_STATUS WaitScheduleSnapshot(
+      const SnapshotScheduleId& schedule_id, HybridTime min_hybrid_time) {
+    return WaitScheduleSnapshot(schedule_id, std::numeric_limits<int>::max(), min_hybrid_time);
+  }
+
+  CHECKED_STATUS WaitScheduleSnapshot(
+      const SnapshotScheduleId& schedule_id, int max_snapshots = 1,
+      HybridTime min_hybrid_time = HybridTime::kMin) {
+    return WaitFor([this, schedule_id, max_snapshots, min_hybrid_time]() -> Result<bool> {
       auto snapshots = VERIFY_RESULT(ListSnapshots());
-      EXPECT_LE(snapshots.size(), 1);
+      EXPECT_LE(snapshots.size(), max_snapshots);
       LOG(INFO) << "Snapshots: " << AsString(snapshots);
       for (const auto& snapshot : snapshots) {
         EXPECT_EQ(TryFullyDecodeSnapshotScheduleId(snapshot.entry().schedule_id()), schedule_id);
-        if (snapshot.entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
+        if (snapshot.entry().state() == master::SysSnapshotEntryPB::COMPLETE
+            && HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time()) >= min_hybrid_time) {
           return true;
         }
       }
       return false;
-    }, kSnapshotInterval / 2, "First snapshot");
+    },
+    ((max_snapshots == 1) ? 0s : kSnapshotInterval) + kSnapshotInterval / 2,
+    "Schedule snapshot");
   }
 };
 
@@ -281,6 +324,24 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
   ASSERT_OK(table_.Reopen());
   ASSERT_EQ(old_schema, table_.schema());
   ASSERT_NO_FATALS(VerifyData());
+}
+
+TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
+  auto schedule_id = ASSERT_RESULT(CreateSchedule(WaitSnapshot::kTrue));
+  auto before_index_ht = cluster_->mini_master(0)->master()->clock()->Now();
+  CreateIndex(Transactional::kTrue, 1, false);
+  auto after_time_ht = cluster_->mini_master(0)->master()->clock()->Now();
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id, after_time_ht));
+  auto snapshot_id = ASSERT_RESULT(PickSuitableSnapshot(schedule_id, before_index_ht));
+  ASSERT_OK(RestoreSnapshot(snapshot_id, before_index_ht));
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  for (const auto& peer : peers) {
+    auto metadata = peer->tablet_metadata();
+    LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid() << ": table "
+              << metadata->table_name() << ", indexed: "
+              << metadata->indexed_table_id();
+    ASSERT_EQ(metadata->indexed_table_id(), "");
+  }
 }
 
 } // namespace client

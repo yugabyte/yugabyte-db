@@ -39,11 +39,10 @@ const string& ColumnName(const Schema& schema, const ColumnId id) {
 Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo>> tables;
   CatalogManager* catalog_manager = master_->catalog_manager();
-  catalog_manager->GetAllTables(&tables, true);
-  for (scoped_refptr<TableInfo> table : tables) {
 
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  for (const auto& table : tables) {
     const auto indexed_table_id = table->indexed_table_id();
     if (indexed_table_id.empty()) {
       continue;
@@ -59,14 +58,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
 
     // Get namespace for table.
-    NamespaceIdentifierPB nsId;
-    nsId.set_id(table->namespace_id());
-    scoped_refptr<NamespaceInfo> nsInfo;
-    RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
+    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+        table->namespace_id()));
 
     // Create appropriate row for the table;
     QLRow& row = vtable->Extend();
-    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, nsInfo->name(), &row));
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTableName, indexed_table->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kIndexName, table->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kKind, "COMPOSITES", &row));

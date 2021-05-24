@@ -99,15 +99,16 @@ public class Customer extends Model {
     if (getUniverseUUIDs().isEmpty()) {
       return new HashSet<>();
     }
-    return Universe.get(getUniverseUUIDs());
+    return Universe.getAllPresent(getUniverseUUIDs());
   }
 
   @JsonIgnore
   public Set<Universe> getUniversesForProvider(UUID providerUUID) {
     Set<Universe> universesInProvider =
-      getUniverses().stream()
-        .filter(u -> checkClusterInProvider(u, providerUUID))
-        .collect(Collectors.toSet());
+        getUniverses()
+            .stream()
+            .filter(u -> checkClusterInProvider(u, providerUUID))
+            .collect(Collectors.toSet());
     return universesInProvider;
   }
 
@@ -120,8 +121,7 @@ public class Customer extends Model {
     return false;
   }
 
-  public static final Finder<UUID, Customer> find = new Finder<UUID, Customer>(Customer.class) {
-  };
+  public static final Finder<UUID, Customer> find = new Finder<UUID, Customer>(Customer.class) {};
 
   public static Customer getOrBadRequest(UUID customerUUID) {
     Customer customer = get(customerUUID);
@@ -147,9 +147,7 @@ public class Customer extends Model {
     this.creationDate = new Date();
   }
 
-  /**
-   * Create new customer, we encrypt the password before we store it in the DB
-   */
+  /** Create new customer, we encrypt the password before we store it in the DB */
   public static Customer create(String code, String name) {
     Customer cust = new Customer();
     cust.code = code;
@@ -159,9 +157,7 @@ public class Customer extends Model {
     return cust;
   }
 
-  /**
-   * Get features for this customer.
-   */
+  /** Get features for this customer. */
   public JsonNode getFeatures() {
     return features == null ? Json.newObject() : features;
   }

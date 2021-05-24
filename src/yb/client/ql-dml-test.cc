@@ -166,12 +166,12 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
 
   void InsertRows(size_t num_rows) {
     auto session = NewSession();
-    boost::circular_buffer<std::future<Status>> futures(kInsertBatchSize);
+    boost::circular_buffer<std::future<FlushStatus>> futures(kInsertBatchSize);
     for (size_t i = 0; i != num_rows; ++i) {
       for (;;) {
         // Remove all the futures that are done.
         while (!futures.empty() && IsReady(futures.front())) {
-          EXPECT_OK(futures.front().get());
+          EXPECT_OK(futures.front().get().status);
           futures.pop_front();
         }
         // Keep collecting futures until we hit our limit.
@@ -184,7 +184,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
       futures.push_back(session->FlushFuture());
     }
     for (auto& future : futures) {
-      EXPECT_OK(future.get());
+      EXPECT_OK(future.get().status);
     }
   }
 

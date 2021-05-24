@@ -129,6 +129,7 @@ libraryDependencies ++= Seq(
   "org.mindrot" % "jbcrypt" % "0.3m",
   "org.postgresql" % "postgresql" % "9.4.1208",
   "commons-io" % "commons-io" % "2.4",
+  "org.apache.commons" % "commons-compress" % "1.20",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.2",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
@@ -160,6 +161,7 @@ libraryDependencies ++= Seq(
   "org.apache.velocity" % "velocity" % "1.7",
   "org.apache.velocity" % "velocity-tools" % "2.0",
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
+  "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15"
 )

@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Collection;
-import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -50,7 +49,7 @@ public class ModifyBlackList extends UniverseTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -61,15 +60,21 @@ public class ModifyBlackList extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", isAdd=" +  taskParams().isAdd +
-        ", numNodes=" +  taskParams().nodes.size() + ")";
+    return super.getName()
+        + "("
+        + taskParams().universeUUID
+        + ", isAdd="
+        + taskParams().isAdd
+        + ", numNodes="
+        + taskParams().nodes.size()
+        + ")";
   }
 
   @Override
   public void run() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
@@ -80,12 +85,12 @@ public class ModifyBlackList extends UniverseTaskBase {
           NodeDetails onDiskNode = universe.getNode(node.nodeName);
           ip = onDiskNode.cloudInfo.private_ip;
         }
-        HostPortPB.Builder hpb =  HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
+        HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         modifyHosts.add(hpb.build());
       }
       client = ybService.getClient(masterHostPorts, certificate);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
-        new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
+          new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
       modifyBlackList.doCall();
       universe.incrementVersion();
     } catch (Exception e) {

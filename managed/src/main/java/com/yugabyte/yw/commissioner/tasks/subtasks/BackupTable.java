@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -23,7 +22,6 @@ import play.api.Play;
 import play.libs.Json;
 
 import java.util.Map;
-
 
 public class BackupTable extends AbstractTaskBase {
 
@@ -53,7 +51,7 @@ public class BackupTable extends AbstractTaskBase {
     }
 
     try {
-      Universe universe = Universe.get(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Map<String, String> config = universe.getConfig();
       if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
         if (taskParams().backupList != null) {
@@ -83,7 +81,7 @@ public class BackupTable extends AbstractTaskBase {
           }
         }
       } else {
-        LOG.info("Skipping table {}:{}", taskParams().keyspace, taskParams().tableName);
+        LOG.info("Skipping table {}:{}", taskParams().getKeyspace(), taskParams().getTableName());
         backup.transitionState(Backup.BackupState.Skipped);
       }
     } catch (Exception e) {

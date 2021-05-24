@@ -54,11 +54,7 @@ fi
 YB_BASH_COMMON_DIR=$YB_SRC_ROOT/submodules/yugabyte-bash-common
 
 # Initialize submodules. Only do this when the source directory is a git directory.
-#
-# The "thirdparty" subdirectory of the source directory is a submodule with a special location
-# (outside of the "submodules" subdirectory).
-if [[ ! -d $YB_BASH_COMMON_DIR     || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ||
-      ! -d $YB_SRC_ROOT/thirdparty || -z "$( ls -A "$YB_SRC_ROOT/thirdparty" )" ]] &&
+if [[ ! -d $YB_BASH_COMMON_DIR || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ]] &&
    [[ -d $YB_SRC_ROOT/.git ]]; then
   ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
 fi
@@ -2095,6 +2091,27 @@ VIRTUALENV DEBUGGING
   export VIRTUAL_ENV
 }
 
+set_pythonpath_called=false
+
+set_pythonpath() {
+  if [[ $set_pythonpath_called == "true" ]]; then
+    return
+  fi
+  set_pythonpath_called=true
+
+  if [[ ! -d ${YB_SRC_ROOT:-} ]]; then
+    fatal "YB_SRC_ROOT is not set or does not exist; ${YB_SRC_ROOT:-undefined}"
+  fi
+
+  local new_entry=$YB_SRC_ROOT/python
+  if [[ -z ${PYTHONPATH:-} ]]; then
+    PYTHONPATH=$new_entry
+  else
+    PYTHONPATH=$new_entry:$PYTHONPATH
+  fi
+  export PYTHONPATH
+}
+
 log_file_existence() {
   expect_num_args 1 "$@"
   local file_name=$1
@@ -2253,13 +2270,17 @@ update_submodules() {
 }
 
 set_prebuilt_thirdparty_url() {
-  expect_vars_to_be_set YB_COMPILER_TYPE
+  expect_vars_to_be_set YB_COMPILER_TYPE build_type
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
     local auto_thirdparty_url=""
     local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}
     if [[ ${YB_COMPILER_TYPE} =~ ^.*[0-9]+$ ]]; then
       # For compiler types like gcc9 or clang11, append the compiler type to the file path.
       thirdparty_url_file+="_${YB_COMPILER_TYPE}"
+    fi
+    if [[ $YB_COMPILER_TYPE == "clang" && ( $build_type == "asan" || $build_type == "tsan" ) ]]
+    then
+      thirdparty_url_file+="_sanitizers"
     fi
     thirdparty_url_file+=.txt
     if [[ -f $thirdparty_url_file ]]; then

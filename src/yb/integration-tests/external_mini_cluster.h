@@ -230,6 +230,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return a non-leader master index
   CHECKED_STATUS GetFirstNonLeaderMasterIndex(int* idx);
 
+  Result<int> GetTabletLeaderIndex(const std::string& tablet_id);
+
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
 
@@ -241,7 +243,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   CHECKED_STATUS PingMaster(ExternalMaster* master) const;
 
-  // Add a Tablet Server to the blacklist
+  // Add a Tablet Server to the blacklist.
   CHECKED_STATUS AddTServerToBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
   // Returns the min_num_replicas corresponding to a PlacementBlockPB.
@@ -249,6 +251,11 @@ class ExternalMiniCluster : public MiniClusterBase {
     ExternalMaster* master,
     const string& cloud, const string& region, const string& zone,
     int* min_num_replicas);
+  // Add a Tablet Server to the leader blacklist.
+  CHECKED_STATUS AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
+
+  // Empty blacklist.
+  CHECKED_STATUS EmptyBlacklist(ExternalMaster* master);
 
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
@@ -336,9 +343,29 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Get the master leader consensus proxy.
   std::shared_ptr<consensus::ConsensusServiceProxy> GetLeaderConsensusProxy();
 
+  // Get the master leader master service proxy.
+  std::shared_ptr<master::MasterServiceProxy> GetLeaderMasterProxy();
+
   // Get the given master's consensus proxy.
-  std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(
-      scoped_refptr<ExternalMaster> master);
+  std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(ExternalDaemon* daemon);
+
+  template <class T>
+  std::shared_ptr<T> GetProxy(ExternalDaemon* daemon);
+
+  template <class T>
+  std::shared_ptr<T> GetTServerProxy(int i) {
+    return GetProxy<T>(tablet_server(i));
+  }
+
+  template <class T>
+  std::shared_ptr<T> GetMasterProxy(int i) {
+    return GetProxy<T>(master(i));
+  }
+
+  template <class T>
+  std::shared_ptr<T> GetLeaderMasterProxy() {
+    return GetProxy<T>(GetLeaderMaster());
+  }
 
   // If the cluster is configured for a single non-distributed master, return a proxy to that
   // master. Requires that the single master is running.
@@ -795,6 +822,13 @@ struct MasterComparator {
  private:
   const ExternalMaster* master_;
 };
+
+template <class T>
+std::shared_ptr<T> ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
+  return std::make_shared<T>(proxy_cache_.get(), daemon->bound_rpc_addr());
+}
+
+CHECKED_STATUS RestartAllMasters(ExternalMiniCluster* cluster);
 
 }  // namespace yb
 #endif  // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_

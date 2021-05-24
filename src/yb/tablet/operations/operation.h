@@ -92,15 +92,6 @@ class Operation {
   // data structures (such as the RocksDB memtable) and without side-effects.
   virtual CHECKED_STATUS Prepare() = 0;
 
-  // Actually starts an operation, assigning a hybrid_time to the transaction.  LEADER replicas
-  // execute this in or right after Prepare(), while FOLLOWER/LEARNER replicas execute this right
-  // before the Apply() phase as the transaction's hybrid_time is only available on the LEADER's
-  // commit message.  Once Started(), state might have leaked to other replicas/local log and the
-  // transaction can't be cancelled without issuing an abort message.
-  //
-  // The OpId is provided for debuggability purposes.
-  void Start();
-
   // Applies replicated operation, the actual actions of this phase depend on the
   // operation type, but usually this is the method where data-structures are changed.
   // Also it should notify callback if necessary.
@@ -126,8 +117,6 @@ class Operation {
 
   // Actual implementation of Aborted, should return status that should be passed to callback.
   virtual CHECKED_STATUS DoAborted(const Status& status) = 0;
-
-  virtual void DoStart() = 0;
 
   // A private version of this transaction's transaction state so that we can use base
   // OperationState methods on destructors.
@@ -168,6 +157,8 @@ class OperationState {
     return tablet_;
   }
 
+  virtual void Release();
+
   virtual void SetTablet(Tablet* tablet) {
     tablet_ = tablet;
   }
@@ -196,9 +187,6 @@ class OperationState {
   // Sets the hybrid_time for the transaction
   void set_hybrid_time(const HybridTime& hybrid_time);
 
-  // If this operation does not have hybrid time yet, then it will be inited from clock.
-  void TrySetHybridTimeFromClock();
-
   HybridTime hybrid_time() const {
     std::lock_guard<simple_spinlock> l(mutex_);
     DCHECK(hybrid_time_.is_valid());
@@ -219,11 +207,11 @@ class OperationState {
   // For instance it could be different from hybrid_time() for CDC.
   virtual HybridTime WriteHybridTime() const;
 
-  OpIdPB* mutable_op_id() {
-    return &op_id_;
+  void set_op_id(const OpId& op_id) {
+    op_id_ = op_id;
   }
 
-  const OpIdPB& op_id() const {
+  const OpId& op_id() const {
     return op_id_;
   }
 
@@ -234,15 +222,27 @@ class OperationState {
   void CompleteWithStatus(const Status& status) const;
   void SetError(const Status& status, tserver::TabletServerErrorPB::Code code) const;
 
+  // Whether we should use MVCC Manager to track this operation.
+  virtual bool use_mvcc() const {
+    return false;
+  }
+
   // Initialize operation at leader side.
   // op_id - operation id.
   // committed_op_id - current committed operation id.
-  void LeaderInit(const OpId& op_id, const OpId& committed_op_id);
+  virtual void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+
+  virtual void AddedToFollower();
+  virtual void Aborted();
+  virtual void Replicated();
 
   virtual ~OperationState();
 
  protected:
   explicit OperationState(Tablet* tablet);
+
+  virtual void AddedAsPending() {}
+  virtual void RemovedFromPending() {}
 
   // The tablet peer that is coordinating this transaction.
   Tablet* tablet_;
@@ -259,7 +259,7 @@ class OperationState {
   uint64_t hybrid_time_error_ = 0;
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
-  OpIdPB op_id_;
+  OpId op_id_;
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_;
 

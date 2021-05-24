@@ -23,7 +23,6 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import org.yb.util.SanitizerUtil;
 
@@ -32,9 +31,9 @@ public class TestTransactionStatusTable extends BasePgSQLTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerArgs("--TEST_txn_status_table_tablet_creation_delay_ms=5000");
+    builder.addCommonTServerFlag("TEST_txn_status_table_tablet_creation_delay_ms", "5000");
     // Reduce the number of tablets per table.
-    builder.addMasterArgs("--ysql_num_shards_per_tserver=1");
+    builder.addMasterFlag("ysql_num_shards_per_tserver", "1");
   }
 
   @Test

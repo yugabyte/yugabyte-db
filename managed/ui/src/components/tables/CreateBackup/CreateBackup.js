@@ -79,9 +79,14 @@ export default class CreateBackup extends Component {
       createUniverseBackup,
       universeTables
     } = this.props;
-
+    const frequencyUnitConversion = {
+      Hours: 3600,
+      Minutes: 60
+    }
     if (isDefinedNotNull(values.storageConfigUUID)) {
       let backupType = null;
+      let frequency = null;
+
       if (this.state.backupType === 'ysql') {
         backupType = YSQL_TABLE_TYPE;
       } else if (this.state.backupType === 'ycql') {
@@ -89,14 +94,17 @@ export default class CreateBackup extends Component {
       } else if (this.state.backupType === 'yedis') {
         backupType = YEDIS_TABLE_TYPE;
       }
+
+      if (!isEmptyString(values.schedulingFrequency) && !isEmptyString(values.schedulingFrequencyUnit.value)) {
+        frequency = values.schedulingFrequency * frequencyUnitConversion[values.schedulingFrequencyUnit.value] * 1000;
+        frequency = Math.round(frequency);
+      }
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
         sse: values.enableSSE,
         backupType: backupType,
         transactionalBackup: values.transactionalBackup,
-        schedulingFrequency: isEmptyString(values.schedulingFrequency)
-          ? null
-          : values.schedulingFrequency,
+        schedulingFrequency: frequency,
         cronExpression: isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
         parallelism: values.parallelism,
         timeBeforeDelete: values.timeBeforeDelete * 24 * 60 * 60 * 1000,
@@ -149,6 +157,9 @@ export default class CreateBackup extends Component {
 
     if (values.schedulingFrequency && !_.isNumber(values.schedulingFrequency)) {
       errors.schedulingFrequency = 'Frequency must be a number';
+    }
+    if (!values.schedulingFrequencyUnit) {
+      errors.schedulingFrequencyUnit = 'Please select a valid frequency unit';
     }
     if (values.cronExpression && !cron.isValidCron(values.cronExpression)) {
       errors.cronExpression = 'Does not looks like a valid cron expression';
@@ -289,7 +300,10 @@ export default class CreateBackup extends Component {
         <span>{props.data.label}</span>
       </components.SingleValue>
     );
-
+    const schedulingFrequencyUnitOptions = [
+      { value: 'Hours', label: 'Hours' },
+      { value: 'Minutes', label: 'Minutes' }
+    ];
     return (
       <div className="universe-apps-modal">
         <YBModalForm
@@ -425,7 +439,15 @@ export default class CreateBackup extends Component {
                           readOnly={isSchedulingFrequencyReadOnly}
                           type={'number'}
                           label={'Backup frequency'}
-                          placeholder={'Interval in ms'}
+                          placeholder="Interval"
+                        />
+                      </Col>
+                      <Col xs={6}>
+                        <Field
+                          name="schedulingFrequencyUnit"
+                          component={YBFormSelect}
+                          label="Frequency Unit"
+                          options={schedulingFrequencyUnitOptions}
                         />
                       </Col>
                     </Row>
@@ -527,14 +549,12 @@ export default class CreateBackup extends Component {
                       type="number"
                       label={'Parallel Threads'}
                     />
-                    {isScheduled && (
-                      <Field
-                        name="timeBeforeDelete"
-                        type={'number'}
-                        component={YBFormInput}
-                        label={'Number of Days to Retain Backup'}
-                      />
-                    )}
+                    <Field
+                      name="timeBeforeDelete"
+                      type={'number'}
+                      component={YBFormInput}
+                      label={'Number of Days to Retain Backup'}
+                    />
                   </Tab>
                   <Tab
                     eventKey={'ycql'}
@@ -594,14 +614,12 @@ export default class CreateBackup extends Component {
                       type="number"
                       label={'Parallel Threads'}
                     />
-                    {isScheduled && (
-                      <Field
-                        name="timeBeforeDelete"
-                        type={'number'}
-                        component={YBFormInput}
-                        label={'Number of Days to Retain Backup'}
-                      />
-                    )}
+                    <Field
+                      name="timeBeforeDelete"
+                      type={'number'}
+                      component={YBFormInput}
+                      label={'Number of Days to Retain Backup'}
+                    />
                   </Tab>
                   <Tab
                     eventKey={'yedis'}
@@ -661,14 +679,12 @@ export default class CreateBackup extends Component {
                       type="number"
                       label={'Parallel Threads'}
                     />
-                    {isScheduled && (
-                      <Field
+                    <Field
                         name="timeBeforeDelete"
                         type="number"
                         component={YBFormInput}
                         label={'Number of Days to Retain Backup'}
-                      />
-                    )}
+                    />
                   </Tab>
                 </Tabs>
               </Fragment>
