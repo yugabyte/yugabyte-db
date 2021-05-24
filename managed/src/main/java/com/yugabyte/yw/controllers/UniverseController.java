@@ -1131,6 +1131,11 @@ public class UniverseController extends AuthenticatedController {
     if (request().getQueryString("isForceDelete") != null) {
       isForceDelete = Boolean.parseBoolean(request().getQueryString("isForceDelete"));
     }
+    boolean isDeleteBackups = false;
+    if (request().getQueryString("isDeleteBackups") != null) {
+      isDeleteBackups = Boolean.parseBoolean(request().getQueryString("isDeleteBackups"));
+    }
+
     LOG.info(
         "Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
         customerUUID,
@@ -1144,6 +1149,7 @@ public class UniverseController extends AuthenticatedController {
     taskParams.expectedUniverseVersion = -1;
     taskParams.customerUUID = customerUUID;
     taskParams.isForceDelete = isForceDelete;
+    taskParams.isDeleteBackups = isDeleteBackups;
     // Submit the task to destroy the universe.
     TaskType taskType = TaskType.DestroyUniverse;
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -1170,7 +1176,6 @@ public class UniverseController extends AuthenticatedController {
         universe.name);
 
     LOG.info("Destroyed universe " + universeUUID + " for customer [" + customer.name + "]");
-
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), taskUUID);

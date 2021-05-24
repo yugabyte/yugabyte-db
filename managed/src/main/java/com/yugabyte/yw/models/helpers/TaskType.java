@@ -35,8 +35,6 @@ public enum TaskType {
 
   BackupUniverse("BackupUniverse"),
 
-  DeleteBackup("DeleteBackup"),
-
   MultiTableBackup("MultiTableBackup"),
 
   EditUniverse("EditUniverse"),
@@ -101,6 +99,8 @@ public enum TaskType {
   CreateTable("subtasks.CreateTable"),
 
   DeleteNode("subtasks.DeleteNode"),
+
+  DeleteBackup("subtasks.DeleteBackup"),
 
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 

@@ -100,6 +100,9 @@ public class UserTaskDetails {
     // Deleting Table
     DeletingTable,
 
+    // Deleting Backup
+    DeletingBackup,
+
     // Creating Table Backup
     CreatingTableBackup,
 
@@ -272,7 +275,11 @@ public class UserTaskDetails {
         break;
       case DeletingTable:
         title = "Deleting Table";
-        description = "Delete an existing table from a universe";
+        description = "Delete an existing table from a universe.";
+        break;
+      case DeletingBackup:
+        title = "Deleting Backup";
+        description = "Delete an existing backup of a universe.";
         break;
       case CreatingTableBackup:
         title = "Creating Table Backup";
