@@ -16,7 +16,6 @@ import {
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 import { toast } from 'react-toastify';
-import { fromPairs } from 'lodash';
 
 const mapStateToProps = (state) => {
   return {
@@ -35,7 +34,6 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(addCustomerConfig(config)).then((response) => {
         if (response.error) {
           const errorMessageObject = response.payload?.response?.data?.error || response.payload.message;
-          console.log(errorMessageObject)
           Object.keys(errorMessageObject).forEach((errorKey) => {
             toast.error(
               <ol>
