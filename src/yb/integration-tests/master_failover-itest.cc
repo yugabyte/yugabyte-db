@@ -496,18 +496,16 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
                 MonoDelta::FromSeconds(60),
                 "Load Balancer Idle check failed"));
 
-  // Delay TS Heartbeats by 40 times of original rate.
-  ASSERT_OK(cluster_->SetFlagOnTServers("heartbeat_interval_ms",
-                            std::to_string(kHeartbeatIntervalMs * 40)));
-
-  // Wait for the delay to take effect.
-  // Approximately let's give it 4 cycles.
-  SleepFor(MonoDelta::FromMilliseconds(4 * kHeartbeatIntervalMs));
+  // Disable TS heartbeats.
+  LOG(INFO) << "Disabled Heartbeats";
+  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_disable_heartbeat_test_only",
+                                        "true"));
 
   // Blacklist a TS.
   ExternalMaster *leader = cluster_->GetLeaderMaster();
   ExternalTabletServer *ts = cluster_->tablet_server(3);
   ASSERT_OK(cluster_->AddTServerToBlacklist(leader, ts));
+  LOG(INFO) << "Blacklisted tserver#3";
 
   // Get the initial load.
   int idx = -1;
@@ -523,6 +521,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
   int initial_total_load = resp.total();
 
   // Failover the leader.
+  LOG(INFO) << "Failing over master leader.";
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
 
   // Get the final load and validate.
@@ -534,9 +533,35 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
 
   proxy = cluster_->master_proxy(idx);
   ASSERT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+  LOG(INFO) << "Initial loads. Before master leader failover: " <<  initial_total_load
+            << " v/s after master leader failover: " << resp.total();
 
   EXPECT_EQ(resp.total(), initial_total_load) << "Expected the initial blacklisted load"
                                   " to be propagated to new leader master.";
+
+  // The progress should be reported as 0 until tservers heartbeat
+  // their tablet reports.
+  EXPECT_EQ(resp.percent(), 0) << "Expected the initial progress"
+                                  " to be zero.";
+
+  // Now enable heartbeats.
+  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_disable_heartbeat_test_only",
+                                        "false"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("blacklist_progress_initial_delay_secs",
+                                        std::to_string((kHeartbeatIntervalMs * 20)/1000)));
+  LOG(INFO) << "Enabled heartbeats";
+
+  ASSERT_OK(LoggedWaitFor(
+    [&]() -> Result<bool> {
+      req.Clear();
+      resp.Clear();
+      rpc.Reset();
+      RETURN_NOT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+      return resp.percent() >= 100;
+    },
+    MonoDelta::FromSeconds(300),
+    "Waiting for blacklist load transfer to complete"
+  ));
 }
 
 class MasterFailoverTestWithPlacement : public MasterFailoverTest {
