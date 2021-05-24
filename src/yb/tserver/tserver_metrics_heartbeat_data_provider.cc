@@ -56,6 +56,8 @@ void addTabletData(master::TabletPathInfoPB* path_info,
   tablet_on_path->set_sst_file_size(sst_file_size);
   tablet_on_path->set_wal_file_size(wal_file_size);
   tablet_on_path->set_uncompressed_sst_file_size(uncompressed_sst_file_size);
+  tablet_on_path->set_may_have_orphaned_post_split_data(
+      tablet_peer->shared_tablet()->MayHaveOrphanedPostSplitData());
 }
 
 

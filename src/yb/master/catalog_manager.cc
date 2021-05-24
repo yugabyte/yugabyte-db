@@ -53,7 +53,6 @@
 // ================================================================================================
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager-internal.h"
 
 #include <stdlib.h>
 
@@ -79,6 +78,7 @@
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
@@ -90,8 +90,10 @@
 #include "yb/gutil/walltime.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
@@ -99,6 +101,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -371,6 +374,10 @@ DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
                  "its tablespace placement policy until the loadbalancer runs.");
 TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
 
+DEFINE_int64(tablet_split_size_threshold_bytes, 0,
+             "Threshold on tablet size after which tablet should be split. Automated splitting is "
+             "disabled if this value is set to 0");
+
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
                  "move.");
@@ -624,7 +631,8 @@ CatalogManager::CatalogManager(Master* master)
       ysql_transaction_(this, master_),
       tablespace_placement_map_(std::make_shared<TablespaceIdToReplicationInfoMap>()),
       table_to_tablespace_map_(std::make_shared<TableToTablespaceIdMap>()),
-      tablespace_bg_task_running_(false) {
+      tablespace_bg_task_running_(false),
+      tablet_split_manager_(this, this) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -690,6 +698,8 @@ Status CatalogManager::Init() {
     RETURN_NOT_OK(encryption_manager_->AddPeersToGetUniverseKeyFrom(hps));
     RETURN_NOT_OK(EnableBgTasks());
   }
+
+  RETURN_NOT_OK_PREPEND(tablet_split_manager_.Init(), "Failed to initialize tablet split manager.");
 
   // Cache the server registration even for shell mode masters. See
   // https://github.com/yugabyte/yugabyte-db/issues/8065.
@@ -1516,6 +1526,8 @@ bool CatalogManager::StartShutdown() {
     sys_catalog_->StartShutdown();
   }
 
+  tablet_split_manager_.Shutdown();
+
   return true;
 }
 
@@ -2078,31 +2090,59 @@ Status CatalogManager::TEST_SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
-Status CatalogManager::DoSplitTablet(
-    const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
-    const std::string& split_partition_key) {
-  if (source_tablet_info->colocated()) {
+Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) const {
+  if (tablet_info.table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for transaction status tables, tablet_id: $0",
+        tablet_info.tablet_id());
+  }
+  if (tablet_info.colocated()) {
     return STATUS_FORMAT(
         NotSupported, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
-        source_tablet_info->tablet_id());
+        tablet_info.tablet_id());
+  }
+  {
+    auto tablet_state = tablet_info.LockForRead()->pb.state();
+    if (tablet_state != SysTabletsEntryPB::RUNNING) {
+      return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::TABLET_NOT_RUNNING),
+                              "Tablet is not in running state: $0",
+                              tablet_state);
+    }
   }
   if (FLAGS_tablet_split_limit_per_table != 0 &&
-      source_tablet_info->table()->NumTablets() >= FLAGS_tablet_split_limit_per_table) {
+      tablet_info.table()->NumTablets() >= FLAGS_tablet_split_limit_per_table) {
     // TODO(tsplit): Avoid tablet server of scanning tablets for the tables that already
     //  reached the split limit of tablet #6220
     return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::REACHED_SPLIT_LIMIT),
                             "Too many tablets for the table, table_id: $0, limit: $1",
-                            source_tablet_info->table()->id(), FLAGS_tablet_split_limit_per_table);
+                            tablet_info.table()->id(), FLAGS_tablet_split_limit_per_table);
   }
+  if (tablet_info.table()->IsBackfilling()) {
+    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                            "Backfill operation in progress, table_id: $0",
+                            tablet_info.table()->id());
+  }
+  return Status::OK();
+}
 
+bool CatalogManager::ShouldSplitValidCandidate(const TabletReplicaDriveInfo& drive_info) const {
+  return FLAGS_tablet_split_size_threshold_bytes > 0
+      && !drive_info.may_have_orphaned_post_split_data
+      && drive_info.sst_files_size > FLAGS_tablet_split_size_threshold_bytes;
+}
+
+Status CatalogManager::DoSplitTablet(
+    const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
+    const std::string& split_partition_key) {
   auto source_table_lock = source_tablet_info->table()->LockForWrite();
   auto source_tablet_lock = source_tablet_info->LockForWrite();
 
-  if (source_tablet_info->table()->IsBackfilling()) {
-    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
-                            "Backfill operation in progress, table_id: $0",
-                            source_tablet_info->table()->id());
-  }
+  // We must re-validate the split candidate here *after* grabbing locks on the table and tablet to
+  // ensure a backfill does not happen before we modify catalog metadata to include new subtablets.
+  // This process adds new subtablets in the CREATING state, which if encountered by backfill code
+  // will block the backfill process.
+  RETURN_NOT_OK(ValidateSplitCandidate(*source_tablet_info));
 
   LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
@@ -7255,7 +7295,7 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
     new_replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(), *consensus_state);
   }
   if (report.has_should_disable_lb_move()) {
-      new_replica->should_disable_lb_move = report.should_disable_lb_move();
+    new_replica->should_disable_lb_move = report.should_disable_lb_move();
   }
   new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
@@ -9457,8 +9497,12 @@ void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
       TabletReplicaDriveInfo drive_info{path.path_id(),
                                         tablet_info.sst_file_size(),
                                         tablet_info.wal_file_size(),
-                                        tablet_info.uncompressed_sst_file_size()};
+                                        tablet_info.uncompressed_sst_file_size(),
+                                        tablet_info.may_have_orphaned_post_split_data()};
       tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
+      WARN_NOT_OK(
+          tablet_split_manager_.ScheduleSplitIfNeeded(*tablet, ts_uuid, drive_info),
+          "Failed to process tablet split candidate.");
     }
   }
 }

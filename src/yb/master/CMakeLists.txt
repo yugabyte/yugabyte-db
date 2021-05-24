@@ -92,6 +92,7 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   tasks_tracker.cc
+  tablet_split_manager.cc
   ts_descriptor.cc
   ts_manager.cc
   yql_virtual_table.cc

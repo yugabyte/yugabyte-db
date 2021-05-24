@@ -13,6 +13,9 @@
 
 #include <chrono>
 #include <thread>
+
+#include <gtest/gtest.h>
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -61,6 +64,7 @@ using namespace std::literals;  // NOLINT
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(TEST_do_not_start_election_test_only);
 DECLARE_int32(TEST_apply_tablet_split_inject_delay_ms);
 DECLARE_int32(heartbeat_interval_ms);
@@ -73,6 +77,8 @@ DECLARE_int32(replication_factor);
 DECLARE_int32(tablet_split_limit_per_table);
 DECLARE_bool(TEST_pause_before_post_split_compation);
 DECLARE_int32(TEST_slowdown_backfill_alter_table_rpcs_ms);
+DECLARE_int64(tablet_split_size_threshold_bytes);
+DECLARE_int32(process_split_tablet_candidates_interval_msec);
 
 namespace yb {
 
@@ -1291,6 +1297,51 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
 
   rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table2));
   ASSERT_EQ(rows_count, kNumRows);
+}
+
+TEST_F(TabletSplitITest, AutomaticTabletSplitting) {
+  constexpr int kNumRowsPerBatch = 1000;
+
+  FLAGS_tablet_split_size_threshold_bytes = 1_MB;
+  FLAGS_process_split_tablet_candidates_interval_msec = 1;
+  FLAGS_rocksdb_disable_compactions = true;
+
+  CreateSingleTablet();
+
+  int key = 1;
+  while (true) {
+    ASSERT_OK(WriteRows(kNumRowsPerBatch, key));
+    key += kNumRowsPerBatch;
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+    if (peers.size() == 2) {
+      for (const auto& peer : peers) {
+        auto peer_size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
+        // Since we've disabled compactions, each post-split subtablet should be larger than the
+        // split size threshold.
+        EXPECT_GE(peer_size, FLAGS_tablet_split_size_threshold_bytes);
+      }
+      break;
+    }
+    ASSERT_EQ(peers.size(), 1);
+    auto active_tablet_leader = peers.at(0)->shared_tablet();
+    ASSERT_OK(active_tablet_leader->Flush(tablet::FlushMode::kSync));
+    auto current_size = active_tablet_leader->GetCurrentVersionSstFilesSize();
+    if (current_size > FLAGS_tablet_split_size_threshold_bytes) {
+      ASSERT_NO_FATALS(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
+      break;
+    }
+  }
+
+  // Since compaction is off, the tablets should not be further split since they won't have had
+  // their post split compaction. Assert this is true by tripling the number of keys written and
+  // seeing the number of tablets not grow.
+  auto triple_keys = key * 2;
+  while (key < triple_keys) {
+    ASSERT_OK(WriteRows(kNumRowsPerBatch, key));
+    key += kNumRowsPerBatch;
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+    EXPECT_EQ(peers.size(), 2);
+  }
 }
 
 class TabletSplitSingleServerITest : public TabletSplitITest {
