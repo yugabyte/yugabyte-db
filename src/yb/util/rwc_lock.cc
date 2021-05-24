@@ -53,7 +53,6 @@ RWCLock::RWCLock()
     write_locked_(false),
     last_writer_tid_(0),
     last_writelock_acquire_time_(0) {
-  last_writer_backtrace_[0] = '\0';
 #endif // NDEBUG
 }
 
@@ -93,12 +92,19 @@ void RWCLock::WriteLock() {
   MutexLock l(lock_);
   // Wait for any other mutations to finish.
   while (write_locked_) {
+#ifndef NDEBUG
+    if (!no_mutators_.TimedWait(MonoDelta::FromSeconds(1))) {
+      LOG(WARNING) << "Too long write lock wait, last writer stack: "
+                   << last_writer_stacktrace_.Symbolize();
+    }
+#else
     no_mutators_.Wait();
+#endif
   }
 #ifndef NDEBUG
   last_writelock_acquire_time_ = GetCurrentTimeMicros();
   last_writer_tid_ = Thread::CurrentThreadId();
-  HexStackTraceToString(last_writer_backtrace_, kBacktraceBufSize);
+  last_writer_stacktrace_.Collect();
 #endif // NDEBUG
   write_locked_ = true;
 }
@@ -108,7 +114,7 @@ void RWCLock::WriteUnlock() {
   DCHECK(write_locked_);
   write_locked_ = false;
 #ifndef NDEBUG
-  last_writer_backtrace_[0] = '\0';
+  last_writer_stacktrace_.Reset();
 #endif // NDEBUG
   no_mutators_.Signal();
 }
@@ -129,7 +135,7 @@ void RWCLock::CommitUnlock() {
   DCHECK_EQ(0, reader_count_);
   write_locked_ = false;
 #ifndef NDEBUG
-  last_writer_backtrace_[0] = '\0';
+  last_writer_stacktrace_.Reset();
 #endif // NDEBUG
   no_mutators_.Broadcast();
   lock_.unlock();

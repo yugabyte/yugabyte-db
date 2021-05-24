@@ -24,22 +24,24 @@ public class CommonUtils {
   private static final String MASKED_FIELD_VALUE = "********";
 
   /**
-   * Checks whether the field name represents a field with a sensitive data or
-   * not.
+   * Checks whether the field name represents a field with a sensitive data or not.
    *
    * @param fieldname
    * @return true if yes, false otherwise
    */
   public static boolean isSensitiveField(String fieldname) {
     String ucFieldname = fieldname.toUpperCase();
-    return isStrictlySensitiveField(ucFieldname) || ucFieldname.contains("KEY")
-        || ucFieldname.contains("SECRET") || ucFieldname.contains("CREDENTIALS")
-        || ucFieldname.contains("API") || ucFieldname.contains("POLICY");
+    return isStrictlySensitiveField(ucFieldname)
+        || ucFieldname.contains("KEY")
+        || ucFieldname.contains("SECRET")
+        || ucFieldname.contains("CREDENTIALS")
+        || ucFieldname.contains("API")
+        || ucFieldname.contains("POLICY");
   }
 
   /**
-   * Checks whether the field name represents a field with a very sensitive data
-   * or not. Such fields require strict masking.
+   * Checks whether the field name represents a field with a very sensitive data or not. Such fields
+   * require strict masking.
    *
    * @param fieldname
    * @return true if yes, false otherwise
@@ -50,59 +52,62 @@ public class CommonUtils {
   }
 
   /**
-   * Masks sensitive fields in the config. Sensitive fields could be of two types
-   * - sensitive and strictly sensitive. First ones are masked partly (two first
-   * and two last characters are left), strictly sensitive fields are masked with
-   * fixed 8 asterisk characters (recommended for passwords).
+   * Masks sensitive fields in the config. Sensitive fields could be of two types - sensitive and
+   * strictly sensitive. First ones are masked partly (two first and two last characters are left),
+   * strictly sensitive fields are masked with fixed 8 asterisk characters (recommended for
+   * passwords).
    *
    * @param config Config which could hold some data to mask.
    * @return Masked config
    */
   public static JsonNode maskConfig(JsonNode config) {
-    return processData(config, CommonUtils::isSensitiveField,
-        (key, value) -> getMaskedValue(key, value));
+    return processData(
+        config, CommonUtils::isSensitiveField, (key, value) -> getMaskedValue(key, value));
   }
 
   private static String getMaskedValue(String key, String value) {
-    return isStrictlySensitiveField(key) || (value == null)
-        || value.length() < 5 ? MASKED_FIELD_VALUE : value.replaceAll(maskRegex, "*");
+    return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
+        ? MASKED_FIELD_VALUE
+        : value.replaceAll(maskRegex, "*");
   }
 
   /**
-   * Removes masks from the config. If some fields are sensitive but were updated,
-   * these fields are remain the same (with the new values).
+   * Removes masks from the config. If some fields are sensitive but were updated, these fields are
+   * remain the same (with the new values).
    *
    * @param originalData Previous config data. All masked data recovered from it.
-   * @param data         The new config data.
+   * @param data The new config data.
    * @return Updated config (all masked fields are recovered).
    */
   public static JsonNode unmaskConfig(JsonNode originalData, JsonNode data) {
-    return originalData == null ? data
-        : processData(data, CommonUtils::isSensitiveField,
-            (key, value) -> StringUtils.equals(value, getMaskedValue(key, value))
-                ? originalData.get(key).textValue()
-                : value);
+    return originalData == null
+        ? data
+        : processData(
+            data,
+            CommonUtils::isSensitiveField,
+            (key, value) ->
+                StringUtils.equals(value, getMaskedValue(key, value))
+                    ? originalData.get(key).textValue()
+                    : value);
   }
 
-  private static JsonNode processData(JsonNode data, Predicate<String> selector,
-      BiFunction<String, String, String> getter) {
+  private static JsonNode processData(
+      JsonNode data, Predicate<String> selector, BiFunction<String, String, String> getter) {
     if (data == null) {
       return Json.newObject();
     }
     JsonNode result = data.deepCopy();
-    for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext();) {
+    for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
       Entry<String, JsonNode> entry = it.next();
       if (selector.test(entry.getKey())) {
-        ((ObjectNode) result).put(entry.getKey(),
-            getter.apply(entry.getKey(), entry.getValue().textValue()));
+        ((ObjectNode) result)
+            .put(entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue()));
       }
     }
     return result;
   }
 
-  /**
-   * Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten.
-   */
+  /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
   public static void deepMerge(JsonNode node1, JsonNode node2) {
     if (node1 == null || node1.size() == 0 || node2 == null || node2.size() == 0) {
       throw new YWServiceException(BAD_REQUEST, "Cannot merge empty nodes.");
@@ -130,7 +135,7 @@ public class CommonUtils {
    * https://lodash.com/docs/4.17.15#get
    *
    * @param object ObjectNode to be traversed
-   * @param path   Dot-separated string notation to represent JSON property
+   * @param path Dot-separated string notation to represent JSON property
    * @return JsonNode value of property or null
    */
   public static JsonNode getNodeProperty(JsonNode object, String path) {

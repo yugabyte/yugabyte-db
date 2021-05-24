@@ -40,8 +40,8 @@ public class ColumnDetails {
     columnDetails.name = columnSchema.getName();
     columnDetails.type = YQLDataType.createFromGenericType(columnSchema.getType());
     if (columnDetails.type == null) {
-      throw new IllegalArgumentException("Could not find CQL data type matching " +
-          columnSchema.getType());
+      throw new IllegalArgumentException(
+          "Could not find CQL data type matching " + columnSchema.getType());
     }
     columnDetails.isPartitionKey = columnSchema.isHashKey();
     columnDetails.isClusteringKey = !columnDetails.isPartitionKey && columnSchema.isKey();
@@ -69,7 +69,7 @@ public class ColumnDetails {
     MAP("map"),
     SET("set"),
     UUID("uuid"),
-    TIMEUUID ("timeuuid"),
+    TIMEUUID("timeuuid"),
     FROZEN("frozen"),
     DATE("date"),
     TIME("time"),
@@ -99,7 +99,7 @@ public class ColumnDetails {
      * @return an instance of YQLDataType
      */
     public static YQLDataType createFromGenericType(Type type) {
-      switch(type) {
+      switch (type) {
         case INT8:
           return TINYINT;
         case INT16:

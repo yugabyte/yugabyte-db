@@ -23,8 +23,7 @@ import java.util.UUID;
 public class SwamperTargetsFileUpdate extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(SwamperTargetsFileUpdate.class);
 
-  @Inject
-  SwamperHelper swamperHelper;
+  @Inject SwamperHelper swamperHelper;
 
   public static class Params extends AbstractTaskParams {
     public UUID universeUUID;
@@ -38,12 +37,17 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
   }
 
   protected SwamperTargetsFileUpdate.Params taskParams() {
-    return (SwamperTargetsFileUpdate.Params)taskParams;
+    return (SwamperTargetsFileUpdate.Params) taskParams;
   }
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", Remove:" + taskParams().removeFile + ")";
+    return super.getName()
+        + "("
+        + taskParams().universeUUID
+        + ", Remove:"
+        + taskParams().removeFile
+        + ")";
   }
 
   @Override
@@ -56,7 +60,7 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
         swamperHelper.removeUniverseTargetJson(taskParams().universeUUID);
       }
     } catch (RuntimeException e) {
-      String msg = getName() + " failed with exception "  + e.getMessage();
+      String msg = getName() + " failed with exception " + e.getMessage();
       LOG.error(msg, e);
       throw new RuntimeException(msg);
     }

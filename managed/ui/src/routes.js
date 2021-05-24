@@ -5,7 +5,6 @@ import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 import _ from 'lodash';
 import axios from 'axios';
-import { toast } from 'react-toastify';
 
 import {
   validateToken,
@@ -83,7 +82,7 @@ const autoLogin = (params) => {
 /**
  * Checks that url query parameters contains only authToken, customerUUID,
  * and userUUID. If additional parameters are in url, returns false
- * @param {Object} params 
+ * @param {Object} params
  * @returns true if and only if all authentication parameters are in url
  */
 const checkAuthParamsInUrl = (params) => {
@@ -92,25 +91,16 @@ const checkAuthParamsInUrl = (params) => {
   return _.isEqual(urlParams, expectedParams);
 };
 
-let expirationToastVisible = false;
-
-// global interceptor catching all responses with unauthorised code
+// global interceptor catching all api responses with unauthorised code
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     // skip 403 response for "/login" and "/register" endpoints
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 403;
-
-    // make sure there's a single session expired toast visible at a time
-    if (isUnauthorised && !isAllowedUrl && !expirationToastVisible) {
-      expirationToastVisible = true;
-      toast.error('Your session has expired, please login again', {
-        onClose: () => expirationToastVisible = false
-      });
+    if (isUnauthorised && !isAllowedUrl) {
       browserHistory.push('/login');
     }
-
     return Promise.reject(error);
   }
 );

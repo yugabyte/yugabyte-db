@@ -21,10 +21,13 @@ public class CustomerTaskManager {
   public void failPendingTask(CustomerTask customerTask, TaskInfo taskInfo) {
     try {
       // Mark each subtask as a failure
-      taskInfo.getIncompleteSubTasks().forEach(subtask -> {
-        subtask.setTaskState(TaskInfo.State.Failure);
-        subtask.save();
-      });
+      taskInfo
+          .getIncompleteSubTasks()
+          .forEach(
+              subtask -> {
+                subtask.setTaskState(TaskInfo.State.Failure);
+                subtask.save();
+              });
       // Mark task as a failure
       taskInfo.setTaskState(TaskInfo.State.Failure);
       taskInfo.save();
@@ -34,13 +37,14 @@ public class CustomerTaskManager {
       // Unlock the universe for future operations
       if (customerTask.getTarget().equals(TargetType.Universe)) {
         // Create the update lambda.
-        Universe.UniverseUpdater updater = universe -> {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (universeDetails.updateInProgress) {
-            universeDetails.updateInProgress = false;
-            universe.setUniverseDetails(universeDetails);
-          }
-        };
+        Universe.UniverseUpdater updater =
+            universe -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              if (universeDetails.updateInProgress) {
+                universeDetails.updateInProgress = false;
+                universe.setUniverseDetails(universeDetails);
+              }
+            };
 
         Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
         LOG.debug("Unlocked universe {} for updates.", customerTask.getTargetUUID());
@@ -54,16 +58,20 @@ public class CustomerTaskManager {
     LOG.info("Failing incomplete tasks...");
     try {
       // Retrieve all incomplete customer tasks
-      String query = "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id " +
-        "FROM task_info ti, customer_task ct " +
-        "WHERE ti.uuid = ct.task_uuid " +
-        "AND ct.completion_time IS NULL " +
-        "AND ti.task_state IN ('Created', 'Initializing', 'Running')";
-      Ebean.createSqlQuery(query).findList().forEach(row -> {
-        TaskInfo taskInfo = TaskInfo.get(row.getUUID("task_uuid"));
-        CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
-        failPendingTask(customerTask, taskInfo);
-      });
+      String query =
+          "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
+              + "FROM task_info ti, customer_task ct "
+              + "WHERE ti.uuid = ct.task_uuid "
+              + "AND ct.completion_time IS NULL "
+              + "AND ti.task_state IN ('Created', 'Initializing', 'Running')";
+      Ebean.createSqlQuery(query)
+          .findList()
+          .forEach(
+              row -> {
+                TaskInfo taskInfo = TaskInfo.get(row.getUUID("task_uuid"));
+                CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
+                failPendingTask(customerTask, taskInfo);
+              });
     } catch (Exception e) {
       LOG.error("Encountered error failing pending tasks", e);
     }

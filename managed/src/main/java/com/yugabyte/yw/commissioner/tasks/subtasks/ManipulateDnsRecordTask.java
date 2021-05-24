@@ -47,31 +47,33 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
     try {
       List<NodeDetails> tserverNodes =
-        Universe.getOrBadRequest(taskParams().universeUUID).getTServers();
-      String nodeIpCsv = tserverNodes.stream()
-          .map(nd -> nd.cloudInfo.private_ip)
-          .collect(Collectors.joining(","));
+          Universe.getOrBadRequest(taskParams().universeUUID).getTServers();
+      String nodeIpCsv =
+          tserverNodes.stream().map(nd -> nd.cloudInfo.private_ip).collect(Collectors.joining(","));
       // Create the process to fetch information about the node from the cloud provider.
-      ShellResponse response = dnsManager.manipulateDnsRecord(
-          taskParams().type,
-          taskParams().providerUUID,
-          taskParams().hostedZoneId,
-          taskParams().domainNamePrefix,
-          nodeIpCsv);
+      ShellResponse response =
+          dnsManager.manipulateDnsRecord(
+              taskParams().type,
+              taskParams().providerUUID,
+              taskParams().hostedZoneId,
+              taskParams().domainNamePrefix,
+              nodeIpCsv);
       processShellResponse(response);
     } catch (Exception e) {
       if (taskParams().type != DnsManager.DnsCommandType.Delete || !taskParams().isForceDelete) {
         throw e;
       } else {
-        LOG.info("Ignoring error in dns record deletion for {} due to isForceDelete being set.",
-                taskParams().domainNamePrefix, e);
+        LOG.info(
+            "Ignoring error in dns record deletion for {} due to isForceDelete being set.",
+            taskParams().domainNamePrefix,
+            e);
       }
     }
   }

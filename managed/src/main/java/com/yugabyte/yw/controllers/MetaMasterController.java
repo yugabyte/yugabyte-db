@@ -34,13 +34,11 @@ import play.mvc.Result;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 
-
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
 
-  @Inject
-  KubernetesManager kubernetesManager;
+  @Inject KubernetesManager kubernetesManager;
 
   public Result get(UUID universeUUID) {
     // Lookup the entry for the instanceUUID.
@@ -86,11 +84,16 @@ public class MetaMasterController extends Controller {
     }
 
     switch (type) {
-      case MASTER: return ApiResponse.success(universe.getMasterAddresses());
-      case YQLSERVER: return ApiResponse.success(universe.getYQLServerAddresses());
-      case YSQLSERVER: return ApiResponse.success(universe.getYSQLServerAddresses());
-      case REDISSERVER: return ApiResponse.success(universe.getRedisServerAddresses());
-      default: throw new IllegalArgumentException("Unexpected type " + type);
+      case MASTER:
+        return ApiResponse.success(universe.getMasterAddresses());
+      case YQLSERVER:
+        return ApiResponse.success(universe.getYQLServerAddresses());
+      case YSQLSERVER:
+        return ApiResponse.success(universe.getYSQLServerAddresses());
+      case REDISSERVER:
+        return ApiResponse.success(universe.getRedisServerAddresses());
+      default:
+        throw new IllegalArgumentException("Unexpected type " + type);
     }
   }
 
@@ -142,17 +145,20 @@ public class MetaMasterController extends Controller {
 
         Map<String, String> config = entry.getValue();
 
-        String namespace = PlacementInfoUtil.getKubernetesNamespace(
-          isMultiAz, universeDetails.nodePrefix, azName, config);
+        String namespace =
+            PlacementInfoUtil.getKubernetesNamespace(
+                isMultiAz, universeDetails.nodePrefix, azName, config);
 
-        ShellResponse r = kubernetesManager.getServiceIPs(
-          config, namespace, type == ServerType.MASTER);
+        ShellResponse r =
+            kubernetesManager.getServiceIPs(config, namespace, type == ServerType.MASTER);
         if (r.code != 0 || r.message == null) {
           LOG.warn("Kubernetes getServiceIPs api failed! {}", r.message);
           return null;
         }
-        List<String> ips = Arrays.stream(r.message.split("\\|"))
-          .filter((ip) -> !ip.trim().isEmpty()).collect(Collectors.toList());
+        List<String> ips =
+            Arrays.stream(r.message.split("\\|"))
+                .filter((ip) -> !ip.trim().isEmpty())
+                .collect(Collectors.toList());
         int rpcPort;
         switch (type) {
           case MASTER:

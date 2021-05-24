@@ -39,9 +39,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
   private static final String ALERT_TEST_MESSAGE = "Test message";
   private CustomerConfig s3StorageConfig;
-  
-  @InjectMocks
-  private Commissioner commissioner;
+
+  @InjectMocks private Commissioner commissioner;
 
   private Universe defaultUniverse;
   private ShellResponse dummyShellResponse;
@@ -60,7 +59,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.uuid);
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
 
     dummyShellResponse = new ShellResponse();
@@ -76,10 +76,20 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.FALSE;
 
-    Alert.create(defaultCustomer.uuid, defaultUniverse.universeUUID, Alert.TargetType.UniverseType,
-        "errorCode", "Warning", ALERT_TEST_MESSAGE);
-    Alert.create(defaultCustomer.uuid, defaultUniverse.universeUUID, Alert.TargetType.UniverseType,
-        "errorCode2", "Warning", ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        defaultUniverse.universeUUID,
+        Alert.TargetType.UniverseType,
+        "errorCode",
+        "Warning",
+        ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        defaultUniverse.universeUUID,
+        Alert.TargetType.UniverseType,
+        "errorCode2",
+        "Warning",
+        ALERT_TEST_MESSAGE);
 
     submitTask(taskParams, 4);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
@@ -93,10 +103,11 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyUniverseAndDeleteBackups() {
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
-    Backup b = ModelFactory.createBackup(defaultCustomer.uuid, defaultUniverse.universeUUID,
-        s3StorageConfig.configUUID);
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
     b.transitionState(Backup.BackupState.Completed);
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
@@ -117,8 +128,9 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyUniverseAndDeleteBackupsFalse() {
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
-    Backup b = ModelFactory.createBackup(defaultCustomer.uuid, defaultUniverse.universeUUID,
-        s3StorageConfig.configUUID);
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
     b.transitionState(Backup.BackupState.Completed);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
