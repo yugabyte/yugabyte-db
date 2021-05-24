@@ -37,6 +37,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master_error.h"
 
+#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -130,6 +131,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   void SetUp() override {
     this->SetNumTablets(3);
     this->create_table_ = false;
+    this->mini_cluster_opt_.num_tablet_servers = GetRF();
     client::TransactionTestBase<MiniClusterType>::SetUp();
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(this->client_->messenger());
   }
@@ -211,6 +213,8 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   void CheckTableKeysInRange(const size_t num_keys);
 
  protected:
+  virtual int64_t GetRF() { return 3; }
+
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
@@ -1005,12 +1009,23 @@ CHECKED_STATUS SplitTablet(master::CatalogManager* catalog_mgr, const tablet::Ta
   tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
+  return catalog_mgr->SplitTablet(tablet_id);
+}
+
+CHECKED_STATUS DoSplitTablet(master::CatalogManager* catalog_mgr, const tablet::Tablet& tablet) {
+  const auto& tablet_id = tablet.tablet_id();
+  LOG(INFO) << "Tablet: " << tablet_id;
+  LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
+  std::string properties;
+  tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
+  LOG(INFO) << "DB properties: " << properties;
+
   const auto encoded_split_key = VERIFY_RESULT(tablet.GetEncodedMiddleSplitKey());
   const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
   LOG(INFO) << "Middle hash key: " << doc_key_hash;
   const auto partition_split_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
 
-  return catalog_mgr->SplitTablet(tablet_id, encoded_split_key, partition_split_key);
+  return catalog_mgr->TEST_SplitTablet(tablet_id, encoded_split_key, partition_split_key);
 }
 
 } // namespace
@@ -1177,7 +1192,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
       if (expect_split) {
         ASSERT_OK(SplitTablet(catalog_mgr, *tablet));
       } else {
-        const auto split_status = SplitTablet(catalog_mgr, *tablet);
+        const auto split_status = DoSplitTablet(catalog_mgr, *tablet);
         ASSERT_EQ(master::MasterError(split_status),
                   master::MasterErrorPB::REACHED_SPLIT_LIMIT);
         reached_split_limit = true;
@@ -1276,6 +1291,47 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
 
   rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table2));
   ASSERT_EQ(rows_count, kNumRows);
+}
+
+class TabletSplitSingleServerITest : public TabletSplitITest {
+ protected:
+  int64_t GetRF() override { return 1; }
+};
+
+TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
+  constexpr auto kNumRows = 2000;
+  // Setup table with rows.
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const auto source_tablet_id = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_manager()))->id();
+
+  // Flush tablet and directly compute expected middle key.
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet_peer = peers.at(0);
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  auto middle_key = ASSERT_RESULT(tablet_peer->shared_tablet()->GetEncodedMiddleSplitKey());
+  auto expected_middle_key_hash = CHECK_RESULT(docdb::DocKey::DecodeHash(middle_key));
+
+  // Send RPC.
+  auto tserver = cluster_->mini_tablet_server(0);
+  auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
+    proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
+  tserver::GetSplitKeyRequestPB req;
+  req.set_tablet_id(source_tablet_id);
+  req.set_dest_uuid(tablet_peer->permanent_uuid());
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+  tserver::GetSplitKeyResponsePB resp;
+  ts_admin_service_proxy->GetSplitKey(req, &resp, &controller);
+
+  // Validate response.
+  CHECK(!resp.has_error()) << resp.error().DebugString();
+  auto decoded_split_key_hash = CHECK_RESULT(docdb::DocKey::DecodeHash(resp.split_encoded_key()));
+  CHECK_EQ(decoded_split_key_hash, expected_middle_key_hash);
+  auto decoded_partition_key_hash = PartitionSchema::DecodeMultiColumnHashValue(
+      resp.split_partition_key());
+  CHECK_EQ(decoded_partition_key_hash, expected_middle_key_hash);
 }
 
 class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<ExternalMiniCluster> {

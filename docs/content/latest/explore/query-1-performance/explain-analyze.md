@@ -8,7 +8,7 @@ image: /images/section_icons/index/develop.png
 menu:
   latest:
     identifier: explain-analyze
-    parent: query-1-performance
+    parent: query-tuning
     weight: 566
 isTocNested: true
 showAsideToc: true

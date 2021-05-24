@@ -174,8 +174,7 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */,
-                                           consensus::SplitOpInfo()));
+                                           nullptr /* retryable_requests */));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {
@@ -201,7 +200,7 @@ class TabletPeerTest : public YBTabletTest {
 
   void TearDown() override {
     messenger_->Shutdown();
-    tablet_peer_->Shutdown();
+    WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
     YBTabletTest::TearDown();
   }
 

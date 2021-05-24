@@ -25,11 +25,220 @@
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 
 namespace yb {
 namespace ql {
+
+//--------------------------------------------------------------------------------------------------
+// In addition to actual data, a CQL result contains a paging state for the CURSOR position.
+//
+// QueryPagingState represents the processing status in both CQL and DocDB. This class is used
+// for those purposes.
+//
+// 1. Load paging state from users and docdb.
+//    - When users send request, they sent StatementParams that contain user data and a paging
+//      state that indicates the status the statement execution.
+//    - When CQL gets the request, it loads user-provided paging state to ql::QueryPagingState.
+//
+// 2. Compose paging_state when sending replies to users.
+//    - When responding to user, in addition to row-data, CQL construct paging-state of its
+//      processing status, and CQL uses info in ql::SelectPagingState to construct the response.
+//    - In subsequent requests, users will send this info back to CQL together with user-data.
+//
+// 3. Load paging state from docdb.
+//    - In addition to actual row data, when DocDB replies to CQL, it sends back its paging state
+//      to indicate the status of DocDB's processing.
+//    - CQL will load DocDB's paging state into ql::QueryPagingState.
+//    - In subsequent READ requests, CQL sends back paging state to DocDB.
+//
+// 4. Compose paging_state when sending request to DocDB.
+//    - When sending requests to DocDB, CQL sends a paging state in addition to user data.
+//    - CQL uses info in QueryPagingState to construct DocDB's paging state.
+class QueryPagingState {
+ public:
+  typedef std::unique_ptr<QueryPagingState> UniPtr;
+
+  // Constructing paging_state from given user_params.
+  QueryPagingState(const StatementParameters& user_params, bool is_top_level_select);
+
+  // Clear paging state.
+  // NOTE:
+  // - Clear only query_pb_.
+  // - The counter_pb_ are used only in this class and should not be cleared.
+  // - DocDB as well as users do not know of this counter.
+  void ClearPagingState();
+
+  // Load the paging state in user request.
+  void LoadPagingStateFromUser(const StatementParameters& params,
+                                              bool is_top_level_read_node);
+
+  // Compose paging state to send to users.
+  CHECKED_STATUS ComposePagingStateForUser();
+  CHECKED_STATUS ComposePagingStateForUser(const QLPagingStatePB& child_state);
+
+  // Load the paging state in DocDB responses.
+  CHECKED_STATUS LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
+                                          int64_t number_of_new_rows,
+                                          bool has_nested_query);
+
+  // Access functions to query_pb_.
+  const std::string& table_id() const {
+    return query_pb_.table_id();
+  }
+
+  void set_table_id(const std::string& val) {
+    query_pb_.set_table_id(val);
+  }
+
+  const std::string& next_partition_key() const {
+    return query_pb_.next_partition_key();
+  }
+
+  void set_next_partition_key(const std::string& val) {
+    query_pb_.set_next_partition_key(val);
+  }
+
+  const std::string& next_row_key() const {
+    return query_pb_.next_row_key();
+  }
+
+  void set_next_row_key(const std::string& val) {
+    query_pb_.set_next_row_key(val);
+  }
+
+  int64_t total_num_rows_read() const {
+    return query_pb_.total_num_rows_read();
+  }
+
+  void set_total_num_rows_read(int64_t val) {
+    query_pb_.set_total_num_rows_read(val);
+  }
+
+  int64_t total_rows_skipped() const {
+    return query_pb_.total_rows_skipped();
+  }
+
+  void set_total_rows_skipped(int64_t val) {
+    query_pb_.set_total_rows_skipped(val);
+  }
+
+  int64_t next_partition_index() const {
+    return query_pb_.next_partition_index();
+  }
+
+  void set_next_partition_index(int64_t val) {
+    query_pb_.set_next_partition_index(val);
+  }
+
+  // It appears the folliwng fields are not used.
+  void set_original_request_id(int64_t val) {
+    query_pb_.set_original_request_id(val);
+  }
+
+  // Access function to counter_pb_ - Predicate for (LIMIT, OFFSET).
+  bool has_select_limit() const {
+    return counter_pb_.has_select_limit();
+  }
+
+  bool has_select_offset() const {
+    return counter_pb_.has_select_offset();
+  }
+
+  // row-read counters.
+  void set_read_count(size_t val) {
+    counter_pb_.set_read_count(val);
+  }
+
+  int64_t read_count() const {
+    return counter_pb_.read_count();
+  }
+
+  // row-skip counter.
+  void set_skip_count(size_t val) {
+    counter_pb_.set_skip_count(val);
+  }
+
+  int64_t skip_count() const {
+    return counter_pb_.skip_count();
+  }
+
+  // row limit counter processing.
+  void set_select_limit(size_t val) {
+    counter_pb_.set_select_limit(val);
+  }
+
+  int64_t select_limit() const {
+    return counter_pb_.select_limit();
+  }
+
+  bool reached_select_limit() const {
+    return counter_pb_.has_select_limit() && read_count() >= select_limit();
+  }
+
+  // row offset counter processing.
+  void set_select_offset(size_t val) {
+    counter_pb_.set_select_offset(val);
+  }
+
+  int64_t select_offset() const {
+    return counter_pb_.select_offset();
+  }
+
+  bool reached_select_offset() const {
+    return !has_select_offset() || skip_count() >= select_offset();
+  }
+
+  // Debug logging.
+  string DebugString() const {
+    return (string("\nQueryPB = {\n") + query_pb_.DebugString() + string ("\n};") +
+            string("\nCounterPB = {\n") + counter_pb_.DebugString() + string("\n};"));
+  }
+
+  // Access to internal protobuf.
+  const QLPagingStatePB& query_pb() const {
+    return query_pb_;
+  }
+
+  const QLSelectRowCounterPB& counter_pb() const {
+    return counter_pb_;
+  }
+
+  uint64_t max_fetch_size() const {
+    return max_fetch_size_;
+  }
+
+  // Users can indicate how many rows can be read at one time. If a SELECT statement has its own
+  // LIMIT, the users' setting will be adjusted to the SELECT's LIMIT.
+  void AdjustMaxFetchSizeToSelectLimit();
+
+ private:
+  // Query paging state.
+  // - Paging state to be exchanged with DocDB and User.
+  // - When loading data from users and DocDB, all information in the query_pb_ will be overwritten.
+  //   All information are are needed for CQL processing must be kept separately from this variable.
+  QLPagingStatePB query_pb_;
+
+  // Row counter.
+  // - Processed by CQL and should not be overwritten when loading status from users or docdb.
+  // - Only top-level SELECT uses RowCounter.
+  //   Example:
+  //     SELECT * FROM <table> WHERE keys IN (SELECT keys FROM <index>)
+  //   From user's point of view, only number of rows being read from <table> is meaningful, so
+  //   clauses like LIMIT and OFFSET should be applied to top-level select row-count.
+  // - NOTE:
+  //   For fully-covered index query, the nested index query is promoted to top-level read node.
+  //   In this scenarios, the INDEX becomes the primary table, and the counter for nested query
+  //   is sent back to user.
+  QLSelectRowCounterPB counter_pb_;
+
+  // The maximum number of rows that user can receive at one time.
+  //   max row number = MIN (<limit>, <page-size>)
+  // If it is (-1), we fetch all of them.
+  int64_t max_fetch_size_ = -1;
+};
 
 class TnodeContext {
  public:
@@ -75,8 +284,20 @@ class TnodeContext {
     return rows_result_;
   }
 
-  // Append rows result.
+  // Append rows result that was sent back by DocDB to this node.
   CHECKED_STATUS AppendRowsResult(RowsResult::SharedPtr&& rows_result);
+
+  // Create CQL paging state based on user's information.
+  // When calling YugaByte, users provide all info in StatementParameters including paging state.
+  QueryPagingState *CreateQueryState(const StatementParameters& user_params,
+                                     bool is_top_level_select);
+
+  // Clear paging state when the query reaches the end of scan.
+  CHECKED_STATUS ClearQueryState();
+
+  QueryPagingState *query_state() {
+    return query_state_.get();
+  }
 
   // Access functions for row_count.
   size_t row_count() const {
@@ -95,7 +316,10 @@ class TnodeContext {
   // Called from Executor::ExecPTNode for PTSelectStmt.
   // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" start_position 0:
   // this will set req->hashed_column_values() to [1, 2, 4, 6].
-  void InitializePartition(QLReadRequestPB *req, uint64_t start_partition);
+  void InitializePartition(QLReadRequestPB *req, bool continue_user_request);
+
+  // Predicate for the completion of a partition read.
+  bool FinishedReadingPartition();
 
   // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
   // Increments the current partition index and updates the corresponding hashed column values in
@@ -130,6 +354,9 @@ class TnodeContext {
     return child_context_.get();
   }
 
+  // Allocate and prepare parent node for reading keys from nested query.
+  void SetUncoveredSelectOp(const client::YBqlReadOpPtr& select_op);
+
   // Access functions for uncovered select op template and primary keys.
   const client::YBqlReadOpPtr& uncovered_select_op() const {
     return uncovered_select_op_;
@@ -138,7 +365,31 @@ class TnodeContext {
     return keys_.get();
   }
 
-  void SetUncoveredSelectOp(const client::YBqlReadOpPtr& select_op);
+  // Compose the final result (rows_result_) which will be sent to users.
+  // - Data content: Already in rows_result_
+  // - Read-response paging state: query_state_::query_pb_
+  // - Row counters: query_state_::counter_pb_
+  //
+  // NOTE:
+  // 1. For primary-indexed or sequential scan SELECT.
+  //    - Data is read from primary table.
+  //    - User paging state = { QueryPagingState::query_pb_ }
+  //    - DocDB paging state = { QueryPagingState::query_pb_ }
+  //
+  // 2. Full-covered secondary-indexed SELECT
+  //    - Data is read from secondary table.
+  //    - Users paging state = { Nested QueryPagingState::query_pb_ }
+  //    - DocDB paging state = { Nested QueryPagingState::query_pb_ }
+  //
+  // 3. Partial-covered secondary-indexed SELECT
+  //    - Primary key is read from INDEX table (nested query).
+  //    - Data is read from PRIMARY table (top level query).
+  //    - When construct user paging state, we compose two paging states into one.
+  //      The read state = nested query read state.
+  //      The counter state = top-level query counter state.
+  //      User paging state = { Nested QueryPagingState::query_pb_,
+  //                            Top-Level QueryPagingState::counter_pb_ }
+  CHECKED_STATUS ComposeRowsResultForUser(const TreeNode* child_select_node, bool for_new_batches);
 
  private:
   // Tree node of the statement being executed.
@@ -166,6 +417,11 @@ class TnodeContext {
 
   // Rows result of this statement tnode for DML statements.
   RowsResult::SharedPtr rows_result_;
+
+  // Read paging state for each query including nested query.
+  // - Only SELECT statement has a query_state_.
+  // - The rest of commands has a NULL query_state_.
+  QueryPagingState::UniPtr query_state_;
 
   // Child context for nested statement.
   std::unique_ptr<TnodeContext> child_context_;

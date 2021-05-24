@@ -29,11 +29,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 public class TaskInfo extends Model {
 
   private static final FetchGroup<TaskInfo> GET_SUBTASKS_FG =
-    FetchGroup.of(TaskInfo.class, "uuid, subTaskGroupType, taskState");
+      FetchGroup.of(TaskInfo.class, "uuid, subTaskGroupType, taskState");
 
-  /**
-   * These are the various states of the task and taskgroup.
-   */
+  /** These are the various states of the task and taskgroup. */
   public enum State {
     @EnumValue("Created")
     Created,
@@ -55,8 +53,7 @@ public class TaskInfo extends Model {
   }
 
   // The task UUID.
-  @Id
-  private UUID uuid;
+  @Id private UUID uuid;
 
   // The UUID of the parent task (if any; CustomerTasks have no parent)
   private UUID parentUuid;
@@ -80,12 +77,10 @@ public class TaskInfo extends Model {
   private UserTaskDetails.SubTaskGroupType subTaskGroupType;
 
   // The task creation time.
-  @CreatedTimestamp
-  private Date createTime;
+  @CreatedTimestamp private Date createTime;
 
   // The task update time. Time of the latest update (including heartbeat updates) on this task.
-  @UpdatedTimestamp
-  private Date updateTime;
+  @UpdatedTimestamp private Date updateTime;
 
   // The percentage completeness of the task, which is a number from 0 to 100.
   @Column(columnDefinition = "integer default 0")
@@ -184,8 +179,7 @@ public class TaskInfo extends Model {
     this.details = details;
   }
 
-  public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {
-  };
+  public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};
 
   @Deprecated
   public static TaskInfo get(UUID taskUUID) {
@@ -203,22 +197,25 @@ public class TaskInfo extends Model {
 
   // Returns  partial object
   public List<TaskInfo> getSubTasks() {
-    Query<TaskInfo> subTaskQuery = TaskInfo.find.query()
-      .select(GET_SUBTASKS_FG)
-      .where()
-      .eq("parent_uuid", getTaskUUID())
-      .orderBy("position asc");
+    Query<TaskInfo> subTaskQuery =
+        TaskInfo.find
+            .query()
+            .select(GET_SUBTASKS_FG)
+            .where()
+            .eq("parent_uuid", getTaskUUID())
+            .orderBy("position asc");
     return subTaskQuery.findList();
   }
 
   public List<TaskInfo> getIncompleteSubTasks() {
     Object[] incompleteStates = {State.Created, State.Initializing, State.Running};
-    return TaskInfo.find.query()
-      .select(GET_SUBTASKS_FG)
-      .where()
-      .eq("parent_uuid", getTaskUUID())
-      .in("task_state", incompleteStates)
-      .findList();
+    return TaskInfo.find
+        .query()
+        .select(GET_SUBTASKS_FG)
+        .where()
+        .eq("parent_uuid", getTaskUUID())
+        .in("task_state", incompleteStates)
+        .findList();
   }
 
   @Override
@@ -236,7 +233,7 @@ public class TaskInfo extends Model {
    * called on a SubTask, it just won't give you much useful information.
    *
    * @return UserTaskDetails object for this TaskInfo, including info on the state on each of the
-   * subTaskGroups.
+   *     subTaskGroups.
    */
   public UserTaskDetails getUserTaskDetails() {
     UserTaskDetails taskDetails = new UserTaskDetails();
@@ -252,8 +249,8 @@ public class TaskInfo extends Model {
       if (subTask == null) {
         subTask = createSubTask(subTaskGroupType);
         taskDetails.add(subTask);
-      } else if (subTask.getState().equals(State.Failure.name()) ||
-        subTask.getState().equals(State.Running.name())) {
+      } else if (subTask.getState().equals(State.Failure.name())
+          || subTask.getState().equals(State.Running.name())) {
         continue;
       }
       switch (taskInfo.getTaskState()) {
@@ -280,16 +277,17 @@ public class TaskInfo extends Model {
    * @return a number between 0.0 and 100.0.
    */
   public double getPercentCompleted() {
-    int numSubtasks = TaskInfo.find.query().where()
-      .eq("parent_uuid", getTaskUUID())
-      .findCount();
+    int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getTaskUUID()).findCount();
     if (numSubtasks == 0) {
-      return 0.0;
+      return 100.0;
     }
-    int numSubtasksCompleted = TaskInfo.find.query().where()
-      .eq("parent_uuid", getTaskUUID())
-      .eq("task_state", TaskInfo.State.Success)
-      .findCount();
+    int numSubtasksCompleted =
+        TaskInfo.find
+            .query()
+            .where()
+            .eq("parent_uuid", getTaskUUID())
+            .eq("task_state", TaskInfo.State.Success)
+            .findCount();
     return numSubtasksCompleted * 100.0 / numSubtasks;
   }
 }

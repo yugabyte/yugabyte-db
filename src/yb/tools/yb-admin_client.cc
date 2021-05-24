@@ -1222,6 +1222,17 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_ta
   return Status::OK();
 }
 
+Status ClusterAdminClient::LaunchBackfillIndexForTable(const YBTableName& table_name) {
+  master::LaunchBackfillIndexForTableRequestPB req;
+  table_name.SetIntoTableIdentifierPB(req.mutable_table_identifier());
+  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::LaunchBackfillIndexForTable,
+                                            master_proxy_.get(), req));
+  if (resp.has_error()) {
+    return STATUS(RemoteError, resp.error().DebugString());
+  }
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id) {
   master::GetTabletLocationsRequestPB req;
   req.add_tablet_ids(tablet_id);

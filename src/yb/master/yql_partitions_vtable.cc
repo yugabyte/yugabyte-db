@@ -18,6 +18,7 @@
 #include "yb/master/master_util.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/shared_lock.h"
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 
@@ -47,7 +48,7 @@ YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
 Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   {
-    std::shared_lock<boost::shared_mutex> read_lock(mutex_);
+    SharedLock<boost::shared_mutex> read_lock(mutex_);
     // The cached versions are initialized to -1, so if there is a race, we may still generate the
     // cache on the calling thread.
     if (FLAGS_partitions_vtable_cache_refresh_secs > 0 &&
@@ -65,7 +66,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
 Status YQLPartitionsVTable::GenerateAndCacheData() const {
   CatalogManager* catalog_manager = master_->catalog_manager();
   {
-    std::shared_lock<boost::shared_mutex> read_lock(mutex_);
+    SharedLock<boost::shared_mutex> read_lock(mutex_);
     if (FLAGS_use_cache_for_partitions_vtable &&
         catalog_manager->tablets_version() == cached_tablets_version_ &&
         catalog_manager->tablet_locations_version() == cached_tablet_locations_version_) {
@@ -85,8 +86,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
   }
 
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
-  catalog_manager->GetAllTables(&tables, true /* includeOnlyRunningTables */);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
   auto& resolver = master_->messenger()->resolver();
 
   std::unordered_map<std::string, std::shared_future<Result<IpAddress>>> dns_lookups;

@@ -40,11 +40,9 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     }
   }
 
-  @Inject
-  KubernetesManager kubernetesManager;
+  @Inject KubernetesManager kubernetesManager;
 
-  @Inject
-  Application application;
+  @Inject Application application;
 
   // Number of iterations to wait for the pod to come up.
   private static final int MAX_ITERS = 10;
@@ -72,7 +70,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
   }
 
   protected KubernetesCheckNumPod.Params taskParams() {
-    return (KubernetesCheckNumPod.Params)taskParams;
+    return (KubernetesCheckNumPod.Params) taskParams;
   }
 
   @Override
@@ -107,7 +105,8 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     if (taskParams().config == null) {
       config = Provider.get(taskParams().providerUUID).getConfig();
     }
-    ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
+    ShellResponse podResponse =
+        kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
     JsonNode podInfos = parseShellResponseAsJson(podResponse);
     if (podInfos.path("items").size() == taskParams().podNum) {
       return true;

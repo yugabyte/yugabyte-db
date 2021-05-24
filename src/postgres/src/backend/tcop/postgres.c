@@ -2005,14 +2005,6 @@ exec_execute_message(const char *portal_name, long max_rows)
 	start_xact_command();
 
 	/*
-	 * If the planner found a pg relation in this plan, set the appropriate
-	 * flag for the execution txn.
-	 */
-	if (portal->cplan && portal->cplan->usesPostgresRel) {
-		SetTxnWithPGRel();
-	}
-
-	/*
 	 * If we re-issue an Execute protocol request against an existing portal,
 	 * then we are only fetching more rows rather than completely re-executing
 	 * the query from the start. atStart is never reset for a v3 portal, so we
@@ -3839,9 +3831,9 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 			if (need_global_cache_refresh)
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Catalog Version Mismatch: A DDL occurred "
-								"while processing this query. Try again."),
-						 errdetail("Internal error: %s", edata->message)));
+						 errmsg("%s", edata->message),
+						 errdetail("Internal error: %s", "Catalog Version Mismatch: A DDL occurred "
+								   "while processing this query. Try again.")));
 			else
 			{
 				Assert(need_table_cache_refresh);

@@ -1,7 +1,7 @@
+import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Field } from 'redux-form';
 import { YBButton, YBSelectWithLabel } from '../../../../common/forms/fields';
-import React, { useEffect, useState } from 'react';
 
 export const ChangeOrAddProvider = ({
   selectProvider,
@@ -9,20 +9,7 @@ export const ChangeOrAddProvider = ({
   providerType,
   setCurrentViewCreateConfig
 }) => {
-  const getCurrentProviders = (argConfiguredProviders) => {
-    return (
-      argConfiguredProviders?.data?.filter?.((provider) => provider.code === providerType) || []
-    );
-  };
-
-  const [currentCloudProviders, setCurrentCloudProviders] = useState(
-    getCurrentProviders(configuredProviders) || []
-  );
-  useEffect(() => {
-    if (currentCloudProviders && !currentCloudProviders?.uuid) {
-      setCurrentCloudProviders(getCurrentProviders(configuredProviders));
-    }
-  }, [configuredProviders]); // eslint-disable-line react-hooks/exhaustive-deps
+  const currentCloudProviders = configuredProviders?.data?.filter?.((provider) => provider.code === providerType) || [];
 
   return (
     <Row className="provider-row-flex" data-testid="change-or-add-provider">

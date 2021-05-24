@@ -21,6 +21,7 @@ public class AuditController extends AuthenticatedController {
 
   /**
    * GET endpoint for listing all audit entries for a user.
+   *
    * @return JSON response with audit entries belonging to the user.
    */
   public Result list(UUID customerUUID, UUID userUUID) {
@@ -34,7 +35,7 @@ public class AuditController extends AuthenticatedController {
     }
 
     try {
-      List<Audit> auditList = Audit.getAllUserEntries(user.uuid);
+      List<Audit> auditList = auditService().getAllUserEntries(user.uuid);
       return ApiResponse.success(auditList);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to fetch audit history.");
@@ -43,6 +44,7 @@ public class AuditController extends AuthenticatedController {
 
   /**
    * GET endpoint for getting the user associated with a task.
+   *
    * @return JSON response with the corresponding audit entry.
    */
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
@@ -51,13 +53,13 @@ public class AuditController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     try {
-      Audit entry = Audit.getFromTaskUUID(taskUUID);
+      Audit entry = auditService().getFromTaskUUID(taskUUID);
       if (entry.getCustomerUUID().equals(customerUUID)) {
         return ApiResponse.success(entry);
-      }
-      else {
-        return ApiResponse.error(BAD_REQUEST,
-          String.format("Task %s does not belong to customer %s", taskUUID, customerUUID));
+      } else {
+        return ApiResponse.error(
+            BAD_REQUEST,
+            String.format("Task %s does not belong to customer %s", taskUUID, customerUUID));
       }
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to fetch audit entry.");
@@ -70,14 +72,14 @@ public class AuditController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     try {
-      Audit entry = Audit.getFromTaskUUID(taskUUID);
+      Audit entry = auditService().getFromTaskUUID(taskUUID);
       Users user = Users.get(entry.getUserUUID());
       if (entry.getCustomerUUID().equals(customerUUID)) {
         return ApiResponse.success(user);
-      }
-      else {
-        return ApiResponse.error(BAD_REQUEST,
-          String.format("Task %s does not belong to customer %s", taskUUID, customerUUID));
+      } else {
+        return ApiResponse.error(
+            BAD_REQUEST,
+            String.format("Task %s does not belong to customer %s", taskUUID, customerUUID));
       }
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to fetch user.");

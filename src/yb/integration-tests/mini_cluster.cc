@@ -643,11 +643,13 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPee
       return ListTabletPeers(cluster, [](const auto& peer) { return true; });
     case ListPeersFilter::kLeaders:
       return ListTabletPeers(cluster, [](const auto& peer) {
-        return peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+        auto consensus = peer->shared_consensus();
+        return consensus && consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
       });
     case ListPeersFilter::kNonLeaders:
       return ListTabletPeers(cluster, [](const auto& peer) {
-        return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+        auto consensus = peer->shared_consensus();
+        return consensus && consensus->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
       });
   }
 
@@ -707,6 +709,17 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
     }
   }
   return result;
+}
+
+std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(MiniCluster* cluster) {
+  return ListTabletPeers(cluster, [](const auto& peer) {
+    const auto tablet_meta = peer->tablet_metadata();
+    const auto consensus = peer->shared_consensus();
+    return tablet_meta && tablet_meta->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE &&
+           tablet_meta->tablet_data_state() !=
+               tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
+           consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+  });
 }
 
 std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(

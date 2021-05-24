@@ -37,6 +37,7 @@
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/transaction_dump.h"
 
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
@@ -382,7 +383,7 @@ class TransactionParticipant::Impl
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
         (**it).ScheduleRemoveIntents(*it);
-        RemoveTransaction(it, min_running_notifier);
+        RemoveTransaction(it, front.reason, min_running_notifier);
       }
       VLOG_WITH_PREFIX(2) << "Cleaned from queue: " << id;
       queue->pop_front();
@@ -552,7 +553,7 @@ class TransactionParticipant::Impl
         data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (lock_and_iterator.found()) {
       if (!apply_state.active()) {
-        RemoveUnlocked(lock_and_iterator.iterator, "applied"s, &min_running_notifier);
+        RemoveUnlocked(lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else {
         lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
       }
@@ -619,12 +620,13 @@ class TransactionParticipant::Impl
       graceful_cleanup_queue_.push_back(GracefulCleanupQueueEntry{
         .request_id = request_serial_,
         .transaction_id = data.transaction_id,
+        .reason = RemoveReason::kProcessCleanup,
         .required_safe_time = participant_context_.Now(),
       });
       return Status::OK();
     }
 
-    if (!RemoveUnlocked(it, "cleanup"s, &min_running_notifier)) {
+    if (!RemoveUnlocked(it, RemoveReason::kProcessCleanup, &min_running_notifier)) {
       VLOG_WITH_PREFIX(2) << "Have added aborted txn to cleanup queue: "
                           << data.transaction_id;
     }
@@ -770,7 +772,7 @@ class TransactionParticipant::Impl
               MinRunningNotifier min_running_notifier(&applier_);
               std::lock_guard<std::mutex> lock(mutex_);
               for (const auto& id : aborted) {
-                EnqueueRemoveUnlocked(id, &min_running_notifier);
+                EnqueueRemoveUnlocked(id, RemoveReason::kStatusReceived, &min_running_notifier);
               }
             }
           });
@@ -1025,10 +1027,15 @@ class TransactionParticipant::Impl
   }
 
   void EnqueueRemoveUnlocked(
-      const TransactionId& id, MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) override {
+      const TransactionId& id, RemoveReason reason,
+      MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) override {
     auto now = participant_context_.Now();
     VLOG_WITH_PREFIX(4) << "EnqueueRemoveUnlocked: " << id << " at " << now;
-    remove_queue_.emplace_back(RemoveQueueEntry{id, now});
+    remove_queue_.emplace_back(RemoveQueueEntry{
+      .id = id,
+      .time = now,
+      .reason = reason,
+    });
     ProcessRemoveQueueUnlocked(min_running_notifier);
   }
 
@@ -1056,28 +1063,28 @@ class TransactionParticipant::Impl
         return;
       }
       VLOG_WITH_PREFIX(3) << "Checking remove queue: " << safe_time << ", "
-                          << remove_queue_.front().time << ", " << remove_queue_.front().id;
+                          << remove_queue_.front().ToString();
       LOG_IF_WITH_PREFIX(DFATAL, safe_time < last_safe_time_)
           << "Safe time decreased: " << safe_time << " vs " << last_safe_time_;
       last_safe_time_ = safe_time;
       while (!remove_queue_.empty()) {
-        auto it = transactions_.find(remove_queue_.front().id);
+        auto& front = remove_queue_.front();
+        auto it = transactions_.find(front.id);
         if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
           // It is regular case, since the coordinator returns ABORTED for already applied
           // transaction. But this particular tablet could not yet apply it, so
           // it would add such transaction to remove queue.
           // And it is the main reason why we are waiting for safe time, before removing intents.
           VLOG_WITH_PREFIX(4) << "Evicting txn from remove queue, w/o removing intents: "
-                              << remove_queue_.front().id;
+                              << front.ToString();
           remove_queue_.pop_front();
           continue;
         }
-        if (safe_time <= remove_queue_.front().time) {
+        if (safe_time <= front.time) {
           break;
         }
-        VLOG_WITH_PREFIX(4) << "Removing from remove queue: " << remove_queue_.front().id;
-        static const std::string kRemoveFromQueue = "remove_queue"s;
-        RemoveUnlocked(remove_queue_.front().id, kRemoveFromQueue, min_running_notifier);
+        VLOG_WITH_PREFIX(4) << "Removing from remove queue: " << front.ToString();
+        RemoveUnlocked(front.id, front.reason, min_running_notifier);
         remove_queue_.pop_front();
       }
     }
@@ -1087,7 +1094,7 @@ class TransactionParticipant::Impl
   // Returns true if transaction is not exists after call to this method, otherwise returns false.
   // Which means that transaction will be removed later.
   bool RemoveUnlocked(
-      const TransactionId& id, const std::string& reason,
+      const TransactionId& id, RemoveReason reason,
       MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) override {
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
@@ -1097,12 +1104,12 @@ class TransactionParticipant::Impl
   }
 
   bool RemoveUnlocked(
-      const Transactions::iterator& it, const std::string& reason,
+      const Transactions::iterator& it, RemoveReason reason,
       MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     if (running_requests_.empty()) {
       (**it).ScheduleRemoveIntents(*it);
       TransactionId txn_id = (**it).id();
-      RemoveTransaction(it, min_running_notifier);
+      RemoveTransaction(it, reason, min_running_notifier);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
                           << ", left: " << transactions_.size();
       return true;
@@ -1118,6 +1125,7 @@ class TransactionParticipant::Impl
     immediate_cleanup_queue_.push_back(ImmediateCleanupQueueEntry{
       .request_id = request_serial_,
       .transaction_id = (**it).id(),
+      .reason = reason,
     });
     VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id() << ", reason: " << reason;
     return false;
@@ -1218,11 +1226,14 @@ class TransactionParticipant::Impl
     return log_prefix_;
   }
 
-  void RemoveTransaction(Transactions::iterator it, MinRunningNotifier* min_running_notifier)
+  void RemoveTransaction(Transactions::iterator it, RemoveReason reason,
+                         MinRunningNotifier* min_running_notifier)
       REQUIRES(mutex_) {
     auto now = CoarseMonoClock::now();
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
+    YB_TRANSACTION_DUMP(
+        Remove, transaction.id(), participant_context()->Now(), static_cast<uint8_t>(reason));
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
@@ -1264,7 +1275,8 @@ class TransactionParticipant::Impl
         continue;
       }
       if ((**it).UpdateStatus(info.status, info.status_ht, info.coordinator_safe_time)) {
-        EnqueueRemoveUnlocked(info.transaction_id, &min_running_notifier);
+        EnqueueRemoveUnlocked(
+            info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
       } else {
         transactions_.modify(it, [now](const auto& txn) {
           txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusResponseReceived);
@@ -1415,6 +1427,7 @@ class TransactionParticipant::Impl
   struct ImmediateCleanupQueueEntry {
     int64_t request_id;
     TransactionId transaction_id;
+    RemoveReason reason;
 
     bool Ready(TransactionParticipantContext* participant_context, HybridTime* safe_time) const {
       return true;
@@ -1424,6 +1437,7 @@ class TransactionParticipant::Impl
   struct GracefulCleanupQueueEntry {
     int64_t request_id;
     TransactionId transaction_id;
+    RemoveReason reason;
     HybridTime required_safe_time;
 
     bool Ready(TransactionParticipantContext* participant_context, HybridTime* safe_time) const {
@@ -1462,9 +1476,10 @@ class TransactionParticipant::Impl
   struct RemoveQueueEntry {
     TransactionId id;
     HybridTime time;
+    RemoveReason reason;
 
     std::string ToString() const {
-      return Format("{ id: $0 time: $1 }", id, time);
+      return YB_STRUCT_TO_STRING(id, time, reason);
     }
   };
 

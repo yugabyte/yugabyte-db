@@ -107,7 +107,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   virtual void TearDown() override {
     messenger_->Shutdown();
     session_.reset();
-    tablet_peer_->Shutdown();
+    WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
     YBTabletTest::TearDown();
   }
 
@@ -175,8 +175,7 @@ class RemoteBootstrapTest : public YBTabletTest {
         tablet_metric_entity,
         raft_pool_.get(),
         tablet_prepare_pool_.get(),
-        nullptr /* retryable_requests */,
-        consensus::SplitOpInfo()));
+        nullptr /* retryable_requests */));
     consensus::ConsensusBootstrapInfo boot_info;
     ASSERT_OK(tablet_peer_->Start(boot_info));
 

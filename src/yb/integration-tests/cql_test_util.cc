@@ -163,6 +163,18 @@ CassandraRowIterator CassandraRow::CreateIterator() const {
   return CassandraRowIterator(cass_iterator_from_row(cass_row_));
 }
 
+std::string CassandraRow::RenderToString(const std::string& separator) {
+  std::string result;
+  auto iter = CreateIterator();
+  while (iter.Next()) {
+    if (!result.empty()) {
+      result += separator;
+    }
+    result += iter.Value().ToString();
+  }
+  return result;
+}
+
 void CassandraRow::TakeIterator(CassIteratorPtr iterator) {
   cass_iterator_ = std::move(iterator);
 }
@@ -181,6 +193,20 @@ void CassandraIterator::MoveToRow(CassandraRow* row) {
 
 CassandraIterator CassandraResult::CreateIterator() const {
   return CassandraIterator(cass_iterator_from_result(cass_result_.get()));
+}
+
+std::string CassandraResult::RenderToString(
+    const std::string& line_separator, const std::string& value_separator) const {
+  std::string result;
+  auto iter = CreateIterator();
+  while (iter.Next()) {
+    auto row = iter.Row();
+    if (!result.empty()) {
+      result += ";";
+    }
+    result += row.RenderToString();
+  }
+  return result;
 }
 
 bool CassandraFuture::Ready() const {
@@ -230,7 +256,7 @@ Status CassandraFuture::CheckErrorCode() {
       case CASS_ERROR_SERVER_INVALID_QUERY:
         return STATUS(QLError, message_slice);
       default:
-        LOG(INFO) << "Cassandra error code: " << rc;
+        LOG(INFO) << "Cassandra error code: " << rc << ": " << message;
         return STATUS(RuntimeError, message_slice);
     }
   }
@@ -238,32 +264,40 @@ Status CassandraFuture::CheckErrorCode() {
   return Status::OK();
 }
 
+namespace {
+
+void CheckErrorCode(const CassError& error_code) {
+  CHECK_EQ(CASS_OK, error_code) << ": " << cass_error_desc(error_code);
+}
+
+} // namespace
+
 void CassandraStatement::Bind(size_t index, const string& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
+  CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_bool_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_bool(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_bool(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_float_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_float(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_float(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_double_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_double(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_double(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_int32_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_int32(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_int32(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const cass_int64_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_int64(cass_statement_.get(), index, v));
+  CheckErrorCode(cass_statement_bind_int64(cass_statement_.get(), index, v));
 }
 
 void CassandraStatement::Bind(size_t index, const CassandraJson& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_string(cass_statement_.get(), index, v.value().c_str()));
+  CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.value().c_str()));
 }
 
 CassStatement* CassandraStatement::get() const {
@@ -305,6 +339,10 @@ Result<CassandraResult> CassandraSession::ExecuteWithResult(const CassandraState
       cass_session_.get(), statement.cass_statement_.get()));
   RETURN_NOT_OK(future.Wait());
   return future.Result();
+}
+
+Result<std::string> CassandraSession::ExecuteAndRenderToString(const std::string& statement) {
+  return VERIFY_RESULT(ExecuteWithResult(statement)).RenderToString();
 }
 
 CassandraFuture CassandraSession::ExecuteGetFuture(const CassandraStatement& statement) {
@@ -365,18 +403,25 @@ CassandraStatement CassandraPrepared::Bind() {
 const MonoDelta kCassandraTimeOut = RegularBuildVsSanitizers(12s, 60s);
 
 CppCassandraDriver::CppCassandraDriver(
-    const std::vector<std::string>& hosts, uint16_t port, bool use_partition_aware_routing) {
+    const std::vector<std::string>& hosts, uint16_t port,
+    UsePartitionAwareRouting use_partition_aware_routing) {
 
   // Enable detailed tracing inside driver.
   if (VLOG_IS_ON(4)) {
     cass_log_set_level(CASS_LOG_TRACE);
+  } else if (VLOG_IS_ON(3)) {
+    cass_log_set_level(CASS_LOG_DEBUG);
+  } else if (VLOG_IS_ON(2)) {
+    cass_log_set_level(CASS_LOG_INFO);
+  } else if (VLOG_IS_ON(1)) {
+    cass_log_set_level(CASS_LOG_WARN);
   }
 
   auto hosts_str = JoinStrings(hosts, ",");
   LOG(INFO) << "Create Cassandra cluster to " << hosts_str << " :" << port << " ...";
   cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
-  CHECK_EQ(CASS_OK, cass_cluster_set_contact_points(cass_cluster_, hosts_str.c_str()));
-  CHECK_EQ(CASS_OK, cass_cluster_set_port(cass_cluster_, port));
+  CheckErrorCode(cass_cluster_set_contact_points(cass_cluster_, hosts_str.c_str()));
+  CheckErrorCode(cass_cluster_set_port(cass_cluster_, port));
   cass_cluster_set_request_timeout(cass_cluster_, kCassandraTimeOut.ToMilliseconds());
 
   // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.
