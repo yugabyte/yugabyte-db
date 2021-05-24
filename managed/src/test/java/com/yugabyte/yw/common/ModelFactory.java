@@ -174,22 +174,28 @@ public class ModelFactory {
   }
 
   public static CustomerConfig createS3StorageConfig(Customer customer) {
-    JsonNode formData = Json.parse("{\"configName\": \"TEST\", \"name\": \"S3\"," +
-      " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\"," +
-      " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \"TEST\", \"name\": \"S3\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
+                + " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createNfsStorageConfig(Customer customer) {
-    JsonNode formData = Json.parse("{\"configName\": \"TEST\", \"name\": \"NFS\"," +
-      " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \"TEST\", \"name\": \"NFS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createGcsStorageConfig(Customer customer) {
-    JsonNode formData = Json.parse("{\"configName\": \"TEST\", \"name\": \"GCS\"," +
-      " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\"," +
-      " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \"TEST\", \"name\": \"GCS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\","
+                + " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
