@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.google.inject.Inject;
-
+import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -24,6 +24,9 @@ public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
 
   @Inject private CustomerConfigValidator configValidator;
+
+  @Inject
+  private AlertManager alertManager;
 
   public Result create(UUID customerUUID) {
     ObjectNode formData = (ObjectNode) request().body().asJson();
@@ -51,6 +54,7 @@ public class CustomerConfigController extends AuthenticatedController {
       return ApiResponse.error(
           INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
     }
+    alertManager.resolveAlerts(customerUUID, configUUID, "%");
     auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success("configUUID deleted");
   }
