@@ -329,6 +329,8 @@ class YBUniverse():
         sys.stdout.write("[%s]"%(("-")*toolbar_width))
         sys.stdout.write("0%\n")
         sys.stdout.flush()
+        # TODO Remove sleep once create task details API gives proper response.
+        #  Currently task API return 100% as task status for initial few seconds.
         time.sleep(10)
         while True:
             progress = self.__get_task_details(task_id)
