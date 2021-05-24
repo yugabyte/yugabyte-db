@@ -25,7 +25,7 @@ SET default_with_oids = false;
 
 CREATE TABLE public.chat_user (
     "chatID" text NOT NULL,
-    PRIMARY KEY(("chatID") HASH)
+    CONSTRAINT chat_user_pkey PRIMARY KEY(("chatID") HASH)
 );
 
 
