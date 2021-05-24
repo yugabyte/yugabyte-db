@@ -329,7 +329,7 @@ class YBUniverse():
         sys.stdout.write("[%s]"%(("-")*toolbar_width))
         sys.stdout.write("0%\n")
         sys.stdout.flush()
-        time.sleep(5)
+        time.sleep(10)
         while True:
             progress = self.__get_task_details(task_id)
             sys.stdout.write("[%s]"%(("-")*toolbar_width))
@@ -412,6 +412,7 @@ class YBUniverse():
         :param universe_name: Name of the universe to take a json data from.
         :return: None
         """
+        # TODO need to update API URL once PR:- https://github.com/yugabyte/yugabyte-db/pull/8367 get merged.
         universe_delete_url = '{0}/api/v1/customers/{1}/universes/find/{2}'.format(
             self.base_url, self.customer_uuid, universe_name)
 
