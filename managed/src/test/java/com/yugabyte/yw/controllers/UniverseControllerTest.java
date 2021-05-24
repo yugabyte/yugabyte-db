@@ -49,6 +49,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
