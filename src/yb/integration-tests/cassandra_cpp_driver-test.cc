@@ -1449,7 +1449,7 @@ TEST_F_EX(
 // This test is for issue #5811.
 TEST_F_EX(
     CppCassandraDriverTest,
-    CreateUniqueIndexWriteAfterSafeTime,
+    YB_DISABLE_TEST_IN_SANITIZERS(CreateUniqueIndexWriteAfterSafeTime),
     CppCassandraDriverTestIndexSlower) {
   TestTable<cass_int32_t, string> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
