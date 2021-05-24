@@ -2113,6 +2113,42 @@ SELECT * FROM cypher('order_by', $$
 	ORDER BY u.i DESC
 $$) AS (i agtype);
 
+--CASE
+SELECT create_graph('case_statement');
+SELECT * FROM cypher('case_statement', $$CREATE ({i: 1, j: null})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({i: 'a', j: 'b'})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({i: 0, j: 1})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({i: true, j: false})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({i: [], j: [0,1,2]})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({i: {}, j: {i:1}})$$) AS (result agtype);
+
+--CASE WHEN condition THEN result END
+SELECT * FROM cypher('case_statement', $$
+	MATCH (n)
+	RETURN n.i, n.j, CASE
+    WHEN null THEN 'should not return me'
+		WHEN n.i = 1 THEN 'i is 1'
+		WHEN n.j = 'b' THEN 'j is b'
+    WHEN n.i = 0 AND n.j = 1 THEN '0 AND 1'
+    WHEN n.i = true OR n.j = true THEN 'i or j true'
+		ELSE 'default'
+	END
+$$ ) AS (i agtype, j agtype, case_statement agtype);
+
+--CASE expression WHEN value THEN result END
+SELECT * FROM cypher('case_statement', $$
+	MATCH (n)
+	RETURN n.j, CASE n.j
+    WHEN null THEN 'should not return me'
+    WHEN 'b' THEN 'b'
+    WHEN 1 THEN 1
+    WHEN false THEN false
+    WHEN [0,1,2] THEN [0,1,2]
+    WHEN {i:1} THEN {i:1}
+		ELSE 'not a or b'
+	END
+$$ ) AS (j agtype, case_statement agtype);
+
 -- RETURN * and (u)--(v) optional forms
 SELECT create_graph('opt_forms');
 SELECT * FROM cypher('opt_forms', $$CREATE ({i:1})-[:KNOWS]->({i:2})<-[:KNOWS]-({i:3})$$)AS (result agtype);
@@ -2145,6 +2181,7 @@ SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, 
 -- Cleanup
 --
 SELECT * FROM drop_graph('VLE', true);
+SELECT * FROM drop_graph('case_statement', true);
 SELECT * FROM drop_graph('opt_forms', true);
 SELECT * FROM drop_graph('type_coercion', true);
 SELECT * FROM drop_graph('order_by', true);

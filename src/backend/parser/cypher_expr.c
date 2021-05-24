@@ -28,6 +28,7 @@
 #include "nodes/value.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/cypher_clause.h"
@@ -78,6 +79,8 @@ static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
                                            cypher_string_match *csm_node);
 static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
                                        cypher_typecast *ctypecast);
+static Node *transform_CaseExpr(cypher_parsestate *cpstate,
+                                    CaseExpr *cexpr);
 static Node *transform_CoalesceExpr(cypher_parsestate *cpstate,
                                     CoalesceExpr *cexpr);
 static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink);
@@ -145,6 +148,10 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
 
         return expr;
     }
+    case T_CaseExpr:
+        return transform_CaseExpr(cpstate, (CaseExpr *) expr);
+    case T_CaseTestExpr:
+        return expr;
     case T_CoalesceExpr:
         return transform_CoalesceExpr(cpstate, (CoalesceExpr *) expr);
     case T_ExtensibleNode:
@@ -840,13 +847,141 @@ static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr
     return (Node *) newcexpr;
 }
 
+/*
+ * Code borrowed from PG's transformCaseExpr and updated for AGE
+ */
+static Node *transform_CaseExpr(cypher_parsestate *cpstate,CaseExpr
+                                *cexpr)
+{
+    ParseState *pstate = &cpstate->pstate;
+    CaseExpr   *newcexpr = makeNode(CaseExpr);
+    Node       *last_srf = pstate->p_last_srf;
+    Node       *arg;
+    CaseTestExpr *placeholder;
+    List       *newargs;
+    List       *resultexprs;
+    ListCell   *l;
+    Node       *defresult;
+    Oid         ptype;
+
+    /* transform the test expression, if any */
+    arg = transform_cypher_expr_recurse(cpstate, (Node *) cexpr->arg);
+
+    /* generate placeholder for test expression */
+    if (arg)
+    {
+        if (exprType(arg) == UNKNOWNOID)
+            arg = coerce_to_common_type(pstate, arg, TEXTOID, "CASE");
+
+        assign_expr_collations(pstate, arg);
+
+        placeholder = makeNode(CaseTestExpr);
+        placeholder->typeId = exprType(arg);
+        placeholder->typeMod = exprTypmod(arg);
+        placeholder->collation = exprCollation(arg);
+    }
+    else
+    {
+        placeholder = NULL;
+    }
+
+    newcexpr->arg = (Expr *) arg;
+
+    /* transform the list of arguments */
+    newargs = NIL;
+    resultexprs = NIL;
+    foreach(l, cexpr->args)
+    {
+        CaseWhen   *w = lfirst_node(CaseWhen, l);
+        CaseWhen   *neww = makeNode(CaseWhen);
+        Node       *warg;
+
+        warg = (Node *) w->expr;
+        if (placeholder)
+        {
+            /* shorthand form was specified, so expand... */
+            warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+                                             (Node *) placeholder,
+                                             warg,
+                                             w->location);
+        }
+        neww->expr = (Expr *) transform_cypher_expr_recurse(cpstate, warg);
+
+        neww->expr = (Expr *) coerce_to_boolean(pstate,
+                                                (Node *) neww->expr,
+                                                "CASE/WHEN");
+
+        warg = (Node *) w->result;
+        neww->result = (Expr *) transform_cypher_expr_recurse(cpstate, warg);
+        neww->location = w->location;
+
+        newargs = lappend(newargs, neww);
+        resultexprs = lappend(resultexprs, neww->result);
+    }
+
+    newcexpr->args = newargs;
+
+    /* transform the default clause */
+    defresult = (Node *) cexpr->defresult;
+    if (defresult == NULL)
+    {
+        A_Const    *n = makeNode(A_Const);
+
+        n->val.type = T_Null;
+        n->location = -1;
+        defresult = (Node *) n;
+    }
+    newcexpr->defresult = (Expr *) transform_cypher_expr_recurse(cpstate, defresult);
+
+    resultexprs = lcons(newcexpr->defresult, resultexprs);
+
+    ptype = select_common_type(pstate, resultexprs, "CASE", NULL);
+    Assert(OidIsValid(ptype));
+    newcexpr->casetype = ptype;
+    /* casecollid will be set by parse_collate.c */
+
+    /* Convert default result clause, if necessary */
+    newcexpr->defresult = (Expr *)
+        coerce_to_common_type(pstate,
+                              (Node *) newcexpr->defresult,
+                              ptype,
+                              "CASE/ELSE");
+
+    /* Convert when-clause results, if necessary */
+    foreach(l, newcexpr->args)
+    {
+        CaseWhen   *w = (CaseWhen *) lfirst(l);
+
+        w->result = (Expr *)
+            coerce_to_common_type(pstate,
+                                  (Node *) w->result,
+                                  ptype,
+                                  "CASE/WHEN");
+    }
+
+    /* if any subexpression contained a SRF, complain */
+    if (pstate->p_last_srf != last_srf)
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+        /* translator: %s is name of a SQL construct, eg GROUP BY */
+                 errmsg("set-returning functions are not allowed in %s",
+                        "CASE"),
+                 errhint("You might be able to move the set-returning function into a LATERAL FROM item."),
+                 parser_errposition(pstate,
+                                    exprLocation(pstate->p_last_srf))));
+
+    newcexpr->location = cexpr->location;
+
+    return (Node *) newcexpr;
+}
+
 /* from PG's transformSubLink but reduced and hooked into our parser */
 static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink)
 {
     Node *result = (Node*)sublink;
     Query *qtree;
     ParseState *pstate = (ParseState*)cpstate;
-
+    const char *err = NULL;
     /*
      * Check to see if the sublink is in an invalid place within the query. We
      * allow sublinks everywhere in SELECT/INSERT/UPDATE/DELETE, but generally
@@ -859,7 +994,9 @@ static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink)
             break;
         case EXPR_KIND_OTHER:
             /* Accept sublink here; caller must throw error if wanted */
+
             break;
+        case EXPR_KIND_SELECT_TARGET:
         case EXPR_KIND_FROM_SUBSELECT:
         case EXPR_KIND_WHERE:
             /* okay */
@@ -869,6 +1006,11 @@ static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink)
                             errmsg_internal("unsupported SubLink"),
                             parser_errposition(pstate, sublink->location)));
     }
+    if (err)
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg_internal("%s", err),
+                 parser_errposition(pstate, sublink->location)));
 
     pstate->p_hasSubLinks = true;
 

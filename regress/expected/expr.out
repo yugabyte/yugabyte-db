@@ -5086,6 +5086,89 @@ $$) AS (i agtype);
  {"key": "value"}
 (9 rows)
 
+--CASE
+SELECT create_graph('case_statement');
+NOTICE:  graph "case_statement" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('case_statement', $$CREATE ({i: 1, j: null})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('case_statement', $$CREATE ({i: 'a', j: 'b'})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('case_statement', $$CREATE ({i: 0, j: 1})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('case_statement', $$CREATE ({i: true, j: false})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('case_statement', $$CREATE ({i: [], j: [0,1,2]})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('case_statement', $$CREATE ({i: {}, j: {i:1}})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+--CASE WHEN condition THEN result END
+SELECT * FROM cypher('case_statement', $$
+	MATCH (n)
+	RETURN n.i, n.j, CASE
+    WHEN null THEN 'should not return me'
+		WHEN n.i = 1 THEN 'i is 1'
+		WHEN n.j = 'b' THEN 'j is b'
+    WHEN n.i = 0 AND n.j = 1 THEN '0 AND 1'
+    WHEN n.i = true OR n.j = true THEN 'i or j true'
+		ELSE 'default'
+	END
+$$ ) AS (i agtype, j agtype, case_statement agtype);
+  i   |     j     | case_statement 
+------+-----------+----------------
+ 1    | null      | "i is 1"
+ "a"  | "b"       | "j is b"
+ 0    | 1         | "0 AND 1"
+ true | false     | "i or j true"
+ []   | [0, 1, 2] | "default"
+ {}   | {"i": 1}  | "default"
+(6 rows)
+
+--CASE expression WHEN value THEN result END
+SELECT * FROM cypher('case_statement', $$
+	MATCH (n)
+	RETURN n.j, CASE n.j
+    WHEN null THEN 'should not return me'
+    WHEN 'b' THEN 'b'
+    WHEN 1 THEN 1
+    WHEN false THEN false
+    WHEN [0,1,2] THEN [0,1,2]
+    WHEN {i:1} THEN {i:1}
+		ELSE 'not a or b'
+	END
+$$ ) AS (j agtype, case_statement agtype);
+     j     | case_statement 
+-----------+----------------
+ null      | "not a or b"
+ "b"       | "b"
+ 1         | 1
+ false     | false
+ [0, 1, 2] | [0, 1, 2]
+ {"i": 1}  | {"i": 1}
+(6 rows)
+
 -- RETURN * and (u)--(v) optional forms
 SELECT create_graph('opt_forms');
 NOTICE:  graph "opt_forms" has been created
@@ -5210,6 +5293,16 @@ NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to table "VLE"._ag_label_vertex
 drop cascades to table "VLE"._ag_label_edge
 NOTICE:  graph "VLE" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('case_statement', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table case_statement._ag_label_vertex
+drop cascades to table case_statement._ag_label_edge
+NOTICE:  graph "case_statement" has been dropped
  drop_graph 
 ------------
  

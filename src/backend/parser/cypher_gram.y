@@ -79,9 +79,9 @@
 /* keywords in alphabetical order */
 %token <keyword> ANALYZE AND AS ASC ASCENDING
                  BY
-                 COALESCE CONTAINS CREATE
+                 CASE COALESCE CONTAINS CREATE
                  DELETE DESC DESCENDING DETACH DISTINCT
-                 ENDS EXISTS EXPLAIN
+                 ELSE END_P ENDS EXISTS EXPLAIN
                  FALSE_P
                  IN IS
                  LIMIT
@@ -90,9 +90,9 @@
                  OR ORDER
                  REMOVE RETURN
                  SET SKIP STARTS
-                 TRUE_P
+                 THEN TRUE_P
                  VERBOSE
-                 WHERE WITH
+                 WHEN WHERE WITH
 
 /* query */
 %type <list> single_query query_part_init query_part_last
@@ -131,6 +131,10 @@
 
 /* expression */
 %type <node> expr expr_opt expr_atom expr_literal map list
+
+%type <node> expr_case expr_case_when expr_case_default
+%type <list> expr_case_when_list
+
 %type <node> expr_var expr_func expr_func_norm expr_func_subexpr
 %type <list> expr_list expr_list_opt map_keyval_list_opt map_keyval_list
 %type <node> property_value
@@ -1347,6 +1351,7 @@ expr_atom:
         {
             $$ = $2;
         }
+    | expr_case
     | expr_var
     | expr_func
     ;
@@ -1420,6 +1425,67 @@ list:
             n->elems = $2;
 
             $$ = (Node *)n;
+        }
+    ;
+
+expr_case:
+    CASE expr expr_case_when_list expr_case_default END_P
+        {
+            CaseExpr *n;
+
+            n = makeNode(CaseExpr);
+            n->casetype = InvalidOid;
+            n->arg = (Expr *) $2;
+            n->args = $3;
+            n->defresult = (Expr *) $4;
+            n->location = @1;
+            $$ = (Node *) n;
+        }
+    | CASE expr_case_when_list expr_case_default END_P
+        {
+            CaseExpr *n;
+
+            n = makeNode(CaseExpr);
+            n->casetype = InvalidOid;
+            n->args = $2;
+            n->defresult = (Expr *) $3;
+            n->location = @1;
+            $$ = (Node *) n;
+        }
+    ;
+
+expr_case_when_list:
+    expr_case_when
+        {
+            $$ = list_make1($1);
+        }
+    | expr_case_when_list expr_case_when
+        {
+            $$ = lappend($1, $2);
+        }
+    ;
+
+expr_case_when:
+    WHEN expr THEN expr
+        {
+            CaseWhen   *n;
+
+            n = makeNode(CaseWhen);
+            n->expr = (Expr *) $2;
+            n->result = (Expr *) $4;
+            n->location = @1;
+            $$ = (Node *) n;
+        }
+    ;
+
+expr_case_default:
+    ELSE expr
+        {
+            $$ = $2;
+        }
+    | /* EMPTY */
+        {
+            $$ = NULL;
         }
     ;
 
@@ -1505,6 +1571,7 @@ safe_keywords:
     | ASC        { $$ = pnstrdup($1, 3); }
     | ASCENDING  { $$ = pnstrdup($1, 9); }
     | BY         { $$ = pnstrdup($1, 2); }
+    | CASE       { $$ = pnstrdup($1, 4); }
     | COALESCE   { $$ = pnstrdup($1, 8); }
     | CONTAINS   { $$ = pnstrdup($1, 8); }
     | CREATE     { $$ = pnstrdup($1, 6); }
@@ -1513,6 +1580,7 @@ safe_keywords:
     | DESCENDING { $$ = pnstrdup($1, 10); }
     | DETACH     { $$ = pnstrdup($1, 6); }
     | DISTINCT   { $$ = pnstrdup($1, 8); }
+    | ELSE       { $$ = pnstrdup($1, 4); }
     | ENDS       { $$ = pnstrdup($1, 4); }
     | EXISTS     { $$ = pnstrdup($1, 6); }
     | IN         { $$ = pnstrdup($1, 2); }
@@ -1527,14 +1595,17 @@ safe_keywords:
     | SET        { $$ = pnstrdup($1, 3); }
     | SKIP       { $$ = pnstrdup($1, 4); }
     | STARTS     { $$ = pnstrdup($1, 6); }
+    | THEN       { $$ = pnstrdup($1, 4); }
+    | WHEN       { $$ = pnstrdup($1, 4); }
     | WHERE      { $$ = pnstrdup($1, 5); }
     | WITH       { $$ = pnstrdup($1, 4); }
     ;
 
 conflicted_keywords:
-    FALSE_P  { $$ = pnstrdup($1, 7); }
-    | NULL_P { $$ = pnstrdup($1, 6); }
-    | TRUE_P { $$ = pnstrdup($1, 6); }
+    END_P     { $$ = pnstrdup($1, 5); }
+    | FALSE_P { $$ = pnstrdup($1, 7); }
+    | NULL_P  { $$ = pnstrdup($1, 6); }
+    | TRUE_P  { $$ = pnstrdup($1, 6); }
     ;
 
 %%

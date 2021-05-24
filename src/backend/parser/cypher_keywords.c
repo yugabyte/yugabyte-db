@@ -40,6 +40,7 @@ const ScanKeyword cypher_keywords[] = {
     {"asc", ASC, RESERVED_KEYWORD},
     {"ascending", ASCENDING, RESERVED_KEYWORD},
     {"by", BY, RESERVED_KEYWORD},
+    {"case", CASE, RESERVED_KEYWORD},
     {"coalesce", COALESCE, RESERVED_KEYWORD},
     {"contains", CONTAINS, RESERVED_KEYWORD},
     {"create", CREATE, RESERVED_KEYWORD},
@@ -48,6 +49,8 @@ const ScanKeyword cypher_keywords[] = {
     {"descending", DESCENDING, RESERVED_KEYWORD},
     {"detach", DETACH, RESERVED_KEYWORD},
     {"distinct", DISTINCT, RESERVED_KEYWORD},
+    {"else", ELSE, RESERVED_KEYWORD},
+    {"end", END_P, RESERVED_KEYWORD},
     {"ends", ENDS, RESERVED_KEYWORD},
     {"exists", EXISTS, RESERVED_KEYWORD},
     {"explain", EXPLAIN, RESERVED_KEYWORD},
@@ -65,8 +68,10 @@ const ScanKeyword cypher_keywords[] = {
     {"set", SET, RESERVED_KEYWORD},
     {"skip", SKIP, RESERVED_KEYWORD},
     {"starts", STARTS, RESERVED_KEYWORD},
+    {"then", THEN, RESERVED_KEYWORD},
     {"true", TRUE_P, RESERVED_KEYWORD},
     {"verbose", VERBOSE, RESERVED_KEYWORD},
+    {"when", WHEN, RESERVED_KEYWORD},
     {"where", WHERE, RESERVED_KEYWORD},
     {"with", WITH, RESERVED_KEYWORD}
 };
