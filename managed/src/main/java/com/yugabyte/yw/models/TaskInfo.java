@@ -196,7 +196,7 @@ public class TaskInfo extends Model {
   public static TaskInfo getOrBadRequest(UUID taskUUID) {
     TaskInfo taskInfo = get(taskUUID);
     if (taskInfo == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
+      throw new YWServiceException(BAD_REQUEST, "Invalid Task Info UUID: " + taskUUID);
     }
     return taskInfo;
   }

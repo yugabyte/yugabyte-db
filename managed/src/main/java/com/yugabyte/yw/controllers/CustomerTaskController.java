@@ -64,34 +64,31 @@ public class CustomerTaskController extends AuthenticatedController {
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
     for (CustomerTask task : pendingTasks) {
-      try {
         CustomerTaskFormData taskData = new CustomerTaskFormData();
 
-        JsonNode taskProgress = commissioner.getStatus(task.getTaskUUID());
+        Optional<ObjectNode> taskProgress = commissioner.mayGetStatus(task.getTaskUUID());
         // If the task progress API returns error, we will log it and not add that task
         // to the task list for UI rendering.
-        if (taskProgress.has("error")) {
-          LOG.error("Error fetching Task Progress for " + task.getTaskUUID() +
-            ", Error: " + taskProgress.get("error"));
-        } else {
-          taskData.percentComplete = taskProgress.get("percent").asInt();
-          taskData.status = taskProgress.get("status").asText();
-          taskData.id = task.getTaskUUID();
-          taskData.title = task.getFriendlyDescription();
-          taskData.createTime = task.getCreateTime();
-          taskData.completionTime = task.getCompletionTime();
-          taskData.target = task.getTarget().name();
-          taskData.type = task.getType().getFriendlyName();
-          taskData.targetUUID = task.getTargetUUID();
+        if (taskProgress.isPresent()) {
+          if (taskProgress.get().has("error")) {
+            LOG.error("Error fetching Task Progress for " + task.getTaskUUID() +
+              ", Error: " + taskProgress.get().get("error"));
+          } else {
+            taskData.percentComplete = taskProgress.get().get("percent").asInt();
+            taskData.status = taskProgress.get().get("status").asText();
+            taskData.id = task.getTaskUUID();
+            taskData.title = task.getFriendlyDescription();
+            taskData.createTime = task.getCreateTime();
+            taskData.completionTime = task.getCompletionTime();
+            taskData.target = task.getTarget().name();
+            taskData.type = task.getType().getFriendlyName();
+            taskData.targetUUID = task.getTargetUUID();
 
-          List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getTargetUUID(),
-            new ArrayList<>());
-          taskList.add(taskData);
-          taskListMap.put(task.getTargetUUID(), taskList);
-        }
-      } catch (YWServiceException e) {
-        LOG.error("Error fetching Task Progress for " + task.getTaskUUID() +
-          ", TaskInfo with that taskUUID not found");
+            List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getTargetUUID(),
+              new ArrayList<>());
+            taskList.add(taskData);
+            taskListMap.put(task.getTargetUUID(), taskList);
+          }
       }
     }
     return taskListMap;
@@ -114,9 +111,9 @@ public class CustomerTaskController extends AuthenticatedController {
 
   public Result status(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
-    CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
 
-    ObjectNode responseJson = commissioner.getStatus(taskUUID);
+    ObjectNode responseJson = commissioner.getStatusOrBadRequest(taskUUID);
     return ok(responseJson);
   }
 

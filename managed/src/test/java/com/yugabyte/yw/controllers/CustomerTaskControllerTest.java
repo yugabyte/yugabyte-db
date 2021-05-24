@@ -29,6 +29,7 @@ import play.test.Helpers;
 
 import java.util.Calendar;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -84,7 +85,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     ObjectNode responseJson = Json.newObject();
     UUID taskUUID = createTaskWithStatusAndResponse(targetUUID, targetType, taskType, targetName,
         status, percentComplete, responseJson);
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(responseJson);
+    when(mockCommissioner.mayGetStatus(taskUUID)).thenReturn(Optional.of(responseJson));
     return taskUUID;
   }
 
@@ -291,7 +292,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         CustomerTask.TargetType.Universe, Create, "Foo", "Success", 100.0, responseJson);
     createSubTaskWithResponse(taskUUID, 0, TaskType.AnsibleSetupServer, TaskInfo.State.Success,
         responseJson);
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(responseJson);
+    when(mockCommissioner.getStatusOrBadRequest(taskUUID)).thenReturn(responseJson);
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
         customer.uuid + "/tasks/" + taskUUID, authToken);
 
