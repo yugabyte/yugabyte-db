@@ -101,6 +101,8 @@ class PriorityThreadPool {
 
   void TEST_SetThreadCreationFailureProbability(double probability);
 
+  size_t TEST_num_tasks_pending();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
