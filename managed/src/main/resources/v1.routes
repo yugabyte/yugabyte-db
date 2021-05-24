@@ -149,7 +149,7 @@ POST    /customers/:cUUID/universes/:uniUUID/disk_update                       c
 GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseController.status(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/find/:universeName                         com.yugabyte.yw.controllers.UniverseController.findByName_Corrected(cUUID: java.util.UUID, universeName: String)
-GET     /customers/:cUUID/universes/verify/:universeName                       com.yugabyte.yw.controllers.UniverseController.verifyUniqueName(cUUID: java.util.UUID, universeName: String)
+GET     /customers/:cUUID/universes/checkUnique/:universeName                  com.yugabyte.yw.controllers.UniverseController.verifyUniqueName(cUUID: java.util.UUID, universeName: String)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state               com.yugabyte.yw.controllers.UniverseController.setBackupFlag(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     com.yugabyte.yw.controllers.UniverseController.configureAlerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)

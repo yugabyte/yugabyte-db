@@ -1425,7 +1425,7 @@ public class UniverseControllerTest extends WithApplication {
     createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse";
     Result result = assertThrows(YWServiceException.class,
-    () -> doRequestWithAuthToken("GET", url, authToken)).getResult();
+      () -> doRequestWithAuthToken("GET", url, authToken)).getResult();
     assertNotFound(result, "Universe does not Exist");
     assertAuditEntry(0, customer.uuid);
   }
@@ -1433,7 +1433,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testVerifyWithUniverseNameExists() {
     Universe u = createUniverse("TestUniverse", customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/verify/" + u.name;
+    String url = "/api/customers/" + customer.uuid + "/universes/checkUnique/" + u.name;
     Result result = assertThrows(YWServiceException.class,
       () -> doRequestWithAuthToken("GET", url, authToken)).getResult();
     assertBadRequest(result, "Universe already exists");
@@ -1443,7 +1443,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testVerifyWithUniverseDoesNotExist() {
     createUniverse(customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/verify/FakeUniverse";
+    String url = "/api/customers/" + customer.uuid + "/universes/checkUnique/FakeUniverse";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     assertAuditEntry(0, customer.uuid);

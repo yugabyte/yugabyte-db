@@ -502,7 +502,7 @@ export function resetMasterLeader() {
 
 export function checkIfUniverseExists(universeName) {
   const customerUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/verify/${universeName}`;
+  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/checkUnique/${universeName}`;
   const request = axios.get(requestUrl);
   return {
     type: CHECK_IF_UNIVERSE_EXISTS,

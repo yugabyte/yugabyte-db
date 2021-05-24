@@ -164,7 +164,7 @@ public class UniverseController extends AuthenticatedController {
     return Results.status(OK, Json.toJson(universe.universeUUID));
   }
 
-    /**
+  /**
    * API that verify Universe has unique name.
    *
    * @return 200 if universe is not present else raise error
