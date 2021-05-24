@@ -1135,9 +1135,12 @@ public class UniverseController extends AuthenticatedController {
     if (request().getQueryString("isDeleteBackups") != null) {
       isDeleteBackups = Boolean.parseBoolean(request().getQueryString("isDeleteBackups"));
     }
-    
-    LOG.info("Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
-      customerUUID, universe.name, universeUUID);
+
+    LOG.info(
+        "Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
+        customerUUID,
+        universe.name,
+        universeUUID);
 
     // Create the Commissioner task to destroy the universe.
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();

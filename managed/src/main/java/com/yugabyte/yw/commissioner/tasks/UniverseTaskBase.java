@@ -984,7 +984,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-   public SubTaskGroup createDeleteBackupTasks(List<Backup> backups, UUID customerUUID) {
+  public SubTaskGroup createDeleteBackupTasks(List<Backup> backups, UUID customerUUID) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteBackup", executor);
     for (Backup backup : backups) {
       DeleteBackup.Params params = new DeleteBackup.Params();

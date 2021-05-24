@@ -124,7 +124,6 @@ public class UniverseControllerTest extends WithApplication {
   private ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
-  
 
   @Override
   protected Application provideApplication() {
@@ -907,50 +906,60 @@ public class UniverseControllerTest extends WithApplication {
     "true, true",
     "false, true",
     "true, false",
-    "false, false",   
+    "false, false",
     "null, true",
-    })
+  })
   // @formatter:on
-  public void testUniverseDestroyValidUUIDIsForceDeleteAndDeleteBackup(Boolean isDeleteBackups,
-      Boolean isForceDelete) {
+  public void testUniverseDestroyValidUUIDIsForceDeleteAndDeleteBackup(
+      Boolean isDeleteBackups, Boolean isForceDelete) {
     UUID fakeTaskUUID = UUID.randomUUID();
     String url;
-    when(mockCommissioner.submit(any(), any()))
-        .thenReturn(fakeTaskUUID);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getCustomerId());
 
     // Add the cloud info into the universe.
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        UserIntent userIntent = new UserIntent();
-        userIntent.providerType = CloudType.aws;
-        universeDetails.upsertPrimaryCluster(userIntent, null);
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+    Universe.UniverseUpdater updater =
+        new Universe.UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+            UserIntent userIntent = new UserIntent();
+            userIntent.providerType = CloudType.aws;
+            universeDetails.upsertPrimaryCluster(userIntent, null);
+            universe.setUniverseDetails(universeDetails);
+          }
+        };
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, updater);
 
-    Backup b = ModelFactory.createBackup(customer.uuid,
-        u.universeUUID, s3StorageConfig.configUUID);
+    Backup b = ModelFactory.createBackup(customer.uuid, u.universeUUID, s3StorageConfig.configUUID);
     b.transitionState(Backup.BackupState.Completed);
     if (isDeleteBackups == null) {
-      url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
-        "?isForceDelete=" + isForceDelete;
-    }
-    else {
-      url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
-          "?isForceDelete=" + isForceDelete + "&isDeleteBackups=" + isDeleteBackups;
+      url =
+          "/api/customers/"
+              + customer.uuid
+              + "/universes/"
+              + u.universeUUID
+              + "?isForceDelete="
+              + isForceDelete;
+    } else {
+      url =
+          "/api/customers/"
+              + customer.uuid
+              + "/universes/"
+              + u.universeUUID
+              + "?isForceDelete="
+              + isForceDelete
+              + "&isDeleteBackups="
+              + isDeleteBackups;
     }
     Result result = doRequestWithAuthToken("DELETE", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
 
-    CustomerTask customerTask = CustomerTask.find.query().where()
-        .eq("task_uuid", fakeTaskUUID).findOne();
+    CustomerTask customerTask =
+        CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(customerTask);
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertAuditEntry(1, customer.uuid);
