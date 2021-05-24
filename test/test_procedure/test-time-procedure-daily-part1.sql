@@ -1,5 +1,5 @@
 -- ########## TIME DAILY TESTS PROCEDURE ##########
--- Other tests: tests old tigger method, partition and undo with procedures instead of functions
+-- Other tests: tests old trigger method, partition and undo with procedures instead of functions
 
 \set ON_ERROR_STOP true
 

@@ -248,7 +248,7 @@ ALTER TABLE partman_test.id_taptest_table_p40 ADD PRIMARY KEY (col2);
 
 ### Partitioning an Existing Table
 
-Partitioning an existing table with native partitioning is not as straight forward as methods that could be employed with the old tigger-based methods. As stated above, you cannot turn an already existing table into the parent table of a native partition set. The parent of a native partitioned table must be declared partitioned at the time of its creation. However, there are still methods to take an existing table and partition it natively. Two of those are presented below.
+Partitioning an existing table with native partitioning is not as straight forward as methods that could be employed with the old trigger-based methods. As stated above, you cannot turn an already existing table into the parent table of a native partition set. The parent of a native partitioned table must be declared partitioned at the time of its creation. However, there are still methods to take an existing table and partition it natively. Two of those are presented below.
 
 #### Offline Partitioning
 
