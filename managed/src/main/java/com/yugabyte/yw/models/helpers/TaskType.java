@@ -5,10 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-
-/**
- * These are the various types of user tasks and internal tasks.
- */
+/** These are the various types of user tasks and internal tasks. */
 public enum TaskType {
 
   // Tasks that are CustomerTasks
@@ -27,7 +24,7 @@ public enum TaskType {
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
 
   DestroyUniverse("DestroyUniverse"),
-  
+
   PauseUniverse("PauseUniverse"),
 
   ResumeUniverse("ResumeUniverse"),
@@ -84,7 +81,7 @@ public enum TaskType {
   AnsibleConfigureServers("subtasks.AnsibleConfigureServers"),
 
   AnsibleDestroyServer("subtasks.AnsibleDestroyServer"),
-  
+
   PauseServer("subtasks.PauseServer"),
 
   ResumeServer("subtasks.ResumeServer"),
@@ -203,13 +200,16 @@ public enum TaskType {
   }
 
   public static List<TaskType> filteredValues() {
-    return Arrays.stream(TaskType.values()).filter(value -> {
-      try {
-        Field field = TaskType.class.getField(value.name());
-        return !field.isAnnotationPresent(Deprecated.class);
-      } catch (Exception e) {
-        return false;
-      }
-    }).collect(Collectors.toList());
+    return Arrays.stream(TaskType.values())
+        .filter(
+            value -> {
+              try {
+                Field field = TaskType.class.getField(value.name());
+                return !field.isAnnotationPresent(Deprecated.class);
+              } catch (Exception e) {
+                return false;
+              }
+            })
+        .collect(Collectors.toList());
   }
 }

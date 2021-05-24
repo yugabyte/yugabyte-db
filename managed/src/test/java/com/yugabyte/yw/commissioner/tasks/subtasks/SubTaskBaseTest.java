@@ -35,4 +35,3 @@ public class SubTaskBaseTest extends WithApplication {
         .build();
   }
 }
-

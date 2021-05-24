@@ -41,7 +41,7 @@ public class YugabyteConstraints extends Constraints {
 
   /** Validator for {@code @ValidUrl} fields. */
   public static class ValidURLValidator extends Validator<Object>
-    implements ConstraintValidator<ValidURL, Object> {
+      implements ConstraintValidator<ValidURL, Object> {
 
     public static final String message = "Invalid URL provided";
 

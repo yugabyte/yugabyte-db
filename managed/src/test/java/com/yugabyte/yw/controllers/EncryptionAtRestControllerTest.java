@@ -64,155 +64,136 @@ import play.test.WithApplication;
 @RunWith(MockitoJUnitRunner.class)
 public class EncryptionAtRestControllerTest extends FakeDBApplication {
 
-    @Mock
-    play.Configuration mockAppConfig;
-    private Customer customer;
-    private Users user;
-    private Universe universe;
-    private String authToken;
+  @Mock play.Configuration mockAppConfig;
+  private Customer customer;
+  private Users user;
+  private Universe universe;
+  private String authToken;
 
-    String mockEncryptionKey = "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
-    String algorithm = "AES";
-    int keySize = 256;
-    String mockKid = "some_kId";
+  String mockEncryptionKey = "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
+  String algorithm = "AES";
+  int keySize = 256;
+  String mockKid = "some_kId";
 
-    @Before
-    public void setUp() {
-        customer = ModelFactory.testCustomer();
-        user = ModelFactory.testUser(customer);
-        universe = ModelFactory.createUniverse();
-        authToken = user.createAuthToken();
-        String mockApiKey = "some_api_key";
-        Map<String, String> authorizationHeaders = ImmutableMap.of(
-                "Authorization", String.format("Basic %s", mockApiKey)
-        );
-        ObjectNode createReqPayload = Json.newObject()
-                .put("name", universe.universeUUID.toString())
-                .put("obj_type", algorithm)
-                .put("key_size", keySize);
-        ArrayNode keyOps = Json.newArray()
-                .add("EXPORT")
-                .add("APPMANAGEABLE");
-        createReqPayload.set("key_ops", keyOps);
-        Map<String, String> postReqHeaders = ImmutableMap.of(
-                "Authorization", String.format("Bearer %s", mockApiKey),
-                "Content-Type", "application/json"
-        );
-        Map<String, String> getReqHeaders = ImmutableMap.of(
-                "Authorization", String.format("Bearer %s", mockApiKey)
-        );
-        String getKeyUrl = String.format("https://some_base_url/crypto/v1/keys/%s/export", mockKid);
-        Map<String, String> mockQueryParams = ImmutableMap.of(
-                "name", universe.universeUUID.toString(),
-                "limit", "1"
-        );
-        when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
-          .thenReturn(new SmartKeyEARService());
-    }
+  @Before
+  public void setUp() {
+    customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
+    universe = ModelFactory.createUniverse();
+    authToken = user.createAuthToken();
+    String mockApiKey = "some_api_key";
+    Map<String, String> authorizationHeaders =
+        ImmutableMap.of("Authorization", String.format("Basic %s", mockApiKey));
+    ObjectNode createReqPayload =
+        Json.newObject()
+            .put("name", universe.universeUUID.toString())
+            .put("obj_type", algorithm)
+            .put("key_size", keySize);
+    ArrayNode keyOps = Json.newArray().add("EXPORT").add("APPMANAGEABLE");
+    createReqPayload.set("key_ops", keyOps);
+    Map<String, String> postReqHeaders =
+        ImmutableMap.of(
+            "Authorization",
+            String.format("Bearer %s", mockApiKey),
+            "Content-Type",
+            "application/json");
+    Map<String, String> getReqHeaders =
+        ImmutableMap.of("Authorization", String.format("Bearer %s", mockApiKey));
+    String getKeyUrl = String.format("https://some_base_url/crypto/v1/keys/%s/export", mockKid);
+    Map<String, String> mockQueryParams =
+        ImmutableMap.of("name", universe.universeUUID.toString(), "limit", "1");
+    when(mockEARManager.getServiceInstance(eq("SMARTKEY"))).thenReturn(new SmartKeyEARService());
+  }
 
-    @Test
-    public void testListKMSConfigs() {
-        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
-        String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
-        Result listResult = doRequestWithAuthToken("GET", url, authToken);
-        assertOk(listResult);
-        JsonNode json = Json.parse(contentAsString(listResult));
-        assertTrue(json.isArray());
-        assertEquals(1, json.size());
-        assertAuditEntry(0, customer.uuid);
-    }
+  @Test
+  public void testListKMSConfigs() {
+    ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
+    String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    Result listResult = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(listResult);
+    JsonNode json = Json.parse(contentAsString(listResult));
+    assertTrue(json.isArray());
+    assertEquals(1, json.size());
+    assertAuditEntry(0, customer.uuid);
+  }
 
-    @Test
-    public void testListEmptyConfigList() {
-        String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
-        Result listResult = doRequestWithAuthToken("GET", url, authToken);
-        assertOk(listResult);
-        JsonNode json = Json.parse(contentAsString(listResult));
-        assertTrue(json.isArray());
-        assertEquals(json.size(), 0);
-        assertAuditEntry(0, customer.uuid);
-    }
+  @Test
+  public void testListEmptyConfigList() {
+    String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    Result listResult = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(listResult);
+    JsonNode json = Json.parse(contentAsString(listResult));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 0);
+    assertAuditEntry(0, customer.uuid);
+  }
 
-    @Test
-    public void testDeleteConfig() {
-        UUID fakeTaskUUID = UUID.randomUUID();
-        when(mockCommissioner.submit(any(TaskType.class),
-                any(KMSConfigTaskParams.class))).thenReturn(fakeTaskUUID);
-        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
-        String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
-        Result listResult = doRequestWithAuthToken("GET", url, authToken);
-        assertOk(listResult);
-        JsonNode json = Json.parse(contentAsString(listResult));
-        assertTrue(json.isArray());
-        assertEquals(json.size(), 1);
-        UUID kmsConfigUUID = UUID.fromString(
-                ((ArrayNode) json)
-                        .get(0)
-                        .get("metadata")
-                        .get("configUUID")
-                        .asText()
-        );
-        url = "/api/v1/customers/" + customer.uuid + "/kms_configs/" + kmsConfigUUID.toString();
-        Result deleteResult = doRequestWithAuthToken("DELETE", url, authToken);
-        assertOk(deleteResult);
-        json = Json.parse(contentAsString(deleteResult));
-        UUID taskUUID = UUID.fromString(json.get("taskUUID").asText());
-        assertNotNull(taskUUID);
-        assertAuditEntry(1, customer.uuid);
-    }
+  @Test
+  public void testDeleteConfig() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
+    String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    Result listResult = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(listResult);
+    JsonNode json = Json.parse(contentAsString(listResult));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 1);
+    UUID kmsConfigUUID =
+        UUID.fromString(((ArrayNode) json).get(0).get("metadata").get("configUUID").asText());
+    url = "/api/v1/customers/" + customer.uuid + "/kms_configs/" + kmsConfigUUID.toString();
+    Result deleteResult = doRequestWithAuthToken("DELETE", url, authToken);
+    assertOk(deleteResult);
+    json = Json.parse(contentAsString(deleteResult));
+    UUID taskUUID = UUID.fromString(json.get("taskUUID").asText());
+    assertNotNull(taskUUID);
+    assertAuditEntry(1, customer.uuid);
+  }
 
-    @Ignore("This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
-    @Test
-    public void testCreateAndRecoverKey() {
-        String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
-        ObjectNode kmsConfigReq = Json.newObject()
-                .put("base_url", "some_base_url")
-                .put("api_key", "some_api_token");
-        Result createKMSResult = doRequestWithAuthTokenAndBody(
-                "POST",
-                kmsConfigUrl,
-                authToken,
-                kmsConfigReq
-        );
-        assertOk(createKMSResult);
-        String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
-                "/kms/SMARTKEY/create_key";
-        ObjectNode createPayload = Json.newObject()
-                .put("kms_provider", "SMARTKEY")
-                .put("algorithm", algorithm)
-                .put("key_size", Integer.toString(keySize));
-        Result createKeyResult = doRequestWithAuthTokenAndBody(
-                "POST",
-                url,
-                authToken,
-                createPayload
-        );
-        assertOk(createKeyResult);
-        JsonNode json = Json.parse(contentAsString(createKeyResult));
-        String keyValue = json.get("value").asText();
-        assertEquals(keyValue, mockEncryptionKey);
-        assertAuditEntry(2, customer.uuid);
-    }
+  @Ignore(
+      "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
+  @Test
+  public void testCreateAndRecoverKey() {
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    ObjectNode kmsConfigReq =
+        Json.newObject().put("base_url", "some_base_url").put("api_key", "some_api_token");
+    Result createKMSResult =
+        doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq);
+    assertOk(createKMSResult);
+    String url =
+        "/api/customers/"
+            + customer.uuid
+            + "/universes/"
+            + universe.universeUUID
+            + "/kms/SMARTKEY/create_key";
+    ObjectNode createPayload =
+        Json.newObject()
+            .put("kms_provider", "SMARTKEY")
+            .put("algorithm", algorithm)
+            .put("key_size", Integer.toString(keySize));
+    Result createKeyResult = doRequestWithAuthTokenAndBody("POST", url, authToken, createPayload);
+    assertOk(createKeyResult);
+    JsonNode json = Json.parse(contentAsString(createKeyResult));
+    String keyValue = json.get("value").asText();
+    assertEquals(keyValue, mockEncryptionKey);
+    assertAuditEntry(2, customer.uuid);
+  }
 
-    @Test
-    public void testRecoverKeyNotFound() {
-        UUID configUUID = ModelFactory.createKMSConfig(
-                customer.uuid,
-                "SMARTKEY",
-                Json.newObject()
-        ).configUUID;
-        String url = "/api/customers/" + customer.uuid + "/universes/" +
-                universe.universeUUID + "/kms";
-        ObjectNode body = Json.newObject()
-                .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm")
-                .put("configUUID", configUUID.toString());
-        Result recoverKeyResult = doRequestWithAuthTokenAndBody("POST", url, authToken, body);
-        JsonNode json = Json.parse(contentAsString(recoverKeyResult));
-        String expectedErrorMsg = String.format(
-                "No universe key found for universe %s",
-                universe.universeUUID.toString()
-        );
-        assertErrorNodeValue(json, expectedErrorMsg);
-        assertAuditEntry(0, customer.uuid);
-    }
+  @Test
+  public void testRecoverKeyNotFound() {
+    UUID configUUID =
+        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject()).configUUID;
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/kms";
+    ObjectNode body =
+        Json.newObject()
+            .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm")
+            .put("configUUID", configUUID.toString());
+    Result recoverKeyResult = doRequestWithAuthTokenAndBody("POST", url, authToken, body);
+    JsonNode json = Json.parse(contentAsString(recoverKeyResult));
+    String expectedErrorMsg =
+        String.format("No universe key found for universe %s", universe.universeUUID.toString());
+    assertErrorNodeValue(json, expectedErrorMsg);
+    assertAuditEntry(0, customer.uuid);
+  }
 }
