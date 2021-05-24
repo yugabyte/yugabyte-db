@@ -286,7 +286,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   InitTablespaceInfo();
 
   // Lock the CatalogManager maps for the duration of the load balancer run.
-  SharedLock<CatalogManager::LockType> l(catalog_manager_->lock_);
+  CatalogManager::SharedLock lock(catalog_manager_->mutex_);
 
   int remaining_adds = options->kMaxConcurrentAdds;
   int remaining_removals = options->kMaxConcurrentRemovals;

@@ -22,11 +22,9 @@ import junitparams.converters.Nullable;
 @RunWith(JUnitParamsRunner.class)
 public class ConfigSubstitutorTest {
 
-  @Rule
-  public MockitoRule rule = MockitoJUnit.rule();
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @Mock
-  private Config config;
+  @Mock private Config config;
 
   @Before
   public void setUp() {

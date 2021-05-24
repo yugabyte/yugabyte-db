@@ -52,7 +52,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   ArgumentCaptor<TaskType> taskType;
   ArgumentCaptor<NodeTaskParams> taskParams;
 
-
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("tc", "Test Customer 1");
@@ -101,15 +100,24 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   private Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
-    String uri= "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/instances/" +
-                instanceIP;
+    String uri =
+        "/api/customers/"
+            + customerUUID
+            + "/providers/"
+            + providerUUID
+            + "/instances/"
+            + instanceIP;
     return FakeApiHelper.doRequest("DELETE", uri);
   }
 
-  private Result performNodeAction(UUID customerUUID, UUID universeUUID,
-                                   String nodeName, NodeActionType nodeAction, boolean mimicError) {
-    String uri = "/api/customers/" + customerUUID + "/universes/" + universeUUID + "/nodes/" +
-            nodeName;
+  private Result performNodeAction(
+      UUID customerUUID,
+      UUID universeUUID,
+      String nodeName,
+      NodeActionType nodeAction,
+      boolean mimicError) {
+    String uri =
+        "/api/customers/" + customerUUID + "/universes/" + universeUUID + "/nodes/" + nodeName;
     ObjectNode params = Json.newObject();
     if (mimicError) {
       params.put("foo", "bar");
@@ -121,18 +129,22 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   private void setInTransitNode(UUID universeUUID) {
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        NodeDetails node = universeDetails.nodeDetailsSet.iterator().next();
-        node.state = NodeState.Removed;
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+    Universe.UniverseUpdater updater =
+        new Universe.UniverseUpdater() {
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            NodeDetails node = universeDetails.nodeDetailsSet.iterator().next();
+            node.state = NodeState.Removed;
+            universe.setUniverseDetails(universeDetails);
+          }
+        };
     Universe.saveDetails(universeUUID, updater);
   }
 
-  private void checkOk(Result r) { assertEquals(OK, r.status()); }
+  private void checkOk(Result r) {
+    assertEquals(OK, r.status());
+  }
+
   private void checkNotOk(Result r, String error) {
     assertNotEquals(OK, r.status());
     if (error != null) {
@@ -148,7 +160,9 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     assertEquals(dbNode.getDetails().sshUser, queryNode.get("details").get("sshUser").asText());
   }
 
-  private void checkNodeValid(JsonNode nodeAsJson) { checkNodesMatch(nodeAsJson, node); }
+  private void checkNodeValid(JsonNode nodeAsJson) {
+    checkNodesMatch(nodeAsJson, node);
+  }
 
   private JsonNode parseResult(Result r) {
     return Json.parse(contentAsString(r));
@@ -244,24 +258,22 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testCreateFailureDuplicateIp() {
     Result failedReq = createNode(zone.uuid, node.getDetails());
-    checkNotOk(failedReq,
-      "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
+    checkNotOk(failedReq, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testCreateFailureInvalidZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = assertThrows(
-      YWServiceException.class,
-      () -> createNode(wrongUuid, node.getDetails()))
-      .getResult();
-    String error =
-      "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
+    Result r =
+        assertThrows(YWServiceException.class, () -> createNode(wrongUuid, node.getDetails()))
+            .getResult();
+    String error = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, error);
     assertAuditEntry(0, customer.uuid);
   }
-  // Test for Delete Instance, use case is only for OnPrem, but test can be validated with AWS provider as well
+  // Test for Delete Instance, use case is only for OnPrem, but test can be validated with AWS
+  // provider as well
   @Test
   public void testDeleteInstanceWithValidInstanceIP() {
     Result r = deleteInstance(customer.uuid, provider.uuid, FAKE_IP);
@@ -306,29 +318,29 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   public void testMissingNodeActionParam() {
     verify(mockCommissioner, times(0)).submit(any(), any());
     Universe u = ModelFactory.createUniverse();
-    u = Universe.saveDetails(u.universeUUID,
-            ApiUtils.mockUniverseUpdater()
-    );
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
-    Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1",
-            NodeActionType.DELETE, true);
+    Result r =
+        performNodeAction(customer.uuid, u.universeUUID, "host-n1", NodeActionType.DELETE, true);
     assertBadRequest(r, "{\"nodeAction\":[\"This field is required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testInvalidNodeAction() {
-    for (NodeActionType nodeActionType: NodeActionType.values()) {
+    for (NodeActionType nodeActionType : NodeActionType.values()) {
       Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getCustomerId());
       customer.addUniverseUUID(u.universeUUID);
       customer.save();
       verify(mockCommissioner, times(0)).submit(any(), any());
-      Result r = assertThrows(
-        YWServiceException.class,
-        () -> performNodeAction(
-          customer.uuid, u.universeUUID, "fake-n1", nodeActionType, true))
-        .getResult();
+      Result r =
+          assertThrows(
+                  YWServiceException.class,
+                  () ->
+                      performNodeAction(
+                          customer.uuid, u.universeUUID, "fake-n1", nodeActionType, true))
+              .getResult();
       assertBadRequest(r, "Invalid Node fake-n1 for Universe");
       assertAuditEntry(0, customer.uuid);
     }
@@ -336,33 +348,25 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testValidNodeAction() {
-    for (NodeActionType nodeActionType: NodeActionType.values()) {
+    for (NodeActionType nodeActionType : NodeActionType.values()) {
       // Skip QUERY b/c it is UI-only flag
       if (nodeActionType == NodeActionType.QUERY) {
         continue;
       }
       UUID fakeTaskUUID = UUID.randomUUID();
-      when(mockCommissioner.submit(any(TaskType.class),
-              any(UniverseDefinitionTaskParams.class)))
-              .thenReturn(fakeTaskUUID);
+      when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+          .thenReturn(fakeTaskUUID);
       Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getCustomerId());
-      u = Universe.saveDetails(u.universeUUID,
-              ApiUtils.mockUniverseUpdater()
-      );
+      u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
       customer.addUniverseUUID(u.universeUUID);
       customer.save();
-      Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1",
-              nodeActionType, false);
-      verify(mockCommissioner, times(1))
-        .submit(taskType.capture(), taskParams.capture());
+      Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1", nodeActionType, false);
+      verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
       assertEquals(nodeActionType.getCommissionerTask(), taskType.getValue());
       assertOk(r);
       JsonNode json = Json.parse(contentAsString(r));
       assertValue(json, "taskUUID", fakeTaskUUID.toString());
-      CustomerTask ct = CustomerTask.find.query()
-        .where()
-        .eq("task_uuid", fakeTaskUUID)
-        .findOne();
+      CustomerTask ct = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
       assertNotNull(ct);
       assertEquals(CustomerTask.TargetType.Node, ct.getTarget());
       assertEquals(nodeActionType.getCustomerTask(), ct.getType());
@@ -375,24 +379,33 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testDisableStopRemove() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(TaskType.class),
-         any(UniverseDefinitionTaskParams.class)))
-         .thenReturn(fakeTaskUUID);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
 
     Universe u = ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     setInTransitNode(u.universeUUID);
 
-    Set<NodeDetails> nodes = u.getMasters().stream().filter((n) -> n.state == NodeState.Live).collect(Collectors.toSet());
+    Set<NodeDetails> nodes =
+        u.getMasters()
+            .stream()
+            .filter((n) -> n.state == NodeState.Live)
+            .collect(Collectors.toSet());
 
     NodeDetails curNode = nodes.iterator().next();
-    Result invalidRemove = performNodeAction(customer.uuid, u.universeUUID, curNode.nodeName,
-                                             NodeActionType.REMOVE, false);
-    assertBadRequest(invalidRemove, "Cannot REMOVE " + curNode.nodeName + " as it will under replicate the masters.");
+    Result invalidRemove =
+        performNodeAction(
+            customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REMOVE, false);
+    assertBadRequest(
+        invalidRemove,
+        "Cannot REMOVE " + curNode.nodeName + " as it will under replicate the masters.");
 
-    Result invalidStop = performNodeAction(customer.uuid, u.universeUUID, curNode.nodeName,
-                                           NodeActionType.STOP, false);
-    assertBadRequest(invalidStop, "Cannot STOP " + curNode.nodeName + " as it will under replicate the masters.");
+    Result invalidStop =
+        performNodeAction(
+            customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.STOP, false);
+    assertBadRequest(
+        invalidStop,
+        "Cannot STOP " + curNode.nodeName + " as it will under replicate the masters.");
     assertAuditEntry(0, customer.uuid);
   }
 

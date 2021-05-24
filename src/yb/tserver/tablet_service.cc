@@ -37,6 +37,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/client/forward_rpc.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 
@@ -237,6 +238,9 @@ double TEST_delay_create_transaction_probability = 0;
 namespace yb {
 namespace tserver {
 
+
+using client::internal::ForwardReadRpc;
+using client::internal::ForwardWriteRpc;
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
@@ -2839,6 +2843,30 @@ scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
   }
   return nullptr;
 }
+
+TabletServerForwardServiceImpl::TabletServerForwardServiceImpl(TabletServiceImpl *impl,
+                                                               TabletServerIf *server)
+  : TabletServerForwardServiceIf(server->MetricEnt()),
+    server_(server) {
+}
+
+void TabletServerForwardServiceImpl::Write(const WriteRequestPB* req,
+                                           WriteResponsePB* resp,
+                                           rpc::RpcContext context) {
+  // Forward the rpc to the required Tserver.
+  std::shared_ptr<ForwardWriteRpc> forward_rpc =
+    std::make_shared<ForwardWriteRpc>(req, resp, std::move(context), server_->client());
+  forward_rpc->SendRpc();
+}
+
+void TabletServerForwardServiceImpl::Read(const ReadRequestPB* req,
+                                          ReadResponsePB* resp,
+                                          rpc::RpcContext context) {
+  std::shared_ptr<ForwardReadRpc> forward_rpc =
+    std::make_shared<ForwardReadRpc>(req, resp, std::move(context), server_->client());
+  forward_rpc->SendRpc();
+}
+
 
 }  // namespace tserver
 }  // namespace yb

@@ -476,6 +476,12 @@ class YBClient::Data {
 
   std::atomic<int> tserver_count_cached_{0};
 
+  // The proxy for the node local tablet server.
+  std::shared_ptr<tserver::TabletServerForwardServiceProxy> node_local_forward_proxy_;
+
+  // The host port of the node local tserver.
+  HostPort node_local_tserver_host_port_;
+
  private:
   CHECKED_STATUS FlushTablesHelper(YBClient* client,
                           const CoarseTimePoint deadline,

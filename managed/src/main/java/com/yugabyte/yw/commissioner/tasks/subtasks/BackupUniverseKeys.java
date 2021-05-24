@@ -21,35 +21,32 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 
 public class BackupUniverseKeys extends AbstractTaskBase {
 
-    public static final Logger LOG = LoggerFactory.getLogger(BackupUniverseKeys.class);
+  public static final Logger LOG = LoggerFactory.getLogger(BackupUniverseKeys.class);
 
-    // The encryption key manager
-    public EncryptionAtRestManager keyManager = null;
+  // The encryption key manager
+  public EncryptionAtRestManager keyManager = null;
 
-    @Override
-    protected BackupTableParams taskParams() {
-        return (BackupTableParams) taskParams;
+  @Override
+  protected BackupTableParams taskParams() {
+    return (BackupTableParams) taskParams;
+  }
+
+  @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
+  }
+
+  @Override
+  public void run() {
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    String hostPorts = universe.getMasterAddresses();
+    try {
+      LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
+      keyManager.backupUniverseKeyHistory(taskParams().universeUUID, taskParams().storageLocation);
+    } catch (Exception e) {
+      LOG.error("{} hit error : {}", getName(), e.getMessage(), e);
+      throw new RuntimeException(e);
     }
-
-    @Override
-    public void initialize(ITaskParams params) {
-        super.initialize(params);
-        keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
-    }
-
-    @Override
-    public void run() {
-        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-        String hostPorts = universe.getMasterAddresses();
-        try {
-            LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-            keyManager.backupUniverseKeyHistory(
-                taskParams().universeUUID,
-                taskParams().storageLocation
-            );
-        } catch (Exception e) {
-            LOG.error("{} hit error : {}", getName(), e.getMessage(), e);
-            throw new RuntimeException(e);
-        }
-    }
+  }
 }
