@@ -368,6 +368,12 @@ TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
                  "move.");
+DEFINE_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
+             "When a master leader failsover, the time until which the progress of load movement "
+             "off the blacklisted tservers is reported as 0. This initial delay "
+             "gives sufficient time for heartbeats so that we don't report"
+             " a premature incorrect completion.");
+TAG_FLAG(blacklist_progress_initial_delay_secs, runtime);
 
 namespace yb {
 namespace master {
@@ -9008,11 +9014,26 @@ Status CatalogManager::GetLeaderBlacklistCompletionPercent(GetLoadMovePercentRes
 }
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
-    bool blacklist_leader) {
+                                                    bool blacklist_leader) {
   SharedLock<LockType> l(blacklist_lock_);
 
   BlacklistState& state = (blacklist_leader) ? leaderBlacklistState : blacklistState;
   int64_t blacklist_replicas = GetNumRelevantReplicas(state, blacklist_leader);
+
+  // If we are starting up and don't find any load on the tservers, return progress as 0.
+  // We expect that by blacklist_progress_initial_delay_secs time, this should go away and if the
+  // load is reported as 0 on the blacklisted tservers after this time then it means that
+  // the transfer is successfully complete.
+  if (blacklist_replicas == 0 &&
+  TimeSinceElectedLeader() <= MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs)) {
+      LOG(INFO) << "Master leadership has changed. Reporting progress as 0 until the catalog " <<
+                   "manager gets the correct estimates of the remaining load on the blacklisted" <<
+                   "tservers.";
+      resp->set_percent(0);
+      resp->set_total(state.initial_load_);
+      resp->set_remaining(state.initial_load_);
+      return Status::OK();
+  }
 
   // On change of master leader, initial_load_ information may be lost temporarily. Reset to
   // current value to avoid reporting progress percent as 100. Note that doing so will report

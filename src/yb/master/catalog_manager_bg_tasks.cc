@@ -50,7 +50,7 @@ DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
              "between runs");
 TAG_FLAG(catalog_manager_bg_task_wait_ms, hidden);
 
-DEFINE_int32(load_balancer_initial_delay_secs, 120,
+DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
