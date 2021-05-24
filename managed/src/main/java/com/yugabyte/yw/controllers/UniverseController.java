@@ -137,7 +137,6 @@ public class UniverseController extends AuthenticatedController {
    * @return true if universe already exists, false otherwise
    */
   // TODO(.*endra):  This method is buggy. The javadoc does not match impl.
-  //  Replace findByName with findByName_Corrected when UI is fixed to expect opposite.
   @Deprecated
   public Result findByName(UUID customerUUID, String universeName) {
     // Verify the customer with this universe is present.
@@ -163,6 +162,22 @@ public class UniverseController extends AuthenticatedController {
       throw new YWServiceException(NOT_FOUND, "Universe does not Exist");
     }
     return Results.status(OK, Json.toJson(universe.universeUUID));
+  }
+
+    /**
+   * API that verify Universe has unique name.
+   *
+   * @return 200 if universe is not present else raise error
+   */
+  public Result verifyUniqueName(UUID customerUUID, String universeName) {
+    // Verify the customer with this universe is present.
+    Customer.getOrBadRequest(customerUUID);
+    LOG.info("Finding Universe with name {}.", universeName);
+    if (Universe.checkIfUniverseExists(universeName)) {
+      throw new YWServiceException(BAD_REQUEST, "Universe already exists");
+    } else {
+      return withMessage("Universe does not Exist");
+    }
   }
 
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
