@@ -1530,8 +1530,9 @@ public class UniverseControllerTest extends WithApplication {
   public void testFindByNameWithUniverseDoesNotExist() {
     createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse";
-    Result result = assertThrows(YWServiceException.class,
-      () -> doRequestWithAuthToken("GET", url, authToken)).getResult();
+    Result result =
+        assertThrows(YWServiceException.class, () -> doRequestWithAuthToken("GET", url, authToken))
+            .getResult();
     assertNotFound(result, "Universe does not Exist");
     assertAuditEntry(0, customer.uuid);
   }
@@ -1540,8 +1541,9 @@ public class UniverseControllerTest extends WithApplication {
   public void testVerifyWithUniverseNameExists() {
     Universe u = createUniverse("TestUniverse", customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/checkUnique/" + u.name;
-    Result result = assertThrows(YWServiceException.class,
-      () -> doRequestWithAuthToken("GET", url, authToken)).getResult();
+    Result result =
+        assertThrows(YWServiceException.class, () -> doRequestWithAuthToken("GET", url, authToken))
+            .getResult();
     assertBadRequest(result, "Universe already exists");
     assertAuditEntry(0, customer.uuid);
   }
