@@ -24,7 +24,7 @@ Refer to [issue 8531](https://github.com/yugabyte/yugabyte-db/issues/8531) for d
 
 {{< /warning >}}
 
-## v2.7.1.1 - May 21, 2021
+## v2.7.1.1 - May 25, 2021
 
 **Build:** `2.7.1.1-b1`
 
