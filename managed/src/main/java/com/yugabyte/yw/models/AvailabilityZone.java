@@ -95,6 +95,15 @@ public class AvailabilityZone extends Model {
     return find.query().where().eq("code", code).findSet();
   }
 
+  public static AvailabilityZone getByRegionOrBadRequest(UUID azUUID, UUID regionUUID) {
+    AvailabilityZone availabilityZone =
+        AvailabilityZone.find.query().where().idEq(azUUID).eq("region_uuid", regionUUID).findOne();
+    if (availabilityZone == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
+    }
+    return availabilityZone;
+  }
+
   public static AvailabilityZone getByCode(Provider provider, String code) {
     return maybeGetByCode(provider, code)
         .orElseThrow(

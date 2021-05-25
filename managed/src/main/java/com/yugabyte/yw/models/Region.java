@@ -22,6 +22,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.YWServiceException;
+
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -29,6 +31,7 @@ import static io.ebean.Ebean.beginTransaction;
 import static io.ebean.Ebean.commitTransaction;
 import static io.ebean.Ebean.endTransaction;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -209,6 +212,7 @@ public class Region extends Model {
     return find.query().where().eq("provider_uuid", providerUUID).findList();
   }
 
+  @Deprecated
   public static Region get(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     String regionQuery =
         " select r.uuid, r.code, r.name"
@@ -222,6 +226,16 @@ public class Region extends Model {
     query.setParameter("p_uuid", providerUUID);
     query.setParameter("c_uuid", customerUUID);
     return query.findOne();
+  }
+
+  public static Region getOrBadRequest(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    Region region = get(customerUUID, providerUUID, regionUUID);
+    if (region == null) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID);
+    }
+    return region;
   }
 
   /**

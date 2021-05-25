@@ -18,6 +18,7 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import org.hamcrest.CoreMatchers;
@@ -53,14 +54,18 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
   @Test
   public void testListAvailabilityZonesWithInvalidProviderRegionUUID() {
-    JsonNode json = doListAZAndVerifyResult(UUID.randomUUID(), UUID.randomUUID(), BAD_REQUEST);
-    assertEquals("Invalid PlacementRegion/Provider UUID", json.get("error").asText());
+    UUID providerUUID = UUID.randomUUID();
+    UUID regionUUID = UUID.randomUUID();
+    JsonNode json = doListAZAndVerifyResult(providerUUID, regionUUID, BAD_REQUEST, true);
+    assertEquals(
+        "PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID,
+        json.get("error").asText());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
   public void testListEmptyAvailabilityZonesWithValidProviderRegionUUID() {
-    JsonNode json = doListAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, OK);
+    JsonNode json = doListAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, OK, false);
     assertTrue(json.isArray());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -69,7 +74,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   public void testListAvailabilityZonesWithValidProviderRegionUUID() {
     AvailabilityZone az =
         AvailabilityZone.create(defaultRegion, "PlacementAZ-1", "PlacementAZ One", "Subnet 1");
-    JsonNode json = doListAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, OK);
+    JsonNode json = doListAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, OK, false);
 
     assertEquals(1, json.size());
     assertEquals(az.uuid.toString(), json.get(0).findValue("uuid").asText());
@@ -81,9 +86,12 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAvailabilityZoneWithInvalidProviderRegionUUID() {
-    JsonNode json =
-        doCreateAZAndVerifyResult(UUID.randomUUID(), UUID.randomUUID(), null, BAD_REQUEST);
-    assertEquals("Invalid PlacementRegion/Provider UUID", json.get("error").asText());
+    UUID providerUUID = UUID.randomUUID();
+    UUID regionUUID = UUID.randomUUID();
+    JsonNode json = doCreateAZAndVerifyResult(providerUUID, regionUUID, null, BAD_REQUEST, true);
+    assertEquals(
+        "PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID,
+        json.get("error").asText());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -104,7 +112,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     azRequestJson.set("availabilityZones", azs);
 
     JsonNode json =
-        doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, azRequestJson, OK);
+        doCreateAZAndVerifyResult(
+            defaultProvider.uuid, defaultRegion.uuid, azRequestJson, OK, false);
 
     assertEquals(2, json.size());
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -126,7 +135,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   public void testCreateAvailabilityZoneWithInvalidTopFormParams() {
     JsonNode json =
         doCreateAZAndVerifyResult(
-            defaultProvider.uuid, defaultRegion.uuid, Json.newObject(), BAD_REQUEST);
+            defaultProvider.uuid, defaultRegion.uuid, Json.newObject(), BAD_REQUEST, true);
     assertErrorNodeValue(json, "availabilityZones", "This field is required");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -135,7 +144,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   public void testDeleteAvailabilityZoneWithInvalidParams() {
     UUID randomUUID = UUID.randomUUID();
     JsonNode json =
-        doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid, randomUUID, BAD_REQUEST);
+        doDeleteAZAndVerify(
+            defaultProvider.uuid, defaultRegion.uuid, randomUUID, BAD_REQUEST, true);
     Assert.assertThat(
         json.get("error").toString(),
         CoreMatchers.containsString("Invalid Region/AZ UUID:" + randomUUID));
@@ -146,7 +156,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   public void testDeleteAvailabilityZoneWithValidParams() {
     AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "AZ 1", "subnet-1");
 
-    JsonNode json = doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid, az.uuid, OK);
+    JsonNode json =
+        doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid, az.uuid, OK, false);
     az = AvailabilityZone.find.byId(az.uuid);
     assertTrue(json.get("success").asBoolean());
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -154,7 +165,11 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   }
 
   private JsonNode doDeleteAZAndVerify(
-      UUID providerUUID, UUID regionUUID, UUID zoneUUID, int expectedStatus) {
+      UUID providerUUID,
+      UUID regionUUID,
+      UUID zoneUUID,
+      int expectedStatus,
+      boolean isYWServiceException) {
     String uri =
         "/api/customers/"
             + defaultCustomer.uuid
@@ -164,12 +179,20 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             + regionUUID
             + "/zones/"
             + zoneUUID;
-    Result result = FakeApiHelper.doRequest("DELETE", uri);
+    Result result;
+    if (isYWServiceException) {
+      result =
+          assertThrows(YWServiceException.class, () -> FakeApiHelper.doRequest("DELETE", uri))
+              .getResult();
+    } else {
+      result = FakeApiHelper.doRequest("DELETE", uri);
+    }
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
   }
 
-  private JsonNode doListAZAndVerifyResult(UUID cloudProvider, UUID region, int expectedStatus) {
+  private JsonNode doListAZAndVerifyResult(
+      UUID cloudProvider, UUID region, int expectedStatus, boolean isYWServiceException) {
     String uri =
         "/api/customers/"
             + defaultCustomer.uuid
@@ -178,13 +201,24 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             + "/regions/"
             + region
             + "/zones";
-    Result result = FakeApiHelper.doRequest("GET", uri);
+    Result result;
+    if (isYWServiceException) {
+      result =
+          assertThrows(YWServiceException.class, () -> FakeApiHelper.doRequest("GET", uri))
+              .getResult();
+    } else {
+      result = FakeApiHelper.doRequest("GET", uri);
+    }
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
   }
 
   private JsonNode doCreateAZAndVerifyResult(
-      UUID cloudProvider, UUID region, ObjectNode azRequestJson, int expectedStatus) {
+      UUID cloudProvider,
+      UUID region,
+      ObjectNode azRequestJson,
+      int expectedStatus,
+      boolean isYWServiceException) {
 
     String uri =
         "/api/customers/"
@@ -197,9 +231,23 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
     Result result;
     if (azRequestJson != null) {
-      result = FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson);
+      if (isYWServiceException) {
+        result =
+            assertThrows(
+                    YWServiceException.class,
+                    () -> FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson))
+                .getResult();
+      } else {
+        result = FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson);
+      }
     } else {
-      result = FakeApiHelper.doRequest("POST", uri);
+      if (isYWServiceException) {
+        result =
+            assertThrows(YWServiceException.class, () -> FakeApiHelper.doRequest("POST", uri))
+                .getResult();
+      } else {
+        result = FakeApiHelper.doRequest("POST", uri);
+      }
     }
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
