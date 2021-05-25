@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
@@ -52,7 +53,7 @@ public class TabletServerController extends AuthenticatedController {
                 tabletServers.add(tabletServer.getHost());
               });
     } catch (Exception e) {
-      return internalServerError("Error: " + e.getMessage());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Error: " + e.getMessage());
     } finally {
       ybService.closeClient(client, null);
     }
@@ -69,7 +70,7 @@ public class TabletServerController extends AuthenticatedController {
    */
   public Result listTabletServers(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
@@ -77,7 +78,7 @@ public class TabletServerController extends AuthenticatedController {
     if (masterLeaderIPAddr.isEmpty()) {
       final String errMsg = "Could not find the master leader address in universe " + universeUUID;
       LOG.error(errMsg);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, errMsg);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
 
     JsonNode response;
@@ -86,11 +87,10 @@ public class TabletServerController extends AuthenticatedController {
       final int masterHttpPort = universe.getUniverseDetails().communicationPorts.masterHttpPort;
       final String masterLeaderUrl =
           String.format("http://%s:%s/api/v1/tablet-servers", masterLeaderIPAddr, masterHttpPort);
-
       response = apiHelper.getRequest(masterLeaderUrl);
     } catch (Exception e) {
       LOG.error("Failed to get list of tablet servers in universe " + universeUUID, e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     return ApiResponse.success(response);
   }
