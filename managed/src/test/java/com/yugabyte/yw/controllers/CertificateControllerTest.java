@@ -2,6 +2,18 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -14,43 +26,24 @@ import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-import org.apache.commons.io.FileUtils;
-import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.mvc.Result;
-import play.test.Helpers;
-import play.test.WithApplication;
-
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
 import java.util.Date;
-import java.util.UUID;
 import java.util.LinkedHashMap;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.test.Helpers.contentAsString;
-import static org.mockito.Mockito.when;
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import java.util.List;
+import java.util.UUID;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.runners.MockitoJUnitRunner;
+import play.libs.Json;
+import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CertificateControllerTest extends FakeDBApplication {
