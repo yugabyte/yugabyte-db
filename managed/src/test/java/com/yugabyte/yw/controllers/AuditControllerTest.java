@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -132,9 +133,13 @@ public class AuditControllerTest extends FakeDBApplication {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_info";
     Result result =
-        route(
-            fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
-                .cookie(validCookie));
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    route(
+                        fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
+                            .cookie(validCookie)))
+            .getResult();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }
@@ -157,9 +162,13 @@ public class AuditControllerTest extends FakeDBApplication {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_user";
     Result result =
-        route(
-            fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
-                .cookie(validCookie));
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    route(
+                        fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
+                            .cookie(validCookie)))
+            .getResult();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }
