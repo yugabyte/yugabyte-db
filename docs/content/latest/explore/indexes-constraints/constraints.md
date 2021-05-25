@@ -1,172 +1,299 @@
 ---
-title: Indexes
-linkTitle: Indexes
-description: Using indexes
-headcontent: Indexes
+title: Constraints
+linkTitle: Constraints
+description: Defining constraints
+headcontent: Constraints
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: indexes-constraints-indexes-1
+    identifier: indexes-constraints-constraints
     parent: explore-indexes-constraints
     weight: 300
 isTocNested: true
 showAsideToc: true
 ---
 
-The use of indexes can enhance database performance by enabling the database server to find rows faster. 
+YSQL allows you to define primary and foreign keys, as well as check values based on various criteria.
 
-YSQL allows you to create, drop, and list indexes, as well as use indexes on expressions.
+## Primary Key
 
-## Creating Indexes
+A primary key is a means to identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../using-the-unique-index/) applied to the table columns. 
 
-You create indexes in YSQL using the `CREATE INDEX` statement that has the following syntax:
+Most commonly, the primary key is added to the table when the table is created, as demonstrated by the following syntax:
 
 ```
-CREATE INDEX index_name ON table_name(column_list);
+CREATE TABLE (
+  column1 data_type PRIMARY KEY,
+  column2 data_type,
+  column3 data_type,
+  …
+);
 ```
 
-*column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index.
-
-You can also create a functional-based index, in which case you would replace *column_list* with an expression. For more information, see [Using Indexes on Expressions](#using-indexes-on-expressions).
-
-The only type of index that is currently supported by YSQL is called LSM (log-structured merge-tree). This index is based on YugabyteDB's DocDB storage and is similar in functionality to PostgreSQL's B-tree. When you create an index, you do not need to specify the type because YSQL always maps it to LSM; if you do specify the type, such as `btree`, in your `CREATE INDEX` statement, you will receive a notification about replacement of the `btree` method with `lsm`. 
-
-You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC Examples](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
-
-You can use the `EXPLAIN` statement to check if a query uses an index.
-
-Suppose you work with a database that includes the following table populated with data:
+Suppose you work with a database that requires the following table to be created:
 
 ```sql
 CREATE TABLE employees (
-  employee_no integer,
+  employee_no integer PRIMARY KEY,
   name text,
   department text
 );
 ```
 
-```sql
-INSERT INTO employees VALUES 
-(1221, 'John Smith', 'Marketing'),
-(1222, 'Bette Davis', 'Sales'),
-(1223, 'Lucille Ball', 'Operations'); 
+The primary key of the `employees` table is `employee_no`, which uniquely identifies an employee.
+
+The following syntax the primary key definition for more than one column:
+
+```
+CREATE TABLE (
+  column1 data_type,
+  column2 data_type,
+  column3 data_type,
+  …
+  PRIMARY KEY (column1, column2)
+);
 ```
 
-The following example shows a query that finds employees working in Operations:
-
-```sql
-SELECT * FROM employees WHERE department = 'Operations';
-```
-
-To process the preceding query, the whole `employees` table needs to be scanned. For large organizations, this might take significant amount of time.
-
-To speed up the process, you create an index for the department column, as follows:
-
-```sql
-CREATE INDEX index_employees_department
-  ON employees(department);
-```
-
-The following example executes the query after the index has been applied to `department` and uses the `EXPLAIN` statement to prove that the index participated in the processing of the query:
+The following example creates the `employees` table in which the primary key is a combination of `employee_no` and `name`:
 
 ```sql
-EXPLAIN SELECT * FROM employees WHERE department = 'Operations';
+CREATE TABLE employees (
+  employee_no integer,
+  name text,
+  department text,
+  PRIMARY KEY (employee_no, name)
+);
 ```
 
-The following is the output produced by the preceding example:
+YSQL assigns a default name in the format `tablename_pkey` to the primary key constraint. In the preceding example, it is `employees_pkey`. If you need a different name, you can specify it using the `CONSTRAINT` clause, as per the following syntax:
 
 ```
-QUERY PLAN                        
------------------------------------------------------------------------------------
-Index Scan using index_employees_department on employees (cost=0.00..5.22 rows=10 width=68)
-Index Cond: (department = 'Operations'::text)
+CONSTRAINT constraint_name PRIMARY KEY(column1, column2, ...);
 ```
 
-For additional information, see [Create Index](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique).
-
-## Removing Indexes
-
-You can remove one or more existing indexes using the `DROP INDEX` statement that has the following syntax:
+In some cases you might decide to define a primary key for an existing table. To do this, you use the `ALTER TABLE` statement, as per the following syntax:
 
 ```
-DROP INDEX index_name1, index_name2, index_name3, ... ;
+ALTER TABLE table_name ADD PRIMARY KEY (column1, column2);
 ```
 
-The following example shows how to remove `index_employees_department` that was created in [Creating Indexes](#creating-indexes):
+The `ALTER TABLE` statement also allows you to add an auto-incremented primary key to an existing table by using the [SERIAL type](https://docs.yugabyte.com/latest/explore/ysql-language-features/data-types/#serial-pseudotype), as per the following syntax:
+
+```
+ALTER TABLE table_name ADD COLUMN ID SERIAL PRIMARY KEY;
+```
+
+You can remove a primary key constraint by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
+
+```
+ALTER TABLE table_name DROP CONSTRAINT primary_key_constraint;
+```
+
+The following example shows how to remove the primary key constraint from the `employees` table:
+
+```
+ALTER TABLE employees DROP CONSTRAINT employees_pkey;
+```
+
+For more information and examples, see the following: 
+
+- [Primary Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
+- [Table with Primary Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
+- [Primary Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS)
+
+## Foreign Key
+
+A foreign key represents one or more columns in a table referencing the primary key of another table.
+
+Tables can have multiple foreign keys.
+
+To define a foreign key, you use the foreign key constraint which enables you to maintain the referential integrity of data between two tables: values in columns in one table equal the values in columns in another table.
+
+You define the foreign key constraint using the following syntax:
+
+```
+[CONSTRAINT fk_name] 
+  FOREIGN KEY(fk_columns) 
+    REFERENCES parent_table(parent_key_columns)
+    [ON DELETE delete_action]
+    [ON UPDATE update_action]
+```
+
+Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you omit it, an auto-generated name is provided by YSQL. The `REFERENCES` clause specifies the parent table and its columns referenced by the *fk_columns*. Defining actions is also optional; if defined, they determine the behaviors when the primary key in the parent table is deleted or, rarely, updated. YSQL allows you to perform the following actions: 
+
+- `SET NULL` - when the referenced rows in the parent table are deleted or updated, foreign key columns in the referencing rows of the child table are automatically set to `NULL` .
+- `SET DEFAULT` - when the referenced rows of the parent table are deleted or updated, the default value is set to the foreign key column of the referencing rows in the child table. 
+- `RESTRICT` - when the referenced rows in the parent table are deleted or updated, deletion of a referenced row is prevented.
+- `CASCADE` - when the referenced rows in the parent table are deleted or updated, the referencing rows in the child table are deleted or updated.
+- `NO ACTION` (default) - when the referenced rows in the parent table are deleted or updated, no action is taken.
+
+The following example creates two tables:
 
 ```sql
-DROP INDEX index_employees_department;
+CREATE TABLE employees(
+  employee_no integer GENERATED ALWAYS AS IDENTITY,
+  name text NOT NULL,
+  department text,
+  PRIMARY KEY(employee_no)
+);
+
+CREATE TABLE contacts(
+  contact_id integer GENERATED ALWAYS AS IDENTITY,
+  employee_no integer,
+  contact_name text NOT NULL,
+  phone integer,
+  email text,
+  PRIMARY KEY(contact_id),
+  CONSTRAINT fk_employee
+    FOREIGN KEY(employee_no) 
+      REFERENCES employees(employee_no)
+);
 ```
 
-If you execute the same `SELECT` query with the `EXPLAIN` statement as in [Creating Indexes](#creating-indexes), the query plan will not include any information about the index. 
+In the preceding example, the parent table is `employees` and the child table is `contacts`. Each employee has any number of contacts, and each contact belongs to no more than one employee. The `employee_no` column in the `contacts` table is the foreign key column that references the primary key column with the same name in the `employees` table. The `fk_customer` foreign key constraint in the `contacts` table defines the `employee_no` as the foreign key. Since `fk_customer` is not associated with any action, `NO ACTION` is applied by default.
 
-## Listing Indexes
-
-YSQL inherits all the functionality of the PostgeSQL `pg_indexes` view that allows you to retrieve a list of all indexes in the database as well as detailed information about every index.
-
-For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
-
-## Using the UNIQUE Index
-
-If you need values in some of the columns to be unique, you can specify a B-tree index as `UNIQUE`. 
-
-When a `UNIQUE` index applied to two or more columns, the combined values in these columns cannot be duplicated in multiple rows. Note that since a `NULL` value is treated as distinct value, you can have multiple `NULL` values in a column with a `UNIQUE` index.
-
-If a table has primary key or a `UNIQUE` constraint defined, a corresponding `UNIQUE` index is created autumatically.
-
-The following example shows how to create a `UNIQUE` index for the `employee_no` column in the `employees` table from [Creating Indexes](#creating-indexes):
+The following example shows how to create the same `contacts` table with a `CASCADE` action `ON DELETE`:
 
 ```sql
-CREATE UNIQUE INDEX index_employees_no
-  ON employees(employee_no);
+CREATE TABLE contacts(
+  ...
+  REFERENCES employees_1(employee_no)
+  ON DELETE CASCADE
+);
 ```
 
-After the preceding statement is executed, any attempt to insert a new employee with the same `employee_no` as one of the existing employees will result in an error.
-
-For additional information and examples, see [Unique Index with HASH Column Ordering](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering).
-
-## Using Indexes on Expressions
-
-YSQL enables you to create an index based on an expression involving table columns, as per the following syntax:
+YSQL enables you to ads a foreign key constraint to an existing table by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
 
 ```
-CREATE INDEX index_name ON table_name(expression);
+ALTER TABLE child_table 
+  ADD CONSTRAINT constraint_name 
+    FOREIGN KEY (fk_columns) 
+      REFERENCES parent_table (parent_key_columns);
 ```
 
-*expression* involves table columns of the *table_name* table. When the index expression is defined, this index is used when the expression that defines the index is included in the `WHERE` or `ORDER BY` clause in the YSQL statement.
+Before altering a table with a foreign key constraint, you need to remove the existing foreign key constraint, as per the following syntax:
 
-The following example uses the `employees` table from [Creating Indexes](#creating-indexes) to show how to create an index on expression that converts the department to lowercase to improve searchability:
+```
+ALTER TABLE child_table
+  DROP CONSTRAINT constraint_fkey;
+```
+
+The next step is to add a new foreign key constraint, possibly including an action, as demonstrated by the following syntax:
+
+```
+ALTER TABLE child_table
+  ADD CONSTRAINT constraint_fk
+    FOREIGN KEY (fk_columns)
+      REFERENCES parent_table(parent_key_columns)
+      [ON DELETE action];
+```
+
+For more information and examples, see the following: 
+
+- [Foreign Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key)
+- [Table with Foreign Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
+- [Foreign Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-FK)
+
+## CHECK Constraint
+
+The YSQL `CHECK` constraints allow you to constrain values in columns based on a boolean expression. The values are evaluated with regards to meeting a specific requirement before these values are inserted or updated; if they fail the check, YSQL rejects the changes and displays a constraint violation error.
+
+In most cases, you add the `CHECK` constraint when you create a table, as demonstrated by the following example:
 
 ```sql
-CREATE INDEX index_employees_department_lc
-  ON employees(LOWER(department));
+CREATE TABLE employees (
+  employee_no integer PRIMARY KEY,
+  name text,
+  department text,
+  birth DATE CHECK (birth > '1940-01-01'),
+  salary numeric CHECK (salary > 10)
+);
 ```
 
-The following `SELECT` statement with `EXPLAIN` uses `index_employees_department_lc` to find a departments regardless of which case is used:
+The following example attempts to insert a row that violates the `CHECK` constraint into the `employees` table:
 
 ```sql
-EXPLAIN SELECT * FROM employees
-  WHERE LOWER(department) = 'operations';
+INSERT INTO employees (employee_no, name, department, birth, salary) 
+  VALUES (2001, 'Hugh Grant', 'Sales', '1963-05-05', 0);
 ```
 
-The following is the output produced by the preceding example:
+The following output shows that the execution of the `INSERT` statement failed because of the `CHECK` constraint on the `salary` column which only accepts values greater than 10:
 
 ```
-QUERY PLAN                        
------------------------------------------------------------------------------------
-Index Scan using index_employees_department_lc on employees  (cost=0.00..5.25 rows=10 width=68)
-  Index Cond: (lower(department) = 'operations'::text)
+ERROR: new row for relation "employees" violates check constraint "employees_salary_check"
+DETAIL: Failing row contains (2001, Hugh Grant, Sales, 1963-05-05, 0).
 ```
 
-## Using Partial Indexes
+The preceding output shows the name of the `CHECK` constraint as `employees_salary_check` which was assigned by default based on the table_column_check pattern. If you need a specific name for the `CHECK` constraint, you can set it, as per the following example:
 
-Partial indexes allow you to improve the query performance by reducing the index size. This is done by specifying the rows, typically within the `WHERE` clause, of a table to be indexed. 
-
-You can define a partial index using the following syntax:
-
+```sql
+(
+  ...
+  salary numeric CONSTRAINT fair_salary CHECK (salary > 10)
+  ...
+);
 ```
-CREATE INDEX index_name ON table_name(column_list) WHERE condition;
+
+YSQL also allows you to add `CHECK` constraints to existing tables by using the `ALTER TABLE` statement. The following example shows how to add a length check for the employee name in the `employees` table:
+
+```sql
+ALTER TABLE employees
+  ADD CONSTRAINT name_check CHECK (char_length(name) <= 3);
 ```
 
-For examples, see [Partial Indexes](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#partial-indexes).
+For additional examples, see [Table with CHECK constraint](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint).
+
+## UNIQUE Constraint
+
+The `UNIQUE` constraint allows you to ensure that values stored in columns are unique across rows in a table. During inserting new rows or updating existing ones, the `UNIQUE` constraint checks if the value is already in the table, in which case the change is rejected and an error is displayed.
+
+When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../indexes-1#using-the-unique-index) on these columns.
+
+The following example creates a table with a `UNIQUE` constraint for the `phone` column:
+
+```sql
+CREATE TABLE employees (
+  employee_no integer PRIMARY KEY,
+  name text,
+  department text,
+  phone integer UNIQUE
+);
+```
+
+The following example creates the same constraint for the same column of the same table, only as a table constraint:
+
+```sql
+CREATE TABLE employees (
+  employee_no integer PRIMARY KEY,
+  name text,
+  department text,
+  phone integer, 
+  UNIQUE(phone)
+);
+```
+
+The following example creates a `UNIQUE` constraint on a group of columns in a new table:
+
+```sql
+CREATE TABLE employees (
+  employee_no integer PRIMARY KEY,
+  name text,
+  department text,
+  phone integer,
+  email text
+  UNIQUE(phone, email)
+);
+```
+
+For additional examples, see [Table with UNIQUE constraint](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
+
+## NOT NULL Constraint
+
+YSQL provides a `NOT NULL` constraint as a means to control whether or not a column can accept `NULL` values. If a column has a `NOT NULL` constraint set, any attempt to insert a `NULL` value or update it with a `NULL` value results in an error.
+
+For information and examples, see the following:
+
+[Defining NOT NULL Constraint](../../ysql-language-features/data-manipulation/#defining-not-null-constraint)
+
+[Not-Null Constraints in PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-constraints.html#id-1.5.4.5.6)
 
