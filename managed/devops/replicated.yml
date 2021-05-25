@@ -234,7 +234,9 @@ components:
                 # CORS config
                 cors {
                   pathPrefixes = ["/"]
-                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}"]
+                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}",
+                    "{{repl ConfigOption "support_origin_url"}}"
+                  ]
                   supportsCredentials=true
                   allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
                   allowedHttpHeaders = ["Accept", "Origin", "Content-Type", "X-Auth-Token", "X-AUTH-YW-API-TOKEN", ${play.filters.csrf.header.name}]
@@ -350,6 +352,12 @@ config:
           name: host_ip
           value_at: 0
         required: true
+      - name: support_origin_url
+        title: Support Origin URL
+        type: text
+        value: ""
+        default: localhost:9000
+        help_text: Specify a support origin URL to be whitelisted in the CORS filter
       - name: nginx_external_port
         title: Yugaware UI Port
         type: text
