@@ -69,11 +69,11 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private CustomerTaskFormData buildCustomerTaskFromData(
-      CustomerTask task, Optional<ObjectNode> taskProgress) {
+      CustomerTask task, ObjectNode taskProgress) {
     try {
       CustomerTaskFormData taskData = new CustomerTaskFormData();
-      taskData.percentComplete = taskProgress.get().get("percent").asInt();
-      taskData.status = taskProgress.get().get("status").asText();
+      taskData.percentComplete = taskProgress.get("percent").asInt();
+      taskData.status = taskProgress.get("status").asText();
       taskData.id = task.getTaskUUID();
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();
@@ -116,16 +116,17 @@ public class CustomerTaskController extends AuthenticatedController {
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
     for (CustomerTask task : customerTaskList) {
-      Optional<ObjectNode> taskProgress = commissioner.mayGetStatus(task.getTaskUUID());
+      Optional<ObjectNode> optTaskProgress = commissioner.mayGetStatus(task.getTaskUUID());
       // If the task progress API returns error, we will log it and not add that task
       // to the task list for UI rendering.
-      if (taskProgress.isPresent()) {
-        if (taskProgress.get().has("error")) {
+      if (optTaskProgress.isPresent()) {
+        ObjectNode taskProgress = optTaskProgress.get();
+        if (taskProgress.has("error")) {
           LOG.error(
               "Error fetching Task Progress for "
                   + task.getTaskUUID()
                   + ", Error: "
-                  + taskProgress.get().get("error"));
+                  + taskProgress.get("error"));
         } else {
           CustomerTaskFormData taskData = buildCustomerTaskFromData(task, taskProgress);
           if (taskData != null) {
