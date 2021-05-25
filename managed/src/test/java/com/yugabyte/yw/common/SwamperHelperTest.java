@@ -37,11 +37,9 @@ import static org.mockito.Mockito.*;
 public class SwamperHelperTest extends FakeDBApplication {
   private Customer defaultCustomer;
 
-  @Mock
-  Configuration appConfig;
+  @Mock Configuration appConfig;
 
-  @InjectMocks
-  SwamperHelper swamperHelper;
+  @InjectMocks SwamperHelper swamperHelper;
 
   static String SWAMPER_TMP_PATH = "/tmp/swamper/";
 
@@ -68,8 +66,9 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     try {
       swamperHelper.writeUniverseTargetJson(u.universeUUID);
-      BufferedReader br = new BufferedReader(new FileReader(
-          SWAMPER_TMP_PATH + "yugabyte." + u.universeUUID + ".json"));
+      BufferedReader br =
+          new BufferedReader(
+              new FileReader(SWAMPER_TMP_PATH + "yugabyte." + u.universeUUID + ".json"));
       String line;
       StringBuilder sb = new StringBuilder();
       while ((line = br.readLine()) != null) {

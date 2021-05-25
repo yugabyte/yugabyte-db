@@ -771,7 +771,14 @@ void TSTabletManager::CreatePeerAndOpenTablet(
     const scoped_refptr<TransitionInProgressDeleter>& deleter) {
   Status s = ResultToStatus(CreateAndRegisterTabletPeer(meta, NEW_PEER));
   if (!s.ok()) {
-    LOG(DFATAL) << "Failed to create and register tablet peer: " << s;
+    s = s.CloneAndPrepend("Failed to create and register tablet peer");
+    if (s.IsShutdownInProgress()) {
+      // If shutdown is in progress, it is not a failure to not being able to create and register
+      // tablet peer.
+      LOG_WITH_PREFIX(WARNING) << s;
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << s;
+    }
     return;
   }
   s = open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter));
@@ -880,8 +887,10 @@ Status TSTabletManager::ApplyTabletSplit(
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
   }
 
-  meta.set_tablet_data_state(tablet::TABLET_DATA_SPLIT_COMPLETED);
+  meta.SetSplitDone(op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id());
   RETURN_NOT_OK(meta.Flush());
+
+  tablet->SplitDone();
 
   for (auto& tcmeta : tcmetas) {
     // Call CreatePeerAndOpenTablet asynchronously to avoid write-locking TSTabletManager::mutex_
@@ -1209,7 +1218,7 @@ Status TSTabletManager::DeleteTablet(
   //
   // Note: This might change for PITR.
   bool delete_data = delete_type == TABLET_DATA_DELETED || delete_type == TABLET_DATA_TOMBSTONED;
-  tablet_peer->Shutdown(tablet::IsDropTable(delete_data));
+  RETURN_NOT_OK(tablet_peer->Shutdown(tablet::IsDropTable(delete_data)));
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
@@ -1380,8 +1389,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
         tablet_prepare_pool(),
-        &retryable_requests,
-        bootstrap_info.split_op_info);
+        &retryable_requests);
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -1570,7 +1578,7 @@ Status TSTabletManager::RegisterTablet(const TabletId& tablet_id,
   std::lock_guard<RWMutex> lock(mutex_);
   if (ClosingUnlocked()) {
     auto result = STATUS_FORMAT(
-        IllegalState, "Unable to register tablet peer: $0: closing", tablet_id);
+        ShutdownInProgress, "Unable to register tablet peer: $0: closing", tablet_id);
     LOG(WARNING) << result;
     return result;
   }

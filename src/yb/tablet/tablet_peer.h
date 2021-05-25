@@ -55,7 +55,6 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/operation_order_verifier.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/preparer.h"
@@ -68,10 +67,6 @@
 using yb::consensus::StateChangeContext;
 
 namespace yb {
-
-namespace log {
-class LogAnchorRegistry;
-}
 
 namespace tserver {
 class CatchUpServiceTest;
@@ -166,8 +161,7 @@ class TabletPeer : public consensus::ConsensusContext,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
-      consensus::RetryableRequests* retryable_requests,
-      const consensus::SplitOpInfo& split_op_info);
+      consensus::RetryableRequests* retryable_requests);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -180,7 +174,10 @@ class TabletPeer : public consensus::ConsensusContext,
   // Completes shutdown process and waits for it's completeness.
   void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
-  void Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  // Abort active transactions on the tablet after shutdown is initiated.
+  CHECKED_STATUS AbortSQLTransactions();
+
+  CHECKED_STATUS Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
   // Check that the tablet is in a RUNNING state.
   CHECKED_STATUS CheckRunning() const;
@@ -233,8 +230,9 @@ class TabletPeer : public consensus::ConsensusContext,
   consensus::RaftConsensus* raft_consensus() const;
 
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
+  std::shared_ptr<consensus::RaftConsensus> shared_raft_consensus() const;
 
-  Tablet* tablet() const {
+  Tablet* tablet() const EXCLUDES(lock_) {
     std::lock_guard<simple_spinlock> lock(lock_);
     return tablet_.get();
   }
@@ -427,7 +425,6 @@ class TabletPeer : public consensus::ConsensusContext,
   std::atomic<bool> has_consensus_ = {false};
 
   OperationTracker operation_tracker_;
-  OperationOrderVerifier operation_order_verifier_;
 
   scoped_refptr<log::Log> log_;
   std::atomic<log::Log*> log_atomic_{nullptr};
@@ -491,6 +488,8 @@ class TabletPeer : public consensus::ConsensusContext,
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
   rpc::Scheduler& scheduler() const override;
+  CHECKED_STATUS CheckOperationAllowed(
+      const OpId& op_id, consensus::OperationType op_type) override;
 
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);

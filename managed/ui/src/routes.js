@@ -5,7 +5,6 @@ import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 import _ from 'lodash';
 import axios from 'axios';
-import { toast } from 'react-toastify';
 
 import {
   validateToken,
@@ -66,40 +65,42 @@ export const clearCredentials = () => {
   browserHistory.push('/');
 };
 
-function autoLogin(params)
-{
-      const { authToken, customerUUID, userUUID } = params;
-      localStorage.setItem('authToken', authToken);
-      localStorage.setItem('customerId', customerUUID);
-      localStorage.setItem('userId', userUUID);
-      Cookies.set('authToken',authToken)
-      Cookies.set('customerId',customerUUID)
-      Cookies.set('userId',userUUID);
-      browserHistory.replace({
-        search: '',
-      })
-      browserHistory.push('/');
+const autoLogin = (params) => {
+  const { authToken, customerUUID, userUUID } = params;
+  localStorage.setItem('authToken', authToken);
+  localStorage.setItem('customerId', customerUUID);
+  localStorage.setItem('userId', userUUID);
+  Cookies.set('authToken',authToken)
+  Cookies.set('customerId',customerUUID)
+  Cookies.set('userId',userUUID);
+  browserHistory.replace({
+    search: '',
+  })
+  browserHistory.push('/');
 }
 
-let expirationToastVisible = false;
+/**
+ * Checks that url query parameters contains only authToken, customerUUID,
+ * and userUUID. If additional parameters are in url, returns false
+ * @param {Object} params
+ * @returns true if and only if all authentication parameters are in url
+ */
+const checkAuthParamsInUrl = (params) => {
+  const urlParams = Object.keys(params).sort();
+  const expectedParams = ['authToken', 'customerUUID', 'userUUID'];
+  return _.isEqual(urlParams, expectedParams);
+};
 
-// global interceptor catching all responses with unauthorised code
+// global interceptor catching all api responses with unauthorised code
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     // skip 403 response for "/login" and "/register" endpoints
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 403;
-
-    // make sure there's a single session expired toast visible at a time
-    if (isUnauthorised && !isAllowedUrl && !expirationToastVisible) {
-      expirationToastVisible = true;
-      toast.error('Your session has expired, please login again', {
-        onClose: () => expirationToastVisible = false
-      });
+    if (isUnauthorised && !isAllowedUrl) {
       browserHistory.push('/login');
     }
-
     return Promise.reject(error);
   }
 );
@@ -173,14 +174,14 @@ function validateSession(store, replacePath, callback) {
 
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
-  const params = nextState?.location?.query;
-
-  if(!isNullOrEmpty(params)) {
-       autoLogin(params);
-       validateSession(store, replace, callback);
-  }
-  else
-    validateSession(store, replace, callback);
+    const params = nextState?.location?.query;
+    if(!isNullOrEmpty(params) && checkAuthParamsInUrl(params)) {
+      autoLogin(params);
+      validateSession(store, replace, callback);
+    }
+    else {
+      validateSession(store, replace, callback);
+    }
   };
 
   const checkIfAuthenticated = (prevState, nextState, replace, callback) => {

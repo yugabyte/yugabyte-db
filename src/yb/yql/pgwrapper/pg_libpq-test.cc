@@ -1973,7 +1973,7 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutGC)) {
   NamespaceName test_name = "test_pgsql_table";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  // Create Table: will timeout because the admin setting is lower than the DB create latency.
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
@@ -2004,7 +2004,7 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndResta
   NamespaceName test_name = "test_pgsql_table";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  // Create Table: will timeout because the admin setting is lower than the DB create latency.
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
@@ -2039,6 +2039,59 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndResta
     WARN_NOT_OK(ResultToStatus(ret), "");
     return ret.ok() && ret.get() == false;
   }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
+}
+
+class PgLibPqIndexTableTimeoutTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=10");
+  }
+};
+
+TEST_F(PgLibPqIndexTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableTimeoutGC)) {
+  const string kDatabaseName ="yugabyte";
+  NamespaceName test_name = "test_pgsql_table";
+  NamespaceName test_name_idx = test_name + "_idx";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Lower the delays so we successfully create this first table.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "10"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_slow_table_create_secs", "0"));
+
+  // Create Table that Index will be set on.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
+  }
+
+  // After successfully creating the first table, set to flags similar to: PgLibPqTableTimeoutTest.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "13000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_slow_table_create_secs", "12"));
+
+  // Create Index: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE INDEX " + test_name_idx + " ON " + test_name + "(key)"));
+  }
+
+  // Wait for DocDB Table creation, even though it will fail in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Requesting TableExists";
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name_idx));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(40), "Verify Index Table was created in DocDB"));
+
+  // DocDB will notice the PG layer failure because the transaction aborts.
+  // Confirm that DocDB async deletes the namespace.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name_idx));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(40), "Verify Index Table was removed by Transaction GC"));
 }
 
 namespace {

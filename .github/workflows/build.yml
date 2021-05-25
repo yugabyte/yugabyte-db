@@ -9,6 +9,7 @@ on:
     paths-ignore:
       - README.md
       - 'docs/**'
+      - 'architecture/**'
 
   pull_request:
     branches:
@@ -16,6 +17,7 @@ on:
     paths-ignore:
       - README.md
       - 'docs/**'
+      - 'architecture/**'
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:

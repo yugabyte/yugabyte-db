@@ -38,6 +38,8 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/transaction_dump.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
@@ -220,8 +222,8 @@ class TransactionState {
 
     if (replicating_ != nullptr) {
       auto replicating_op_id = replicating_->consensus_round()->id();
-      if (replicating_op_id.IsInitialized()) {
-        if (OpId::FromPB(replicating_op_id) != data.op_id) {
+      if (!replicating_op_id.empty()) {
+        if (replicating_op_id != data.op_id) {
           LOG_WITH_PREFIX(DFATAL)
               << "Replicated unexpected operation, replicating: " << AsString(replicating_)
               << ", replicated: " << AsString(data);
@@ -478,7 +480,14 @@ class TransactionState {
 
     auto it = involved_tablets_.find(state.tablets(0));
     if (it == involved_tablets_.end()) {
-      LOG_WITH_PREFIX(DFATAL) << "Applied in unknown tablet: " << state.tablets(0);
+      // This can happen when transaction coordinator retried apply to post-split tablets,
+      // transaction coordinator moved to new status tablet leader and here new transaction
+      // coordinator receives notification about txn is applied in post-split tablet not yet known
+      // to new transaction coordinator.
+      // It is safe to just log warning and ignore, because new transaction coordinator is sending
+      // again apply requests to all involved tablet it knows and will be retrying for ones that
+      // will reply have been already split.
+      LOG_WITH_PREFIX(WARNING) << "Applied in unknown tablet: " << state.tablets(0);
       return Status::OK();
     }
     if (!it->second.all_intents_applied) {
@@ -692,6 +701,8 @@ class TransactionState {
       return status;
     }
 
+    YB_TRANSACTION_DUMP(Commit, id_, data.hybrid_time, data.state.tablets().size());
+
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
@@ -724,6 +735,9 @@ class TransactionState {
                         << ", leader: " << context_.leader();
     last_touch_ = data.hybrid_time;
     status_ = TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
+
+    YB_TRANSACTION_DUMP(Applied, id_, data.hybrid_time);
+
     return Status::OK();
   }
 

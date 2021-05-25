@@ -97,6 +97,8 @@ class CassandraRow {
 
   CassandraRowIterator CreateIterator() const;
 
+  std::string RenderToString(const std::string& separator = ",");
+
   void TakeIterator(CassIteratorPtr iterator);
 
  private:
@@ -126,6 +128,9 @@ class CassandraResult {
   explicit CassandraResult(const CassResult* result) : cass_result_(result) {}
 
   CassandraIterator CreateIterator() const;
+
+  std::string RenderToString(const std::string& line_separator = ";",
+                             const std::string& value_separator = ",") const;
 
  private:
   CassResultPtr cass_result_;
@@ -236,6 +241,8 @@ class CassandraSession {
 
   Result<CassandraResult> ExecuteWithResult(const std::string& query);
 
+  Result<std::string> ExecuteAndRenderToString(const std::string& statement);
+
   template <class Action>
   CHECKED_STATUS ExecuteAndProcessOneRow(
       const CassandraStatement& statement, const Action& action) {
@@ -279,10 +286,13 @@ class CassandraSession {
   CassSessionPtr cass_session_;
 };
 
+YB_STRONGLY_TYPED_BOOL(UsePartitionAwareRouting);
+
 class CppCassandraDriver {
  public:
   CppCassandraDriver(
-      const std::vector<std::string>& hosts, uint16_t port, bool use_partition_aware_routing);
+      const std::vector<std::string>& hosts, uint16_t port,
+      UsePartitionAwareRouting use_partition_aware_routing);
 
   ~CppCassandraDriver();
 

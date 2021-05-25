@@ -134,11 +134,13 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // Apply may begin to perform processing in the background for the call (e.g looking up the
   // tablet, etc).
-  // If Apply returns an error status, session is switched to a failed state and might only be
-  // used again after Reset.
-  // Until reset, subsequent calls to Apply and Flush will return an error.
   //
-  // This is thread safe.
+  // If Apply returns an error status, session is switched to a failed state and might only be
+  // used again after Abort or SetTransaction. Session users shouldn't call flush in this case.
+  //
+  // Until Abort or SetTransaction, subsequent calls to Apply and Flush will return an error. It is
+  // important that in this case call to flush won't provide per-operations list of errors, just
+  // general error status.
   CHECKED_STATUS Apply(YBOperationPtr yb_op);
   CHECKED_STATUS ApplyAndFlush(YBOperationPtr yb_op);
 
@@ -154,7 +156,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // Async version invokes callback as soon as all operations have been flushed and passes
   // general status and which specific operations failed.
-
+  //
   // In the case that the async version of this method is used, then the callback
   // will be called upon completion of the operations which were buffered since the
   // last flush. In other words, in the following sequence:
@@ -187,10 +189,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Abort the unflushed or in-flight operations in the session.
   void Abort();
 
-  // Resets the session by aborting it and cleaning any operations/errors, so it can be reused.
-  // Note: this doesn't reset transaction used by session.
-  void Reset();
-
   // Close the session.
   // Returns Status::IllegalState() if 'force' is false and there are still pending
   // operations. If 'force' is true batcher_ is aborted even if there are pending
@@ -207,17 +205,14 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Return the number of buffered operations. These are operations that have
   // not yet been flushed - i.e they are not en-route yet.
   //
-  // Note that this is different than HasPendingOperations() above, which includes
+  // Note that this is different than TEST_HasPendingOperations() above, which includes
   // operations which have been sent and not yet responded to.
-  //
-  // This is only relevant in MANUAL_FLUSH mode, where the result will not
-  // decrease except for after a manual Flush, after which point it will be 0.
-  // In the other flush modes, data is immediately put en-route to the destination,
-  // so this will return 0.
-  int CountBufferedOperations() const;
+  int TEST_CountBufferedOperations() const;
 
-  // Return the number of errors which are pending.
-  int CountPendingErrors() const;
+  // Returns number of operations successfully added to the session via Apply call,
+  // but not yet tried to flush.
+  // Abort/Flush* call resets this number to 0.
+  int GetAddedNotFlushedOperationsCount() const;
 
   // Allow local calls to run in the current thread.
   void set_allow_local_calls_in_curr_thread(bool flag);
@@ -264,17 +259,11 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   friend class internal::Batcher;
 
   internal::Batcher& Batcher();
-  CHECKED_STATUS CheckIfFailed();
 
   BatcherConfig batcher_config_;
 
   // Lock protecting flushed_batchers_.
   mutable simple_spinlock lock_;
-
-  std::atomic<bool> is_failed_{false};
-
-  // Buffer for errors.
-  std::shared_ptr<internal::ErrorCollector> error_collector_;
 
   // The current batcher being prepared.
   scoped_refptr<internal::Batcher> batcher_;
