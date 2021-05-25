@@ -1289,10 +1289,17 @@ AsyncSplitTablet::AsyncSplitTablet(
 void AsyncSplitTablet::HandleResponse(int attempt) {
   if (resp_.has_error()) {
     const Status s = StatusFromPB(resp_.error().status());
-    const TabletServerErrorPB::Code code = resp_.error().code();
-    LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": split (attempt " << attempt
-                             << ") failed for tablet " << tablet_id() << " with error code "
-                             << TabletServerErrorPB::Code_Name(code) << ": " << s;
+    if (s.IsAlreadyPresent()) {
+      LOG_WITH_PREFIX(INFO) << "SplitTablet RPC for tablet " << req_.tablet_id()
+                            << " on TS " << permanent_uuid() << " returned already present: "
+                            << s;
+      TransitionToCompleteState();
+    } else {
+      const TabletServerErrorPB::Code code = resp_.error().code();
+      LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": split (attempt " << attempt
+                              << ") failed for tablet " << tablet_id() << " with error code "
+                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
+    }
   } else {
     VLOG_WITH_PREFIX(1)
         << "TS " << permanent_uuid() << ": split complete on tablet " << tablet_id();
