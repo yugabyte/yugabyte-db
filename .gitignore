@@ -103,3 +103,6 @@ rrdiagram*.jar*
 target/
 
 thirdparty/
+
+# We don't use any submodules anymore.
+submodules/
