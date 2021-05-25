@@ -68,9 +68,10 @@ public class CustomerTaskController extends AuthenticatedController {
     return subTasks;
   }
 
-  private CustomerTaskFormData customerTaskFromData(
-      CustomerTask task, Optional<ObjectNode> taskProgress, CustomerTaskFormData taskData) {
+  private CustomerTaskFormData buildCustomerTaskFromData(
+      CustomerTask task, Optional<ObjectNode> taskProgress) {
     try {
+      CustomerTaskFormData taskData = new CustomerTaskFormData();
       taskData.percentComplete = taskProgress.get().get("percent").asInt();
       taskData.status = taskProgress.get().get("status").asText();
       taskData.id = task.getTaskUUID();
@@ -115,7 +116,6 @@ public class CustomerTaskController extends AuthenticatedController {
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
     for (CustomerTask task : customerTaskList) {
-      CustomerTaskFormData taskData = new CustomerTaskFormData();
       Optional<ObjectNode> taskProgress = commissioner.mayGetStatus(task.getTaskUUID());
       // If the task progress API returns error, we will log it and not add that task
       // to the task list for UI rendering.
@@ -127,12 +127,12 @@ public class CustomerTaskController extends AuthenticatedController {
                   + ", Error: "
                   + taskProgress.get().get("error"));
         } else {
-          taskData = customerTaskFromData(task, taskProgress, taskData);
+          CustomerTaskFormData taskData = buildCustomerTaskFromData(task, taskProgress);
           if (taskData != null) {
             List<CustomerTaskFormData> taskList =
                 taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
             taskList.add(taskData);
-            taskListMap.put(task.getTargetUUID(), taskList);
+            taskListMap.putIfAbsent(task.getTargetUUID(), taskList);
           }
         }
       }
