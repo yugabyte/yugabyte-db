@@ -394,9 +394,7 @@ export default class ListBackups extends Component {
 
     // Check for in-progress backups and mark them as unselctable.
     selectRowProp.unselectable = backupInfos
-      .filter((backup) => {
-        return backup.status === 'InProgress';
-      })
+      .filter((backup) => backup.status === 'InProgress')
       .map((data) => data.backupUUID);
 
     const formatActionButtons = (item, row) => {
