@@ -291,9 +291,8 @@ For additional examples, see [Table with UNIQUE constraint](https://docs.yugabyt
 
 YSQL provides a `NOT NULL` constraint as a means to control whether or not a column can accept `NULL` values. If a column has a `NOT NULL` constraint set, any attempt to insert a `NULL` value or update it with a `NULL` value results in an error.
 
-For information and examples, see the following:
+For additional information and examples, see the following:
 
-[Defining NOT NULL Constraint](../../ysql-language-features/data-manipulation/#defining-not-null-constraint)
-
-[Not-Null Constraints in PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-constraints.html#id-1.5.4.5.6)
+- [Defining NOT NULL Constraint](../../ysql-language-features/data-manipulation/#defining-not-null-constraint)
+- [Not-Null Constraints in PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-constraints.html#id-1.5.4.5.6)
 
