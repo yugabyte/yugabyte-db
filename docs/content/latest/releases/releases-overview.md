@@ -67,7 +67,6 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.5 | November 2020 |
 | v2.4 (stable) | mid-January 2021 |
 | v2.7 | May 2021 |
 | v2.6 (stable) | June 2021 |
