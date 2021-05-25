@@ -130,9 +130,9 @@ typedef struct cypher_node
 
 typedef enum
 {
-    CYPHER_REL_DIR_NONE,
-    CYPHER_REL_DIR_LEFT,
-    CYPHER_REL_DIR_RIGHT
+    CYPHER_REL_DIR_NONE = 0,
+    CYPHER_REL_DIR_LEFT = -1,
+    CYPHER_REL_DIR_RIGHT = 1
 } cypher_rel_dir;
 
 // -[ name :label props ]-

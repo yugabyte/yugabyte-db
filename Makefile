@@ -50,6 +50,7 @@ OBJS = src/backend/age.o \
        src/backend/utils/adt/agtype_ops.o \
        src/backend/utils/adt/agtype_parser.o \
        src/backend/utils/adt/agtype_util.o \
+       src/backend/utils/adt/agtype_vle.o \
        src/backend/utils/adt/cypher_funcs.o \
        src/backend/utils/adt/ag_float8_supp.o \
        src/backend/utils/adt/graphid.o \
@@ -73,6 +74,7 @@ REGRESS = scan \
           cypher_remove \
           cypher_delete \
           cypher_with \
+          cypher_vle \
           drop
 
 ag_regress_dir = $(srcdir)/regress

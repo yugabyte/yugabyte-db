@@ -27,6 +27,7 @@
 #define AG_AGTYPE_H
 
 #include "fmgr.h"
+#include "access/htup_details.h"
 #include "lib/stringinfo.h"
 #include "nodes/pg_list.h"
 #include "utils/array.h"
@@ -34,6 +35,7 @@
 #include "utils/syscache.h"
 
 #include "catalog/ag_namespace.h"
+#include "utils/graphid.h"
 
 /* Tokens used when sequentially processing an agtype value */
 typedef enum
@@ -470,6 +472,13 @@ Datum make_vertex(Datum id, Datum label, Datum properties);
 Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
                    Datum properties);
 Datum make_path(List *path);
+Datum column_get_datum(TupleDesc tupdesc, HeapTuple tuple, int column,
+                       const char *attname, Oid typid, bool isnull);
+Datum build_agtype_value_array_of_agtype_value_edges(agtype_value **ava,
+                                                     int size);
+agtype_value *agtype_value_build_edge(graphid id, char *label, graphid end_id,
+                                      graphid start_id, Datum properties);
+
 // OID of agtype and _agtype
 #define AGTYPEOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("agtype"), \

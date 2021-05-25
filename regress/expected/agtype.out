@@ -2219,7 +2219,7 @@ SELECT agtype_access_operator(_agtype_build_vertex('1'::graphid, $$label$$,
 (1 row)
 
 SELECT _agtype_build_vertex('1'::graphid, $$label$$, agtype_build_list());
-ERROR:  agtype_build_vertex() properties argument must be an object
+ERROR:  _agtype_build_vertex() properties argument must be an object
 --Vertex in a map
 SELECT agtype_build_map(
 	'vertex',

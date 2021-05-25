@@ -3710,6 +3710,15 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE OR REPLACE FUNCTION ag_catalog.age_vle(
+    IN agtype, IN agtype, IN agtype, IN agtype,
+    IN agtype, IN agtype, IN agtype,
+    OUT edges agtype)
+RETURNS SETOF agtype
+LANGUAGE C
+IMMUTABLE
+STRICT
+AS 'MODULE_PATHNAME';
 --
 -- End
 --

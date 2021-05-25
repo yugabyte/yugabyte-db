@@ -1566,7 +1566,8 @@ reserved_keyword:
  */
 
 safe_keywords:
-    AND
+    AND          { $$ = pnstrdup($1, 3); }
+    | ANALYZE    { $$ = pnstrdup($1, 7); }
     | AS         { $$ = pnstrdup($1, 2); }
     | ASC        { $$ = pnstrdup($1, 3); }
     | ASCENDING  { $$ = pnstrdup($1, 9); }
@@ -1583,6 +1584,7 @@ safe_keywords:
     | ELSE       { $$ = pnstrdup($1, 4); }
     | ENDS       { $$ = pnstrdup($1, 4); }
     | EXISTS     { $$ = pnstrdup($1, 6); }
+    | EXPLAIN    { $$ = pnstrdup($1, 7); }
     | IN         { $$ = pnstrdup($1, 2); }
     | IS         { $$ = pnstrdup($1, 2); }
     | LIMIT      { $$ = pnstrdup($1, 6); }
@@ -1597,6 +1599,7 @@ safe_keywords:
     | STARTS     { $$ = pnstrdup($1, 6); }
     | THEN       { $$ = pnstrdup($1, 4); }
     | WHEN       { $$ = pnstrdup($1, 4); }
+    | VERBOSE    { $$ = pnstrdup($1, 7); }
     | WHERE      { $$ = pnstrdup($1, 5); }
     | WITH       { $$ = pnstrdup($1, 4); }
     ;

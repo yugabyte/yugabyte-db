@@ -141,9 +141,7 @@ static uint64 get_edge_uniqueness_value(Datum d, Oid type, bool is_null,
                                         int index);
 /* graph entity retrieval */
 static Datum get_vertex(const char *graph, const char *vertex_label,
-                         int64 graphid);
-static Datum column_get_datum(TupleDesc tupdesc, HeapTuple tuple, int column,
-                        const char *attname, Oid typid, bool isnull);
+                        int64 graphid);
 static char *get_label_name(const char *graph_name, int64 graph_id);
 static float8 get_float_compatible_arg(Datum arg, Oid type, char *funcname,
                                        bool *is_null);
@@ -154,6 +152,8 @@ static agtype_value *string_to_agtype_value(char *s);
 agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
                                                  int variadic_offset,
                                                  int expected_nargs);
+static agtype_value *integer_to_agtype_value(int64 int_value);
+
 PG_FUNCTION_INFO_V1(agtype_in);
 
 /*
@@ -173,8 +173,10 @@ PG_FUNCTION_INFO_V1(agtype_out);
  */
 Datum agtype_out(PG_FUNCTION_ARGS)
 {
-    agtype *agt = AG_GET_ARG_AGTYPE_P(0);
-    char *out;
+    agtype *agt = NULL;
+    char *out = NULL;
+
+    agt = AG_GET_ARG_AGTYPE_P(0);
 
     out = agtype_to_cstring(NULL, &agt->root, VARSIZE(agt));
 
@@ -1646,6 +1648,18 @@ static agtype_value *string_to_agtype_value(char *s)
     return agtv;
 }
 
+/* helper function to create an agtype_value integer from an integer */
+static agtype_value *integer_to_agtype_value(int64 int_value)
+{
+    agtype_value *agtv = palloc(sizeof(agtype_value));
+
+    agtv->type = AGTV_INTEGER;
+    agtv->val.int_value = int_value;
+
+    return agtv;
+}
+
+
 PG_FUNCTION_INFO_V1(_agtype_build_path);
 
 /*
@@ -1798,7 +1812,7 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
     if (fcinfo->argnull[0])
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("agtype_build_vertex() graphid cannot be NULL")));
+                 errmsg("_agtype_build_vertex() graphid cannot be NULL")));
 
     id = AG_GETARG_GRAPHID(0);
     add_agtype(id, false, &result, GRAPHIDOID, false);
@@ -1809,7 +1823,7 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
 
     if (fcinfo->argnull[1])
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("agtype_build_vertex() label cannot be NULL")));
+                        errmsg("_agtype_build_vertex() label cannot be NULL")));
 
     result.res =
         push_agtype_value(&result.parse_state, WAGT_VALUE,
@@ -1836,7 +1850,7 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
                 ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg(
-                     "agtype_build_vertex() properties argument must be an object")));
+                     "_agtype_build_vertex() properties argument must be an object")));
 
         add_agtype((Datum)properties, false, &result, AGTYPEOID, false);
     }
@@ -1872,41 +1886,17 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
     result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
                                    NULL);
 
-    /* process graphid */
+    /* process graph id */
     result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
                                    string_to_agtype_value("id"));
 
     if (fcinfo->argnull[0])
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("agtype_build_edge() graphid cannot be NULL")));
+                 errmsg("_agtype_build_edge() graphid cannot be NULL")));
 
     id = AG_GETARG_GRAPHID(0);
     add_agtype(id, false, &result, GRAPHIDOID, false);
-
-    /* process startid */
-    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
-                                   string_to_agtype_value("start_id"));
-
-    if (fcinfo->argnull[1])
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("agtype_build_edge() startid cannot be NULL")));
-
-    start_id = AG_GETARG_GRAPHID(1);
-    add_agtype(start_id, false, &result, GRAPHIDOID, false);
-
-    /* process endid */
-    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
-                                   string_to_agtype_value("end_id"));
-
-    if (fcinfo->argnull[2])
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("agtype_build_edge() endid cannot be NULL")));
-
-    end_id = AG_GETARG_GRAPHID(2);
-    add_agtype(end_id, false, &result, GRAPHIDOID, false);
 
     /* process label */
     result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
@@ -1914,17 +1904,41 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
 
     if (fcinfo->argnull[3])
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("agtype_build_vertex() label cannot be NULL")));
+                        errmsg("_agtype_build_vertex() label cannot be NULL")));
 
     result.res =
         push_agtype_value(&result.parse_state, WAGT_VALUE,
                           string_to_agtype_value(PG_GETARG_CSTRING(3)));
 
+    /* process end_id */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("end_id"));
+
+    if (fcinfo->argnull[2])
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("_agtype_build_edge() endid cannot be NULL")));
+
+    end_id = AG_GETARG_GRAPHID(2);
+    add_agtype(end_id, false, &result, GRAPHIDOID, false);
+
+    /* process start_id */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("start_id"));
+
+    if (fcinfo->argnull[1])
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("_agtype_build_edge() startid cannot be NULL")));
+
+    start_id = AG_GETARG_GRAPHID(1);
+    add_agtype(start_id, false, &result, GRAPHIDOID, false);
+
     /* process properties */
     result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
                                    string_to_agtype_value("properties"));
 
-    //if the properties object is null, push an empty object
+    /* if the properties object is null, push an empty object */
     if (fcinfo->argnull[4])
     {
         result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
@@ -1941,7 +1955,7 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
                 ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg(
-                     "agtype_build_vertex() properties argument must be an object")));
+                     "_agtype_build_edge() properties argument must be an object")));
 
         add_agtype((Datum)properties, false, &result, AGTYPEOID, false);
     }
@@ -1954,15 +1968,11 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
 }
 
 Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
-                   Datum properties)
+                Datum properties)
 {
-    return DirectFunctionCall5(_agtype_build_edge,
-                     id, startid, endid,
-                     label,
-                     properties);
-
+    return DirectFunctionCall5(_agtype_build_edge, id, startid, endid, label,
+                               properties);
 }
-
 
 PG_FUNCTION_INFO_V1(agtype_build_map);
 
@@ -1990,8 +2000,7 @@ Datum agtype_build_map(PG_FUNCTION_ARGS)
             ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
              errmsg("argument list must have been even number of elements"),
-             errhint(
-                 "The arguments of agtype_build_map() must consist of alternating keys and values.")));
+             errhint("The arguments of agtype_build_map() must consist of alternating keys and values.")));
     }
 
     memset(&result, 0, sizeof(agtype_in_state));
@@ -3659,8 +3668,8 @@ Datum age_end_id(PG_FUNCTION_ARGS)
  * that the data (attribute) is what is expected. The function will error on any
  * issues.
  */
-static Datum column_get_datum(TupleDesc tupdesc, HeapTuple tuple, int column,
-                        const char *attname, Oid typid, bool isnull)
+Datum column_get_datum(TupleDesc tupdesc, HeapTuple tuple, int column,
+                       const char *attname, Oid typid, bool isnull)
 {
     Form_pg_attribute att;
     HeapTupleHeader hth;
@@ -3722,7 +3731,7 @@ static char *get_label_name(const char *graph_name, int64 graphid)
     ScanKeyInit(&scan_keys[1], Anum_ag_label_id, BTEqualStrategyNumber,
                 F_INT4EQ, Int32GetDatum(get_graphid_label_id(graphid)));
 
-    ag_label = heap_open(ag_relation_id("ag_label", "table"), RowExclusiveLock);
+    ag_label = heap_open(ag_relation_id("ag_label", "table"), ShareLock);
     scan_desc = systable_beginscan(ag_label,
                                    ag_relation_id("ag_label_graph_id_index",
                                                   "index"), true, NULL, 2,
@@ -3753,13 +3762,13 @@ static char *get_label_name(const char *graph_name, int64 graphid)
 
     /* end the scan and close the relation */
     systable_endscan(scan_desc);
-    heap_close(ag_label, RowExclusiveLock);
+    heap_close(ag_label, ShareLock);
 
     return result;
 }
 
 static Datum get_vertex(const char *graph, const char *vertex_label,
-                         int64 graphid)
+                        int64 graphid)
 {
     ScanKeyData scan_keys[1];
     Relation graph_vertex_label;
@@ -3781,7 +3790,7 @@ static Datum get_vertex(const char *graph, const char *vertex_label,
                 Int64GetDatum(graphid));
 
     /* open the relation (table), begin the scan, and get the tuple  */
-    graph_vertex_label = heap_open(vertex_label_table_oid, RowExclusiveLock);
+    graph_vertex_label = heap_open(vertex_label_table_oid, ShareLock);
     scan_desc = heap_beginscan(graph_vertex_label, snapshot, 1, scan_keys);
     tuple = heap_getnext(scan_desc, ForwardScanDirection);
 
@@ -3812,7 +3821,7 @@ static Datum get_vertex(const char *graph, const char *vertex_label,
                                  CStringGetDatum(vertex_label), properties);
     /* end the scan and close the relation */
     heap_endscan(scan_desc);
-    heap_close(graph_vertex_label, RowExclusiveLock);
+    heap_close(graph_vertex_label, ShareLock);
     /* return the vertex datum */
     return result;
 }
@@ -7428,31 +7437,33 @@ agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
                                   &nulls);
     /* throw an error if the number of args is not the expected number */
     if (nargs != expected_nargs)
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("number of args %d does not match expected %d",
                                nargs, expected_nargs)));
+    }
     /* if null, return null */
     if (nulls[0])
+    {
         return NULL;
+    }
 
     /* if type is AGTYPEOID, we don't need to convert it */
     if (types[0] == AGTYPEOID)
     {
+        agtype_container *agtc;
+
         agtype_result = DATUM_GET_AGTYPE_P(args[0]);
+        agtc = &agtype_result->root;
+
         /*
          * Is this a scalar (scalars are stored as one element arrays)? If so,
          * test for agtype NULL.
          */
-        if (AGTYPE_CONTAINER_IS_SCALAR(&agtype_result->root))
+        if (AGTYPE_CONTAINER_IS_SCALAR(agtc) &&
+            AGTE_IS_NULL(agtc->children[0]))
         {
-            agtype_value *agtv_test;
-
-            /* get the scalar value */
-            agtv_test = get_ith_agtype_value_from_container(&agtype_result->root,
-                                                        0);
-            /* is it agtype NULL? */
-            if (agtv_test->type == AGTV_NULL)
-                return NULL;
+            return NULL;
         }
     }
     /* otherwise, try to convert it to an agtype */
@@ -8103,4 +8114,95 @@ Datum age_collect_aggfinalfn(PG_FUNCTION_ARGS)
     MemoryContextSwitchTo(old_mcxt);
     /* return the agtype array */
     PG_RETURN_POINTER(agtype_value_to_agtype(castate->res));
+}
+
+/*
+ * Helper function to return a datum for an agtype_value array built from
+ * agtype_value edges. It is essentially building and then serializing an
+ * agtype_value array of agtype_value edges.
+ */
+Datum build_agtype_value_array_of_agtype_value_edges(agtype_value **ava,
+                                                     int size)
+{
+    Datum result;
+    agtype_in_state agis_result;
+    int i = 0;
+
+    /* the array cannot be NULL */
+    Assert(ava != NULL);
+
+    /* clear the result structure */
+    MemSet(&agis_result, 0, sizeof(agtype_in_state));
+
+    /* push the beginning of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_BEGIN_ARRAY, NULL);
+    /* push in each element */
+    for (i = 0; i < size; i++)
+    {
+        agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM,
+                                            ava[i]);
+    }
+
+    /* push the end of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_END_ARRAY, NULL);
+
+    /* convert the agtype_value to a datum to return to the caller */
+    result = PointerGetDatum(agtype_value_to_agtype(agis_result.res));
+
+    return result;
+}
+
+/* helper function to quickly build an agtype_value edge */
+agtype_value *agtype_value_build_edge(graphid id, char *label, graphid end_id,
+                                      graphid start_id, Datum properties)
+{
+    agtype_in_state result;
+
+    /* the label can't be NULL */
+    Assert(label != NULL);
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    /* push in the object beginning */
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
+                                   NULL);
+    /* push the graph id key/value pair */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("id"));
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   integer_to_agtype_value(id));
+
+    /* push the label key/value pair */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("label"));
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   string_to_agtype_value(label));
+
+    /* push the end_id key/value pair */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("end_id"));
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   integer_to_agtype_value(end_id));
+
+    /* push the start_id key/value pair */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("start_id"));
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   integer_to_agtype_value(start_id));
+
+    /* push the properties key/value pair */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("properties"));
+    add_agtype((Datum)properties, false, &result, AGTYPEOID, false);
+
+    /* push in the object end */
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+
+    /* set it as an edge */
+    result.res->type = AGTV_EDGE;
+
+    /* return the result that was build (allocated) inside the result */
+    return result.res;
 }
