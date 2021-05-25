@@ -9497,7 +9497,7 @@ void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
         tablet = FindPtrOrNull(*tablet_map_, tablet_id);
       }
       if (!tablet) {
-        LOG(WARNING) << Format("Tablet $0 not found", tablet_id);
+        VLOG(1) << Format("Tablet $0 not found on ts $1", tablet_id, ts_uuid);
         continue;
       }
       TabletReplicaDriveInfo drive_info{path.path_id(),
