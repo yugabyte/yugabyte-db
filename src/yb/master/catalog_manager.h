@@ -128,6 +128,7 @@ static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid
 static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 static const char* const kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
 static const char* const kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
+static const int32 kDelayAfterFailoverSecs = 120;
 
 using PlacementId = std::string;
 

@@ -128,6 +128,10 @@ public class AuditService {
     return Audit.getAllUserEntries(userUUID);
   }
 
+  public Audit getOrBadRequest(UUID customerUUID, UUID taskUUID) {
+    return Audit.getOrBadRequest(customerUUID, taskUUID);
+  }
+
   public static JsonNode filterSecretFields(JsonNode input) {
     if (input == null) {
       return null;
