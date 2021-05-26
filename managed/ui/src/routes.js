@@ -121,9 +121,9 @@ function validateSession(store, replacePath, callback) {
   const userId = Cookies.get('userId') || localStorage.getItem('userId');
   const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
-    let location = window.location.pathname;
-    if (location !== '/') {
-      localStorage.setItem('pathToRedirect', location);
+    const location = window.location.pathname;
+    if (location !== '/' || location !== '/login') {
+      sessionStorage.setItem('lastVisitedPage', location);
     }
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
@@ -173,9 +173,9 @@ function validateSession(store, replacePath, callback) {
           localStorage.setItem('customerId', response.payload.data['uuid']);
         }
         localStorage.setItem('userId', userId);
-        if (localStorage.getItem('pathToRedirect')) {
-          browserHistory.push(localStorage.getItem('pathToRedirect'));
-          localStorage.removeItem('pathToRedirect');
+        if (sessionStorage.getItem('lastVisitedPage')) {
+          browserHistory.push(sessionStorage.getItem('lastVisitedPage'));
+          sessionStorage.removeItem('lastVisitedPage');
         }
       } else {
         store.dispatch(resetCustomer());
