@@ -125,43 +125,39 @@ DEFINE_string(compression_type, "Snappy",
 
 namespace {
 
-const std::vector<rocksdb::CompressionType> configurable_compression_types = {
+const std::vector<rocksdb::CompressionType> kValidRocksDBCompressionTypes = {
     rocksdb::kSnappyCompression,
     rocksdb::kLZ4Compression
 };
 
 bool CompressionTypeValidator(const char* flagname, const std::string& flag_compression_type) {
-  for (const auto& compression_type : configurable_compression_types) {
+  for (const auto& compression_type : kValidRocksDBCompressionTypes) {
     if (flag_compression_type == rocksdb::CompressionTypeToString(compression_type)) {
       return true;
     }
   }
   LOG(ERROR) << strings::Substitute(
       "Expected $0 doesn't contain the $1",
-      flagname,flag_compression_type);
+      flagname, flag_compression_type);
   return false;
 }
 
 rocksdb::CompressionType GetConfiguredCompressionType() {
-  //default compression type
   rocksdb::CompressionType defaultCompressionType =
       rocksdb::Snappy_Supported() && FLAGS_enable_ondisk_compression
       ? rocksdb::kSnappyCompression
       : rocksdb::kNoCompression;
 
-  for (const auto& compression_type : configurable_compression_types) {
+  for (const auto& compression_type : kValidRocksDBCompressionTypes) {
     if (FLAGS_compression_type == rocksdb::CompressionTypeToString(compression_type)
         && rocksdb::CompressionTypeSupported(compression_type)) {
-      //use compatible configurable compression type
       LOG(INFO) << strings::Substitute(
-          "Use configurable compression type $0", FLAGS_compression_type);
+          "Using compression type $0", FLAGS_compression_type);
       return compression_type;
     }
   }
-  //use default compression type
   LOG(INFO) << strings::Substitute(
-      "$0 isn't a compatible compression type. "
-      "Use default compression type $1",
+      "$0 isn't a valid compression type. Falling back to default type $1.",
       FLAGS_compression_type, rocksdb::CompressionTypeToString(defaultCompressionType));
   return defaultCompressionType;
 }
