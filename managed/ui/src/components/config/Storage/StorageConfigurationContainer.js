@@ -38,11 +38,14 @@ const mapDispatchToProps = (dispatch) => {
             toast.error(
               <ol>
                 {errorMessageObject[errorKey].map((error) => (
-                  <li>{errorKey + ' :' +error}</li>
+                  <li>{error}</li>
                 ))}
               </ol>
             );
           });
+        }
+        else {
+        toast.success("Successfully added the backup configuration.");
         }
         return dispatch(addCustomerConfigResponse(response.payload));
       });

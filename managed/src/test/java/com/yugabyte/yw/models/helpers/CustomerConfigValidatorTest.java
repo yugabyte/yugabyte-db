@@ -107,20 +107,20 @@ public class CustomerConfigValidatorTest {
     String expectedErrorMessage =
         "The AWS Access Key Id you provided does not " + "exist in our records.";
     assertEquals(1, result.size());
-    assertEquals(expectedErrorMessage, result.get("BACKUP_LOCATION").get(0).asText());
-  }
-
-  @Test
-  public void testValidateDataContent_Storage_S3PreflightCheckValidatorInvalidS3BucketName() {
-    ObjectNode data = Json.newObject();
+    assertEquals(
+        expectedErrorMessage,
+        result.get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME).get(0).asText());
     data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, "s://abc");
-    data.put(CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME, "xyz");
-    data.put(CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME, "secret");
-    ObjectNode result =
+    ObjectNode resultWithInvalidBucketName =
         customerConfigValidator.validateDataContent(createFormData("STORAGE", "S3", data));
-    String expectedErrorMessage = "Invalid bucket name: s://abc";
-    assertEquals(1, result.size());
-    assertEquals(expectedErrorMessage, result.get("BACKUP_LOCATION").get(0).asText());
+    String expectedMessage = "Invalid bucket name: s://abc";
+    assertEquals(1, resultWithInvalidBucketName.size());
+    assertEquals(
+        expectedMessage,
+        resultWithInvalidBucketName
+            .get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME)
+            .get(0)
+            .asText());
   }
 
   private JsonNode createFormData(String type, String name, JsonNode data) {
