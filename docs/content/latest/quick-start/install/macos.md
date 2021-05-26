@@ -59,7 +59,7 @@ showAsideToc: true
     $ python --version
     ```
 
-    ```
+    ```output
     Python 3.7.3
     ```
 
@@ -115,7 +115,7 @@ showAsideToc: true
       </plist>
     ```
 
-    Enure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
+    Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
 
     ```sh
     $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
@@ -162,7 +162,7 @@ $ ifconfig lo0
 
 You should see some output like the following:
 
-```
+```output
 lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
   options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
   inet 127.0.0.1 netmask 0xff000000

@@ -50,7 +50,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-1. One of the following operating systems
+1. One of the following operating systems:
 
     * <i class="icon-centos"></i> CentOS 7
 
@@ -62,7 +62,7 @@ showAsideToc: true
     $ python --version
     ```
 
-    ```
+    ```output
     Python 3.7.3
     ```
 
