@@ -3047,23 +3047,23 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
-Result<bool> Tablet::StillHasParentDataAfterSplit() {
+Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   ScopedRWOperation scoped_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_operation);
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
 }
 
-bool Tablet::MightStillHaveParentDataAfterSplit() {
-  auto res = StillHasParentDataAfterSplit();
+bool Tablet::MayHaveOrphanedPostSplitData() {
+  auto res = StillHasOrphanedPostSplitData();
   if (!res.ok()) {
-    LOG(WARNING) << "Failed to call StillHasParentDataAfterSplit: " << res.ToString();
+    LOG(WARNING) << "Failed to call StillHasOrphanedPostSplitData: " << res.ToString();
     return true;
   }
   return res.get();
 }
 
 bool Tablet::ShouldDisableLbMove() {
-  auto still_has_parent_data_result = StillHasParentDataAfterSplit();
+  auto still_has_parent_data_result = StillHasOrphanedPostSplitData();
   if (still_has_parent_data_result.ok()) {
     return still_has_parent_data_result.get();
   }
@@ -3384,7 +3384,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
     return STATUS(
         IllegalState, "Already triggered post split compaction for this tablet instance.");
   }
-  if (VERIFY_RESULT(StillHasParentDataAfterSplit())) {
+  if (VERIFY_RESULT(StillHasOrphanedPostSplitData())) {
     post_split_compaction_task_pool_token_ = get_token_for_compaction();
     return post_split_compaction_task_pool_token_->SubmitFunc(
         std::bind(&Tablet::TriggerPostSplitCompactionSync, this));
