@@ -202,7 +202,7 @@ if ("${YB_BUILD_TYPE}" STREQUAL "asan")
 endif()
 
 add_library(rocksdb ${ROCKSDB_SRCS})
-target_link_libraries(rocksdb gflags gutil snappy z yb_common yb_util opid_proto)
+target_link_libraries(rocksdb gflags gutil snappy z lz4 yb_common yb_util opid_proto)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc

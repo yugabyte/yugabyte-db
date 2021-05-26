@@ -119,6 +119,58 @@ DEFINE_int32(priority_thread_pool_size, -1,
              "If -1 and max_background_compactions is specified - use max_background_compactions. "
              "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
+DEFINE_string(compression_type, "Snappy",
+              "On-disk compression type to use in RocksDB."
+              "By default, Snappy is used if supported.");
+
+namespace {
+
+const std::vector<rocksdb::CompressionType> configurable_compression_types = {
+    rocksdb::kSnappyCompression,
+    rocksdb::kLZ4Compression
+};
+
+bool CompressionTypeValidator(const char* flagname, const std::string& flag_compression_type) {
+  for (const auto& compression_type : configurable_compression_types) {
+    if (flag_compression_type == rocksdb::CompressionTypeToString(compression_type)) {
+      return true;
+    }
+  }
+  LOG(ERROR) << strings::Substitute(
+      "Expected $0 doesn't contain the $1",
+      flagname,flag_compression_type);
+  return false;
+}
+
+rocksdb::CompressionType GetConfiguredCompressionType() {
+  //default compression type
+  rocksdb::CompressionType defaultCompressionType =
+      rocksdb::Snappy_Supported() && FLAGS_enable_ondisk_compression
+      ? rocksdb::kSnappyCompression
+      : rocksdb::kNoCompression;
+
+  for (const auto& compression_type : configurable_compression_types) {
+    if (FLAGS_compression_type == rocksdb::CompressionTypeToString(compression_type)
+        && rocksdb::CompressionTypeSupported(compression_type)) {
+      //use compatible configurable compression type
+      LOG(INFO) << strings::Substitute(
+          "Use configurable compression type $0", FLAGS_compression_type);
+      return compression_type;
+    }
+  }
+  //use default compression type
+  LOG(INFO) << strings::Substitute(
+      "$0 isn't a compatible compression type. "
+      "Use default compression type $1",
+      FLAGS_compression_type, rocksdb::CompressionTypeToString(defaultCompressionType));
+  return defaultCompressionType;
+}
+
+} // namespace
+
+__attribute__((unused))
+DEFINE_validator(compression_type, &CompressionTypeValidator);
+
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -462,8 +514,7 @@ void InitRocksDBOptions(
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
   }
 
-  options->compression = rocksdb::Snappy_Supported() && FLAGS_enable_ondisk_compression
-      ? rocksdb::kSnappyCompression : rocksdb::kNoCompression;
+  options->compression = GetConfiguredCompressionType();
 
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),
