@@ -34,6 +34,11 @@ class TestConsensusContext : public ConsensusContext {
   uint64_t NumSSTFiles() override { return 0; }
 
   void ListenNumSSTFilesChanged(std::function<void()> listener) override {}
+
+  CHECKED_STATUS CheckOperationAllowed(
+      const OpId& op_id, consensus::OperationType op_type) override {
+    return Status::OK();
+  }
 };
 
 } // namespace consensus

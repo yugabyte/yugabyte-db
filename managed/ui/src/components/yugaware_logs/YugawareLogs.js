@@ -32,7 +32,7 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError }) => {
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'main.logs');
     getLogs(); // call to get logs
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
