@@ -36,11 +36,12 @@ def exception_handling(func):
             return func(*args, **kwargs)
         except HTTPError as e:
             content = e.read().decode('utf-8')
-            if 'html>' in content:
-                message = 'Invalid YB_PLATFORM_URL URL or params, Getting html page in response'
-                sys.stderr.write(message)
-            else:
+            try:
+                json.dumps(content)
                 sys.stderr.write(content)
+            except ValueError:
+                message = 'Invalid YB_PLATFORM_URL URL or params.'
+                sys.stderr.write(message)
         except Exception as e:
             sys.stderr.write(str(e))
     return inner_function
@@ -319,13 +320,6 @@ class YBUniverse():
 
         :return: None
         """
-        # each hash represents 1 % of the progress
-        sys.stdout.write("[%s]"%(("-")*PROGRESS_BAR))
-        sys.stdout.write("0%\n")
-        sys.stdout.flush()
-        # TODO Remove sleep once create task details API gives proper response.
-        #  Currently task API return 100% as task status for initial few seconds.
-        time.sleep(10)
         while True:
             progress = self.__get_task_details(task_id)
             sys.stdout.write("[%s]"%(("-")*PROGRESS_BAR))
@@ -354,7 +348,9 @@ class YBUniverse():
         task_url = '{0}/api/v1/customers/{1}/tasks/{2}'.format(self.base_url, self.customer_uuid, task_id)
         task_json = self.__call_api(task_url)
         if task_json.get('status') == 'Running':
-            return int(task_json.get('percent'))
+            percentage = int(task_json.get('percent'))
+            # If status is running and percentage 100 means task is not started yet.
+            return 0 if percentage==100 else int(task_json.get('percent'))
         elif task_json.get('status') == 'Success':
             return 100
         elif task_json.get('status') == 'Failure':
