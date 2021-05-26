@@ -82,7 +82,8 @@ public class AccessManagerTest extends FakeDBApplication {
     FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
   }
 
-  private JsonNode uploadKeyCommand(UUID regionUUID, String keyCode, boolean mimicError) {
+  private JsonNode uploadKeyCommand(UUID regionUUID, String keyCode, boolean mimicError)
+      throws IOException {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
       response.message = "{\"error\": \"Unknown Error\"}";
@@ -260,7 +261,10 @@ public class AccessManagerTest extends FakeDBApplication {
     } catch (RuntimeException re) {
       assertThat(
           re.getMessage(),
-          allOf(notNullValue(), equalTo("YBCloud command access (add-key) failed to execute.")));
+          allOf(
+              notNullValue(),
+              equalTo(
+                  "Parsing of Region failed with : YBCloud command access (add-key) failed to execute.")));
     }
     Mockito.verify(shellProcessHandler, times(1)).run(anyList(), anyMap(), anyString());
   }
@@ -352,7 +356,7 @@ public class AccessManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testManageUploadKeyFileError() {
+  public void testManageUploadKeyFileError() throws IOException {
     try {
       uploadKeyCommand(defaultRegion.uuid, TEST_KEY_CODE, true);
     } catch (RuntimeException re) {
@@ -361,16 +365,16 @@ public class AccessManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testManageUploadKeyDuplicateKeyCode_PureKeyCode() {
+  public void testManageUploadKeyDuplicateKeyCode_PureKeyCode() throws IOException {
     doTestManageUploadKeyDuplicateKeyCode(TEST_KEY_CODE);
   }
 
   @Test
-  public void testManageUploadKeyDuplicateKeyCode_KeyCodeWithPath() {
+  public void testManageUploadKeyDuplicateKeyCode_KeyCodeWithPath() throws IOException {
     doTestManageUploadKeyDuplicateKeyCode(TEST_KEY_CODE_WITH_PATH);
   }
 
-  private void doTestManageUploadKeyDuplicateKeyCode(String keyCode) {
+  private void doTestManageUploadKeyDuplicateKeyCode(String keyCode) throws IOException {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = TMP_KEYS_PATH + "/private.key";
     AccessKey.create(defaultProvider.uuid, TEST_KEY_CODE, keyInfo);
