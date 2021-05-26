@@ -196,7 +196,7 @@ class AwsStorageConfiguration extends Component {
               <YBButton
                 btnText="Edit Configuration"
                 btnClass="btn btn-orange"
-                onClick={onEditConfig}
+                onClick={() => onEditConfig(config)}
               />
               {isDefinedNotNull(config) && (
                 <YBConfirmModal
