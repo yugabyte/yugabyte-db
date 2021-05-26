@@ -120,7 +120,8 @@ DEFINE_int32(priority_thread_pool_size, -1,
              "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
 DEFINE_string(compression_type, "Snappy",
-              "On-disk compression to use in RocksDB.");
+              "On-disk compression type to use in RocksDB."
+              "By default, Snappy is used if supported.");
 
 namespace {
   const std::vector<rocksdb::CompressionType> configurable_compression_types = {
@@ -146,6 +147,7 @@ namespace {
     for (const auto& compression_type : configurable_compression_types) {
       if(FLAGS_compression_type == rocksdb::CompressionTypeToString(compression_type) && rocksdb::CompressionTypeSupported(compression_type)){
         //use compatible configurable compression type
+        LOG(INFO) << "Use configurable compression type: " << FLAGS_compression_type;
         return compression_type;
       }
     }
