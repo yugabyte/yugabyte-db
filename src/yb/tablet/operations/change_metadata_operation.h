@@ -37,6 +37,7 @@
 #include <string>
 
 #include "yb/common/index.h"
+#include "yb/consensus/log_fwd.h"
 #include "yb/gutil/macros.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
@@ -44,10 +45,6 @@
 namespace yb {
 
 class Schema;
-
-namespace log {
-class Log;
-}
 
 namespace tablet {
 

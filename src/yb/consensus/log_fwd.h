@@ -11,26 +11,30 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H
-#define YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H
+#ifndef YB_CONSENSUS_LOG_FWD_H
+#define YB_CONSENSUS_LOG_FWD_H
 
-#include <memory>
-
-#include "yb/tserver/heartbeater.h"
+#include "yb/gutil/ref_counted.h"
 
 namespace yb {
-namespace tserver {
+namespace log {
 
-class TabletSplitHeartbeatDataProvider : public PeriodicalHeartbeatDataProvider {
- public:
-  explicit TabletSplitHeartbeatDataProvider(TabletServer* server);
+class Log;
+using LogPtr = scoped_refptr<Log>;
+class LogEntryBatch;
+class LogIndex;
+class LogReader;
+class ReadableLogSegment;
+using ReadableLogSegmentPtr = scoped_refptr<ReadableLogSegment>;
 
- private:
-  void DoAddData(
-      const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) override;
-};
+struct LogAnchor;
+struct LogIndexEntry;
+struct LogMetrics;
 
-} // namespace tserver
-} // namespace yb
+class LogAnchorRegistry;
+using LogAnchorRegistryPtr = scoped_refptr<LogAnchorRegistry>;
 
-#endif // YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H
+}  // namespace log
+}  // namespace yb
+
+#endif  // YB_CONSENSUS_LOG_FWD_H

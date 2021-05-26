@@ -10,6 +10,7 @@ on:
       - README.md
       - 'docs/**'
       - 'architecture/**'
+      - 'managed/**'
 
   pull_request:
     branches:
@@ -18,6 +19,7 @@ on:
       - README.md
       - 'docs/**'
       - 'architecture/**'
+      - 'managed/**'
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
