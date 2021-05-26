@@ -263,7 +263,7 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
     CHECK(!queue_.empty()) << InvariantViolationLogPrefix();
     CHECK_EQ(queue_.front(),
              (QueueItem{ .hybrid_time = ht, .op_id = op_id })) << InvariantViolationLogPrefix();
-    PopFront();
+    queue_.pop_front();
     last_replicated_ = ht;
   }
   cond_.notify_all();
@@ -278,32 +278,12 @@ void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
       op_trace_->Add(AbortedTraceItem { .ht = ht, .op_id = op_id });
     }
     CHECK(!queue_.empty()) << InvariantViolationLogPrefix();
-    if (queue_.front().hybrid_time == ht) {
-      CHECK_EQ(queue_.front().op_id, op_id) << InvariantViolationLogPrefix();
-      PopFront();
-    } else {
-      aborted_.push(QueueItem {
-        .hybrid_time = ht,
-        .op_id = op_id,
-      });
-      return;
-    }
+    CHECK_EQ(queue_.back(),
+             (QueueItem{ .hybrid_time = ht, .op_id = op_id }))
+        << InvariantViolationLogPrefix() << "It is allowed to abort only last operation";
+    queue_.pop_back();
   }
   cond_.notify_all();
-}
-
-void MvccManager::PopFront() REQUIRES(mutex_) {
-  queue_.pop_front();
-  CHECK_GE(queue_.size(), aborted_.size()) << InvariantViolationLogPrefix();
-  while (!aborted_.empty()) {
-    if (queue_.front().hybrid_time != aborted_.top().hybrid_time) {
-      CHECK_LT(queue_.front(), aborted_.top()) << InvariantViolationLogPrefix();
-      break;
-    }
-    CHECK_EQ(queue_.front(), aborted_.top()) << InvariantViolationLogPrefix();
-    queue_.pop_front();
-    aborted_.pop();
-  }
 }
 
 bool BadNextOpId(const OpId& prev, const OpId& next) {
@@ -349,25 +329,6 @@ void MvccManager::AddFollowerPending(HybridTime ht, const OpId& op_id) {
 void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_side) {
   CHECK(!op_id.empty());
 
-  if (!queue_.empty() && ht <= queue_.back().hybrid_time && !aborted_.empty()) {
-    // To avoid crashing with an invariant violation on leader changes, we detect the case when
-    // an entire tail of the operation queue has been aborted. Theoretically it is still possible
-    // that the subset of aborted operations is not contiguous and/or does not end with the last
-    // element of the queue. In practice, though, Raft should only abort and overwrite all
-    // operations starting with a particular index and until the end of the log.
-    auto iter = std::lower_bound(queue_.begin(), queue_.end(), aborted_.top());
-
-    // Every hybrid time in aborted_ must also exist in queue_.
-    CHECK(iter != queue_.end()) << InvariantViolationLogPrefix();
-
-    auto start_iter = iter;
-    while (iter != queue_.end() && iter->hybrid_time == aborted_.top().hybrid_time) {
-      CHECK_EQ(iter->op_id, aborted_.top().op_id) << InvariantViolationLogPrefix();
-      aborted_.pop();
-      iter++;
-    }
-    queue_.erase(start_iter, iter);
-  }
   HybridTime last_ht_in_queue = queue_.empty() ? HybridTime::kMin : queue_.back().hybrid_time;
 
   HybridTime sanity_check_lower_bound =
@@ -402,14 +363,6 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
          << LOG_INFO_FOR_HT_LOWER_BOUND(propagated_safe_time_)
          << "\n  " << EXPR_VALUE_FOR_LOG(queue_.size())
          << "\n  " << EXPR_VALUE_FOR_LOG(queue_);
-      if (drain_aborted) {
-        std::vector<QueueItem> aborted;
-        while (!aborted_.empty()) {
-          aborted.push_back(aborted_.top());
-          aborted_.pop();
-        }
-        ss << "\n  " << EXPR_VALUE_FOR_LOG(aborted);
-      }
       return ss.str();
 #undef LOG_INFO_FOR_HT_LOWER_BOUND
     };
@@ -435,7 +388,7 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
   }
 
   LOG_IF_WITH_PREFIX(DFATAL,
-                     !queue_.empty() && aborted_.empty() && BadNextOpId(queue_.back().op_id, op_id))
+                     !queue_.empty() && BadNextOpId(queue_.back().op_id, op_id))
       << "Op sequence failure: " << AsString(queue_.back().op_id) << " followed by "
       << AsString(op_id) << " " << InvariantViolationLogPrefix();
 

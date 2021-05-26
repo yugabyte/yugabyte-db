@@ -517,14 +517,15 @@ Status ReplicaState::CancelPendingOperations() {
                           << " pending operations because of shutdown.";
     auto abort_status = STATUS(Aborted, "Operation aborted");
     int i = 0;
-    for (const auto& round : pending_operations_) {
+    for (size_t idx = pending_operations_.size(); idx > 0; ) {
+      --idx;
       // We cancel only operations whose applies have not yet been triggered.
       constexpr auto kLogAbortedOperationsNum = 10;
       if (++i <= kLogAbortedOperationsNum) {
         LOG_WITH_PREFIX(INFO) << "Aborting operation because of shutdown: "
-                              << round->replicate_msg()->ShortDebugString();
+                              << pending_operations_[idx]->replicate_msg()->ShortDebugString();
       }
-      NotifyReplicationFinishedUnlocked(round, abort_status, OpId::kUnknownTerm,
+      NotifyReplicationFinishedUnlocked(pending_operations_[idx], abort_status, OpId::kUnknownTerm,
                                         nullptr /* applied_op_ids */);
     }
   }
