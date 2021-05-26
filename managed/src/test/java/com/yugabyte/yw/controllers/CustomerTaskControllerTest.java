@@ -5,13 +5,13 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 
@@ -66,11 +66,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   private Users user;
   private Universe universe;
 
-  @Mock
-  private RuntimeConfig<Model> config;
-
-  @Mock
-  SettableRuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock private play.Configuration mockConfig;
 
   @InjectMocks
   private CustomerTaskController controller;
@@ -80,7 +76,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     universe = createUniverse(customer.getCustomerId());
-    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+    // when(config.globalRuntimeConf()).thenReturn(runtimeConfig);
   }
 
   @Test
@@ -331,7 +327,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskHistoryLimit() {
     String authToken = user.createAuthToken();
     Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
-    when(config.getInt(CustomerTaskController.CUSTOMER_TASK_DB_QUERY_LIMIT))
+    when(mockConfig.getInt(CustomerTaskController.CUSTOMER_TASK_DB_QUERY_LIMIT))
       .thenReturn(25);
     IntStream.range(0, 100).forEach(i -> createTaskWithStatus(
         universe.universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0));
