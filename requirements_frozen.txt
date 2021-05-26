@@ -1,3 +1,4 @@
+wheel==0.36.2
 bashlex==0.12
 Click==7.0
 compiledb==0.9.8
