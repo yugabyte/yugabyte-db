@@ -333,103 +333,6 @@ class StorageConfiguration extends Component {
     this.setState({ iamRoleEnabled: event.target.checked });
   };
 
-  /**
-   * This method will enable edit options for respective
-   * backup config.
-   */
-  onEditConfig = () => {
-    this.setState({ enableEdit: true });
-  };
-
-  /**
-   * This method will disable the edit input fields.
-   */
-  disableEditFields = () => {
-    this.setState({ enableEdit: false });
-  };
-
-  /**
-   * This method will help to disable the backup storage
-   * location field.
-   *
-   * @param {string} fieldKey Input Field Id.
-   * @returns Boolean.
-   */
-  disableInputFields = (fieldKey, enableEdit, activeTab) => {
-    const tab = activeTab.toUpperCase();
-    return !enableEdit || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false;
-  };
-
-  /**
-   * This method will help us to setup the initial value props
-   * to the redux form.
-   *
-   * @param {string} activeTab Current Tab.
-   * @param {Array<object>} configs Backup config Data.
-   */
-  setInitialConfigValues = (activeTab, configs) => {
-    const tab = activeTab.toUpperCase();
-    const data =
-      !isNonEmptyArray(configs) &&
-      configs.data.filter((config) => config.name === activeTab.toUpperCase());
-    let initialValues = data.map((obj) => {
-      switch (activeTab) {
-        case 'nfs':
-          return {
-            type: 'update',
-            configUUID: obj?.configUUID,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
-            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION
-          };
-
-        case 'gcs':
-          return {
-            type: 'update',
-            configUUID: obj?.configUUID,
-            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
-            GCS_CREDENTIALS_JSON: obj.data?.GCS_CREDENTIALS_JSON
-          };
-
-        case 'az':
-          return {
-            type: 'update',
-            configUUID: obj?.configUUID,
-            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
-            AZURE_STORAGE_SAS_TOKEN: obj.data?.AZURE_STORAGE_SAS_TOKEN
-          };
-
-        default:
-          return {
-            type: 'update',
-            configUUID: obj?.configUUID,
-            IAM_INSTANCE_PROFILE: obj.data?.IAM_INSTANCE_PROFILE,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
-            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
-            AWS_HOST_BASE: obj.data?.AWS_HOST_BASE
-          };
-      }
-    });
-
-    if (initialValues.length > 0) {
-      this.props.setInitialConfigValues(initialValues[0]);
-    } else {
-      initialValues = {
-        IAM_INSTANCE_PROFILE: false,
-        AWS_ACCESS_KEY_ID: '',
-        AWS_SECRET_ACCESS_KEY: '',
-        S3_BACKUP_LOCATION: '',
-        AWS_HOST_BASE: ''
-      };
-      this.props.setInitialConfigValues(initialValues);
-    }
-  };
-
   render() {
     const {
       handleSubmit,
@@ -506,13 +409,15 @@ class StorageConfiguration extends Component {
                 )}
 
                 {configs}
-              </YBTabsPanel>
 
-              <ConfigControls
-                {...this.state}
-                activeTab={activeTab}
-                showListView={() => this.showListView(activeTab)}
-              />
+                {!listView[activeTab] && (
+                  <ConfigControls
+                    {...this.state}
+                    activeTab={activeTab}
+                    showListView={() => this.showListView(activeTab)}
+                  />
+                )}
+              </YBTabsPanel>
             </form>
           </Formik>
         </div>
