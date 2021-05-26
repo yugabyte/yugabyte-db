@@ -51,7 +51,7 @@ Create and start your first local cluster that will simulate "Data Center - East
 $ ./bin/yugabyted start --base_dir=datacenter-east/ --listen=127.0.0.1
 ```
 
-This will start up a one-node local cluster using the IP address of `127.0.0.1:7100`. Upon starting, you should see a screen like the following.
+This will start up a one-node local cluster using the IP address of `127.0.0.1:7100`. Upon starting, you should see a screen similar to the following.
 
 ```
 Starting yugabyted...
@@ -81,7 +81,7 @@ Create and start your second local cluster that will simulate "Data Center = Wes
 $ ./bin/yugabyted start --base_dir=datacenter-west/ --listen=127.0.0.2
 ```
 
-This will start up a one-node cluster using IP address of `127.0.0.2`. Upon starting, you should see a screen like the following.
+This will start up a one-node cluster using IP address of `127.0.0.2`. Upon starting, you should see a screen similar to the following.
 
 ```
 Starting yugabyted...
