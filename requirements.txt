@@ -1,3 +1,4 @@
+wheel
 PyYAML
 six
 yugabyte_pycommon
