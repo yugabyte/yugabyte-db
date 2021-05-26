@@ -99,9 +99,9 @@ public class CustomerConfigValidatorTest {
   @Test
   public void testValidateDataContent_Storage_S3PreflightCheckValidator() {
     ObjectNode data = Json.newObject();
-    data.put("BACKUP_LOCATION", "s3://abc");
-    data.put("AWS_ACCESS_KEY_ID", "xyz");
-    data.put("AWS_SECRET_ACCESS_KEY", "secret");
+    data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, "s3://abc");
+    data.put(CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME, "xyz");
+    data.put(CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME, "secret");
     ObjectNode result = customerConfigValidator
       .validateDataContent(createFormData("STORAGE", "S3", data));
     String expectedErrorMessage = "The AWS Access Key Id you provided does not " +
@@ -113,9 +113,9 @@ public class CustomerConfigValidatorTest {
   @Test
   public void testValidateDataContent_Storage_S3PreflightCheckValidatorInvalidS3BucketName() {
     ObjectNode data = Json.newObject();
-    data.put("BACKUP_LOCATION", "s://abc");
-    data.put("AWS_ACCESS_KEY_ID", "xyz");
-    data.put("AWS_SECRET_ACCESS_KEY", "secret");
+    data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, "s://abc");
+    data.put(CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME, "xyz");
+    data.put(CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME, "secret");
     ObjectNode result = customerConfigValidator
       .validateDataContent(createFormData("STORAGE", "S3", data));
     String expectedErrorMessage = "Invalid bucket name: s://abc";

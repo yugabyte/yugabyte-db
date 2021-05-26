@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import com.amazonaws.services.s3.model.Bucket;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.AmazonS3;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -24,8 +23,8 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.HashSet;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -54,7 +53,11 @@ public class CustomerConfigValidator {
 
   private static final String AWS_HOST_BASE_FIELDNAME = "AWS_HOST_BASE";
 
-  private static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
+  public static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
+
+  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+
+  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
 
@@ -109,22 +112,20 @@ public class CustomerConfigValidator {
 
     @Override
     public void doValidate(JsonNode data, ObjectNode errorJson) {
-      if (this.name.equals("S3") && data.get("AWS_ACCESS_KEY_ID") != null) {
-        String bucketname = data.get("BACKUP_LOCATION").asText();
+      if (this.name.equals("S3") && data.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
+        String bucketname = data.get(BACKUP_LOCATION_FIELDNAME).asText();
         //Assuming bucket name will always start with s3:// otherwise that will be invalid
         if (bucketname.length() < 5 || !bucketname.startsWith("s3://")) {
           errorJson.set(fieldName, Json.newArray().add("Invalid bucket name: " + bucketname));
         } else {
           try {
             bucketname = bucketname.substring(5);
-            AmazonS3 s3client = create(data.get("AWS_ACCESS_KEY_ID").asText(),
-              data.get("AWS_SECRET_ACCESS_KEY").asText());
-            List<Bucket> buckets = s3client.listBuckets();
-            final HashSet<String> bucketList = new HashSet<String>();
-            for (Bucket bucket : buckets) {
-              bucketList.add(bucket.getName());
-            }
-            if (!bucketList.contains(bucketname))
+            AmazonS3 s3client = create(data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
+              data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
+            List<String> buckets = s3client.listBuckets().stream()
+              .map(bucket -> bucket.getName())
+              .collect(Collectors.toList());
+            if (!buckets.contains(bucketname))
               errorJson.set(fieldName, Json.newArray().add("Bucket name " + bucketname +
                 " doesn't exist"));
           } catch(AmazonS3Exception s3Exception) {
@@ -241,6 +242,9 @@ public class CustomerConfigValidator {
     validators.add(
         new ConfigObjectValidator<>(
             PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
+    validators.add(
+      new ConfigS3PreflightCheckValidator(
+        STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME));
   }
 
   public ObjectNode validateFormData(JsonNode formData) {
