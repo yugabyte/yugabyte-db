@@ -341,10 +341,10 @@
       min-width: unset;
     }
   }
-  
+
   li:not(.active) {
     img, svg {
-      filter: grayscale(1) brightness(1.2);        
+      filter: grayscale(1) brightness(1.2);
     }
     :before {
       filter: sepia(.6);
@@ -370,7 +370,7 @@
         }
       }
     }
-    
+
 
     img {
       height: 28px;
@@ -437,7 +437,6 @@
   display: none !important;
 }
 
-#cloud-config-tab-panel-tab-azure:before,
 #cloud-config-tab-panel-tab-openshift:before {
   content: 'BETA';
   position: absolute;
