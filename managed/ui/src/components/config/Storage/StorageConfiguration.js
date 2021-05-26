@@ -231,6 +231,7 @@ class StorageConfiguration extends Component {
    * This method will disable the edit input fields.
    */
   disableEditFields = () => {
+    this.props.reset();
     this.setState({ enableEdit: false });
   };
 
