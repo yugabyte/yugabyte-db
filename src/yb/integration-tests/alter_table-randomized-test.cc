@@ -391,7 +391,9 @@ struct MirrorTable {
           }
         }
       }
-      auto s = session->ApplyAndFlush(op);
+      RETURN_NOT_OK(session->Apply(op));
+      const auto flush_status = session->FlushAndGetOpsErrors();
+      const auto& s = flush_status.status;
       if (s.ok()) {
         if (op->response().status() == QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH &&
             MonoTime::Now() < deadline) {
@@ -401,9 +403,8 @@ struct MirrorTable {
         return s;
       }
 
-      client::CollectedErrors errors = session->GetAndClearPendingErrors();
-      CHECK_EQ(errors.size(), 1);
-      return errors[0]->status();
+      CHECK_EQ(flush_status.errors.size(), 1);
+      return flush_status.errors[0]->status();
     }
   }
 

@@ -42,7 +42,7 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -55,11 +55,10 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
   public void run() {
     Params params = taskParams();
     Universe universe = Universe.getOrBadRequest(params.universeUUID);
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
-      client = ybService.getClient(params.masterAddresses, certificate, rpcClientCertFiles);
+      client = ybService.getClient(params.masterAddresses, certificate);
       client.deleteTable(params.keyspace, params.tableName);
       LOG.info("Dropped table {}", params.getFullName());
     } catch (Exception e) {

@@ -62,10 +62,6 @@
 
 namespace yb {
 
-namespace log {
-class Log;
-}
-
 namespace master {
 class SysCatalogTable;
 }
@@ -100,12 +96,6 @@ struct ConsensusBootstrapInfo {
 
   // The id of the last committed operation in the log.
   OpIdPB last_committed_id;
-
-  // Parameters of the split operation added to Raft log and designated for this tablet (in general
-  // case Raft log the tablet could contain old split operations designated for it ancestor tablets,
-  // those are not reflected here).
-  // See comments for ReplicateState::split_op_with_tablet_ids_.
-  SplitOpInfo split_op_info;
 
   // REPLICATE messages which were in the log with no accompanying
   // COMMIT. These need to be passed along to consensus init in order
@@ -240,7 +230,7 @@ class Consensus {
   virtual CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) = 0;
 
   // A batch version of Replicate, which is what we try to use as much as possible for performance.
-  virtual CHECKED_STATUS ReplicateBatch(ConsensusRounds* rounds) = 0;
+  virtual CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) = 0;
 
   // Messages sent from LEADER to FOLLOWERS and LEARNERS to update their
   // state machines. This is equivalent to "AppendEntries()" in Raft
@@ -335,14 +325,6 @@ class Consensus {
   virtual yb::OpId GetLastCommittedOpId() = 0;
 
   virtual yb::OpId GetLastAppliedOpId() = 0;
-
-  // Return the ID of the split operation requesting to split this Raft group if it has been added
-  // to Raft log and uninitialized OpId otherwise.
-  virtual yb::OpId GetSplitOpId() = 0;
-
-  // Return split child tablet IDs if split operation has been added to Raft log and array of empty
-  // tablet IDs otherwise.
-  virtual std::array<TabletId, kNumSplitParts> GetSplitChildTabletIds() = 0;
 
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).
@@ -520,8 +502,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
 
   // Returns the id of the (replicate) operation this context
   // refers to. This is only set _after_ Consensus::Replicate(context).
-  OpIdPB id() const {
-    return replicate_msg_->id();
+  OpId id() const {
+    return OpId::FromPB(replicate_msg_->id());
   }
 
   // Register a callback that is called by Consensus to notify that the round
@@ -549,7 +531,6 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   // other than 'term'.
   // See CheckBoundTerm().
   void BindToTerm(int64_t term) {
-    DCHECK_EQ(bound_term_, kUnboundTerm);
     bound_term_ = term;
   }
 

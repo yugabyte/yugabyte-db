@@ -313,6 +313,8 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS Delete(
       const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline) {
+    VLOG_WITH_FUNC(4) << snapshot_id << ", " << leader_term;
+
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
@@ -327,6 +329,8 @@ class MasterSnapshotCoordinator::Impl {
   CHECKED_STATUS DeleteReplicated(
       int64_t leader_term, const tablet::SnapshotOperationState& state) {
     auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(state.request()->snapshot_id()));
+    VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
+
     docdb::KeyValueWriteBatchPB write_batch;
     TabletSnapshotOperations operations;
     {
@@ -353,7 +357,7 @@ class MasterSnapshotCoordinator::Impl {
       .restore_at = HybridTime::FromPB(state.request()->snapshot_hybrid_time()),
       .restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(
         state.request()->restoration_id())),
-      .op_id = OpId::FromPB(state.op_id()),
+      .op_id = state.op_id(),
       .write_time = state.hybrid_time(),
       .term = leader_term,
     });
@@ -468,8 +472,14 @@ class MasterSnapshotCoordinator::Impl {
       // TODO(pitr) Notify user about failures.
       auto status = context_.VerifyRestoredObjects(*restoration);
       LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
+      std::vector<TabletId> restore_tablets;
+      for (const auto& id_and_type : restoration->objects_to_restore) {
+        if (id_and_type.second == SysRowEntry::TABLET) {
+          restore_tablets.push_back(id_and_type.first);
+        }
+      }
       status = DoRestore(restoration->snapshot_id, restoration->restore_at,
-                         restoration->restoration_id, restoration->obsolete_tablets,
+                         restoration->restoration_id, restore_tablets,
                          RestorePhase::kPostSysCatalogLoad, term);
       LOG_IF(DFATAL, !status.ok())
           << "Failed to restore tablets for restoration "
@@ -477,7 +487,8 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
+  Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
+      SysRowEntry::Type type) {
     std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -485,16 +496,16 @@ class MasterSnapshotCoordinator::Impl {
         schedules.emplace_back(schedule->id(), schedule->options().filter());
       }
     }
-    SnapshotSchedulesToTabletsMap result;
+    SnapshotSchedulesToObjectIdsMap result;
     for (const auto& id_and_filter : schedules) {
       auto entries = VERIFY_RESULT(CollectEntries(id_and_filter.second));
-      auto& tablets = result[id_and_filter.first];
+      auto& ids = result[id_and_filter.first];
       for (const auto& entry : entries.entries()) {
-        if (entry.type() == SysRowEntry::TABLET) {
-          tablets.push_back(entry.id());
+        if (entry.type() == type) {
+          ids.push_back(entry.id());
         }
       }
-      std::sort(tablets.begin(), tablets.end());
+      std::sort(ids.begin(), ids.end());
     }
     return result;
   }
@@ -534,8 +545,8 @@ class MasterSnapshotCoordinator::Impl {
     } else if ((**it).ShouldUpdate(*new_entry)) {
       map->replace(it, std::move(new_entry));
     } else {
-      LOG(INFO) << __func__ << " ignore because of version check, existing: "
-                << (**it).ToString() << ", loaded: " << new_entry->ToString();
+      VLOG_WITH_FUNC(1) << "Ignore because of version check, existing: " << (**it).ToString()
+                        << ", loaded: " << new_entry->ToString();
     }
 
     return Status::OK();
@@ -615,6 +626,7 @@ class MasterSnapshotCoordinator::Impl {
   struct PollSchedulesData {
     std::vector<TxnSnapshotId> delete_snapshots;
     SnapshotScheduleOperations schedule_operations;
+    ScheduleMinRestoreTime schedule_min_restore_time;
   };
 
   void Poll() {
@@ -649,17 +661,23 @@ class MasterSnapshotCoordinator::Impl {
     for (const auto& p : schedules_) {
       auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
       auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
-      if (first_snapshot && first_snapshot != last_snapshot) {
-        auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
-        if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
-          auto delete_status = first_snapshot->TryStartDelete();
-          if (delete_status.ok()) {
-            data->delete_snapshots.push_back(first_snapshot->id());
-          } else {
-            VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
-                    << delete_status;
+      if (first_snapshot) {
+        if (first_snapshot != last_snapshot) {
+          auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+          if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
+            auto delete_status = first_snapshot->TryStartDelete();
+            if (delete_status.ok()) {
+              VLOG(1) << "Cleanup snapshot: " << first_snapshot->id();
+              data->delete_snapshots.push_back(first_snapshot->id());
+            } else {
+              VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
+                      << delete_status << ", state: " << first_snapshot->ToString();
+            }
           }
         }
+        data->schedule_min_restore_time[p->id()] = first_snapshot->previous_snapshot_hybrid_time()
+                ? first_snapshot->previous_snapshot_hybrid_time()
+                : first_snapshot->snapshot_hybrid_time();
       }
       auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
                                               : HybridTime::kInvalid;
@@ -675,6 +693,7 @@ class MasterSnapshotCoordinator::Impl {
       WARN_NOT_OK(ExecuteScheduleOperation(operation, leader_term),
                   Format("Failed to execute operation on $0", operation.schedule_id));
     }
+    context_.CleanupHiddenObjects(data.schedule_min_restore_time);
   }
 
   SnapshotState* BoundingSnapshot(const SnapshotScheduleId& schedule_id, Bound bound)
@@ -702,6 +721,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   void DeleteSnapshot(int64_t leader_term, const TxnSnapshotId& snapshot_id) {
+    VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
+
     docdb::KeyValueWriteBatchPB write_batch;
 
     auto encoded_key = EncodedSnapshotKey(snapshot_id, &context_);
@@ -913,10 +934,11 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS DoRestore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-      const TxnSnapshotRestorationId& restoration_id, const std::vector<TabletId>& obsolete_tablets,
+      const TxnSnapshotRestorationId& restoration_id, const std::vector<TabletId>& restore_tablets,
       RestorePhase phase, int64_t leader_term) {
     TabletInfos tablet_infos;
     bool restore_sys_catalog;
+    std::unordered_set<TabletId> snapshot_tablets;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
@@ -933,13 +955,16 @@ class MasterSnapshotCoordinator::Impl {
         restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
       }
       if (!restore_sys_catalog) {
-        LOG(INFO) << "PITR: Obsolete tablets: " << AsString(obsolete_tablets);
-        // New tablets could be created between restoration point and snapshot time.
-        // In this case we should remove those tablets from restoration, since they will be deleted
-        // and we should NOT restore data on them.
-        restoration_ptr->RemoveTablets(obsolete_tablets);
+        if (phase == RestorePhase::kPostSysCatalogLoad) {
+          LOG(INFO) << "PITR: Restore tablets: " << AsString(restore_tablets);
+          // New tablets could be changed between restoration point and snapshot time.
+          // So we take tablets list from actual catalog state.
+          restoration_ptr->InitTabletIds(restore_tablets);
+        }
         tablet_infos = restoration_ptr->PrepareOperations();
       }
+      auto tablet_ids = snapshot.tablet_ids();
+      snapshot_tablets.insert(tablet_ids.begin(), tablet_ids.end());
     }
 
     // If sys catalog is restored, then tablets data will be restored after that using postponed
@@ -949,9 +974,13 @@ class MasterSnapshotCoordinator::Impl {
     } else {
       auto snapshot_id_str = snapshot_id.AsSlice().ToBuffer();
       SendMetadata send_metadata(phase == RestorePhase::kPostSysCatalogLoad);
+      LOG(INFO) << "Restore tablets: " << AsString(tablet_infos);
       for (const auto& tablet : tablet_infos) {
+        // If this tablet did not participate in snapshot, i.e. was deleted.
+        // We just change hybrid hybrid time limit and clear hide state.
         context_.SendRestoreTabletSnapshotRequest(
-            tablet, snapshot_id_str, restore_at, send_metadata,
+            tablet, snapshot_tablets.count(tablet->id()) ? snapshot_id_str : std::string(),
+            restore_at, send_metadata,
             MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id()));
       }
     }
@@ -1091,9 +1120,9 @@ Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* r
   return impl_->FillHeartbeatResponse(resp);
 }
 
-Result<SnapshotSchedulesToTabletsMap>
-    MasterSnapshotCoordinator::MakeSnapshotSchedulesToTabletsMap() {
-  return impl_->MakeSnapshotSchedulesToTabletsMap();
+Result<SnapshotSchedulesToObjectIdsMap>
+    MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::Type type) {
+  return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 
 void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t term) {

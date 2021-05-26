@@ -52,7 +52,7 @@ public class TabletServerControllerTest extends FakeDBApplication {
     when(mockClient.listTabletServers()).thenReturn(mockResponse);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(testHostAndPort);
     when(mockService.getClient(any())).thenReturn(mockClient);
-    when(mockService.getClient(any(), any(), any())).thenReturn(mockClient);
+    when(mockService.getClient(any(), any())).thenReturn(mockClient);
     tabletController = new TabletServerController(mockService);
     when(mockApiHelper.getRequest(anyString())).thenReturn(Json.newObject());
     tabletController.apiHelper = mockApiHelper;
@@ -71,7 +71,7 @@ public class TabletServerControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(r));
     assertEquals(OK, r.status());
     assertTrue(json.get("servers").isArray());
- }
+  }
 
   @Test
   public void testListTabletServersFailure() {
@@ -95,8 +95,7 @@ public class TabletServerControllerTest extends FakeDBApplication {
 
   @Test
   public void testListTabletServersWrapperFailure() {
-    when(mockApiHelper.getRequest(anyString()))
-            .thenThrow(new RuntimeException("Unknown Error"));
+    when(mockApiHelper.getRequest(anyString())).thenThrow(new RuntimeException("Unknown Error"));
     Customer customer = ModelFactory.testCustomer();
     Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());

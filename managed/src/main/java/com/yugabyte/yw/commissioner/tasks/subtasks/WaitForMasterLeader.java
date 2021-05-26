@@ -36,7 +36,7 @@ public class WaitForMasterLeader extends AbstractTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -55,12 +55,11 @@ public class WaitForMasterLeader extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodeToNode();
-    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
+      client = ybService.getClient(hostPorts, certificate);
       client.waitForMasterLeader(config.getDuration("yb.wait_for_server_timeout").toMillis());
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());

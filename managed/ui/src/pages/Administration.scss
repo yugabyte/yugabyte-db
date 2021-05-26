@@ -1,12 +1,9 @@
 @import '../components/universes/UniverseDetail/UniverseDetail';
 
-#administration-main-tabs > .tab-content {
-  padding: 0;
-}
-
-// re-use tabs style from universe details
-#administration-ha-subtab {
-  @extend .universe-detail;
+#administration-ha-subtab {  
+  .tab-content {
+    padding-top: 20px;
+  }
 }
 
 #administration-main-tabs .beta:after {

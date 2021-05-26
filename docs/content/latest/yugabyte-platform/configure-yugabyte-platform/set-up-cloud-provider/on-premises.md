@@ -95,7 +95,7 @@ Port number of ssh client connections.
 If you choose to manually set up your database nodes, then set this flag to true otherwise, the Yugabyte Platform will use the sudo user to set up DB nodes. For manual provisioning, you will be prompted to execute a python script at a later stage
 
 {{< note title="Note" >}}
-If any of the items from this checklist are true, you need to provision the nodes manually.
+If any of the items from this checklist are true, you need to [provision the nodes manually](#run-the-pre-provisioning-script).
 *   Pre-provisioned `yugabyte:yugabyte` user + group
 *   Sudo user requires a password.
 {{< /note >}}

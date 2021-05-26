@@ -71,11 +71,6 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 
 namespace log {
 
-struct LogMetrics;
-class LogEntryBatch;
-class LogIndex;
-class LogReader;
-
 YB_STRONGLY_TYPED_BOOL(CreateNewSegment);
 
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
@@ -130,9 +125,7 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // WARNING: the caller _must_ call AsyncAppend() or else the log will "stall" and will never be
   // able to make forward progress.
-  CHECKED_STATUS Reserve(LogEntryTypePB type,
-                         LogEntryBatchPB* entry_batch,
-                         LogEntryBatch** reserved_entry);
+  void Reserve(LogEntryTypePB type, LogEntryBatchPB* entry_batch, LogEntryBatch** reserved_entry);
 
   // Asynchronously appends 'entry' to the log. Once the append completes and is synced, 'callback'
   // will be invoked.
@@ -282,6 +275,10 @@ class Log : public RefCountedThreadSafe<Log> {
 
   const std::string& LogPrefix() const {
     return log_prefix_;
+  }
+
+  std::string wal_dir() const {
+    return wal_dir_;
   }
 
   void set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {

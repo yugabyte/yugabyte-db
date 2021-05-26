@@ -642,12 +642,10 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
   LOG(INFO) << "Tablet " << tablet_ids[0]
             << " is in state TABLET_DATA_READY in TS " << kFollowerIndex;
   TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
-  OpIdPB op_id;
-  ASSERT_OK(GetLastOpIdForReplica(tablet_ids[0], leader_ts,
-                                  consensus::COMMITTED_OPID, timeout,
-                                  &op_id));
+  OpId op_id = ASSERT_RESULT(GetLastOpIdForReplica(
+      tablet_ids[0], leader_ts, consensus::COMMITTED_OPID, timeout));
 
-  auto expected_index = op_id.index();
+  auto expected_index = op_id.index;
 
   ASSERT_OK(WaitForServersToAgree(timeout,
                                   ts_map_,
@@ -655,7 +653,7 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
                                   expected_index,
                                   &expected_index));
 
-  LOG(INFO) << "Op id index in TS " << kFollowerIndex << " is " << op_id.index()
+  LOG(INFO) << "Op id index in TS " << kFollowerIndex << " is " << op_id.index
             << " for tablet " << tablet_ids[0];
 
   ClusterVerifier cluster_verifier(cluster_.get());

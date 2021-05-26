@@ -5,12 +5,10 @@ package com.yugabyte.yw.forms;
 import play.data.validation.Constraints;
 
 /**
- * This class will be used by the API and UI Form Elements to validate constraints for
- * Region Data
+ * This class will be used by the API and UI Form Elements to validate constraints for Region Data
  */
 public class RegionFormData {
-  @Constraints.Required()
-  public String code;
+  @Constraints.Required() public String code;
 
   public String name;
 

@@ -51,8 +51,7 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
 Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables, true);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
   for (scoped_refptr<TableInfo> table : tables) {
 
     // Skip non-YQL tables.

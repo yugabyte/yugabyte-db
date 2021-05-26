@@ -12,31 +12,28 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
-import java.text.SimpleDateFormat;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.SimpleDateFormat;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import play.libs.Json;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
@@ -60,22 +57,22 @@ public class Util {
   }
 
   /**
-   * Returns UUID representation of ID string without dashes
-   * For eg. 87d2d6473b3645f7ba56d9e3f7dae239 becomes 87d2d647-3b36-45f7-ba56-d9e3f7dae239
+   * Returns UUID representation of ID string without dashes For eg.
+   * 87d2d6473b3645f7ba56d9e3f7dae239 becomes 87d2d647-3b36-45f7-ba56-d9e3f7dae239
    */
   public static UUID getUUIDRepresentation(String id) {
     if (id.length() != 32 || id.contains("-")) {
       return null;
     } else {
-      String uuidWithHyphens = id.replaceAll(
-        "(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})",
-        "$1-$2-$3-$4-$5");
+      String uuidWithHyphens =
+          id.replaceAll("(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})", "$1-$2-$3-$4-$5");
       return UUID.fromString(uuidWithHyphens);
     }
   }
 
   /**
    * Returns a map of nodes in the ToBeAdded state in the given set of nodes.
+   *
    * @param nodes nodes to examine for the Create/Edit operation
    * @return Map of AZUUID to number of desired nodes in the AZ
    */
@@ -83,13 +80,12 @@ public class Util {
     HashMap<UUID, Integer> toBeAddedAzUUIDToNumNodes = new HashMap<>();
     if (nodes == null || nodes.isEmpty()) {
       return toBeAddedAzUUIDToNumNodes;
-
     }
-    for (NodeDetails currentNode: nodes) {
+    for (NodeDetails currentNode : nodes) {
       if (currentNode.state == NodeDetails.NodeState.ToBeAdded) {
         UUID currentAZUUID = currentNode.azUuid;
-        toBeAddedAzUUIDToNumNodes.put(currentAZUUID, toBeAddedAzUUIDToNumNodes.getOrDefault(currentAZUUID, 0) + 1);
-
+        toBeAddedAzUUIDToNumNodes.put(
+            currentAZUUID, toBeAddedAzUUIDToNumNodes.getOrDefault(currentAZUUID, 0) + 1);
       }
     }
     return toBeAddedAzUUIDToNumNodes;
@@ -97,8 +93,9 @@ public class Util {
 
   /**
    * Create a custom node prefix name from the given parameters.
-   * @param  custId customer id owing the universe.
-   * @param  univName universe name.
+   *
+   * @param custId customer id owing the universe.
+   * @param univName universe name.
    * @return The custom node prefix name.
    */
   public static String getNodePrefix(Long custId, String univName) {
@@ -111,6 +108,7 @@ public class Util {
 
   /**
    * Method returns a map of azUUID to number of master's per AZ.
+   *
    * @param nodeDetailsSet The nodeDetailSet in the universe where masters are to be mapped.
    * @return Map of azUUID to numMastersInAZ.
    */
@@ -118,8 +116,8 @@ public class Util {
     Map<UUID, Integer> mastersToAZMap = new HashMap<>();
     for (NodeDetails currentNode : nodeDetailsSet) {
       if (currentNode.isMaster) {
-        mastersToAZMap.put(currentNode.azUuid,
-                           mastersToAZMap.getOrDefault(currentNode.azUuid, 0) + 1);
+        mastersToAZMap.put(
+            currentNode.azUuid, mastersToAZMap.getOrDefault(currentNode.azUuid, 0) + 1);
       } else {
         mastersToAZMap.putIfAbsent(currentNode.azUuid, 0);
       }
@@ -149,15 +147,15 @@ public class Util {
   /**
    * API detects if addition of a master to the same AZ of current node makes master quorum get
    * closer to satisfying the replication factor requirements.
+   *
    * @param currentNode the node whose AZ is checked.
    * @param nodeDetailsSet collection of nodes in a universe.
    * @param numMastersToBeAdded number of masters to be added.
    * @return true if starting a master on the node will enhance master replication of the universe.
    */
   @VisibleForTesting
-  static boolean needMasterQuorumRestore(NodeDetails currentNode,
-                                                Set<NodeDetails> nodeDetailsSet,
-                                                long numMastersToBeAdded) {
+  static boolean needMasterQuorumRestore(
+      NodeDetails currentNode, Set<NodeDetails> nodeDetailsSet, long numMastersToBeAdded) {
     Map<UUID, Integer> mastersToAZMap = getMastersToAZMap(nodeDetailsSet);
 
     // If this is a single AZ deploy or if no master in current AZ, then start a master.
@@ -168,8 +166,8 @@ public class Util {
     Map<UUID, Integer> azToNumStoppedNodesMap = getAZToStoppedNodesCountMap(nodeDetailsSet);
     int numStoppedMasters = 0;
     for (UUID azUUID : azToNumStoppedNodesMap.keySet()) {
-      if (azUUID != currentNode.azUuid &&
-          (!mastersToAZMap.containsKey(azUUID) || mastersToAZMap.get(azUUID) == 0)) {
+      if (azUUID != currentNode.azUuid
+          && (!mastersToAZMap.containsKey(azUUID) || mastersToAZMap.get(azUUID) == 0)) {
         numStoppedMasters++;
       }
     }
@@ -180,17 +178,18 @@ public class Util {
 
   /**
    * Method returns a map of azuuid to number of nodes stopped per az.
+   *
    * @param nodeDetailsSet The set of nodes that need to be mapped.
    * @return Map of azUUID to num stopped nodes in that AZ.
    */
   private static Map<UUID, Integer> getAZToStoppedNodesCountMap(Set<NodeDetails> nodeDetailsSet) {
     Map<UUID, Integer> azToNumStoppedNodesMap = new HashMap<>();
     for (NodeDetails currentNode : nodeDetailsSet) {
-      if (currentNode.state == NodeDetails.NodeState.Stopped ||
-          currentNode.state == NodeDetails.NodeState.Removed ||
-          currentNode.state == NodeDetails.NodeState.Decommissioned) {
-        azToNumStoppedNodesMap.put(currentNode.azUuid,
-                                   azToNumStoppedNodesMap.getOrDefault(currentNode.azUuid, 0) + 1);
+      if (currentNode.state == NodeDetails.NodeState.Stopped
+          || currentNode.state == NodeDetails.NodeState.Removed
+          || currentNode.state == NodeDetails.NodeState.Decommissioned) {
+        azToNumStoppedNodesMap.put(
+            currentNode.azUuid, azToNumStoppedNodesMap.getOrDefault(currentNode.azUuid, 0) + 1);
       }
     }
     LOG.info("AZ to stopped count {}", azToNumStoppedNodesMap);
@@ -199,12 +198,12 @@ public class Util {
 
   /**
    * Checks if the universe needs a new master spawned on the current node.
+   *
    * @param currentNode candidate node to be used to potentially spawn a master.
    * @param universe Universe to check for under replicated masters.
    * @return true if universe has fewer number of masters than RF.
    */
-  public static boolean areMastersUnderReplicated(NodeDetails currentNode,
-                                                  Universe universe) {
+  public static boolean areMastersUnderReplicated(NodeDetails currentNode, Universe universe) {
     Cluster cluster = universe.getCluster(currentNode.placementUuid);
     if ((cluster == null) || (cluster.clusterType != ClusterType.PRIMARY)) {
       return false;
@@ -216,8 +215,8 @@ public class Util {
     int replFactor = universeDetails.getPrimaryCluster().userIntent.replicationFactor;
     LOG.info("RF = {} , numMasters = {}", replFactor, numMasters);
 
-    return replFactor > numMasters &&
-      needMasterQuorumRestore(currentNode, nodes, replFactor - numMasters);
+    return replFactor > numMasters
+        && needMasterQuorumRestore(currentNode, nodes, replFactor - numMasters);
   }
 
   public static String UNIV_NAME_ERROR_MESG =
@@ -228,8 +227,7 @@ public class Util {
   }
 
   // Helper API to create a CSV of any keys present in existing map but not in new map.
-  public static String getKeysNotPresent(Map<String, String> existing,
-                                         Map<String, String> newMap) {
+  public static String getKeysNotPresent(Map<String, String> existing, Map<String, String> newMap) {
     Set<String> keysNotPresent = new HashSet<>();
     Set<String> existingKeySet = existing.keySet();
     Set<String> newKeySet = newMap.keySet();
@@ -270,7 +268,7 @@ public class Util {
   }
 
   public static void writeStringToFile(File file, String contents) throws Exception {
-    try(FileWriter writer = new FileWriter(file)) {
+    try (FileWriter writer = new FileWriter(file)) {
       writer.write(contents);
     }
   }
@@ -278,11 +276,11 @@ public class Util {
   /**
    * Extracts the name and extension parts of a file name.
    *
-   * The resulting string is the rightmost characters of fullName, starting with
-   * the first character after the path separator that separates the path
-   * information from the name and extension.
+   * <p>The resulting string is the rightmost characters of fullName, starting with the first
+   * character after the path separator that separates the path information from the name and
+   * extension.
    *
-   * The resulting string is equal to fullName, if fullName contains no path.
+   * <p>The resulting string is equal to fullName, if fullName contains no path.
    *
    * @param fullName
    * @return
@@ -304,7 +302,8 @@ public class Util {
 
     while ((bytesCount = fis.read(byteArray)) != -1) {
       digest.update(byteArray, 0, bytesCount);
-    };
+    }
+    ;
     fis.close();
 
     byte[] bytes = digest.digest();
@@ -312,16 +311,15 @@ public class Util {
     for (int i = 0; i < bytes.length; i++) {
       sb.append(Integer.toString((bytes[i] & 0xff) + 0x100, 16).substring(1));
     }
-   return sb.toString();
+    return sb.toString();
   }
 
   public static List<File> listFiles(Path backupDir, String pattern) throws IOException {
     try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(backupDir, pattern)) {
-      return StreamSupport.stream(
-        directoryStream.spliterator(), false)
-        .map(Path::toFile)
-        .sorted(File::compareTo)
-        .collect(Collectors.toList());
+      return StreamSupport.stream(directoryStream.spliterator(), false)
+          .map(Path::toFile)
+          .sorted(File::compareTo)
+          .collect(Collectors.toList());
     }
   }
 
@@ -377,5 +375,17 @@ public class Util {
     }
 
     throw new RuntimeException("Unable to parse YB version strings");
+  }
+
+  public static String escapeSingleQuotesOnly(String src) {
+    return src.replaceAll("'", "''");
+  }
+
+  @VisibleForTesting
+  public static String removeEnclosingDoubleQuotes(String src) {
+    if (src != null && src.startsWith("\"") && src.endsWith("\"")) {
+      return src.substring(1, src.length() - 1);
+    }
+    return src;
   }
 }

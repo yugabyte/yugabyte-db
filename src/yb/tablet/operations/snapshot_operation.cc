@@ -37,13 +37,16 @@ using yb::tserver::TabletSnapshotOpRequestPB;
 
 string SnapshotOperationState::ToString() const {
   return Format("SnapshotOperationState { hybrid_time: $0 request: $1 }",
-                hybrid_time(), request());
+                hybrid_time_even_if_unset(), request());
 }
 
 Result<std::string> SnapshotOperationState::GetSnapshotDir() const {
   auto& request = *this->request();
   if (!request.snapshot_dir_override().empty()) {
     return request.snapshot_dir_override();
+  }
+  if (request.snapshot_id().empty()) {
+    return std::string();
   }
   std::string snapshot_id_str;
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(request.snapshot_id());
@@ -62,6 +65,9 @@ Status SnapshotOperationState::DoCheckOperationRequirements() {
   }
 
   const string snapshot_dir = VERIFY_RESULT(GetSnapshotDir());
+  if (snapshot_dir.empty()) {
+    return Status::OK();
+  }
   Status s = tablet()->rocksdb_env().FileExists(snapshot_dir);
 
   if (!s.ok()) {
@@ -79,7 +85,6 @@ bool SnapshotOperationState::CheckOperationRequirements() {
   }
 
   // LogPrefix() calls ToString() which needs correct hybrid_time.
-  TrySetHybridTimeFromClock();
   LOG_WITH_PREFIX(WARNING) << status;
   TRACE("Requirements was not satisfied for snapshot operation: $0", operation());
   // Run the callback, finish RPC and return the error to the sender.
@@ -151,13 +156,6 @@ Status SnapshotOperation::Prepare() {
 
   TRACE("PREPARE SNAPSHOT: finished");
   return Status::OK();
-}
-
-void SnapshotOperation::DoStart() {
-  state()->TrySetHybridTimeFromClock();
-
-  TRACE("START. HybridTime: $0",
-      server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
 Status SnapshotOperation::DoAborted(const Status& status) {

@@ -2,22 +2,17 @@
 
 package com.yugabyte.yw.forms;
 
-
 import play.data.validation.Constraints;
 import java.util.Map;
+import java.util.UUID;
 
-
-/**
- * This class will be used by the API and UI Form Elements to validate constraints are met
- */
+/** This class will be used by the API and UI Form Elements to validate constraints are met */
 public class CustomerRegisterFormData {
   @Constraints.Required()
   @Constraints.MaxLength(15)
   private String code;
 
-  @Constraints.Required()
-  @Constraints.Email
-  private String email;
+  @Constraints.Required() @Constraints.Email private String email;
 
   private String password;
 
@@ -101,7 +96,7 @@ public class CustomerRegisterFormData {
     this.callhomeLevel = callhomeLevel;
   }
 
-  static public class AlertingData {
+  public static class AlertingData {
     @Constraints.Email
     @Constraints.MinLength(5)
     public String alertingEmail;
@@ -117,7 +112,9 @@ public class CustomerRegisterFormData {
     public Boolean reportBackupFailures = false;
   }
 
-  static public class SmtpData {
+  public static class SmtpData {
+    public UUID configUUID = null;
+
     public String smtpServer = null;
 
     public int smtpPort = -1;
@@ -136,6 +133,7 @@ public class CustomerRegisterFormData {
     public int hashCode() {
       final int prime = 31;
       int result = 1;
+      result = prime * result + ((configUUID == null) ? 0 : configUUID.hashCode());
       result = prime * result + ((emailFrom == null) ? 0 : emailFrom.hashCode());
       result = prime * result + ((smtpPassword == null) ? 0 : smtpPassword.hashCode());
       result = prime * result + smtpPort;
@@ -155,6 +153,13 @@ public class CustomerRegisterFormData {
         return false;
       }
       SmtpData other = (SmtpData) obj;
+      if (configUUID == null) {
+        if (other.configUUID != null) {
+          return false;
+        }
+      } else if (!configUUID.equals(other.configUUID)) {
+        return false;
+      }
       if (emailFrom == null) {
         if (other.emailFrom != null) {
           return false;
@@ -200,6 +205,8 @@ public class CustomerRegisterFormData {
 
   public SmtpData smtpData;
 
-  @Constraints.Pattern(message="Must be one of NONE, LOW, MEDIUM, HIGH", value="\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
+  @Constraints.Pattern(
+      message = "Must be one of NONE, LOW, MEDIUM, HIGH",
+      value = "\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
   public String callhomeLevel = "MEDIUM";
 }

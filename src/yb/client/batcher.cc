@@ -41,6 +41,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/optional/optional_io.hpp>
 #include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
@@ -156,9 +157,14 @@ Batcher::~Batcher() {
     for (auto& op : ops_) {
       LOG_WITH_PREFIX(ERROR) << "Orphaned op: " << op->ToString();
     }
-    LOG_WITH_PREFIX(FATAL) << "ops_ not empty";
+    if (state_ != BatcherState::kAddFailed) {
+      // OK to destruct batcher failed due error calling Add() even with ops_ not empty.
+      LOG_WITH_PREFIX(FATAL) << "ops_ not empty";
+    }
   }
-  CHECK(state_ == BatcherState::kComplete || state_ == BatcherState::kAborted)
+  CHECK(
+      state_ == BatcherState::kComplete || state_ == BatcherState::kAborted ||
+      state_ == BatcherState::kAddFailed)
       << "Bad state: " << state_;
 }
 
@@ -181,6 +187,11 @@ int Batcher::CountBufferedOperations() const {
     // considered "buffered".
     return 0;
   }
+}
+
+int Batcher::GetAddedNotFlushedOperationsCount() const {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  return added_not_flushed_operations_count_;
 }
 
 void Batcher::CheckForFinishedFlush() {
@@ -247,10 +258,15 @@ void Batcher::FlushAsync(
   size_t operations_count;
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
+    if (state_ == BatcherState::kAddFailed) {
+      callback(STATUS(IllegalState, "Batcher failed due to error in add call"));
+      return;
+    }
     CHECK_EQ(state_, BatcherState::kGatheringOps);
     state_ = BatcherState::kResolvingTablets;
     flush_callback_ = std::move(callback);
-    operations_count = ops_.size();
+    operations_count = added_not_flushed_operations_count_;
+    added_not_flushed_operations_count_ = 0;
     session = weak_session_.lock();
   }
   if (session) {
@@ -282,6 +298,15 @@ void Batcher::FlushAsync(
 }
 
 Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
+  auto s = DoAdd(std::move(yb_op));
+  if (!s.ok()) {
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    state_ = BatcherState::kAddFailed;
+  }
+  return s;
+}
+
+Status Batcher::DoAdd(shared_ptr<YBOperation> yb_op) {
   if (state() != BatcherState::kGatheringOps) {
     const auto error =
         STATUS_FORMAT(InternalError, "Adding op to batcher in a wrong state: $0", state_);
@@ -341,8 +366,6 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   if (yb_op->tablet()) {
     TabletLookupFinished(std::move(in_flight_op), yb_op->tablet());
   } else {
-    // deadline_ is set in FlushAsync(), after all Add() calls are done, so
-    // here we're forced to create a new deadline.
     client_->data_->meta_cache_->LookupTabletByKey(
         in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline_,
         std::bind(&Batcher::TabletLookupFinished, BatcherPtr(this), in_flight_op, _1));
@@ -359,6 +382,7 @@ void Batcher::AddInFlightOp(const InFlightOpPtr& op) {
   CHECK(ops_.insert(op).second);
   op->sequence_number_ = next_op_sequence_number_++;
   ++outstanding_lookups_;
+  ++added_not_flushed_operations_count_;
 }
 
 bool Batcher::IsAbortedUnlocked() const {
@@ -529,6 +553,7 @@ void Batcher::FlushBuffersIfReady() {
             Aborted, "Tablet resolution failed for some ops, aborted the whole batch.",
             ClientError(ClientErrorCode::kAbortedBatchDueToFailedTabletLookup));
     Abort(tablet_resolution_failed);
+    return;
   }
 
   // All operations were added, and tablets for them were resolved.
@@ -553,6 +578,16 @@ void Batcher::FlushBuffersIfReady() {
   for (auto it = group_start; it != ops_queue_.end(); ++it) {
     const auto it_group = (**it).yb_op->group();
     const auto* it_tablet = (**it).tablet.get();
+    const auto it_table_partition_list_version = (**it).yb_op->partition_list_version();
+    if (it_table_partition_list_version.has_value() &&
+        it_table_partition_list_version != it_tablet->partition_list_version()) {
+      Abort(STATUS_EC_FORMAT(
+          Aborted, ClientError(ClientErrorCode::kTablePartitionListVersionDoesNotMatch),
+          "Operation $0 requested table partition list version $1, but ours is: $2",
+          (**it).yb_op, it_table_partition_list_version.value(),
+          it_tablet->partition_list_version()));
+      return;
+    }
     if (current_tablet != it_tablet || current_group != it_group) {
       ops_info_.groups.emplace_back(group_start, it);
       group_start = it;

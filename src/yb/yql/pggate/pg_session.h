@@ -20,10 +20,13 @@
 #include <boost/unordered_set.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/session.h"
 
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/master/master.pb.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -63,7 +66,7 @@ class PgSessionAsyncRunResult {
 
   PgSessionAsyncRunResult() = default;
   PgSessionAsyncRunResult(PgsqlOpBuffer buffered_operations,
-                          std::future<Status> future_status,
+                          std::future<client::FlushStatus> future_status,
                           client::YBSessionPtr session);
   CHECKED_STATUS GetStatus(PgSession* session);
   bool InProgress() const;
@@ -72,8 +75,8 @@ class PgSessionAsyncRunResult {
   // buffered_operations_ holds buffered operations (if any) which were applied to
   // the YBSession object before the very first non-bufferable operation.
   // Result of these operations will be checked in the GetStatus() method.
-  PgsqlOpBuffer       buffered_operations_;
-  std::future<Status> future_status_;
+  PgsqlOpBuffer buffered_operations_;
+  std::future<client::FlushStatus> future_status_;
   client::YBSessionPtr session_;
 };
 
@@ -209,6 +212,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
+
+  Result<master::AnalyzeTableResponsePB> AnalyzeTable(const PgObjectId& table_id);
 
   // Start operation buffering. Buffering must not be in progress.
   void StartOperationsBuffering();

@@ -44,6 +44,8 @@
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/tablet_memory_manager.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
@@ -104,25 +106,25 @@ class SysCatalogTable {
   template <class Item>
   CHECKED_STATUS AddItem(Item* item, int64_t leader_term);
   template <class Item>
-  CHECKED_STATUS AddItems(const vector<Item*>& items, int64_t leader_term);
+  CHECKED_STATUS AddItems(const vector<Item>& items, int64_t leader_term);
 
   template <class Item>
   CHECKED_STATUS UpdateItem(Item* item, int64_t leader_term);
   template <class Item>
-  CHECKED_STATUS UpdateItems(const vector<Item*>& items, int64_t leader_term);
+  CHECKED_STATUS UpdateItems(const vector<Item>& items, int64_t leader_term);
 
   template <class Item>
-  CHECKED_STATUS AddAndUpdateItems(const vector<Item*>& added_items,
-                                   const vector<Item*>& updated_items,
+  CHECKED_STATUS AddAndUpdateItems(const vector<Item>& added_items,
+                                   const vector<Item>& updated_items,
                                    int64_t leader_term);
 
   template <class Item>
   CHECKED_STATUS DeleteItem(Item* item, int64_t leader_term);
   template <class Item>
-  CHECKED_STATUS DeleteItems(const vector<Item*>& items, int64_t leader_term);
+  CHECKED_STATUS DeleteItems(const vector<Item>& items, int64_t leader_term);
 
   template <class Item>
-  CHECKED_STATUS MutateItems(const vector<Item*>& items,
+  CHECKED_STATUS MutateItems(const vector<Item>& items,
                              const QLWriteRequestPB::QLStmtType& op_type,
                              int64_t leader_term);
 
@@ -274,9 +276,7 @@ class SysCatalogTable {
 
   std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
 
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
-
-  std::shared_ptr<GarbageCollector> block_based_table_gc_;
+  std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };

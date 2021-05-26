@@ -36,6 +36,8 @@
 #include <string>
 #include <gtest/gtest_prod.h>
 
+#include "yb/consensus/log_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/locks.h"
@@ -44,8 +46,6 @@
 
 namespace yb {
 namespace log {
-
-struct LogAnchor;
 
 // This class allows callers to register their interest in (anchor) a particular
 // log index. The primary use case for this is to prevent the deletion of segments of

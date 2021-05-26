@@ -553,6 +553,8 @@ message GetLastOpIdRequestPB {
 
   // Whether to return the last-received or last-committed OpId.
   optional OpIdType opid_type = 3 [ default = RECEIVED_OPID ];
+
+  optional OperationType op_type = 4;
 }
 
 message GetLastOpIdResponsePB {

@@ -17,6 +17,7 @@
 #include <unordered_set>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/error.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"
@@ -38,8 +39,13 @@ class Batcher;
 class ErrorCollector;
 } // internal
 
-YB_STRONGLY_TYPED_BOOL(VerifyResponse);
 YB_STRONGLY_TYPED_BOOL(Restart);
+
+struct NODISCARD_CLASS FlushStatus {
+  Status status = Status::OK();
+  // Contains more detailed per-operation list of errors if status is not OK.
+  CollectedErrors errors;
+};
 
 // A YBSession belongs to a specific YBClient, and represents a context in
 // which all read/write data access should take place. Within a session,
@@ -121,49 +127,43 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op);
 
-  void ReadAsync(std::shared_ptr<YBOperation> yb_op, StatusFunctor callback);
-
   // TODO: add "doAs" ability here for proxy servers to be able to act on behalf of
   // other users, assuming access rights.
 
   // Apply the write operation.
   //
-  // The behavior of this function depends on the current flush mode. Regardless
-  // of flush mode, however, Apply may begin to perform processing in the background
-  // for the call (e.g looking up the tablet, etc). Given that, an error may be
-  // queued into the PendingErrors structure prior to flushing, even in MANUAL_FLUSH
-  // mode.
+  // Apply may begin to perform processing in the background for the call (e.g looking up the
+  // tablet, etc).
   //
-  // In case of any error, which may occur during flushing or because the write_op
-  // is malformed, the write_op is stored in the session's error collector which
-  // may be retrieved at any time.
+  // If Apply returns an error status, session is switched to a failed state and might only be
+  // used again after Abort or SetTransaction. Session users shouldn't call flush in this case.
   //
-  // This is thread safe.
+  // Until Abort or SetTransaction, subsequent calls to Apply and Flush will return an error. It is
+  // important that in this case call to flush won't provide per-operations list of errors, just
+  // general error status.
   CHECKED_STATUS Apply(YBOperationPtr yb_op);
   CHECKED_STATUS ApplyAndFlush(YBOperationPtr yb_op);
 
-  // verify_response - supported only in auto flush mode. Checks that after flush operation
-  // is succeeded. (i.e. op->succeeded() returns true).
   CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops);
-  CHECKED_STATUS ApplyAndFlush(const std::vector<YBOperationPtr>& ops,
-                               VerifyResponse verify_response = VerifyResponse::kFalse);
+  CHECKED_STATUS ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
 
   // Flush any pending writes.
   //
-  // Returns a bad status if there are any pending errors after the rows have
-  // been flushed. Callers should then use GetAndClearPendingErrors to determine which
-  // specific operations failed.
+  // Returns a bad status if session failed to resolve tablets for at least some operations or
+  // if there are any pending errors after operations have been flushed.
+  // FlushAndGetOpsErrors could be used instead of Flush to get info about which specific
+  // operations failed.
   //
-  // In AUTO_FLUSH_SYNC mode, this has no effect, since every Apply() call flushes
-  // itself inline.
+  // Async version invokes callback as soon as all operations have been flushed and passes
+  // general status and which specific operations failed.
   //
   // In the case that the async version of this method is used, then the callback
   // will be called upon completion of the operations which were buffered since the
   // last flush. In other words, in the following sequence:
   //
-  //    session->Insert(a);
+  //    session->Apply(a);
   //    session->FlushAsync(callback_1);
-  //    session->Insert(b);
+  //    session->Apply(b);
   //    session->FlushAsync(callback_2);
   //
   // ... 'callback_2' will be triggered once 'b' has been inserted, regardless of whether
@@ -180,17 +180,14 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // either from an IO thread or the same thread which calls FlushAsync. The callback
   // should not block.
   //
-  // For FlushAsync, 'cb' must remain valid until it is invoked.
-  CHECKED_STATUS Flush() WARN_UNUSED_RESULT;
-  void FlushAsync(StatusFunctor callback);
-  std::future<Status> FlushFuture();
+  // For FlushAsync, 'callback' must remain valid until it is invoked.
+  void FlushAsync(FlushCallback callback);
+  std::future<FlushStatus> FlushFuture();
+  CHECKED_STATUS Flush();
+  FlushStatus FlushAndGetOpsErrors();
 
   // Abort the unflushed or in-flight operations in the session.
   void Abort();
-
-  // Resets the session by aborting it and cleaning any operations/errors, so it can be reused.
-  // Note: this doesn't reset transaction used by session.
-  void Reset();
 
   // Close the session.
   // Returns Status::IllegalState() if 'force' is false and there are still pending
@@ -203,28 +200,19 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // flushed) as well as in-flight operations (i.e those that are in the process of
   // being sent to the servers).
   // TODO: maybe "incomplete" or "undelivered" is clearer?
-  bool HasPendingOperations() const;
+  bool TEST_HasPendingOperations() const;
 
   // Return the number of buffered operations. These are operations that have
   // not yet been flushed - i.e they are not en-route yet.
   //
-  // Note that this is different than HasPendingOperations() above, which includes
+  // Note that this is different than TEST_HasPendingOperations() above, which includes
   // operations which have been sent and not yet responded to.
-  //
-  // This is only relevant in MANUAL_FLUSH mode, where the result will not
-  // decrease except for after a manual Flush, after which point it will be 0.
-  // In the other flush modes, data is immediately put en-route to the destination,
-  // so this will return 0.
-  int CountBufferedOperations() const;
+  int TEST_CountBufferedOperations() const;
 
-  // Return the number of errors which are pending.
-  int CountPendingErrors() const;
-
-  // Return any errors from previous calls.
-  //
-  // Caller takes ownership of the returned errors.
-  // Note: this doesn't include errors returned by Apply calls.
-  CollectedErrors GetAndClearPendingErrors();
+  // Returns number of operations successfully added to the session via Apply call,
+  // but not yet tried to flush.
+  // Abort/Flush* call resets this number to 0.
+  int GetAddedNotFlushedOperationsCount() const;
 
   // Allow local calls to run in the current thread.
   void set_allow_local_calls_in_curr_thread(bool flag);
@@ -271,17 +259,11 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   friend class internal::Batcher;
 
   internal::Batcher& Batcher();
-  CHECKED_STATUS CheckIfFailed();
 
   BatcherConfig batcher_config_;
 
   // Lock protecting flushed_batchers_.
   mutable simple_spinlock lock_;
-
-  std::atomic<bool> is_failed_{false};
-
-  // Buffer for errors.
-  std::shared_ptr<internal::ErrorCollector> error_collector_;
 
   // The current batcher being prepared.
   scoped_refptr<internal::Batcher> batcher_;

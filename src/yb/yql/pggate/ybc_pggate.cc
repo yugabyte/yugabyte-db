@@ -29,7 +29,7 @@
 DECLARE_bool(client_suppress_created_logs);
 
 DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
-             "operations. Falls back on max(client_read_write_timeout_ms, 60s) if set to -1." );
+             "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
@@ -605,6 +605,17 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
     *ybctid = type_entity->yb_to_datum(yid.cdata(), yid.size(), nullptr /* type_attrs */);
     return Status::OK();
   });
+}
+
+YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
+                          const YBCPgOid table_oid,
+                          YBCPgStatement *handle) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->NewAnalyze(table_id, handle));
+}
+
+YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count) {
+  return ToYBCStatus(pgapi->ExecAnalyze(handle, rows_count));
 }
 
 // INSERT Operations -------------------------------------------------------------------------------

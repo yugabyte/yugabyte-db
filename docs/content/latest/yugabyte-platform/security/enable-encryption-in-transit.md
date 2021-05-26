@@ -31,7 +31,7 @@ In the current release, you can enable and disable TLS encryption during univers
 
 Yugabyte Platform can create self-signed certificates for each universe. These certificates may be shared between universes within a single instance of Yugabyte Platform. The certificate name has the following format: 
 
-`yb-environment-universe_name`, where *environment* is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and *universe-name* is the provided universe name. The platform generates the root certificate, root private key, and node-level certificates, (assuming node-to-node encryption is enabled), and then provisions those artifact to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node: 
+`yb-environment-universe_name`, where *environment* is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and *universe-name* is the provided universe name. The platform generates the root certificate, root private key, and node-level certificates, (assuming node-to-node encryption is enabled), and then provisions those artifacts to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node: 
 
 1. The root certificate (`ca.cert`).
 2. The node certificate (`node.ip_address.crt`). 

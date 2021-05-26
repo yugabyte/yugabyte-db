@@ -11,7 +11,6 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -19,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -35,8 +35,9 @@ public class UniverseResp {
   public final UniverseResourceDetails resources;
 
   public final UniverseDefinitionTaskParamsResp universeDetails;
-  public final JsonNode universeConfig;
+  public final Map<String, String> universeConfig;
   public final String taskUUID;
+  public final String sampleAppCommandTxt;
 
   public UniverseResp(Universe entity) {
     this(entity, null, null);
@@ -46,7 +47,11 @@ public class UniverseResp {
     this(entity, taskUUID, null);
   }
 
-  public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resources) {
+  public UniverseResp(
+      Universe entity,
+      UUID taskUUID,
+      UniverseResourceDetails resources,
+      String sampleAppCommandTxt) {
     universeUUID = entity.universeUUID.toString();
     name = entity.name;
     creationDate = entity.creationDate.toString();
@@ -55,9 +60,13 @@ public class UniverseResp {
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
     this.taskUUID = taskUUID == null ? null : taskUUID.toString();
     Collection<NodeDetails> nodes = entity.getUniverseDetails().nodeDetailsSet;
-
     this.resources = resources;
-    universeConfig = entity.config;
+    universeConfig = entity.getConfig();
+    this.sampleAppCommandTxt = sampleAppCommandTxt;
+  }
+
+  public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resource) {
+    this(entity, taskUUID, resource, null);
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources

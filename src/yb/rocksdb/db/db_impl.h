@@ -169,7 +169,8 @@ class DBImpl : public DB {
   using DB::SetOptions;
   Status SetOptions(
       ColumnFamilyHandle* column_family,
-      const std::unordered_map<std::string, std::string>& options_map) override;
+      const std::unordered_map<std::string, std::string>& options_map,
+      bool dump_options = true) override;
 
   // Set whether DB should be flushed on shutdown.
   void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
@@ -625,6 +626,8 @@ class DBImpl : public DB {
   uint64_t GetCurrentVersionSstFilesSize() override;
 
   uint64_t GetCurrentVersionSstFilesUncompressedSize() override;
+
+  std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() override;
 
   uint64_t GetCurrentVersionDataSstFilesSize() override;
 

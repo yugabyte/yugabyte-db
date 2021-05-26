@@ -30,7 +30,7 @@ fi
 readonly YB_COMMON_BUILD_ENV_SOURCED=1
 
 # -------------------------------------------------------------------------------------------------
-# Initialize submodules and load yugabyte-bash-common
+# Functions used during initialization
 # -------------------------------------------------------------------------------------------------
 
 set_yb_src_root() {
@@ -44,6 +44,53 @@ set_yb_src_root() {
   yb_java_project_dirs=( "$YB_SRC_ROOT/java" )
 }
 
+# Puts the current Git SHA1 in the current directory into the current_sha1 variable.
+# Remember, this variable could also be local to the calling function.
+get_current_sha1() {
+  current_sha1=$( git rev-parse HEAD )
+  if [[ ! $current_sha1 =~ ^[0-9a-f]{40}$ ]]; then
+    # We can't use the "fatal" function yet.
+    echo >&2 "Could not get current Git SHA1 in $PWD"
+    exit 1
+  fi
+}
+
+initialize_yugabyte_bash_common() {
+  local target_sha1=$(<"$YB_SRC_ROOT/build-support/yugabyte-bash-common-sha1.txt")
+  if [[ ! $target_sha1 =~ ^[0-9a-f]{40}$ ]]; then
+    echo >&2 "Invalid yugabyte-bash-common SHA1: $sha1"
+    exit 1
+  fi
+
+  # Put this submodule-like directory under "build".
+  YB_BASH_COMMON_DIR=$YB_SRC_ROOT/build/yugabyte-bash-common
+
+  if [[ ! -d $YB_BASH_COMMON_DIR ]]; then
+    mkdir -p "$YB_SRC_ROOT/build"
+    git clone https://github.com/yugabyte/yugabyte-bash-common.git "$YB_BASH_COMMON_DIR"
+  fi
+
+  pushd "$YB_BASH_COMMON_DIR" >/dev/null
+  local current_sha1
+  get_current_sha1
+  if [[ $current_sha1 != $target_sha1 ]]; then
+    if ! ( set -x; git checkout "$target_sha1" ); then
+      (
+        set -x
+        git fetch
+        git checkout "$target_sha1"
+      )
+    fi
+    get_current_sha1
+    if [[ $current_sha1 != $target_sha1 ]]; then
+      echo >&2 "Failed to check out target SHA1 $target_sha1 in directory $PWD." \
+                "Current SHA1: $current_sha1."
+      exit 1
+    fi
+  fi
+  popd >/dev/null
+}
+
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
 set_yb_src_root "$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. && pwd )"
 
@@ -51,20 +98,10 @@ if [[ $YB_SRC_ROOT == */ ]]; then
   fatal "YB_SRC_ROOT ends with '/' (not allowed): '$YB_SRC_ROOT'"
 fi
 
-YB_BASH_COMMON_DIR=$YB_SRC_ROOT/submodules/yugabyte-bash-common
+initialize_yugabyte_bash_common
 
-# Initialize submodules. Only do this when the source directory is a git directory.
-#
-# The "thirdparty" subdirectory of the source directory is a submodule with a special location
-# (outside of the "submodules" subdirectory).
-if [[ ! -d $YB_BASH_COMMON_DIR     || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ||
-      ! -d $YB_SRC_ROOT/thirdparty || -z "$( ls -A "$YB_SRC_ROOT/thirdparty" )" ]] &&
-   [[ -d $YB_SRC_ROOT/.git ]]; then
-  ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
-fi
-
-# shellcheck source=submodules/yugabyte-bash-common/src/yugabyte-bash-common.sh
-. "$YB_SRC_ROOT/submodules/yugabyte-bash-common/src/yugabyte-bash-common.sh"
+# shellcheck source=build/yugabyte-bash-common/src/yugabyte-bash-common.sh
+. "$YB_BASH_COMMON_DIR/src/yugabyte-bash-common.sh"
 
 # -------------------------------------------------------------------------------------------------
 # Constants
@@ -2274,13 +2311,17 @@ update_submodules() {
 }
 
 set_prebuilt_thirdparty_url() {
-  expect_vars_to_be_set YB_COMPILER_TYPE
+  expect_vars_to_be_set YB_COMPILER_TYPE build_type
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
     local auto_thirdparty_url=""
     local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}
     if [[ ${YB_COMPILER_TYPE} =~ ^.*[0-9]+$ ]]; then
       # For compiler types like gcc9 or clang11, append the compiler type to the file path.
       thirdparty_url_file+="_${YB_COMPILER_TYPE}"
+    fi
+    if [[ $YB_COMPILER_TYPE == "clang" && ( $build_type == "asan" || $build_type == "tsan" ) ]]
+    then
+      thirdparty_url_file+="_sanitizers"
     fi
     thirdparty_url_file+=.txt
     if [[ -f $thirdparty_url_file ]]; then
