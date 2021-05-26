@@ -70,7 +70,7 @@ showAsideToc: true
     $ minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
     ```
 
-    ```
+    ```output
     ...
     Configuring environment for Kubernetes v1.14.2 on Docker 18.09.6
     ...
@@ -88,7 +88,7 @@ showAsideToc: true
     $ kubectl version
     ```
 
-    ```
+    ```output
     Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.14.10-dispatcher", ...}
     Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
     ```
@@ -99,7 +99,7 @@ showAsideToc: true
     $ helm version
     ```
 
-    ```
+    ```output
     version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
     ```
 
@@ -127,9 +127,9 @@ $ helm repo update
 $ helm search repo yugabytedb/yugabyte
 ```
 
-```
+```output
 NAME                 CHART VERSION   APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  2.5.3           2.5.3.1-b10  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  2.7.1           2.7.1.1-b1  YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.

@@ -54,7 +54,7 @@ kern.maxfilesperproc=1048576
   </plist>
 ```
 
-Enure that the plist file is owned by `root:wheel` and has permissions `-rw-r--r--`. Reboot your computer for this to take effect. Or, to avoid this effort, enter this command:
+Ensure that the plist file is owned by `root:wheel` and has permissions `-rw-r--r--`. Reboot your computer for this to take effect. Or, to avoid this effort, enter this command:
 
 ```sh
 $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
