@@ -96,31 +96,34 @@ public class CustomerConfigValidatorTest {
     assertEquals(expectedResult, result.size() == 0);
   }
 
+  @Parameters({
+    // Check invalid Aws Credentials -> disallowed
+    "S3, BACKUP_LOCATION, s3://test, AWS_ACCESS_KEY_ID, accessKey , AWS_SECRET_ACCESS_KEY, "
+        + "secret , The AWS Access Key Id you provided does not exist in our records.",
+    // location - correct, BACKUP_LOCATION - incorrect -> disallowed
+    "S3, BACKUP_LOCATION, s://abc, AWS_ACCESS_KEY_ID, accessKey , AWS_SECRET_ACCESS_KEY, "
+        + "secret , Invalid bucket name: s://abc",
+  })
   @Test
-  public void testValidateDataContent_Storage_S3PreflightCheckValidator() {
+  public void testValidateDataContent_Storage_S3PreflightCheckValidator(
+      String storageType,
+      String fieldName1,
+      String fieldValue1,
+      String fieldName2,
+      String fieldValue2,
+      String fieldName3,
+      String fieldValue3,
+      String expectedMessage) {
     ObjectNode data = Json.newObject();
-    data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, "s3://abc");
-    data.put(CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME, "xyz");
-    data.put(CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME, "secret");
+    data.put(fieldName1, fieldValue1);
+    data.put(fieldName2, fieldValue2);
+    data.put(fieldName3, fieldValue3);
     ObjectNode result =
-        customerConfigValidator.validateDataContent(createFormData("STORAGE", "S3", data));
-    String expectedErrorMessage =
-        "The AWS Access Key Id you provided does not " + "exist in our records.";
+        customerConfigValidator.validateDataContent(createFormData("STORAGE", storageType, data));
     assertEquals(1, result.size());
     assertEquals(
-        expectedErrorMessage,
-        result.get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME).get(0).asText());
-    data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, "s://abc");
-    ObjectNode resultWithInvalidBucketName =
-        customerConfigValidator.validateDataContent(createFormData("STORAGE", "S3", data));
-    String expectedMessage = "Invalid bucket name: s://abc";
-    assertEquals(1, resultWithInvalidBucketName.size());
-    assertEquals(
         expectedMessage,
-        resultWithInvalidBucketName
-            .get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME)
-            .get(0)
-            .asText());
+        result.get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME).get(0).asText());
   }
 
   private JsonNode createFormData(String type, String name, JsonNode data) {
