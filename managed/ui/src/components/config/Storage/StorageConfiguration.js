@@ -98,7 +98,6 @@ class StorageConfiguration extends Component {
   }
 
   iamInstanceToggle = (event) => {
-    console.log(event.target.checked, '****** iam toogle');
     this.setState({ iamRoleEnabled: event.target.checked });
   };
 
