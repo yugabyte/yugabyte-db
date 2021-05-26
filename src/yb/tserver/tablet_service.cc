@@ -1414,10 +1414,6 @@ void TabletServiceAdminImpl::GetSplitKey(
   auto leader_tablet_peer =
       LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   if (!leader_tablet_peer) {
-    SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS(NotFound, "Could not find requested leader tablet peer."),
-        &context);
     return;
   }
 

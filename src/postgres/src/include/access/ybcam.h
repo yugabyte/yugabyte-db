@@ -170,7 +170,7 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 
 extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
                             bool is_backwards_scan, bool is_uncovered_idx_scan,
-							Cost *startup_cost, Cost *total_cost);
+							Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid);
 extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 								 Cost *startup_cost, Cost *total_cost);
 
