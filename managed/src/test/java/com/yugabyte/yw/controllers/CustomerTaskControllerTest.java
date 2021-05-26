@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
@@ -34,6 +35,7 @@ import play.test.Helpers;
 import java.util.Calendar;
 import java.util.stream.IntStream;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -107,7 +109,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     UUID taskUUID =
         createTaskWithStatusAndResponse(
             targetUUID, targetType, taskType, targetName, status, percentComplete, responseJson);
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(responseJson);
+    when(mockCommissioner.mayGetStatus(taskUUID)).thenReturn(Optional.of(responseJson));
     return taskUUID;
   }
 
@@ -387,7 +389,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             responseJson);
     createSubTaskWithResponse(
         taskUUID, 0, TaskType.AnsibleSetupServer, TaskInfo.State.Success, responseJson);
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(responseJson);
+    when(mockCommissioner.getStatusOrBadRequest(taskUUID)).thenReturn(responseJson);
     Result result =
         FakeApiHelper.doRequestWithAuthToken(
             "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken);
@@ -417,10 +419,13 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskStatusWithInvalidTaskUUID() {
     String authToken = user.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
-
     Result result =
-        FakeApiHelper.doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthToken(
+                        "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken))
+            .getResult();
 
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
