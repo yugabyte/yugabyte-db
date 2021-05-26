@@ -31,8 +31,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
 
-  @Inject
-  private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
 
@@ -65,19 +64,24 @@ public class CustomerTaskController extends AuthenticatedController {
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
     List<CustomerTask> customerTaskList;
 
-    Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .orderBy("create_time desc");
+    Query<CustomerTask> customerTaskQuery =
+        CustomerTask.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .orderBy("create_time desc");
 
     if (targetUUID != null) {
-      customerTaskQuery.where().eq("target_uuid", targetUUID); 
+      customerTaskQuery.where().eq("target_uuid", targetUUID);
     }
-    
-    customerTaskList = customerTaskQuery.setMaxRows(
-          runtimeConfigFactory.globalRuntimeConf().getInt(CUSTOMER_TASK_DB_QUERY_LIMIT))
-      .orderBy("create_time desc")
-      .findPagedList()
-      .getList();
+
+    customerTaskList =
+        customerTaskQuery
+            .setMaxRows(
+                runtimeConfigFactory.globalRuntimeConf().getInt(CUSTOMER_TASK_DB_QUERY_LIMIT))
+            .orderBy("create_time desc")
+            .findPagedList()
+            .getList();
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
