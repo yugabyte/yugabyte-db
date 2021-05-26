@@ -208,6 +208,5 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedException.expect(YWServiceException.class);
     expectedException.expectMessage("YBCloud command instance (template) failed to execute.");
     templateManager.createProvisionTemplate(accessKey, true, true, true, 9300, "prometheus");
-    assertAccessKeyInfo(accessKey, false, false, true);
   }
 }
