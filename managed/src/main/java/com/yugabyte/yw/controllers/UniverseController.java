@@ -333,9 +333,9 @@ public class UniverseController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
 
-    // Set the provider code.
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+      // Set the provider code.
       c.userIntent.providerType = CloudType.valueOf(provider.code);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
       if (c.userIntent.enableExposingService == ExposingServiceState.NONE) {
