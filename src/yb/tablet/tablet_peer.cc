@@ -225,7 +225,7 @@ Status TabletPeer::InitTabletPeer(
           return largest.op_id().index <= index;
         }
 
-        // It is correct to don't have frontiers when memtable is empty.
+        // It is correct to not have frontiers when memtable is empty
         if (memtable.IsEmpty()) {
           return true;
         }

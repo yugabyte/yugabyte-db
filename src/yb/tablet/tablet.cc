@@ -49,6 +49,7 @@
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
@@ -237,6 +238,9 @@ DEFINE_test_flag(bool, export_intentdb_metrics, false,
 DEFINE_test_flag(bool, pause_before_post_split_compation, false,
                  "Pause before triggering post split compaction.");
 
+DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
+                 "Prevents adding the UserFrontier to SST file in order to mimic older files.");
+
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -300,6 +304,32 @@ docdb::PartialRangeKeyIntents UsePartialRangeKeyIntents(const RaftGroupMetadata&
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
   return Format("T $0$1: ", tablet_id, log_prefix_suffix);
+}
+
+docdb::ConsensusFrontiers* InitFrontiers(
+    const OpId op_id,
+    const HybridTime log_ht,
+    docdb::ConsensusFrontiers* frontiers) {
+  if (FLAGS_TEST_disable_adding_user_frontier_to_sst) {
+    return nullptr;
+  }
+  set_op_id(op_id, frontiers);
+  set_hybrid_time(log_ht, frontiers);
+  return frontiers;
+}
+
+template <class Data>
+docdb::ConsensusFrontiers* InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
+  return InitFrontiers(data.op_id, data.log_ht, frontiers);
+}
+
+rocksdb::UserFrontierPtr MemTableFrontierFromDb(
+    rocksdb::DB* db,
+    rocksdb::UpdateUserValueType type) {
+  if (FLAGS_TEST_disable_adding_user_frontier_to_sst) {
+    return nullptr;
+  }
+  return db->GetMutableMemTableFrontier(type);
 }
 
 } // namespace
@@ -728,8 +758,12 @@ void Tablet::DoCleanupIntentFiles() {
     for (const auto& file : files) {
       if (file.largest.seqno < min_largest_seq_no) {
         min_largest_seq_no = file.largest.seqno;
-        auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
-        best_file_max_ht = frontier.hybrid_time();
+        if (file.largest.user_frontier) {
+          auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
+          best_file_max_ht = frontier.hybrid_time();
+        } else {
+          best_file_max_ht = HybridTime::kMax;
+        }
         best_file = &file;
       }
     }
@@ -993,16 +1027,15 @@ Status Tablet::ApplyOperationState(
     const OperationState& operation_state, int64_t batch_idx,
     const docdb::KeyValueWriteBatchPB& write_batch,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
-  docdb::ConsensusFrontiers frontiers;
-  set_op_id(operation_state.op_id(), &frontiers);
-
   auto hybrid_time = operation_state.WriteHybridTime();
 
+  docdb::ConsensusFrontiers frontiers;
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
-  set_hybrid_time(operation_state.hybrid_time(), &frontiers);
+  auto frontiers_ptr =
+      InitFrontiers(operation_state.op_id(), operation_state.hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, &frontiers, hybrid_time, already_applied_to_regular_db);
+      batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
@@ -1870,12 +1903,6 @@ Status Tablet::ImportData(const std::string& source_dir) {
   return regular_db_->Import(source_dir);
 }
 
-template <class Data>
-void InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
-  set_op_id(data.op_id, frontiers);
-  set_hybrid_time(data.log_ht, frontiers);
-}
-
 // We apply intents by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
@@ -1890,11 +1917,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
-  docdb::ConsensusFrontiers* frontiers_ptr = nullptr;
-  if (!data.op_id.empty()) {
-    InitFrontiers(data, &frontiers);
-    frontiers_ptr = &frontiers;
-  }
+  auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
   WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
   return new_apply_state;
 }
@@ -1916,8 +1939,8 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
       }
 
       docdb::ConsensusFrontiers frontiers;
-      InitFrontiers(data, &frontiers);
-      WriteToRocksDB(&frontiers, &intents_write_batch, StorageDbType::kIntents);
+      auto frontiers_ptr = InitFrontiers(data, &frontiers);
+      WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
 
       apply_state = std::move(new_apply_state);
       intents_write_batch.Clear();
@@ -1927,8 +1950,8 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
   }
 
   docdb::ConsensusFrontiers frontiers;
-  InitFrontiers(data, &frontiers);
-  WriteToRocksDB(&frontiers, &intents_write_batch, StorageDbType::kIntents);
+  auto frontiers_ptr = InitFrontiers(data, &frontiers);
+  WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
   return Status::OK();
 }
 
@@ -2659,7 +2682,7 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
   }
 
   auto intents_frontier = intents_db_
-      ? intents_db_->GetMutableMemTableFrontier(rocksdb::UpdateUserValueType::kLargest) : nullptr;
+      ? MemTableFrontierFromDb(intents_db_.get(), rocksdb::UpdateUserValueType::kLargest) : nullptr;
   if (intents_frontier) {
     auto index_delta =
         lastest_log_entry_op_id.index -
@@ -2715,7 +2738,7 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   HybridTime result = HybridTime::kMax;
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
-      auto mem_frontier = db->GetMutableMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+      auto mem_frontier = MemTableFrontierFromDb(db, rocksdb::UpdateUserValueType::kSmallest);
       if (mem_frontier) {
         const auto hybrid_time =
             static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();
