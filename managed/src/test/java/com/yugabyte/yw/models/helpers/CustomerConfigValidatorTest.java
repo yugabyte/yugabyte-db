@@ -102,10 +102,10 @@ public class CustomerConfigValidatorTest {
     data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, "s3://abc");
     data.put(CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME, "xyz");
     data.put(CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME, "secret");
-    ObjectNode result = customerConfigValidator
-      .validateDataContent(createFormData("STORAGE", "S3", data));
-    String expectedErrorMessage = "The AWS Access Key Id you provided does not " +
-      "exist in our records.";
+    ObjectNode result =
+        customerConfigValidator.validateDataContent(createFormData("STORAGE", "S3", data));
+    String expectedErrorMessage =
+        "The AWS Access Key Id you provided does not " + "exist in our records.";
     assertEquals(1, result.size());
     assertEquals(expectedErrorMessage, result.get("BACKUP_LOCATION").get(0).asText());
   }
@@ -116,8 +116,8 @@ public class CustomerConfigValidatorTest {
     data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, "s://abc");
     data.put(CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME, "xyz");
     data.put(CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME, "secret");
-    ObjectNode result = customerConfigValidator
-      .validateDataContent(createFormData("STORAGE", "S3", data));
+    ObjectNode result =
+        customerConfigValidator.validateDataContent(createFormData("STORAGE", "S3", data));
     String expectedErrorMessage = "Invalid bucket name: s://abc";
     assertEquals(1, result.size());
     assertEquals(expectedErrorMessage, result.get("BACKUP_LOCATION").get(0).asText());

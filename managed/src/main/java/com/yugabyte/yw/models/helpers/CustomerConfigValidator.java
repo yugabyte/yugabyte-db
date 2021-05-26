@@ -114,21 +114,26 @@ public class CustomerConfigValidator {
     public void doValidate(JsonNode data, ObjectNode errorJson) {
       if (this.name.equals("S3") && data.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
         String bucketname = data.get(BACKUP_LOCATION_FIELDNAME).asText();
-        //Assuming bucket name will always start with s3:// otherwise that will be invalid
+        // Assuming bucket name will always start with s3:// otherwise that will be invalid
         if (bucketname.length() < 5 || !bucketname.startsWith("s3://")) {
           errorJson.set(fieldName, Json.newArray().add("Invalid bucket name: " + bucketname));
         } else {
           try {
             bucketname = bucketname.substring(5);
-            AmazonS3 s3client = create(data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
-              data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
-            List<String> buckets = s3client.listBuckets().stream()
-              .map(bucket -> bucket.getName())
-              .collect(Collectors.toList());
+            AmazonS3 s3client =
+                create(
+                    data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
+                    data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
+            List<String> buckets =
+                s3client
+                    .listBuckets()
+                    .stream()
+                    .map(bucket -> bucket.getName())
+                    .collect(Collectors.toList());
             if (!buckets.contains(bucketname))
-              errorJson.set(fieldName, Json.newArray().add("Bucket name " + bucketname +
-                " doesn't exist"));
-          } catch(AmazonS3Exception s3Exception) {
+              errorJson.set(
+                  fieldName, Json.newArray().add("Bucket name " + bucketname + " doesn't exist"));
+          } catch (AmazonS3Exception s3Exception) {
             errorJson.set(fieldName, Json.newArray().add(s3Exception.getErrorMessage()));
           }
         }
@@ -243,8 +248,7 @@ public class CustomerConfigValidator {
         new ConfigObjectValidator<>(
             PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
     validators.add(
-      new ConfigS3PreflightCheckValidator(
-        STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME));
+        new ConfigS3PreflightCheckValidator(STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME));
   }
 
   public ObjectNode validateFormData(JsonNode formData) {
@@ -293,16 +297,12 @@ public class CustomerConfigValidator {
     return errorJson;
   }
 
-  //TODO: move this out to some common util file.
+  // TODO: move this out to some common util file.
   public static AmazonS3 create(String key, String secret) {
-    AWSCredentials credentials = new BasicAWSCredentials(
-      key,
-      secret
-    );
-    return AmazonS3ClientBuilder
-      .standard()
-      .withCredentials(new AWSStaticCredentialsProvider(credentials))
-      .withRegion(Regions.DEFAULT_REGION)
-      .build();
+    AWSCredentials credentials = new BasicAWSCredentials(key, secret);
+    return AmazonS3ClientBuilder.standard()
+        .withCredentials(new AWSStaticCredentialsProvider(credentials))
+        .withRegion(Regions.DEFAULT_REGION)
+        .build();
   }
 }
