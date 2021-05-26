@@ -1105,7 +1105,8 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
         << "Failed with status " << status << ", treating all " << rounds.size()
         << " operations as failed with that status";
     // Treat all the operations in the batch as failed.
-    for (size_t i = processed_rounds; i != rounds.size(); ++i) {
+    for (size_t i = rounds.size(); i != processed_rounds;) {
+      --i;
       auto* const append_cb = rounds[i]->append_callback();
       if (append_cb) {
         append_cb->ReplicationFinished(status, OpId::kUnknownTerm, /* applied_op_ids= */ nullptr);
@@ -1147,7 +1148,8 @@ Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* pr
       //
       // (3) is all rounds starting with index *processed_rounds and above.
       // For (1) we reset bound term, so could use it to distinguish between (1) and (2).
-      for (size_t i = 0; i != *processed_rounds; ++i) {
+      for (size_t i = *processed_rounds; i != 0;) {
+        --i;
         if (rounds[i]->bound_term() == OpId::kUnknownTerm) {
           // Already rejected by retryable requests.
           continue;
