@@ -34,7 +34,7 @@ public class YWServiceException extends RuntimeException {
   }
 
   public YWServiceException(int httpStatus, JsonNode errJson) {
-    this(httpStatus, null, errJson);
+    this(httpStatus, "errorJson: " + errJson.toString(), errJson);
   }
 
   public Result getResult() {
