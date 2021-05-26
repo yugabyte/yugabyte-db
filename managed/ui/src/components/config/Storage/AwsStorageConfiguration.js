@@ -11,14 +11,6 @@ import YBInfoTip from '../../common/descriptors/YBInfoTip';
 const required = (value) => value ? undefined : 'This field is required.';
 
 class AwsStorageConfiguration extends Component {
-  state = {
-    iamRoleEnabled: false
-  };
-
-  iamInstanceToggle = (event) => {
-    this.setState({ iamRoleEnabled: event.target.checked });
-  };
-
   disabledInputFields = (config, isEdited, iamRoleEnabled = false) => {
     if (
       ((!isEmptyObject(config) && isEdited) || (isEmptyObject(config) && !isEdited)) &&
@@ -49,9 +41,10 @@ class AwsStorageConfiguration extends Component {
       deleteStorageConfig,
       showDeleteStorageConfig,
       enableEdit,
-      onEditConfig
+      onEditConfig,
+      iamInstanceToggle,
+      iamRoleEnabled
     } = this.props;
-    const { iamRoleEnabled } = this.state;
     const s3Config = customerConfigs.data.find((config) => config.name === 'S3');
     const config = s3Config ? s3Config.data : {};
 
@@ -66,7 +59,7 @@ class AwsStorageConfiguration extends Component {
               <Field
                 name="IAM_INSTANCE_PROFILE"
                 component={YBToggle}
-                onToggle={this.iamInstanceToggle}
+                onToggle={iamInstanceToggle}
                 isReadOnly={this.disabledInputFields(s3Config, enableEdit)}
                 subLabel="Whether to use instance's IAM role for S3 backup."
               />

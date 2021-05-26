@@ -92,12 +92,18 @@ class StorageConfiguration extends Component {
     super(props);
 
     this.state = {
-      enableEdit: false
+      enableEdit: false,
+      iamRoleEnabled: false
     };
   }
 
+  iamInstanceToggle = (event) => {
+    console.log(event.target.checked, '****** iam toogle');
+    this.setState({ iamRoleEnabled: event.target.checked });
+  };
+
   getConfigByType = (name, customerConfigs) => {
-    return customerConfigs.data.find((config) => config.name.toLowerCase() === name);
+    return customerConfigs?.data?.find((config) => config.name.toLowerCase() === name);
   };
 
   wrapFields = (configFields, configName, configControls) => {
@@ -205,6 +211,11 @@ class StorageConfiguration extends Component {
   };
 
   deleteStorageConfig = (configUUID) => {
+    this.setState({
+      enableEdit: false,
+      iamRoleEnabled: !this.state.iamRoleEnabled
+    });
+
     this.props.deleteCustomerConfig(configUUID).then(() => {
       this.props.reset(); // reset form to initial values
       this.props.fetchCustomerConfigs();
@@ -231,7 +242,11 @@ class StorageConfiguration extends Component {
    * This method will disable the edit input fields.
    */
   disableEditFields = () => {
-    this.setState({ enableEdit: false });
+    this.props.reset();
+    this.setState({
+      enableEdit: false,
+      iamRoleEnabled: !this.state.iamRoleEnabled
+    });
   };
 
   /**
@@ -324,7 +339,7 @@ class StorageConfiguration extends Component {
       customerConfigs,
       initialValues
     } = this.props;
-    const { enableEdit } = this.state;
+    const { enableEdit, iamRoleEnabled } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
 
@@ -347,6 +362,8 @@ class StorageConfiguration extends Component {
           <AwsStorageConfiguration
             {...this.props}
             deleteStorageConfig={this.deleteStorageConfig}
+            iamRoleEnabled={iamRoleEnabled}
+            iamInstanceToggle={this.iamInstanceToggle}
             enableEdit={enableEdit}
             onEditConfig={this.onEditConfig}
           />
