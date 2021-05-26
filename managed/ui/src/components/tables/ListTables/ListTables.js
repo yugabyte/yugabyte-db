@@ -41,7 +41,7 @@ class TableTitle extends Component {
             <YBResourceCount kind="YEDIS" size={numRedisTables} />
           </div>
         </div>
-        {!isHidden(currentCustomer.data.features, 'universes.backup') && 
+        {!isHidden(currentCustomer.data.features, 'universes.backup') && false &&
           <div className="pull-right">
             <div className="backup-action-btn-group">
               <UniverseAction
@@ -144,6 +144,7 @@ class ListTableGrid extends Component {
     const actions_disabled =
       isDisabled(currentCustomer.data.features, 'universes.backup') ||
       currentUniverse.universeDetails.backupInProgress;
+    const create_disabled = !(currentUniverse?.universeConfig?.takeBackups === 'true');
     const formatActionButtons = function (item, row, disabled) {
       if (!row.isIndexTable) {
         const actions = [
@@ -151,7 +152,7 @@ class ListTableGrid extends Component {
             key={`${row.tableName}-backup-btn`}
             currentRow={row}
             actionType="create-backup"
-            disabled={actions_disabled}
+            disabled={actions_disabled || create_disabled}
             btnClass={'btn-orange'}
           />
         ];

@@ -16,7 +16,8 @@ import {
   UniverseConnectModal,
   UniverseOverviewContainerNew,
   EncryptionKeyModalContainer,
-  ToggleUniverseStateContainer
+  ToggleUniverseStateContainer,
+  ToggleBackupStateContainer
 } from '../../universes';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
@@ -213,6 +214,7 @@ class UniverseDetail extends Component {
       showManageKeyModal,
       showDeleteUniverseModal,
       showToggleUniverseStateModal,
+      showToggleBackupModal,
       closeModal,
       customer,
       customer: { currentCustomer },
@@ -651,6 +653,27 @@ class UniverseDetail extends Component {
                           Delete Universe
                         </YBLabelWithIcon>
                       </YBMenuItem>
+
+                      <YBMenuItem
+                        onClick={showToggleBackupModal}
+                        availability={getFeatureState(
+                          currentCustomer.data.features,
+                          'universes.backup'
+                        )}
+                      >
+                        <YBLabelWithIcon
+                          icon={
+                            currentUniverse.data.universeConfig.takeBackups === 'true'
+                              ? 'fa fa-pause'
+                              : 'fa fa-play'
+                          }
+                        >
+                          {currentUniverse.data.universeConfig &&
+                          currentUniverse.data.universeConfig.takeBackups === 'true'
+                            ? 'Disable Backup'
+                            : 'Enable Backup'}
+                        </YBLabelWithIcon>
+                      </YBMenuItem>
                     </>
                   )}
                   subMenus={{
@@ -708,7 +731,12 @@ class UniverseDetail extends Component {
           type="primary"
           universePaused={universePaused}
         />
-
+        <ToggleBackupStateContainer
+          visible={showModal && visibleModal === 'toggleBackupModalForm'}
+          onHide={closeModal}
+          universe={currentUniverse.data}
+          type="primary"
+        />
         <EncryptionKeyModalContainer
           modalVisible={showModal && visibleModal === 'manageKeyModal'}
           onHide={closeModal}
