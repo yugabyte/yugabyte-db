@@ -275,7 +275,7 @@ public class Backup extends Model {
     List<Backup> backupList =
         find.query()
             .where()
-            .in("state", new Object[] {BackupState.Completed, BackupState.InProgress})
+            .in("state", BackupState.Completed, BackupState.InProgress)
             .findList();
     backupList =
         backupList
@@ -290,7 +290,7 @@ public class Backup extends Model {
         Schedule.find
             .query()
             .where()
-            .in("task_type", new Object[] {TaskType.BackupUniverse, TaskType.MultiTableBackup})
+            .in("task_type", TaskType.BackupUniverse, TaskType.MultiTableBackup)
             .eq("status", "Active")
             .findList();
     scheduleList =
@@ -305,12 +305,12 @@ public class Backup extends Model {
                         && universeUUIDs.add(
                             UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
             .collect(Collectors.toList());
-    Set<Universe> universes = new HashSet<Universe>();
+    Set<Universe> universes = new HashSet<>();
     for (UUID universeUUID : universeUUIDs) {
       try {
         universes.add(Universe.getOrBadRequest(universeUUID));
       }
-      // backup exist but universe does not.We are ignoring such backups.
+      // Backup is present but universe does no. We are ignoring such backups.
       catch (Exception e) {
       }
     }
