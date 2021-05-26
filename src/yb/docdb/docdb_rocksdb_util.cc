@@ -119,20 +119,41 @@ DEFINE_int32(priority_thread_pool_size, -1,
              "If -1 and max_background_compactions is specified - use max_background_compactions. "
              "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
-DEFINE_int32(compression_type, 1,
-             "compression_type. "
-             "If enable_ondisk_compression is false - no compression. "
-             "If 0 and enable_ondisk_compression is true - use LZ4. "
-             "If 1 and enable_ondisk_compression is true - use Snappy.");
+DEFINE_string(compression_type, "Snappy",
+              "On-disk compression to use in RocksDB.");
 
 namespace {
-    static bool CompressionTypeValidator(const char* flagname, int value) {
-        if (value > 1 or value < 0) {
-            LOG(INFO) << "Expect " << flagname << " only to be 0,1";
-            return false;
-        }
+  const std::vector<rocksdb::CompressionType> configurable_compression_types = {
+      rocksdb::kSnappyCompression,
+      rocksdb::kLZ4Compression
+  };
+  bool CompressionTypeValidator(const char* flagname, const std::string& flag_compression_type) {
+    for (const auto& compression_type : configurable_compression_types) {
+      if(flag_compression_type == rocksdb::CompressionTypeToString(compression_type)){
         return true;
+      }
     }
+    LOG(ERROR) << "Expected " << flagname << " doesn't contain the " << flag_compression_type;
+    return false;
+  }
+
+  rocksdb::CompressionType GetConfiguredCompressionType() {
+
+    //default compression type
+    rocksdb::CompressionType defaultCompressionType = rocksdb::Snappy_Supported() && FLAGS_enable_ondisk_compression
+                                                      ? rocksdb::kSnappyCompression : rocksdb::kNoCompression;
+
+    for (const auto& compression_type : configurable_compression_types) {
+      if(FLAGS_compression_type == rocksdb::CompressionTypeToString(compression_type) && rocksdb::CompressionTypeSupported(compression_type)){
+        //use compatible configurable compression type
+        return compression_type;
+      }
+    }
+
+    //use default compression type
+    LOG(INFO) << FLAGS_compression_type << "isn't a compatible compression type. Use default compression type: " << rocksdb::CompressionTypeToString(defaultCompressionType);
+    return defaultCompressionType;
+  }
 }
 
 __attribute__((unused))
@@ -507,16 +528,7 @@ void InitRocksDBOptions(
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
   }
 
-  rocksdb::CompressionType compressionType = rocksdb::kNoCompression;
-  if (FLAGS_enable_ondisk_compression){
-      if (FLAGS_compression_type == 0 && rocksdb::LZ4_Supported()){
-          compressionType = rocksdb::kLZ4Compression;
-      }else if (FLAGS_compression_type == 1 && rocksdb::Snappy_Supported()){
-          compressionType = rocksdb::kSnappyCompression;
-      }
-  }
-
-  options->compression = compressionType;
+  options->compression = GetConfiguredCompressionType();
 
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),
