@@ -184,7 +184,6 @@ DEFINE_int32(db_block_cache_size_percentage, kDbCacheSizeUseDefault,
 DEFINE_int32(db_block_cache_num_shard_bits, 4,
              "Number of bits to use for sharding the block cache (defaults to 4 bits)");
 TAG_FLAG(db_block_cache_num_shard_bits, advanced);
-
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
