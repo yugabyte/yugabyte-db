@@ -205,7 +205,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                 + cluster.userIntent.providerType.name());
       }
 
-      // We only deal with AWS instance tags.
+      // Check if Provider supports instance tags and the instance tags match.
       if (!Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)
           || userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
         return true;
