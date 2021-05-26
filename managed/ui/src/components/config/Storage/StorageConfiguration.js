@@ -234,8 +234,11 @@ class StorageConfiguration extends Component {
    * This method will enable edit options for respective
    * backup config.
    */
-  onEditConfig = () => {
-    this.setState({ enableEdit: true });
+  onEditConfig = (config) => {
+    this.setState({
+      enableEdit: true,
+      iamRoleEnabled: config?.IAM_INSTANCE_PROFILE || this.state.iamRoleEnabled
+    });
   };
 
   /**
@@ -365,7 +368,7 @@ class StorageConfiguration extends Component {
             iamRoleEnabled={iamRoleEnabled}
             iamInstanceToggle={this.iamInstanceToggle}
             enableEdit={enableEdit}
-            onEditConfig={this.onEditConfig}
+            onEditConfig={(config) => this.onEditConfig(config)}
           />
         </Tab>
       ];
