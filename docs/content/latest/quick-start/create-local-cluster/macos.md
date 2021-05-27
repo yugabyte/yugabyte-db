@@ -101,7 +101,7 @@ The Masters section highlights the 1 yb-master along with its corresponding clou
 
 ### YB-TServer status
 
-Clicking `See all nodes` takes us to the Tablet Servers page where you can observe the 1 yb-tserver along with the time since it last connected to this yb-master via regular heartbeats. Since there are no user tables created yet, you can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will be created automatically and distributed evenly across all the available tablet servers.
+Clicking `See all nodes` takes you to the Tablet Servers page where you can observe the 1 yb-tserver along with the time since it last connected to this yb-master via regular heartbeats. Since there are no user tables created yet, you can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will be created automatically and distributed evenly across all the available tablet servers.
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
