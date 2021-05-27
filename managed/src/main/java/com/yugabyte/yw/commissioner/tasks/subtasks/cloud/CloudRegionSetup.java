@@ -100,7 +100,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         region.zones = new HashSet<>();
         zoneSubnets.forEach(
             (zone, subnet) ->
-                region.zones.add(AvailabilityZone.create(region, zone, zone, subnet)));
+                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
         break;
       case azu:
         Map<String, String> zoneNets = taskParams().metadata.azToSubnetIds;
@@ -121,7 +121,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         region.zones = new HashSet<>();
         zoneNets.forEach(
             (zone, subnet) ->
-                region.zones.add(AvailabilityZone.create(region, zone, zone, subnet)));
+                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
         break;
       case gcp:
         ObjectNode customPayload = Json.newObject();
@@ -152,7 +152,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         region.zones = new HashSet<>();
         zones.forEach(
             zone -> {
-              region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
+              region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
             });
         break;
       default:

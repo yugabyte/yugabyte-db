@@ -56,7 +56,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();

@@ -714,7 +714,7 @@ public class ImportController extends AuthenticatedController {
         AvailabilityZone.maybeGetByCode(provider, importForm.zoneCode)
             .orElseGet(
                 () ->
-                    AvailabilityZone.create(
+                    AvailabilityZone.createOrThrow(
                         region, importForm.zoneCode, importForm.zoneName, null));
 
     // Create the universe definition task params.

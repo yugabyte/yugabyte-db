@@ -73,7 +73,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   @Test
   public void testListAvailabilityZonesWithValidProviderRegionUUID() {
     AvailabilityZone az =
-        AvailabilityZone.create(defaultRegion, "PlacementAZ-1", "PlacementAZ One", "Subnet 1");
+        AvailabilityZone.createOrThrow(
+            defaultRegion, "PlacementAZ-1", "PlacementAZ One", "Subnet 1");
     JsonNode json = doListAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, OK, false);
 
     assertEquals(1, json.size());
@@ -154,7 +155,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteAvailabilityZoneWithValidParams() {
-    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(defaultRegion, "az-1", "AZ 1", "subnet-1");
 
     JsonNode json =
         doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid, az.uuid, OK, false);

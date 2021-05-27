@@ -136,7 +136,7 @@ public class RegionController extends AuthenticatedController {
           region.zones = new HashSet<>();
           zones.forEach(
               zone -> {
-                region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
+                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
               });
         } else {
           // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
@@ -155,7 +155,7 @@ public class RegionController extends AuthenticatedController {
           region.zones = new HashSet<>();
           zoneSubnets.forEach(
               (zone, subnet) -> {
-                region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
+                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
               });
         }
       } else {

@@ -50,7 +50,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     defaultProvider.setConfig(config);
     defaultProvider.save();
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i =
         InstanceType.upsert(
             defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -76,9 +76,9 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     }
 
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
-    az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
             defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());

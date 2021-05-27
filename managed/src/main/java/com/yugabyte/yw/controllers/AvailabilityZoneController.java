@@ -57,20 +57,13 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
     List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
     Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
-    try {
-      for (AvailabilityZoneData azData : azDataList) {
-        AvailabilityZone az =
-            AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
-        availabilityZones.put(az.code, az);
-      }
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return ApiResponse.success(availabilityZones);
-    } catch (Exception e) {
-      LOG.error(e.getMessage());
-      AvailabilityZoneData failedAz = azDataList.get(availabilityZones.size());
-      throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to create zone: " + failedAz.code);
+    for (AvailabilityZoneData azData : azDataList) {
+      AvailabilityZone az =
+          AvailabilityZone.createOrThrow(region, azData.code, azData.name, azData.subnet);
+      availabilityZones.put(az.code, az);
     }
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return ApiResponse.success(availabilityZones);
   }
 
   /**
@@ -84,17 +77,11 @@ public class AvailabilityZoneController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);
-
-    try {
-      az.setActiveFlag(false);
-      az.update();
-      ObjectNode responseJson = Json.newObject();
-      auditService().createAuditEntry(ctx(), request());
-      responseJson.put("success", true);
-      return ApiResponse.success(responseJson);
-    } catch (Exception e) {
-      throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to flag AZ UUID as deleted: " + azUUID);
-    }
+    az.setActiveFlag(false);
+    az.update();
+    ObjectNode responseJson = Json.newObject();
+    auditService().createAuditEntry(ctx(), request());
+    responseJson.put("success", true);
+    return ApiResponse.success(responseJson);
   }
 }
