@@ -131,11 +131,6 @@ ybcGetForeignPaths(PlannerInfo *root,
 					&total_cost,
 					baserel->reltablespace /* tablespace of current path */);
 
-	/* add in cpu run factor for compatibility */
-	double cpu_run_cost = DEFAULT_CPU_TUPLE_COST * baserel->tuples / 2;
-
-	total_cost += cpu_run_cost;
-
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,
 	         (Path *) create_foreignscan_path(root,
