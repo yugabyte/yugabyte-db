@@ -16,7 +16,8 @@ import { clearCredentials } from '../../../../routes';
 class LoginForm extends Component {
   constructor(props) {
     super(props);
-    clearCredentials();
+    const searchParam = new URLSearchParams(window.location.search)
+    clearCredentials(searchParam.get('redirectUrl'));
   }
 
   submitLogin = (formValues) => {

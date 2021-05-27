@@ -40,7 +40,7 @@ import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 
-export const clearCredentials = () => {
+export const clearCredentials = (pathToRedirect = null) => {
   localStorage.removeItem('authToken');
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
@@ -63,7 +63,12 @@ export const clearCredentials = () => {
   Cookies.remove('authToken');
   Cookies.remove('customerId');
   Cookies.remove('userId');
-  browserHistory.push('/');
+  if(pathToRedirect) {
+    browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
+  } else {
+    browserHistory.push('/')
+  }
+  ;
 };
 
 const autoLogin = (params) => {
@@ -120,11 +125,10 @@ function validateSession(store, replacePath, callback) {
   // Otherwise, go to login/register.
   const userId = Cookies.get('userId') || localStorage.getItem('userId');
   const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
+  const searchParam = new URLSearchParams(window.location.search)
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
-    const location = window.location.pathname;
-    if (location !== '/' || location !== '/login') {
-      sessionStorage.setItem('lastVisitedPage', location);
-    }
+    const location =
+      searchParam.get('redirectUrl') || window.location.pathname;
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
         store.dispatch(insecureLoginResponse(response));
@@ -147,7 +151,12 @@ function validateSession(store, replacePath, callback) {
       }
     });
     store.dispatch(customerTokenError());
-    browserHistory.push('/login');
+    if(location && location !== '/') {
+      browserHistory.push(`/login?redirectUrl=${location}`)
+    } else {
+      browserHistory.push('/login')
+    }
+    // location ? browserHistory.push(`/login?redirectUrl=${location}`) : browserHistory.push('/login');
   } else {
     store.dispatch(validateToken()).then((response) => {
       if (response.error) {
@@ -173,9 +182,9 @@ function validateSession(store, replacePath, callback) {
           localStorage.setItem('customerId', response.payload.data['uuid']);
         }
         localStorage.setItem('userId', userId);
-        if (sessionStorage.getItem('lastVisitedPage')) {
-          browserHistory.push(sessionStorage.getItem('lastVisitedPage'));
-          sessionStorage.removeItem('lastVisitedPage');
+        if (searchParam.get('redirectUrl')) {
+          browserHistory.push(searchParam.get('redirectUrl'));
+          searchParam.delete('redirectUrl')
         }
       } else {
         store.dispatch(resetCustomer());
