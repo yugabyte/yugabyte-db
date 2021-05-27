@@ -104,7 +104,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 
 // The "base" macros.
 #define YB_SOME_KIND_OF_LOG_EVERY_N(severity, n, what_to_do) \
-  static uint64_t LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
+  static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging every N is approximate"); \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES_MOD_N, "Logging every N is approximate"); \
   ++LOG_OCCURRENCES; \
@@ -115,7 +115,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
         &what_to_do).stream()
 
 #define YB_SOME_KIND_OF_LOG_IF_EVERY_N(severity, condition, n, what_to_do) \
-  static uint64_t LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
+  static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging every N is approximate"); \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES_MOD_N, "Logging every N is approximate"); \
   ++LOG_OCCURRENCES; \
@@ -126,7 +126,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
                  &what_to_do).stream()
 
 #define YB_SOME_KIND_OF_PLOG_EVERY_N(severity, n, what_to_do) \
-  static uint64_t LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
+  static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging every N is approximate"); \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES_MOD_N, "Logging every N is approximate"); \
   ++LOG_OCCURRENCES; \
@@ -137,7 +137,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
         &what_to_do).stream()
 
 #define YB_SOME_KIND_OF_LOG_FIRST_N(severity, n, what_to_do) \
-  static uint64_t LOG_OCCURRENCES = 0; \
+  static int LOG_OCCURRENCES = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging the first N is approximate"); \
   if (LOG_OCCURRENCES++ < n) \
     google::LogMessage( \
