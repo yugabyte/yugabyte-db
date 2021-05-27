@@ -1449,11 +1449,24 @@ void TabletServiceAdminImpl::SplitTablet(
   TRACE_EVENT1("tserver", "SplitTablet", "tablet_id", req->tablet_id());
 
   server::UpdateClock(*req, server_->Clock());
-
   auto leader_tablet_peer =
       LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   if (!leader_tablet_peer) {
     return;
+  }
+
+  {
+    auto tablet_data_state = leader_tablet_peer.peer->data_state();
+    if (tablet_data_state != tablet::TABLET_DATA_READY) {
+      auto s = tablet_data_state == tablet::TABLET_DATA_SPLIT_COMPLETED
+                  ? STATUS_FORMAT(AlreadyPresent, "Tablet $0 is already split.", req->tablet_id())
+                  : STATUS_FORMAT(
+                        InvalidArgument, "Invalid tablet $0 data state: $1", req->tablet_id(),
+                        tablet_data_state);
+      SetupErrorAndRespond(
+          resp->mutable_error(), s, TabletServerErrorPB::TABLET_NOT_RUNNING, &context);
+      return;
+    }
   }
 
   auto state = std::make_unique<tablet::SplitOperationState>(
