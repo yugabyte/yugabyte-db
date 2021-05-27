@@ -54,7 +54,13 @@ showAsideToc: true
 
     * <i class="icon-centos"></i> CentOS 7
 
-    * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
+    * <i class="icon-ubuntu"></i> Ubuntu 16.04, 18.04, or 20.04 LTS
+
+    * Red Hat Enterprise Linux (RHEL) 7
+
+    * Oracle Linux 7
+
+    * Amazon Linux (AMI) 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, or 2.0
 
 1. Verify that you have Python 2 or 3 installed.
 
