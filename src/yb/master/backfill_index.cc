@@ -653,7 +653,8 @@ BackfillTable::BackfillTable(
     if (!first) {
       out << ", ";
     }
-    out << master_->catalog_manager()->GetTableInfo(index_id)->name();
+    out << "(" << master_->catalog_manager()->GetTableInfo(index_id)->name();
+    out << ", id=" << index_id << ")";
     first = false;
   }
   out << " }";
