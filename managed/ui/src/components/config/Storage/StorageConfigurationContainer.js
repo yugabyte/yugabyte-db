@@ -33,7 +33,8 @@ const mapDispatchToProps = (dispatch) => {
     addCustomerConfig: (config) => {
       return dispatch(addCustomerConfig(config)).then((response) => {
         if (response.error) {
-          const errorMessageObject = response.payload?.response?.data?.error || response.payload.message;
+          const errorMessageObject =
+            response.payload?.response?.data?.error || response.payload.message;
           Object.keys(errorMessageObject).forEach((errorKey) => {
             toast.error(
               <ol>
@@ -43,9 +44,8 @@ const mapDispatchToProps = (dispatch) => {
               </ol>
             );
           });
-        }
-        else {
-        toast.success("Successfully added the backup configuration.");
+        } else {
+          toast.success('Successfully added the backup configuration.');
         }
         return dispatch(addCustomerConfigResponse(response.payload));
       });
