@@ -460,19 +460,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE id = 5;
    Index Cond: (id = 5)
 (2 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM foo;
-            QUERY PLAN             
------------------------------------
- Index Only Scan using good on foo
-(1 row)
-
-SET yb_enable_geolocation_costing = off;
-EXPLAIN (COSTS OFF) SELECT * FROM foo;
-   QUERY PLAN    
------------------
- Seq Scan on foo
-(1 row)
-
 DROP TABLE foo;
 DROP TABLESPACE far;
 DROP TABLESPACE near;

@@ -347,37 +347,6 @@ get_tablespace_page_costs(Oid spcid,
 {
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
 
-	Assert(spc != NULL);
-
-	if (IsYugaByteEnabled()) 
-	{
-		double yb_tsp_cost = 0.0;
-		bool is_valid = get_yb_tablespace_cost(spcid, &yb_tsp_cost);
-		if (is_valid) 
-		{
-			/*
-			 * We scale these factors down so that in the event that the 
-			 * tablespace is an expensive one to reach, spc_random_page_cost 
-			 * just becomes what it would usually be if we didn't consider 
-			 * tablespaces (4.0).
-			 */
-			if (spc_random_page_cost)
-			{
-				*spc_random_page_cost = yb_tsp_cost/2.5;
-			}
-
-
-			/*
-			 * We scale down with the same logic here.
-			 */
-			if (spc_seq_page_cost)
-			{
-				*spc_seq_page_cost = yb_tsp_cost/10.0;
-			}
-			return;
-		}
-	}
-
 	if (spc_random_page_cost)
 	{
 		if (!spc->opts.pg_opts || spc->opts.pg_opts->random_page_cost < 0 
