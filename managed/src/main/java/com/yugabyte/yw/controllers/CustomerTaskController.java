@@ -79,7 +79,6 @@ public class CustomerTaskController extends AuthenticatedController {
         customerTaskQuery
             .setMaxRows(
                 runtimeConfigFactory.globalRuntimeConf().getInt(CUSTOMER_TASK_DB_QUERY_LIMIT))
-            .orderBy("create_time desc")
             .findPagedList()
             .getList();
 
