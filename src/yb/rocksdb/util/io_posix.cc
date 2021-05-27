@@ -186,7 +186,7 @@ Status PosixMmapFile::MapNewRegion() {
   last_sync_ = base_;
   return Status::OK();
 #else
-  LOG_FIRST_N(FATAL, 1) << "This platform does not support fallocate().";
+  YB_LOG_FIRST_N(FATAL, 1) << "This platform does not support fallocate().";
 #endif
 }
 
