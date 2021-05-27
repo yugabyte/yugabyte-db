@@ -42,6 +42,23 @@ For more information, see [Get query statistics using `pg_stat_statements`](../p
 
 Set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
 
+```sh
+$ ./bin/yb-tserver --ysql_log_min_duration_statement 1000
+```
+
+Example log output:
+
+```output
+2021-05-26 21:13:49.701 EDT [73005] LOG:  duration: 34.378 ms  statement: SELECT c.oid,
+        n.nspname,
+        c.relname
+    FROM pg_catalog.pg_class c
+        LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relname OPERATOR(pg_catalog.~) '^(products)$'
+        AND pg_catalog.pg_table_is_visible(c.oid)
+    ORDER BY 2, 3;
+```
+
 For more information on flags for configuring the YB-TServer server, see [YSQL Flags](../../../reference/configuration/yb-tserver/#ysql-flags).
 
 **3. View live queries using pg_stat_activity**
