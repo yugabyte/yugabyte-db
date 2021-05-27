@@ -361,7 +361,7 @@ class OutboundCall : public RpcCall {
   // This will only be non-NULL if status().IsRemoteError().
   const ErrorStatusPB* error_pb() const;
 
-  void InitHeader(RequestHeader* header);
+  CHECKED_STATUS InitHeader(RequestHeader* header);
 
   // Lock for state_ status_, error_pb_ fields, since they
   // may be mutated by the reactor thread while the client thread

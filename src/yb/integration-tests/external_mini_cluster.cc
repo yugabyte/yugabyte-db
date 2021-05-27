@@ -551,9 +551,7 @@ Status ExternalMiniCluster::RemoveMaster(ExternalMaster* master) {
 }
 
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetLeaderConsensusProxy() {
-  auto leader_master_sock = GetLeaderMaster()->bound_rpc_addr();
-
-  return std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), leader_master_sock);
+  return GetConsensusProxy(GetLeaderMaster());
 }
 
 std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::GetLeaderMasterProxy() {
@@ -563,10 +561,8 @@ std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::GetLeaderMasterProxy() 
 }
 
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetConsensusProxy(
-    scoped_refptr<ExternalMaster> master) {
-  auto master_sock = master->bound_rpc_addr();
-
-  return std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), master_sock);
+    ExternalDaemon* external_deamon) {
+  return GetProxy<ConsensusServiceProxy>(external_deamon);
 }
 
 Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* error_code) {
@@ -1003,7 +999,7 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
     opid_req.set_dest_uuid(master->uuid());
     opid_req.set_opid_type(opid_type);
     RETURN_NOT_OK_PREPEND(
-        GetConsensusProxy(master)->GetLastOpId(opid_req, &opid_resp, &controller),
+        GetConsensusProxy(master.get())->GetLastOpId(opid_req, &opid_resp, &controller),
         Substitute("Failed to fetch last op id from $0", master->bound_rpc_hostport().port()));
     op_ids->push_back(opid_resp.opid());
     controller.Reset();
@@ -1221,6 +1217,46 @@ Status ExternalMiniCluster::WaitForInitDb() {
     }
     std::this_thread::sleep_for(500ms);
   }
+}
+
+Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx) {
+  std::shared_ptr<master::MasterServiceProxy> proxy = master_proxy();
+  std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+  master::ListTabletServersRequestPB req;
+  master::ListTabletServersResponsePB resp;
+  controller->Reset();
+
+  RETURN_NOT_OK(proxy->ListTabletServers(req, &resp, controller.get()));
+
+  bool is_stale = false, is_ts_found = false;
+  for (int i = 0; i < resp.servers_size(); i++) {
+    if (!resp.servers(i).has_instance_id()) {
+      return STATUS_SUBSTITUTE(
+        Uninitialized,
+        "ListTabletServers RPC returned a TS with uninitialized instance id."
+      );
+    }
+
+    if (!resp.servers(i).instance_id().has_permanent_uuid()) {
+      return STATUS_SUBSTITUTE(
+        Uninitialized,
+        "ListTabletServers RPC returned a TS with uninitialized UUIDs."
+      );
+    }
+
+    if (resp.servers(i).instance_id().permanent_uuid() == tablet_server(ts_idx)->uuid()) {
+      is_ts_found = true;
+      is_stale = !resp.servers(i).alive();
+    }
+  }
+
+  if (!is_ts_found) {
+    return STATUS_SUBSTITUTE(
+        NotFound,
+        "Given TS not found in ListTabletServers RPC."
+    );
+  }
+  return is_stale;
 }
 
 string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
@@ -2474,6 +2510,17 @@ Status ExternalTabletServer::Restart(bool start_cql_proxy) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
   return Start(start_cql_proxy);
+}
+
+Status RestartAllMasters(ExternalMiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_masters(); ++i) {
+    cluster->master(i)->Shutdown();
+  }
+  for (int i = 0; i != cluster->num_masters(); ++i) {
+    RETURN_NOT_OK(cluster->master(i)->Restart());
+  }
+
+  return Status::OK();
 }
 
 }  // namespace yb

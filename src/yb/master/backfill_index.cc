@@ -352,10 +352,10 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
       VLOG(1) << "Index permissions update skipped, leaving schema_version at "
               << indexed_table_pb.version();
     }
-    indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
-                                 Substitute("Alter table version=$0 ts=$1",
-                                            indexed_table_pb.version(),
-                                            LocalTimeAsString()));
+    indexed_table_data.set_state(
+        SysTablesEntryPB::ALTERING,
+        Format("Update index permission version=$0 ts=$1",
+               indexed_table_pb.version(), LocalTimeAsString()));
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
@@ -841,6 +841,8 @@ void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& fai
     done_.store(true, std::memory_order_release);
     WARN_NOT_OK(MarkAllIndexesAsSuccess(), "Failed to complete backfill.");
     WARN_NOT_OK(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
+  } else {
+    VLOG_WITH_PREFIX(1) << "Still backfilling " << tablets_pending_ << " more tablets.";
   }
 }
 
@@ -928,15 +930,6 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
           success ? INDEX_PERM_READ_WRITE_AND_DELETE : INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING);
     }
   }
-  RETURN_NOT_OK_PREPEND(
-      MultiStageAlterTable::UpdateIndexPermission(
-          master_->catalog_manager(), indexed_table_, permissions_to_set, boost::none),
-      "Could not update permissions after backfill. "
-      "Possible that the master-leader has changed.");
-
-  VLOG(1) << "Sending alter table requests to the Indexed table";
-  master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
-  VLOG(1) << "DONE Sending alter table requests to the Indexed table";
 
   for (const auto& kv_pair : permissions_to_set) {
     if (kv_pair.second == INDEX_PERM_READ_WRITE_AND_DELETE) {
@@ -944,13 +937,22 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
     }
   }
 
-  LOG(INFO) << "Done backfill on " << indexed_table_->ToString() << " setting permissions to "
-            << yb::ToString(permissions_to_set);
-
+  RETURN_NOT_OK_PREPEND(
+      MultiStageAlterTable::UpdateIndexPermission(
+          master_->catalog_manager(), indexed_table_, permissions_to_set, boost::none),
+      "Could not update permissions after backfill. "
+      "Possible that the master-leader has changed.");
   backfill_job_->SetState(
       all_success ? MonitoredTaskState::kComplete : MonitoredTaskState::kFailed);
   RETURN_NOT_OK(ClearCheckpointStateInTablets());
   indexed_table_->ClearIsBackfilling();
+
+  VLOG(1) << "Sending alter table requests to the Indexed table";
+  master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
+  VLOG(1) << "DONE Sending alter table requests to the Indexed table";
+
+  LOG(INFO) << "Done backfill on " << indexed_table_->ToString() << " setting permissions to "
+            << yb::ToString(permissions_to_set);
   return Status::OK();
 }
 
@@ -1231,8 +1233,7 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
     VLOG(3) << "GetSafeTime for " << tablet_->ToString() << " got an error. Returning "
             << safe_time;
   } else if (state() != MonitoredTaskState::kComplete) {
-    status = STATUS_SUBSTITUTE(InternalError, "$0 in state $1", description(),
-                               ToString(state()));
+    status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
   } else {
     safe_time = HybridTime(resp_.safe_time());
     if (safe_time.is_special()) {
@@ -1370,9 +1371,14 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
 
   if (resp_.has_error()) {
     status = StatusFromPB(resp_.error().status());
-    for (int i = 0; i < resp_.failed_index_ids_size(); i++) {
-      VLOG(1) << " Added to failed index " << resp_.failed_index_ids(i);
-      failed_indexes.insert(resp_.failed_index_ids(i));
+    if (resp_.failed_index_ids_size() > 0) {
+      for (int i = 0; i < resp_.failed_index_ids_size(); i++) {
+        VLOG(1) << " Added to failed index " << resp_.failed_index_ids(i);
+        failed_indexes.insert(resp_.failed_index_ids(i));
+      }
+    } else {
+      // No specific index was marked as a failure. So consider all of them as failed.
+      failed_indexes = indexes_being_backfilled_;
     }
   } else if (state() != MonitoredTaskState::kComplete) {
     // There is no response, so the error happened even before we could
@@ -1381,8 +1387,7 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
     VLOG(3) << "Considering all indexes : "
             << yb::ToString(indexes_being_backfilled_)
             << " as failed.";
-    status = STATUS_SUBSTITUTE(InternalError, "$0 in state $1", description(),
-                               ToString(state()));
+    status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
   }
 
   if (resp_.has_backfilled_until()) {

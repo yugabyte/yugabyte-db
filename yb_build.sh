@@ -31,7 +31,7 @@ show_help() {
 yb_build.sh (or "ybd") is the main build tool for Yugabyte Database.
 Usage: ${0##*/} [<options>] [<build_type>] [<target_keywords>] [<yb_env_var_settings>]
 Options:
-  -h, --help
+  --help, -h
     Show help.
   --verbose
     Show debug output from CMake.
@@ -44,6 +44,8 @@ Options:
     Only run CMake, don't run any other build steps.
   --clean
     Remove the build directory before building.
+  --clean-force, --cf, -cf
+    A combination of --clean and --force.
   --clean-thirdparty
     Remove previously built third-party dependencies and rebuild them. Implies --clean.
   --no-ccache
@@ -191,6 +193,10 @@ Options:
     Do not build tests
   --cmake-unit-tests
     Run our unit tests for CMake code. This should be much faster than running the build.
+  --compiler-type
+    Specify compiler type, e.g. gcc, clang, or a specific version, e.g. gcc10 or clang12.
+  --gcc, --gcc<version> --clang, --clang<version>
+    A shorter way to achieve the same thing as --compiler-type.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -573,6 +579,11 @@ print_saved_log_path() {
 "Or using symlink:"$'\n\n'"less '$latest_log_symlink_path'"$'\n'
 }
 
+set_clean_build() {
+  is_clean_build=true
+  clean_before_build=true
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -669,8 +680,7 @@ while [[ $# -gt 0 ]]; do
       cmake_only=true
     ;;
     --clean)
-      is_clean_build=true
-      clean_before_build=true
+      set_clean_build
     ;;
     --clean-thirdparty)
       clean_thirdparty=true
@@ -680,8 +690,16 @@ while [[ $# -gt 0 ]]; do
     -f|--force|-y)
       force=true
     ;;
+    --clean-force|--cf|-cf)
+      set_clean_build
+      force=true
+    ;;
     --no-ccache)
       no_ccache=true
+    ;;
+    --compiler-type)
+      YB_COMPILER_TYPE=$2
+      shift
     ;;
     --gcc)
       YB_COMPILER_TYPE="gcc"
@@ -689,17 +707,12 @@ while [[ $# -gt 0 ]]; do
     --clang)
       YB_COMPILER_TYPE="clang"
     ;;
-    --gcc8)
-      YB_COMPILER_TYPE="gcc8"
-    ;;
-    --gcc9)
-      YB_COMPILER_TYPE="gcc9"
-    ;;
-    --clang10)
-      YB_COMPILER_TYPE="clang10"
-    ;;
-    --clang11)
-      YB_COMPILER_TYPE="clang11"
+    --gcc*|--clang*)
+      if [[ $1 =~ ^--(gcc|clang)[0-9]{1,2}$ ]]; then
+        YB_COMPILER_TYPE=${1##--}
+      else
+        fatal "--gcc / --clang is expected to be followed by compiler major version"
+      fi
     ;;
     --zapcc)
       YB_COMPILER_TYPE="zapcc"

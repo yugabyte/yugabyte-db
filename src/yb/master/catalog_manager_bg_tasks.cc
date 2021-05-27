@@ -50,7 +50,7 @@ DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
              "between runs");
 TAG_FLAG(catalog_manager_bg_task_wait_ms, hidden);
 
-DEFINE_int32(load_balancer_initial_delay_secs, 120,
+DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
@@ -137,16 +137,9 @@ void CatalogManagerBgTasks::Run() {
       if (!to_process.empty()) {
         // Transition tablet assignment state from preparing to creating, send
         // and schedule creation / deletion RPC messages, etc.
-        Status s = catalog_manager_->ProcessPendingAssignments(to_process);
-        if (!s.ok()) {
-          // If there is an error (e.g., we are not the leader) abort this task
-          // and wait until we're woken up again.
-          //
-          // TODO Add tests for this in the revision that makes
-          // create/alter fault tolerant.
-          LOG(ERROR) << "Error processing pending assignments, aborting the current task: "
-                     << s.ToString();
-        }
+        WARN_NOT_OK(catalog_manager_->ProcessPendingAssignments(to_process),
+                    "Error processing pending assignments");
+        // TODO: Add tests for this in the revision that makes create/alter fault tolerant.
       } else {
         if (catalog_manager_->TimeSinceElectedLeader() >
             MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {

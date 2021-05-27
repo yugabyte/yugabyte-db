@@ -24,6 +24,8 @@
 
 #include "yb/consensus/consensus.h"
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/rpc/rpc.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -631,7 +633,10 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
     std::future<Status> commit_future;
 
     std::string ToString() const {
-      return transaction ? transaction->ToString() : "no-txn";
+      ANNOTATE_IGNORE_READS_BEGIN();
+      auto str = transaction ? transaction->ToString() : "no-txn";
+      ANNOTATE_IGNORE_READS_END();
+      return str;
     }
   };
 

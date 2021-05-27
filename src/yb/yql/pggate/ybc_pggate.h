@@ -358,6 +358,12 @@ YBCStatus YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 void YBCPgDropBufferedOperations();
 
+YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
+                          const YBCPgOid table_oid,
+                          YBCPgStatement *handle);
+
+YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count);
+
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
                          YBCPgOid table_oid,

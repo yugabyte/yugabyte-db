@@ -57,7 +57,7 @@ class PriorityThreadPoolTask {
 // Tasks submitted to this pool have assigned priority and are picked from queue using it.
 class PriorityThreadPool {
  public:
-  explicit PriorityThreadPool(size_t max_running_tasks);
+  explicit PriorityThreadPool(int64_t max_running_tasks);
   ~PriorityThreadPool();
 
   // Submit task to the pool.
@@ -98,6 +98,10 @@ class PriorityThreadPool {
 
   // Dumps state to string, useful for debugging.
   std::string StateToString();
+
+  void TEST_SetThreadCreationFailureProbability(double probability);
+
+  size_t TEST_num_tasks_pending();
 
  private:
   class Impl;

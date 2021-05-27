@@ -44,8 +44,10 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.service.h"
 #include "yb/tserver/tserver_service.service.h"
+#include "yb/tserver/tserver_forward_service.service.h"
 
 namespace yb {
 class Schema;
@@ -238,6 +240,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void GetSplitKey(
+      const GetSplitKeyRequestPB* req,
+      GetSplitKeyResponsePB* resp,
+      rpc::RpcContext context) override;
+
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source
   // tablet.
   void SplitTablet(
@@ -307,6 +314,19 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 
  private:
   TabletPeerLookupIf* tablet_manager_;
+};
+
+class TabletServerForwardServiceImpl : public TabletServerForwardServiceIf {
+ public:
+  TabletServerForwardServiceImpl(TabletServiceImpl *impl,
+                                 TabletServerIf* server);
+
+  void Write(const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext context) override;
+
+  void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
+
+ private:
+  TabletServerIf *const server_;
 };
 
 }  // namespace tserver

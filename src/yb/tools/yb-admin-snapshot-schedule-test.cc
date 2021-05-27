@@ -20,8 +20,11 @@
 
 #include "yb/master/master_backup.pb.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/date_time.h"
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -46,8 +49,10 @@ Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
   return it->value;
 }
 
-const std::string kDbName = "ybtest";
 const std::string kClusterName = "yugacluster";
+
+constexpr auto kInterval = 6s;
+constexpr auto kRetention = 10min;
 
 } // namespace
 
@@ -110,16 +115,56 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     }, timeout, "Wait restoration complete");
   }
 
-  Result<std::string> PreparePg() {
-    CreateCluster(kClusterName);
+  CHECKED_STATUS PrepareCommon() {
+    LOG(INFO) << "Create cluster";
+    CreateCluster(kClusterName, ExtraTSFlags(), ExtraMasterFlags());
+
+    LOG(INFO) << "Create client";
     client_ = VERIFY_RESULT(CreateClient());
 
-    auto conn = VERIFY_RESULT(PgConnect());
-    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
+    return Status::OK();
+  }
 
-    auto schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(6s, 10min, "ysql." + kDbName));
+  std::vector<std::string> ExtraTSFlags() {
+    return {};
+  }
+
+  std::vector<std::string> ExtraMasterFlags() {
+    // To speed up tests.
+    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500" };
+  }
+
+  Result<std::string> PrepareQl(MonoDelta retention = kRetention) {
+    RETURN_NOT_OK(PrepareCommon());
+
+    LOG(INFO) << "Create namespace";
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(
+        client::kTableName.namespace_name(), client::kTableName.namespace_type()));
+
+    return CreateSnapshotScheduleAndWaitSnapshot(client::kTableName.namespace_name(), retention);
+  }
+
+  Result<std::string> CreateSnapshotScheduleAndWaitSnapshot(
+      const std::string& filter, MonoDelta retention) {
+    LOG(INFO) << "Create snapshot schedule";
+    std::string schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(
+        kInterval, retention, filter));
+
+    LOG(INFO) << "Wait snapshot schedule";
     RETURN_NOT_OK(WaitScheduleSnapshot(30s, schedule_id));
+
     return schedule_id;
+  }
+
+  Result<std::string> PreparePg() {
+    RETURN_NOT_OK(PrepareCommon());
+
+    auto conn = VERIFY_RESULT(PgConnect());
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", client::kTableName.namespace_name()));
+
+    return CreateSnapshotScheduleAndWaitSnapshot(
+        "ysql." + client::kTableName.namespace_name(), kRetention);
   }
 
   Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string()) {
@@ -128,15 +173,14 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   Result<std::string> PrepareCql() {
-    CreateCluster(kClusterName);
-    client_ = VERIFY_RESULT(CreateClient());
+    RETURN_NOT_OK(PrepareCommon());
 
     auto conn = VERIFY_RESULT(CqlConnect());
-    RETURN_NOT_OK(conn.ExecuteQuery(Format("CREATE KEYSPACE IF NOT EXISTS $0", kDbName)));
+    RETURN_NOT_OK(conn.ExecuteQuery(Format(
+        "CREATE KEYSPACE IF NOT EXISTS $0", client::kTableName.namespace_name())));
 
-    auto schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(6s, 10min, "ycql." + kDbName));
-    RETURN_NOT_OK(WaitScheduleSnapshot(30s, schedule_id));
-    return schedule_id;
+    return CreateSnapshotScheduleAndWaitSnapshot(
+        "ycql." + client::kTableName.namespace_name(), kRetention);
   }
 
   Result<CassandraSession> CqlConnect(const std::string& db_name = std::string()) {
@@ -145,12 +189,13 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
       for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
         hosts.push_back(cluster_->tablet_server(i)->bind_host());
       }
+      LOG(INFO) << "CQL hosts: " << AsString(hosts);
       cql_driver_ = std::make_unique<CppCassandraDriver>(
-          hosts, cluster_->tablet_server(0)->cql_rpc_port(), true);
+          hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kTrue);
     }
     auto result = VERIFY_RESULT(cql_driver_->CreateSession());
     if (!db_name.empty()) {
-      RETURN_NOT_OK(result.ExecuteQuery(Format("USE $0", kDbName)));
+      RETURN_NOT_OK(result.ExecuteQuery(Format("USE $0", client::kTableName.namespace_name())));
     }
     return result;
   }
@@ -165,6 +210,13 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     std::string schedule_id = VERIFY_RESULT(Get(out, "schedule_id")).get().GetString();
     LOG(INFO) << "Schedule id: " << schedule_id;
     return schedule_id;
+  }
+
+  void TestUndeleteTable(bool restart_masters);
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->bind_to_unique_loopback_addresses = true;
+    options->use_same_ts_ports = true;
   }
 
   std::unique_ptr<CppCassandraDriver> cql_driver_;
@@ -218,23 +270,8 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, last_snapshot_time));
 }
 
-TEST_F(YbAdminSnapshotScheduleTest, UndeleteTable) {
-  LOG(INFO) << "Create cluster";
-  CreateCluster("test-cluster");
-
-  LOG(INFO) << "Create client";
-  client_ = ASSERT_RESULT(CreateClient());
-
-  LOG(INFO) << "Create namespace";
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(
-      client::kTableName.namespace_name(), client::kTableName.namespace_type()));
-
-  LOG(INFO) << "Create snapshot schedule";
-  std::string schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
-      6s, 10min, client::kTableName.namespace_name()));
-
-  LOG(INFO) << "Wait snapshot schedule";
-  ASSERT_OK(WaitScheduleSnapshot(30s, schedule_id));
+void YbAdminSnapshotScheduleTest::TestUndeleteTable(bool restart_masters) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl());
 
   auto session = client_->NewSession();
   LOG(INFO) << "Create table";
@@ -255,8 +292,19 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTable) {
 
   ASSERT_NOK(client::kv_table_test::WriteRow(&table_, session, kMinKey, 0));
 
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, kMinKey, 0));
+
+  if (restart_masters) {
+    ASSERT_OK(RestartAllMasters(cluster_.get()));
+  }
+
   LOG(INFO) << "Restore schedule";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(table_.Open(client::kTableName, client_.get()));
 
   LOG(INFO) << "Reading rows";
   auto rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table_, session));
@@ -272,11 +320,79 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTable) {
   ASSERT_EQ(extra_value, -kExtraKey);
 }
 
+TEST_F(YbAdminSnapshotScheduleTest, UndeleteTable) {
+  TestUndeleteTable(false);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, UndeleteTableWithRestart) {
+  TestUndeleteTable(true);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(kInterval));
+
+  auto session = client_->NewSession();
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  LOG(INFO) << "Write values";
+  constexpr int kMinKey = 1;
+  constexpr int kMaxKey = 100;
+  for (int i = kMinKey; i <= kMaxKey; ++i) {
+    ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, i, -i));
+  }
+
+  LOG(INFO) << "Delete table";
+  ASSERT_OK(client_->DeleteTable(client::kTableName));
+
+  auto deadline = CoarseMonoClock::now() + kInterval + 10s;
+
+  // Wait tablets deleted from tservers.
+  ASSERT_OK(Wait([this, deadline]() -> Result<bool> {
+    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
+      tserver::ListTabletsRequestPB req;
+      tserver::ListTabletsResponsePB resp;
+      rpc::RpcController controller;
+      controller.set_deadline(deadline);
+      RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+      for (const auto& tablet : resp.status_and_schema()) {
+        if (tablet.tablet_status().table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+          LOG(INFO) << "Not yet deleted tablet: " << tablet.ShortDebugString();
+          return false;
+        }
+      }
+    }
+    return true;
+  }, deadline, "Deleted tablet cleanup"));
+
+  // Wait table marked as deleted.
+  ASSERT_OK(Wait([this, deadline]() -> Result<bool> {
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterServiceProxy>();
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_deadline(deadline);
+    req.set_include_not_running(true);
+    RETURN_NOT_OK(proxy->ListTables(req, &resp, &controller));
+    for (const auto& table : resp.tables()) {
+      if (table.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE
+          && table.relation_type() != master::RelationType::SYSTEM_TABLE_RELATION
+          && table.state() != master::SysTablesEntryPB::DELETED) {
+        LOG(INFO) << "Not yet deleted table: " << table.ShortDebugString();
+        return false;
+      }
+    }
+    return true;
+  }, deadline, "Deleted table cleanup"));
+}
+
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
-  auto conn = ASSERT_RESULT(PgConnect(kDbName));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
 
@@ -296,7 +412,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
   auto schedule_id = ASSERT_RESULT(PrepareCql());
 
-  auto conn = ASSERT_RESULT(CqlConnect(kDbName));
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
 
   ASSERT_OK(conn.ExecuteQuery(
       "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "
@@ -319,6 +435,56 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
       "SELECT key FROM test_table WHERE value = 'value'"));
 
   ASSERT_EQ(res, 1);
+}
+
+// This test is for schema version patching after restore.
+// Consider the following scenario, w/o patching:
+//
+// 1) Create table.
+// 2) Add text column to table. Schema version - 1.
+// 3) Insert values into table. Each CQL proxy suppose schema version 1 for this table.
+// 4) Restore to time between (1) and (2). Schema version - 0.
+// 5) Add int column to table. Schema version - 1.
+// 6) Try insert values with wrong type into table.
+//
+// So table has schema version 1, but new column is INT.
+// CQL proxy suppose schema version is also 1, but the last column is TEXT.
+TEST_F(YbAdminSnapshotScheduleTest, AlterTable) {
+  const auto kKeys = Range(10);
+
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+
+  for (auto key : kKeys) {
+    ASSERT_OK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value) VALUES ($0, 'A')", key)));
+  }
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "ALTER TABLE test_table ADD value2 TEXT"));
+
+  for (auto key : kKeys) {
+    ASSERT_OK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value, value2) VALUES ($0, 'B', 'X')", key)));
+  }
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "ALTER TABLE test_table ADD value2 INT"));
+
+  for (auto key : kKeys) {
+    // It would succeed on some TServers if we would not refresh metadata after restore.
+    // But it should not succeed because of last column type.
+    ASSERT_NOK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value, value2) VALUES ($0, 'D', 'Y')", key)));
+  }
 }
 
 }  // namespace tools

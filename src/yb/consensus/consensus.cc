@@ -128,7 +128,7 @@ Status Consensus::ExecuteHook(HookPoint point) {
   return Status::OK();
 }
 
-Result<yb::OpId> Consensus::GetLastOpId(OpIdType type) {
+Result<OpId> Consensus::GetLastOpId(OpIdType type) {
   switch (type) {
     case OpIdType::RECEIVED_OPID:
       return GetLastReceivedOpId();
