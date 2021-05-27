@@ -196,14 +196,14 @@ class AwsStorageConfiguration extends Component {
               <YBButton
                 btnText="Edit Configuration"
                 btnClass="btn btn-orange"
-                onClick={() => onEditConfig(config)}
+                onClick={() => onEditConfig(config, 's3')}
               />
               {isDefinedNotNull(config) && (
                 <YBConfirmModal
                   name="delete-storage-config"
                   title={'Confirm Delete'}
                   type="reset"
-                  onConfirm={() => deleteStorageConfig(s3Config.configUUID)}
+                  onConfirm={() => deleteStorageConfig(s3Config.configUUID, 's3')}
                   currentModal={'delete' + s3Config.name + 'StorageConfig'}
                   visibleModal={this.props.visibleModal}
                   hideConfirmModal={this.props.hideDeleteStorageConfig}
