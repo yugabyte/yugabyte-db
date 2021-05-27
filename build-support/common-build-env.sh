@@ -966,6 +966,7 @@ find_compiler_by_type() {
           # the transition to Linuxbrew (https://phabricator.dev.yugabyte.com/D982). This can be
           # removed when the transition is complete.
           "$YB_THIRDPARTY_DIR/installed/common/bin/clang"
+          "/usr/bin/clang"
         )
         for clang_path in "${clang_paths_to_try[@]}"; do
           if [[ -f $clang_path ]]; then
@@ -2318,6 +2319,10 @@ set_prebuilt_thirdparty_url() {
     if [[ ${YB_COMPILER_TYPE} =~ ^.*[0-9]+$ ]]; then
       # For compiler types like gcc9 or clang11, append the compiler type to the file path.
       thirdparty_url_file+="_${YB_COMPILER_TYPE}"
+    fi
+    if [[ $YB_COMPILER_TYPE == "clang" ]]
+    then
+      thirdparty_url_file+="_clang11"
     fi
     if [[ $YB_COMPILER_TYPE == "clang" && ( $build_type == "asan" || $build_type == "tsan" ) ]]
     then
