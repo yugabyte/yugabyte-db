@@ -36,7 +36,7 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
-const validate = (values, props) => {
+export const validateEditProvider = (values, props) => {
   const errors = {};
   if (!isNonEmptyString(values.hostedZoneId)) {
     errors.hostedZoneId = 'Cannot be empty';
@@ -46,7 +46,7 @@ const validate = (values, props) => {
 
 const editProviderForm = reduxForm({
   form: 'EditProviderForm',
-  validate,
+  validate: validateEditProvider,
   fields: ['hostedZoneId']
 });
 
