@@ -43,10 +43,10 @@ The JSON data type supported in YCQL is `jsonb`. The JSON functionality in YCQL 
 You need a YugabyteDB cluster to run through the steps below. If do not have a YugabyteDB cluster, you can create one on your local machine as shown below.
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yugabyted start
 ```
 
-Connect to the cluster using `ysqlsh` to run through the examples below.
+Connect to the cluster using `ycqlsh` to run through the examples below.
 
 ```sh
 $ ./bin/ycqlsh
@@ -249,4 +249,9 @@ ycqlsh> SELECT * FROM store.books WHERE id = 6;
 JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. We do not support upsert on non-leaf properties.
 {{< /note >}}
 
+## 5. Clean up (Optional)
+Optionally, you can shutdown the local cluster created in Step 1.
 
+```sh
+$ ./bin/yugabyted destroy
+```

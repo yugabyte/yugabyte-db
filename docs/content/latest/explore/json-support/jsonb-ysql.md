@@ -64,7 +64,7 @@ This section will focus on only the `jsonb` type.
 You need a YugabyteDB cluster to run through the steps below. If do not have a YugabyteDB cluster, you can create one on your local machine as shown below.
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yugabyted start
 ```
 
 Connect to the cluster using `ysqlsh` to run through the examples below.
@@ -494,5 +494,5 @@ ERROR:  23505: duplicate key value violates unique constraint "books_isbn_unq"
 Optionally, you can shutdown the local cluster created in Step 1.
 
 ```sh
-$ ./bin/yb-ctl destroy
+$ ./bin/yugabyted destroy
 ```
