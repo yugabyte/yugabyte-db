@@ -73,7 +73,7 @@ class ReleaseUtil(object):
             new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
         # Substitution for BUILD_ROOT.
         new_value = new_value.replace("$BUILD_ROOT", self.build_root)
-        thirdparty_intrumentation = "clang_uninstrumented" if is_macos() else "uninstrumented"
+        thirdparty_intrumentation = "uninstrumented"
         new_value = new_value.replace(
             "$THIRDPARTY_BUILD_SPECIFIC_DIR",
             os.path.join(get_thirdparty_dir(), "installed", thirdparty_intrumentation))

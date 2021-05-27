@@ -266,7 +266,6 @@ has_yb_c_files=false
 
 compiler_args_no_output=()
 analyzer_checkers_specified=false
-is_linking=false
 
 while [[ $# -gt 0 ]]; do
   is_output_arg=false
@@ -291,9 +290,6 @@ while [[ $# -gt 0 ]]; do
           # We will use this later to add custom compilation flags to PostgreSQL source files that
           # we contributed, e.g. for stricter error checking.
           has_yb_c_files=true
-        fi
-        if [[ $1 == *.o ]]; then
-          is_linking=true
         fi
       fi
     ;;

@@ -74,6 +74,7 @@ function(ENFORCE_OUT_OF_SOURCE_BUILD)
 endfunction()
 
 function(DETECT_BREW)
+  EXPECT_COMPILER_TYPE_TO_BE_SET()
   if(NOT DEFINED IS_CLANG)
     message(FATAL_ERROR "IS_CLANG undefined")
   endif()
@@ -96,7 +97,10 @@ function(DETECT_BREW)
      # In practice, we only use Linuxbrew with Clang 7.x.
      (NOT IS_CLANG OR "${COMPILER_VERSION}" VERSION_LESS "8.0.0") AND
      # In practice, we only use Linuxbrew with GCC 5.x.
-     (NOT IS_GCC OR "${COMPILER_VERSION}" VERSION_LESS "6.0.0"))
+     (NOT IS_GCC OR "${COMPILER_VERSION}" VERSION_LESS "6.0.0") AND
+     # Only a few compiler types could be used with Linuxbrew. The "clang7" compiler type is
+     # explicitly NOT included.
+     ("${YB_COMPILE_TYPE}" MATCHES "^(gcc|gcc5|clang)$"))
     message("Trying to detect whether we should use Linuxbrew. "
             "IS_CLANG=${IS_CLANG}, "
             "IS_GCC=${IS_GCC}, "
@@ -156,6 +160,13 @@ function(INIT_COMPILER_TYPE_FROM_BUILD_ROOT)
   message("YB_COMPILER_TYPE env var: $ENV{YB_COMPILER_TYPE}")
   # Make sure we can use $ENV{YB_COMPILER_TYPE} and ${YB_COMPILER_TYPE} interchangeably.
   SET(YB_COMPILER_TYPE "$ENV{YB_COMPILER_TYPE}" PARENT_SCOPE)
+endfunction()
+
+# Makes sure that we are using a supported compiler family.
+function(EXPECT_COMPILER_TYPE_TO_BE_SET)
+  if (NOT DEFINED YB_COMPILER_TYPE OR "${YB_COMPILER_TYPE}" STREQUAL "")
+    message(FATAL_ERROR "The YB_COMPILER_TYPE CMake variable is not set or is empty")
+  endif()
 endfunction()
 
 # Makes sure that we are using a supported compiler family.
@@ -326,15 +337,14 @@ function(add_executable name)
   endif()
 endfunction()
 
-macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
-  message("YB_SETUP_CLANG: THIRDPARTY_BUILD_TYPE=${THIRDPARTY_BUILD_TYPE}")
+macro(YB_SETUP_CLANG)
   ADD_CXX_FLAGS("-stdlib=libc++")
 
   # Disables using the precompiled template specializations for std::string, shared_ptr, etc
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_BUILD_TYPE}/libcxx")
+  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
   if(NOT EXISTS "${LIBCXX_DIR}")
     message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
   endif()
@@ -353,6 +363,11 @@ macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
   if(NOT EXISTS "${LIBCXX_DIR}/lib")
     message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+  endif()
+
+  if("${COMPILER_VERSION}" MATCHES "^7[.]*" AND NOT USING_LINUXBREW)
+    # A special linker flag needed only with the Clang 7 build not using Linuxbrew.
+    ADD_LINKER_FLAGS("-lgcc_s")
   endif()
 endmacro()
 

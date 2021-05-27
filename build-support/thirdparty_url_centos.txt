@@ -1,1 +1,0 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20210517205733-6a4d8d4628-centos7-linuxbrew-gcc5/yugabyte-db-thirdparty-v20210517205733-6a4d8d4628-centos7-linuxbrew-gcc5.tar.gz
