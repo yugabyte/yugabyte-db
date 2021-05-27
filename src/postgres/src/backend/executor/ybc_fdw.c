@@ -125,9 +125,16 @@ ybcGetForeignPaths(PlannerInfo *root,
 
 	/* Estimate costs */
 	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
-	                false /* is_backwards scan */,
-	                false /* is_uncovered_idx_scan */,
-	                &startup_cost, &total_cost);
+					false /* is_backwards scan */,
+					false /* is_uncovered_idx_scan */,
+					&startup_cost,
+					&total_cost,
+					baserel->reltablespace /* tablespace of current path */);
+
+	/* add in cpu run factor for compatibility */
+	double cpu_run_cost = DEFAULT_CPU_TUPLE_COST * baserel->tuples / 2;
+
+	total_cost += cpu_run_cost;
 
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,

@@ -59,10 +59,6 @@
 #include "yb/util/random_util.h"
 #include "yb/util/shared_lock.h"
 
-DEFINE_int64(tablet_split_size_threshold_bytes, 0,
-             "Threshold on tablet size after which tablet should be split. Automated splitting is "
-             "disabled if this value is set to 0");
-
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
              "requests for tablet locations.");
@@ -257,10 +253,6 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   } else {
     LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
                  << s.ToUserMessage();
-  }
-
-  if (FLAGS_tablet_split_size_threshold_bytes > 0) {
-    resp->set_tablet_split_size_threshold_bytes(FLAGS_tablet_split_size_threshold_bytes);
   }
 
   rpc.RespondSuccess();
