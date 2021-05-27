@@ -45,6 +45,7 @@
 #include "yb/rocksdb/util/posix_logger.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/file_system_posix.h"
 #include "yb/util/malloc.h"
 #include "yb/util/slice.h"
@@ -168,15 +169,7 @@ Status PosixMmapFile::MapNewRegion() {
       // fallback to posix_fallocate
       alloc_status = posix_fallocate(fd_, file_offset_, map_size_);
     }
-    if (alloc_status != 0) {
-      if (errno == EOPNOTSUPP) {
-        LOG_FIRST_N(FATAL, 1) << "The filesystem does not support fallocate().";
-      } else if (errno == ENOSYS) {
-        LOG_FIRST_N(FATAL, 1) << "The kernel does not implement fallocate().";
-      } else {
-        LOG_FIRST_N(FATAL, 1) << "fallocate() failed.";
-      }
-    }
+    yb::LogFatalForFallocateFailure(alloc_status, errno);
   }
 
   TEST_KILL_RANDOM("PosixMmapFile::Append:1", rocksdb_kill_odds);
@@ -347,17 +340,7 @@ Status PosixMmapFile::Allocate(uint64_t offset, uint64_t len) {
         fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0,
           static_cast<off_t>(offset), static_cast<off_t>(len));
   }
-
-  if (alloc_status != 0) {
-    if (errno == EOPNOTSUPP) {
-      LOG_FIRST_N(FATAL, 1) << "The filesystem does not support fallocate().";
-    } else if (errno == ENOSYS) {
-      LOG_FIRST_N(FATAL, 1) << "The kernel does not implement fallocate().";
-    } else {
-      LOG_FIRST_N(FATAL, 1) << "fallocate() failed.";
-    }
-  }
-
+  yb::LogFatalForFallocateFailure(alloc_status, errno);
   return Status::OK();
 }
 #endif
@@ -486,17 +469,7 @@ Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
         fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0,
         static_cast<off_t>(offset), static_cast<off_t>(len));
   }
-
-  if (alloc_status != 0) {
-    if (errno == EOPNOTSUPP) {
-      LOG_FIRST_N(FATAL, 1) << "The filesystem does not support fallocate().";
-    } else if (errno == ENOSYS) {
-      LOG_FIRST_N(FATAL, 1) << "The kernel does not implement fallocate().";
-    } else {
-      LOG_FIRST_N(FATAL, 1) << "fallocate() failed.";
-    }
-  }
-
+  yb::LogFatalForFallocateFailure(alloc_status, errno);
   return Status::OK();
 }
 
