@@ -154,9 +154,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             }
             taskParams()
                 .getReadOnlyClusters()
-                .stream()
                 .forEach(
                     (async) -> {
+                      // Update read replica cluster TLS params to be same as primary cluster
+                      async.userIntent.enableNodeToNodeEncrypt =
+                          universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
+                      async.userIntent.enableClientToNodeEncrypt =
+                          universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
                       universeDetails.upsertCluster(
                           async.userIntent, async.placementInfo, async.uuid);
                     });
