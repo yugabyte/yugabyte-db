@@ -27,7 +27,7 @@ else:
 SUCCESS = "success"
 FAIL = "failed"
 PROGRESS_BAR = 100
-script_path = os.path.dirname(os.path.abspath( __file__ ))
+script_path = os.path.dirname(os.path.abspath(__file__))
 
 
 def exception_handling(func):
@@ -35,9 +35,9 @@ def exception_handling(func):
         try:
             return func(*args, **kwargs)
         except HTTPError as e:
-            content = e.read().decode('utf-8')
             try:
-                json.dumps(content)
+                content = e.read().decode('utf-8')
+                json.loads(content)
                 sys.stderr.write(content)
             except ValueError:
                 message = 'Invalid YB_PLATFORM_URL URL or params.'
@@ -47,20 +47,53 @@ def exception_handling(func):
     return inner_function
 
 
+def convert_unicode_json(data):
+    """
+    Function to convert unicode json to dictionary
+    {u"name": u"universe"} => {"name": "universe"}
+    
+    :param data: Unicode json data.
+    :return: Converted data
+    """
+    if python_version == 2:
+        if isinstance(data, basestring):
+            return str(data)
+        elif isinstance(data, collections.Mapping):
+            return dict(map(convert_unicode_json, data.iteritems()))
+        elif isinstance(data, collections.Iterable):
+            return type(data)(map(convert_unicode_json, data))
+        else:
+            return data
+    else:
+        return data
+
+
+def check_positive(value):
+    """
+    Function to validate positive integer.
+
+    :param data: value.
+    :return: positive int
+    """
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError("%s is an invalid positive int value" % value)
+    return ivalue
+
+
 class YBUniverse():
     def __init__(self):
         self.parse_arguments()
-        self.base_url = os.environ.get('YB_PLATFORM_URL', '')
-        self.customer_uuid = ''
-        self.api_token = os.environ.get('YB_PLATFORM_API_TOKEN', '')
+        self.base_url = os.getenv('YB_PLATFORM_URL')
+        self.customer_uuid = None
+        self.api_token = os.getenv('YB_PLATFORM_API_TOKEN')
     
 
     @staticmethod
     def __get_input_from_user(message):
         if python_version == 2:
             return raw_input(message)
-        else:
-            return input(message)
+        return input(message)
 
 
     def __call_api(self, url, data=None, is_delete=False):
@@ -74,52 +107,26 @@ class YBUniverse():
         """
         if python_version == 2:
             import urllib2
+            from urllib2 import urlopen
             request = urllib2.Request(url)
             if is_delete:
                 request.get_method = lambda: 'DELETE'
-
-            request.add_header('X-AUTH-YW-API-TOKEN', self.api_token)
-            request.add_header('Content-Type', 'application/json; charset=utf-8')
-            if data:
-                response = urllib2.urlopen(request, json.dumps(data).encode('utf-8'))
-            else:
-                response = urllib2.urlopen(request)
-            return self.__convert_unicode_json(json.load(response))
         else:
             import urllib.request
+            from urllib.request import urlopen
             if not is_delete:
                 request = urllib.request.Request(url)
             else:
                 request = urllib.request.Request(url, method='DELETE')
-
-            request.add_header('X-AUTH-YW-API-TOKEN', self.api_token)
-            request.add_header('Content-Type', 'application/json; charset=utf-8')
-            if data:
-                response = urllib.request.urlopen(request, json.dumps(data).encode('utf-8'))
-            else:
-                response = urllib.request.urlopen(request)
-            return self.__convert_unicode_json(json.load(response))
-    
-
-    def __convert_unicode_json(self, data):
-        """
-        Function to convert unicode json to dictionary
-        {u"name": u"universe"} => {"name": "universe"}
-        
-        :param data: Unicode json data.
-        :return: Converted data
-        """
-        if python_version == 2:
-            if isinstance(data, basestring):
-                return str(data)
-            elif isinstance(data, collections.Mapping):
-                return dict(map(self.__convert_unicode_json, data.iteritems()))
-            elif isinstance(data, collections.Iterable):
-                return type(data)(map(self.__convert_unicode_json, data))
-            else:
-                return data
+            
+        request.add_header('X-AUTH-YW-API-TOKEN', self.api_token)
+        request.add_header('Content-Type', 'application/json; charset=utf-8')
+        if data:
+            converted_data = json.dumps(data).encode('utf-8')
+            response = urlopen(request, converted_data)
         else:
-            return data
+            response = urlopen(request)
+        return convert_unicode_json(json.load(response))
     
 
     def __get_universe_by_name(self, universe_name):
@@ -135,7 +142,6 @@ class YBUniverse():
             if universe.get('name') == universe_name:
                 del universe['pricePerHour']
                 return universe
-        return None
     
     
     def __create_universe_config(self, universe_data):
@@ -235,7 +241,7 @@ class YBUniverse():
         """
         data = {}
         with open(file_name) as f:
-            data = self.__convert_unicode_json(json.loads(f.read()))
+            data = convert_unicode_json(json.loads(f.read()))
 
         clusters = data.get('clusters')
         for each_cluster in clusters:
@@ -292,7 +298,7 @@ class YBUniverse():
             
             print('Detail of universe have been saved to {0}'.format(str(file_path)))
         else:
-            print('Universe with {0} is not found.'.format(universe_name))
+            sys.stderr.write('Universe with {0} is not found.'.format(universe_name))
 
 
     def __save_universe_details_to_file_by_uuid(self, universe_uuid):
@@ -311,7 +317,7 @@ class YBUniverse():
                 json.dump(configure_json, file_obj)
             print('Detail of universe have been saved to {0}'.format(str(file_path)))
         else:
-            print('Universe with {0} is not found.'.format(universe_uuid))
+            sys.stderr.write('Universe with {0} is not found.'.format(universe_uuid))
         
     
     def __task_progress_bar(self, task_id):
@@ -335,7 +341,7 @@ class YBUniverse():
             sys.stdout.flush()
             if progress == 100:
                 exit()
-            time.sleep(20)
+            time.sleep(self.args.interval)
             
 
     def __get_task_details(self, task_id):
@@ -359,7 +365,7 @@ class YBUniverse():
                 'details': task_json.get('details')
             }
             sys.stderr.write(json.dumps(content))
-            exit()
+            exit(1)
 
 
     def __get_universe_uuid_by_name(self, universe_name):
@@ -375,7 +381,7 @@ class YBUniverse():
         else:
             message = 'Universe with {0} not found'.format(universe_name)
             sys.stderr.write(message)
-            exit()
+            exit(1)
 
 
     def __delete_universe_by_id(self, universe_uuid):
@@ -418,8 +424,8 @@ class YBUniverse():
         :return: None
         """
         if not self.args.file:
-            print("Input json file required. Use \`-f|--file <file_path>\` to pass json input file.")
-            exit()
+            sys.stderr.write("Input json file required. Use '-f|--file <file_path>' to pass json input file.")
+            exit(1)
         input_file = script_path + '/' + self.args.file
         universe_name = self.args.universe_name
 
@@ -439,7 +445,7 @@ class YBUniverse():
             if not self.args.no_wait:
                 self.__task_progress_bar(task_id)
         else:
-            print('Unable to Create Universe for Customer {0}'.format(customer_uuid))
+            sys.stderr.write('Unable to Create Universe for Customer {0}'.format(customer_uuid))
 
 
     def get_single_customer_uuid(self):
@@ -457,7 +463,7 @@ class YBUniverse():
                 self.customer_uuid = str(data[0])
             else:
                 sys.stderr.write('Muliple customer UUID present, Please provide customer UUID')
-                exit()
+                exit(1)
 
 
     def get_regions_data(self):
@@ -517,10 +523,10 @@ class YBUniverse():
             name = self.args.universe_name
             universe_uuid = self.args.universe_uuid
             if not (name or universe_uuid):
-                print("Required universe name | uuid to delete universe.")
-                print("Use \`-n|--universe_name <universe_name>\` to pass universe name.")
-                print("Use \`-u|--universe_uuid <universe_uuid>\` to pass universe uuid.")
-                exit()
+                sys.stderr.write("Required universe name | uuid to delete universe.")
+                sys.stderr.write("\nUse '-n|--universe_name <universe_name>' to pass universe name.")
+                sys.stderr.write("\nUse '-u|--universe_uuid <universe_uuid>' to pass universe uuid.")
+                exit(1)
         
             if self.args.universe_name:
                 universe_uuid = self.__get_universe_uuid_by_name(self.args.universe_name)
@@ -551,8 +557,8 @@ class YBUniverse():
         :return: None
         """
         if not self.args.task:
-            print("Task id required to get task status. Use \`-t|--task <task_id>\` to pass task_id.")
-            exit()
+            sys.stderr.write("Task id required to get task status. Use '-t|--task <task_id>' to pass task_id.")
+            exit(1)
         self.__task_progress_bar(self.args.task)
     
 
@@ -631,6 +637,8 @@ class YBUniverse():
         parser.add_argument('-f', '--file', help='Json input file for creating universe', metavar='INPUT_FILE_PATH')
         parser.add_argument('-t', '--task', help='Task UUID to get task status', metavar='TASK_ID')
         parser.add_argument('-y', '--yes', action='store_true', help='Input yes for all confirmation prompts')
+        parser.add_argument('--interval', type=check_positive, default=20, 
+            help='Set interval time to get status update', metavar='INTEGER_INTERVAL')
         parser.add_argument('--no_wait', action='store_true', 
             help='To run command in background and do not wait for task completion task')
         parser.add_argument('--force', action='store_true', help='Force delete universe')
@@ -644,7 +652,7 @@ class YBUniverse():
 
         :return: None
         """
-        print("Invalid action\n")
+        sys.stderr.write("Invalid action\n")
         self.parser.print_help()
 
 
@@ -655,15 +663,15 @@ class YBUniverse():
         :return: None
         """
         if not self.base_url:
-            print("YB_PLATFORM_URL is not set. Set YB_PLATFORM_URL as env variable to proceed.")
-            print("\texport YB_PLATFORM_URL=<base_url_of_platform>\n\nExample:")
-            print("\texport YB_PLATFORM_URL=http://localhost:9000\n")
+            sys.stderr.write("\n\nYB_PLATFORM_URL is not set. Set YB_PLATFORM_URL as env variable to proceed.")
+            sys.stderr.write("\n\texport YB_PLATFORM_URL=<base_url_of_platform>\n\nExample:")
+            sys.stderr.write("\n\texport YB_PLATFORM_URL=http://localhost:9000\n\n")
         if not self.api_token:
-            print("YB_PLATFORM_API_TOKEN is not set. Set YB_PLATFORM_API_TOKEN as env variable to proceed.")
-            print("\texport YB_PLATFORM_API_TOKEN=<platform_api_token>\n\nExample:")
-            print("\t export YB_PLATFORM_API_TOKEN=e16d75cf-79af-4c57-8659-2f8c34223551\n")
+            sys.stderr.write("YB_PLATFORM_API_TOKEN is not set. Set YB_PLATFORM_API_TOKEN as env variable to proceed.")
+            sys.stderr.write("\n\texport YB_PLATFORM_API_TOKEN=<platform_api_token>\n\nExample:")
+            sys.stderr.write("\n\t export YB_PLATFORM_API_TOKEN=e16d75cf-79af-4c57-8659-2f8c34223551\n")
         if not (self.base_url or self.api_token):
-            exit()
+            exit(1)
 
 
     @exception_handling
