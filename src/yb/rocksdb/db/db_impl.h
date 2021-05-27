@@ -639,11 +639,6 @@ class DBImpl : public DB {
   // Updates stats_ object with SST files size metrics.
   void SetSSTFileTickers();
 
-  void PrintStatistics();
-
-  // dump rocksdb.stats to LOG
-  void MaybeDumpStats();
-
   // Return the minimum empty level that could hold the total data in the
   // input level. Return the input level, if such level could not be found.
   int FindMinimumEmptyLevelFitting(ColumnFamilyData* cfd,
