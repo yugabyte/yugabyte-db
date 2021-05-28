@@ -59,7 +59,7 @@ Example log output:
     ORDER BY 2, 3;
 ```
 
-For more information on flags for configuring the YB-TServer server, see [YSQL Flags](../../../reference/configuration/yb-tserver/#ysql-flags).
+For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../../reference/configuration/yb-tserver/#ysql-flags).
 
 **3. View live queries using pg_stat_activity**
 
