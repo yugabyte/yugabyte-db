@@ -18,7 +18,7 @@ Improving the performance of queries in YugabyteDB typically involves some combi
 
 **1. Find slow queries using pg_stat_statements** 
 
-Use the `pg_stat_statements` extension get statistics on the execution of queries. Using `pg_stat_statements`, you can quickly track down problematic queries by a variety of criteria, including the following:
+Use the `pg_stat_statements` extension to get statistics on the execution of queries. Using `pg_stat_statements`, you can quickly track down problematic queries by a variety of criteria, including:
 
 * I/O intensity
 * time consumption
