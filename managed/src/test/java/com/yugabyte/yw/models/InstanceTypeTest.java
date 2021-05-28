@@ -112,9 +112,8 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testFindByProviderOnprem() {
-    Provider newProvider = ModelFactory.onpremProvider(defaultCustomer);
-    InstanceType.upsert(newProvider.uuid, "bar", 2, 10.0, defaultDetails);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider, mockConfig);
+    InstanceType.upsert(onpremProvider.uuid, "bar", 2, 10.0, defaultDetails);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(onpremProvider, mockConfig);
     assertEquals(1, instanceTypeList.size());
 
     InstanceType it = instanceTypeList.get(0);

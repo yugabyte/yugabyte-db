@@ -37,8 +37,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
+import javax.persistence.NonUniqueResultException;
+
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Api("Provider")
 public class CloudProviderController extends AuthenticatedController {
@@ -137,6 +140,12 @@ public class CloudProviderController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(CloudProviderFormData.class);
 
     Common.CloudType providerCode = formData.get().code;
+    Provider existentProvider = Provider.get(customerUUID, formData.get().name, providerCode);
+    if (existentProvider != null) {
+      return ApiResponse.error(
+          BAD_REQUEST,
+          String.format("Provider with the name %s already exists", formData.get().name));
+    }
 
     // Since the Map<String, String> doesn't get parsed, so for now we would just
     // parse it from the requestBody

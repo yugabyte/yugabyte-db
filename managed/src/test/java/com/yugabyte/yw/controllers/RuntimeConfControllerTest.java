@@ -90,18 +90,25 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     Iterator<JsonNode> scopedConfigList =
         Json.parse(contentAsString(result)).get("scopedConfigList").elements();
-    Map<ScopeType, UUID> actualScopesMap = new HashMap<>();
+    Map<ScopeType, List<UUID>> actualScopesMap = new HashMap<>();
     while (scopedConfigList.hasNext()) {
       JsonNode actualScope = scopedConfigList.next();
       assertTrue(actualScope.get("mutableScope").asBoolean());
       ScopeType type = ScopeType.valueOf(actualScope.get("type").asText());
-      actualScopesMap.put(type, UUID.fromString(actualScope.get("uuid").asText()));
+
+      if (actualScopesMap.containsKey(type)) {
+        actualScopesMap.get(type).add(UUID.fromString(actualScope.get("uuid").asText()));
+      } else {
+        List<UUID> typeList = new ArrayList<>();
+        typeList.add(UUID.fromString(actualScope.get("uuid").asText()));
+        actualScopesMap.put(type, typeList);
+      }
     }
     assertEquals(4, actualScopesMap.size());
-    assertEquals(GLOBAL_SCOPE_UUID, actualScopesMap.get(ScopeType.GLOBAL));
-    assertEquals(defaultCustomer.uuid, actualScopesMap.get(ScopeType.CUSTOMER));
-    assertEquals(defaultProvider.uuid, actualScopesMap.get(ScopeType.PROVIDER));
-    assertEquals(defaultUniverse.universeUUID, actualScopesMap.get(ScopeType.UNIVERSE));
+    assertTrue(actualScopesMap.get(ScopeType.GLOBAL).contains(GLOBAL_SCOPE_UUID));
+    assertTrue(actualScopesMap.get(ScopeType.CUSTOMER).contains(defaultCustomer.uuid));
+    assertTrue(actualScopesMap.get(ScopeType.PROVIDER).contains(defaultProvider.uuid));
+    assertTrue(actualScopesMap.get(ScopeType.UNIVERSE).contains(defaultUniverse.universeUUID));
   }
 
   @Test
