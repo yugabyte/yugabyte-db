@@ -31,6 +31,8 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -40,6 +42,9 @@ import play.mvc.Result;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.yugabyte.yw.common.ApiResponse.success;
+
+@Api
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
@@ -64,6 +69,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
+  @ApiOperation(value = "getCustomer", response = Customer.class)
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -152,6 +158,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(Json.toJson(customer));
   }
 
+  @ApiOperation(value = "deleteCustomer", response = Object.class)
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -164,7 +171,7 @@ public class CustomerController extends AuthenticatedController {
       ObjectNode responseJson = Json.newObject();
       auditService().createAuditEntry(ctx(), request());
       responseJson.put("success", true);
-      return ApiResponse.success(responseJson);
+      return success(responseJson);
     }
     throw new YWServiceException(
         INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
@@ -258,7 +265,7 @@ public class CustomerController extends AuthenticatedController {
     if (response.has("error")) {
       throw new YWServiceException(BAD_REQUEST, response.get("error"));
     }
-    return ApiResponse.success(response);
+    return success(response);
   }
 
   private String getNamespacesFilter(Customer customer, String nodePrefix) {
@@ -314,7 +321,7 @@ public class CustomerController extends AuthenticatedController {
     hostInfo.put(
         Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null));
 
-    return ApiResponse.success(hostInfo);
+    return success(hostInfo);
   }
 
   private HashMap<String, HashMap<String, String>> getFilterOverrides(

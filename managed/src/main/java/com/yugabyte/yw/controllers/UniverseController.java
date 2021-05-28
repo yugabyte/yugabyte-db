@@ -21,12 +21,17 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.YWResults.YWSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.queries.QueryHelper;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +63,7 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.*;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.empty;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
 
+@Api("Universe")
 public class UniverseController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
 
@@ -128,6 +134,7 @@ public class UniverseController extends AuthenticatedController {
     return Results.status(OK, Json.toJson(universe.universeUUID));
   }
 
+  @ApiOperation(value = "setDatabaseCredentials", response = YWSuccess.class)
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -153,6 +160,7 @@ public class UniverseController extends AuthenticatedController {
     return withMessage("Updated security in DB.");
   }
 
+  @ApiOperation(value = "createUserInDB", response = YWSuccess.class)
   public Result createUserInDB(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -179,6 +187,10 @@ public class UniverseController extends AuthenticatedController {
 
   @VisibleForTesting static final String DEPRECATED = "Deprecated.";
 
+  @ApiOperation(
+      value = "run command in shell",
+      notes = "This operation is no longer supported sue to security reasons",
+      response = YWError.class)
   public Result runInShell(UUID customerUUID, UUID universeUUID) {
     throw new YWServiceException(BAD_REQUEST, DEPRECATED);
   }
@@ -188,6 +200,10 @@ public class UniverseController extends AuthenticatedController {
   @VisibleForTesting
   static final String RUN_QUERY_ISNT_ALLOWED = "run_query not supported for this application";
 
+  @ApiOperation(
+      value = "Run YSQL query against this universe",
+      notes = "Only valid when platform is running in mode is `OSS`",
+      response = Object.class)
   public Result runQuery(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -248,6 +264,13 @@ public class UniverseController extends AuthenticatedController {
    * @param customerUUID the ID of the customer configuring the Universe.
    * @return UniverseDefinitionTasksParams in a serialized form
    */
+  @ApiOperation(
+      value = "configure the universe parameters",
+      notes =
+          "This API builds the new universe definition task parameters by merging the input "
+              + "UserIntent with the current taskParams and returns the resulting task parameters "
+              + "in a serialized form",
+      response = UniverseDefinitionTaskParams.class)
   public Result configure(UUID customerUUID) {
 
     // Verify the customer with this universe is present.
@@ -282,12 +305,18 @@ public class UniverseController extends AuthenticatedController {
     return ApiResponse.success(taskParams);
   }
 
-  /**
-   * API that calculates the resource estimate for the NodeDetailSet
-   *
-   * @param customerUUID the ID of the Customer
-   * @return the Result object containing the Resource JSON data.
-   */
+  // TODO: This method take params in post body instead of looking up the params of universe in db
+  //  this needs to be fixed as follows:
+  // 1> There should be a GET method to read universe resources without giving the params in the
+  // body
+  // 2> Map this to HTTP GET request.
+  // 3> In addition /universe_configure should also return resource estimation info back.
+  @ApiOperation(
+      value = "Api to get the resource estimate for a universe",
+      notes =
+          "Expects UniverseDefinitionTaskParams in request body and calculates the resource "
+              + "estimate for NodeDetailsSet in that.",
+      response = UniverseResourceDetails.class)
   public Result getUniverseResources(UUID customerUUID) {
     UniverseDefinitionTaskParams taskParams =
         bindFormDataToTaskParams(request(), UniverseDefinitionTaskParams.class);
@@ -319,6 +348,14 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the universe create operation.
    */
+  @ApiOperation(value = "Create a YugaByte Universe", response = UniverseResp.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "univ_def",
+          value = "univ definition",
+          dataTypeClass = UniverseDefinitionTaskParams.class,
+          paramType = "body",
+          required = true))
   public Result create(UUID customerUUID) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -511,6 +548,7 @@ public class UniverseController extends AuthenticatedController {
     return ApiResponse.success(createResp(universe, taskUUID));
   }
 
+  @ApiOperation(value = "setUniverse", response = UniverseResp.class)
   public Result setUniverseKey(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -582,6 +620,7 @@ public class UniverseController extends AuthenticatedController {
    * @return result of settings universe version to -1 (either success if universe exists else
    *     failure
    */
+  @ApiOperation(value = "resetVersion", response = YWSuccess.class)
   public Result resetVersion(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -599,6 +638,7 @@ public class UniverseController extends AuthenticatedController {
    * @param nodeName name of the node
    * @return tar file of the tserver and master log files (if the node is a master server).
    */
+  // TODO: API
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {
     return CompletableFuture.supplyAsync(
@@ -641,6 +681,16 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the universe update operation.
    */
+  @ApiOperation(value = "updateUniverse", response = UniverseResp.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "univ_def",
+          value = "univ definition",
+          dataTypeClass = UniverseDefinitionTaskParams.class,
+          paramType = "body",
+          required = true))
+
+  // TODO: API
   public Result update(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -762,6 +812,7 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /** List the universes for a given customer. */
+  @ApiOperation(value = "List Universes", response = UniverseResp.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
     // Verify the customer is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -779,6 +830,7 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return Result
    */
+  @ApiOperation(value = "Set backup Flag for a universe", response = YWSuccess.class)
   public Result setBackupFlag(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -801,6 +853,7 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return Result
    */
+  @ApiOperation(value = "Set the universe as helm3 compatible", response = YWSuccess.class)
   public Result setHelm3Compatible(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -823,6 +876,7 @@ public class UniverseController extends AuthenticatedController {
     return empty();
   }
 
+  @ApiOperation(value = "Configure Alerts for a universe", response = YWSuccess.class)
   public Result configureAlerts(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -855,12 +909,15 @@ public class UniverseController extends AuthenticatedController {
     return empty();
   }
 
+  @ApiOperation(value = "getUniverse", response = UniverseResp.class)
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     return ApiResponse.success(createResp(universe, null));
   }
 
+  // TODO: return YWTaskList
+  @ApiOperation(value = "Pause the universe", response = Object.class)
   public Result pause(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -900,6 +957,8 @@ public class UniverseController extends AuthenticatedController {
     return ApiResponse.success(response);
   }
 
+  // TODO: return YWTaskList
+  @ApiOperation(value = "Resume the universe", response = Object.class)
   public Result resume(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -939,6 +998,14 @@ public class UniverseController extends AuthenticatedController {
     return ApiResponse.success(response);
   }
 
+  // TODO: return YWTaskList
+  @ApiOperation(value = "Destroy the universe", response = Object.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "isForceDelete",
+          value = "isForceDelete",
+          type = "boolean",
+          paramType = "query"))
   public Result destroy(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -1004,6 +1071,14 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the cluster create operation.
    */
+  @ApiOperation(value = "clusterCreate", response = UniverseResp.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "univ_def",
+          value = "univ definition",
+          dataTypeClass = UniverseDefinitionTaskParams.class,
+          paramType = "body",
+          required = true))
   public Result clusterCreate(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -1102,6 +1177,7 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the cluster delete operation.
    */
+  @ApiOperation(value = "clusterDelete", response = UniverseResp.class)
   public Result clusterDelete(UUID customerUUID, UUID universeUUID, UUID clusterUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -1161,6 +1237,7 @@ public class UniverseController extends AuthenticatedController {
     return ApiResponse.success(createResp(universe, taskUUID));
   }
 
+  @ApiOperation(value = "universeCost", response = UniverseResourceDetails.class)
   public Result universeCost(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -1171,9 +1248,11 @@ public class UniverseController extends AuthenticatedController {
                 universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf())));
   }
 
+  @ApiOperation(
+      value = "list universe cost for all universes",
+      response = UniverseResourceDetails.class)
   public Result universeListCost(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    ArrayNode response = Json.newArray();
     Set<Universe> universeSet;
     try {
       universeSet = customer.getUniverses();
@@ -1181,12 +1260,12 @@ public class UniverseController extends AuthenticatedController {
       throw new YWServiceException(
           BAD_REQUEST, "No universe found for customer with ID: " + customerUUID);
     }
+    List<UniverseResourceDetails> response = new ArrayList<>(universeSet.size());
     for (Universe universe : universeSet) {
       try {
         response.add(
-            Json.toJson(
-                UniverseResourceDetails.create(
-                    universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf())));
+            UniverseResourceDetails.create(
+                universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf()));
       } catch (Exception e) {
         LOG.error("Could not add cost details for Universe with UUID: " + universe.universeUUID);
       }
@@ -1199,6 +1278,15 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the universe update operation.
    */
+  // TODO: return YWTaskList
+  @ApiOperation(value = "Upgrade  the universe", response = Object.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "upgrade_params",
+          value = "upgrade params",
+          dataTypeClass = UpgradeParams.class,
+          required = true,
+          paramType = "body"))
   public Result upgrade(UUID customerUUID, UUID universeUUID) {
     LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -1355,7 +1443,8 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the universe status operation.
    */
-  public Result status(UUID customerUUID, UUID universeUUID) {
+  @ApiOperation(value = "Status of the Universe", response = Object.class)
+  public Result status1(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
@@ -1378,6 +1467,7 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the checker script
    */
+  @ApiOperation(value = "health Check", response = Object.class)
   public Result healthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -1402,6 +1492,7 @@ public class UniverseController extends AuthenticatedController {
    * @param universeUUID UUID of Universe to retrieve the master leader private IP of.
    * @return The private IP of the master leader.
    */
+  @ApiOperation(value = "getMasterLeaderIP", response = Object.class)
   public Result getMasterLeaderIP(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -1423,6 +1514,7 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(value = "updateDiskSize", response = Object.class)
   public Result updateDiskSize(UUID customerUUID, UUID universeUUID) {
     LOG.info("Disk Size Increase {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -1490,6 +1582,7 @@ public class UniverseController extends AuthenticatedController {
     return Results.status(OK, resultNode);
   }
 
+  @ApiOperation(value = "getLiveQueries", response = Object.class)
   public Result getLiveQueries(UUID customerUUID, UUID universeUUID) {
     LOG.info("Live queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -1507,6 +1600,7 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(value = "getSlowQueries", response = Object.class)
   public Result getSlowQueries(UUID customerUUID, UUID universeUUID) {
     LOG.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -1540,6 +1634,7 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(value = "markAllUniverseTasksAsCompleted", response = Object.class)
   private void markAllUniverseTasksAsCompleted(UUID universeUUID) {
     List<CustomerTask> existingTasks = CustomerTask.findIncompleteByTargetUUID(universeUUID);
     for (CustomerTask task : existingTasks) {

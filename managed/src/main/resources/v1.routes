@@ -146,7 +146,7 @@ GET     /customers/:cUUID/universes/:uniUUID/redisservers                      c
 GET     /customers/:cUUID/universes/:uniUUID/leader                            com.yugabyte.yw.controllers.UniverseController.getMasterLeaderIP(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade                           com.yugabyte.yw.controllers.UniverseController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/disk_update                       com.yugabyte.yw.controllers.UniverseController.updateDiskSize(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseController.status(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseController.status1(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/find/:universeName                         com.yugabyte.yw.controllers.UniverseController.findByName(cUUID: java.util.UUID, universeName: String)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
@@ -251,3 +251,4 @@ GET    /settings/ha/internal/config                                            c
 PUT    /settings/ha/internal/config/demote/:timestamp                          com.yugabyte.yw.controllers.InternalHAController.demoteLocalLeader(timestamp: java.lang.Long)
 PUT    /settings/ha/internal/config/sync/:timestamp                            com.yugabyte.yw.controllers.InternalHAController.syncInstances(timestamp: java.lang.Long)
 POST   /settings/ha/internal/upload                                            com.yugabyte.yw.controllers.InternalHAController.syncBackups()
+

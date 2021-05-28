@@ -8,6 +8,7 @@
      "(^src/postgres/.*$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/v1.routes$)",
+     "(^managed/src/main/resources/swagger.json$)",
      "(^managed/build.sbt$)",
      "(^managed/src/main/resources/aws_pricing/.*$)"
   ],
@@ -17,6 +18,7 @@
       "text.max-line-length": 100,
       "exclude": [
         "(^managed/ui/)",
+        "(^managed/src/main/public/swagger-ui/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",

@@ -23,6 +23,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
@@ -30,7 +31,10 @@ import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -44,30 +48,30 @@ import play.Environment;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
+import play.libs.concurrent.HttpExecutionContext;
 import play.libs.ws.StandaloneWSResponse;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.mvc.*;
-import play.libs.concurrent.HttpExecutionContext;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import javax.persistence.PersistenceException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.time.Duration;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.models.Users.Role;
 
+@Api
 public class SessionController extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
@@ -105,6 +109,14 @@ public class SessionController extends Controller {
     return profileManager.get(true).get();
   }
 
+  @ApiOperation(value = "login", response = Object.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "loginFormData",
+          dataTypeClass = CustomerLoginFormData.class,
+          required = true,
+          paramType = "body",
+          value = "login form data"))
   public Result login() {
     ObjectNode responseJson = Json.newObject();
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
@@ -200,6 +212,7 @@ public class SessionController extends Controller {
     }
   }
 
+  @ApiOperation(value = "insecureLogin", response = Object.class)
   public Result insecure_login() {
     ObjectNode responseJson = Json.newObject();
     List<Customer> allCustomers = Customer.getAll();
@@ -278,6 +291,7 @@ public class SessionController extends Controller {
   }
 
   @With(TokenAuthenticator.class)
+  @ApiOperation(value = "apiToken", response = Object.class)
   public Result api_token(UUID customerUUID) {
     Users user = (Users) Http.Context.current().args.get("user");
 

@@ -4,22 +4,16 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 import play.Application;
 import play.libs.Json;
 
 import javax.inject.Singleton;
 import java.util.Collections;
-import java.util.EnumMap;
 import java.util.Map;
-
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
-
-import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 
 @Singleton
 public class ConfigHelper {
