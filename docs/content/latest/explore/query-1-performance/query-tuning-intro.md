@@ -289,7 +289,7 @@ Limit (cost=128.22..128.28 rows=25 width=1642)
             Seq Scan on accounts (cost=0.00..100.00 rows=1000 width=1642)
 ```
 
-In this case, a sort is run first, which adds extra time to the query, before running a sequential scan of the table, which, as we have seen, also degrades performance.
+In this case, a sort is run first, which adds extra time to the query, before running a sequential scan of the table, which also degrades performance.
 
 To optimize this query, adjust the sorting of the table by the primary key to be `DESC` rather than `HASH`.
 
