@@ -315,7 +315,7 @@ Time: 2.994 ms
 Previous run time: 426.627 ms
 ```
 
-### Optimizing `SELECT` using an index
+### Optimize `SELECT` using an index
 
 The following example shows another query running a sequential scan, which we can fix by adding an index.
 
