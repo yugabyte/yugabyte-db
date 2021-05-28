@@ -46,18 +46,20 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). In this section, you'll see how YugabyteDB can continue to do reads and writes even in case of node failures. You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). In this section, you'll see how YugabyteDB can continue to do reads and writes even in case of node failures. You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
 ## 1. Create a universe
 
 Start a new local three-node cluster with a replication factor of `3`. First create a single node cluster.
+
 ```sh
 ./bin/yugabyted start \
                 --listen=127.0.0.1 \
                 --base_dir=/tmp/ybd1
 ```
+
 Next, create a 3 node cluster by joining two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
 ```sh
 ./bin/yugabyted start \
@@ -65,6 +67,7 @@ Next, create a 3 node cluster by joining two more nodes with the previous node. 
                 --base_dir=/tmp/ybd2 \
                 --join=127.0.0.1
 ```
+
 ```sh
 ./bin/yugabyted start \
                 --listen=127.0.0.3 \
@@ -117,16 +120,18 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 
 ## 6. [Optional] Clean up 
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
 $ ./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd1
 ```
+
 ```sh
 $ ./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd2
 ```
+
 ```sh
 $ ./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd3

@@ -6,7 +6,7 @@ description: Learn how YugabyteDB uses the Raft consensus in DocDB to replicate 
 aliases:
   - /latest/architecture/docdb/replication/
   - /latest/architecture/concepts/replication/
-  - /latest/architecture/concepts/docdb/replication/
+  - /latest/architecture/concepts/docdb-replication/replication/
 menu:
   latest:
     identifier: architecture-docdb-replication-default

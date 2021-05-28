@@ -32,15 +32,16 @@ showAsideToc: true
 -->
 </ul>
 
-We’ll begin our discussion by seeing horizontal scale-out and scale-in in action. In particular, we’ll see how in YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+On this page, you'll observe horizontal scale-out and scale-in in action. In particular, you’ll see how in YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
 ## 1. Create universe
 
-Start a new three-node cluster with a replication factor (RFå) of `3` and set the number of [shards](../../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down. <br />
+Start a new three-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/concepts/docdb-sharding/sharding/) (also called tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down. <br />
 
 Create the first node:
+
 ```sh
 $ ./bin/yugabyted start \
                   --base_dir=/tmp/ybd1 \
@@ -50,6 +51,7 @@ $ ./bin/yugabyted start \
 ```
 
 Add 2 more nodes to this cluster by joining them with the previous node:
+
 ```sh
 $ ./bin/yugabyted start \
                   --base_dir=/tmp/ybd2 \
@@ -58,6 +60,7 @@ $ ./bin/yugabyted start \
                   --master_flags "ysql_num_shards_per_tserver=4" \
                   --tserver_flags "ysql_num_shards_per_tserver=4,follower_unavailable_considered_failed_sec=30"
 ```
+
 ```sh
 $ ./bin/yugabyted start \
                   --base_dir=/tmp/ybd3 \
@@ -66,6 +69,7 @@ $ ./bin/yugabyted start \
                   --master_flags "ysql_num_shards_per_tserver=4" \
                   --tserver_flags "ysql_num_shards_per_tserver=4,follower_unavailable_considered_failed_sec=30"
 ```
+
 * `ysql_num_shards_per_tserver` defines the number of shards of a table that one node will have. This means that for our example above, a table will have a total of 12 shards across all the 3 nodes combined.
 * `follower_unavailable_considered_failed_sec` sets the time after which other nodes consider an inactive node to be unavailable and remove it from the cluster.
 
@@ -131,7 +135,7 @@ $ ./bin/yugabyted stop \
                   --base_dir=/tmp/ybd4
 ```
 
-Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugabyteDB will change the status of that node from ALIVE to DEAD. We can now see the load (tablets) and IOPS getting moved off the removed node and redistributed amongst the other nodes.
+Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugabyteDB will change the status of that node from ALIVE to DEAD. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed amongst the other nodes.
 
 ![Read and write IOPS with 4th node dead](/images/ce/transactions_deleting_observe.png)
 
@@ -139,20 +143,23 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 
 ## 6. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
 $ ./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd1
 ```
+
 ```sh
 $ ./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd2
 ```
+
 ```sh
 $ ./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd3
 ```
+
 ```sh
 $ ./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd4

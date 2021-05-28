@@ -79,7 +79,7 @@ INSERT INTO store.books (id, details) VALUES
 
 ## 2. Query JSON documents
 
-Let us list all the rows we inserted using the command below.
+You can list all the row inserted using the command below.
 
 ```sql
 ycqlsh> SELECT * FROM store.books;
@@ -246,11 +246,11 @@ ycqlsh> SELECT * FROM store.books WHERE id = 6;
 ```
 
 {{< note title="Note" >}}
-JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. We do not support upsert on non-leaf properties.
+JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. Upsert on non-leaf properties is not supported presently.
 {{< /note >}}
 
 ## 5. Clean up (Optional)
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
 $ ./bin/yugabyted destroy

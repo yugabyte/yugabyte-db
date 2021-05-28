@@ -491,7 +491,7 @@ ERROR:  23505: duplicate key value violates unique constraint "books_isbn_unq"
 
 ## 7. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
 $ ./bin/yugabyted destroy
