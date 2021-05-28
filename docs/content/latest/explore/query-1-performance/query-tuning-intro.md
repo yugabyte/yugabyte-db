@@ -92,7 +92,7 @@ For more information, refer to [Optimizing YSQL queries using pg_hint_plan](../p
 
 The following example is drawn from a real-world scenario, using the `EXPLAIN` statement to view query plans, and then optimizing those queries by adding indexes and adjusting tables.
 
-### Optimizing `SELECT COUNT` using an index
+### Optimize `SELECT COUNT` using an index
 
 The following table is representative of the customer's data.
 
@@ -242,7 +242,7 @@ Time: 46.658 ms
 Previous run time: 147 seconds
 ```
 
-### Optimizing `SELECT` by changing table sorting
+### Optimize `SELECT` by changing table sorting
 
 The following query retrieves data from an account table where some indexes are already defined.
 
