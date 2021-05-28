@@ -96,34 +96,25 @@ public class UniverseController extends AuthenticatedController {
   /**
    * Find universe by name
    *
-   * @return UUID of universe looked up by name or else NOT_FOUND error
+   * @return Need to update
    */
-  public Result findByName(UUID customerUUID, String universeName) {
+  public Result find(UUID customerUUID) {
     // Verify the customer with this universe is present.
-    Customer.getOrBadRequest(customerUUID);
-    LOG.info("Finding Universe with name {}.", universeName);
-    Universe universe = Universe.getUniverseByName(universeName);
-    if (universe == null) {
-      throw new YWServiceException(NOT_FOUND, "Universe does not Exist");
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    String universeName = request().getQueryString("name");
+    if (universeName != null) {
+      LOG.info("Finding Universe with name {}.", universeName);
+      Optional<Universe> universe = Universe.maybeGetUniverseByName(universeName);
+       if (universe.isPresent()) {
+          return Results.status(OK, Json.toJson(Arrays.asList(universe.get().universeUUID)));
+       }
+       return Results.status(OK, Json.toJson(Collections.emptyList()));
     }
-    return Results.status(OK, Json.toJson(universe.universeUUID));
+
+    Set<UUID> result = Universe.getAllUUIDs(customer);
+    return Results.status(OK, Json.toJson(result));
   }
 
-  /**
-   * API that verify Universe has unique name.
-   *
-   * @return 200 if universe is not present else raise error
-   */
-  public Result verifyUniqueName(UUID customerUUID, String universeName) {
-    // Verify the customer with this universe is present.
-    Customer.getOrBadRequest(customerUUID);
-    LOG.info("Finding Universe with name {}.", universeName);
-    if (Universe.checkIfUniverseExists(universeName)) {
-      throw new YWServiceException(BAD_REQUEST, "Universe already exists");
-    } else {
-      return withMessage("Universe name is unique");
-    }
-  }
 
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

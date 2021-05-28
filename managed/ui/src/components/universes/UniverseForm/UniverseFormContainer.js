@@ -452,7 +452,7 @@ const asyncValidate = (values, dispatch) => {
       values.formType !== 'Async'
     ) {
       dispatch(checkIfUniverseExists(values.primary.universeName)).then((response) => {
-        if (response.payload.status !== 200 && values.formType !== 'Edit') {
+        if (response.payload.status === 200 && values.formType !== 'Edit' && response.payload.data.length > 0) {
           reject({ primary: { universeName: 'Universe name already exists' } });
         } else {
           resolve();
