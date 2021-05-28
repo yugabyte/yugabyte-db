@@ -46,7 +46,7 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 ## Prerequisite
 
@@ -250,7 +250,7 @@ ycqlsh> SELECT email, profile FROM users.profile;
 
 ## Step 6. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
 $ ./yb-docker-ctl destroy
