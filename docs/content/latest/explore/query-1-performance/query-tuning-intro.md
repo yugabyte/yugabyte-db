@@ -91,7 +91,7 @@ For more information, see [Optimizing YSQL queries using pg_hint_plan](../pg-hin
 
 ## Query tuning example
 
-The following example was drawn from a real-world scenario, where we used the `EXPLAIN` statement to view query plans, and then optimized those queries by adding indexes and adjusting tables.
+The following example is drawn from a real-world scenario, using the `EXPLAIN` statement to view query plans, and then optimizing those queries by adding indexes and adjusting tables.
 
 ### Optimizing `SELECT COUNT` using an index
 
