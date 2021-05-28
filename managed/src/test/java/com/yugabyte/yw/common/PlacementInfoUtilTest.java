@@ -1375,7 +1375,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
     AvailabilityZone az3 =
         AvailabilityZone.create(r2, "PlacementAZ " + 3, "az-" + 3, "subnet-" + 3);
-    Provider k8sProviderNotMultiAZ = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Provider k8sProviderNotMultiAZ =
+                  ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes, "kubernetes-notAz");
     Region r4 = Region.create(k8sProviderNotMultiAZ, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone az4 =
         AvailabilityZone.create(r4, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
