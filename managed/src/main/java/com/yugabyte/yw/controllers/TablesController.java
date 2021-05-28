@@ -123,7 +123,7 @@ public class TablesController extends AuthenticatedController {
     try {
       schemaResponse = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
     } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     if (schemaResponse == null) {
       String errMsg = "No table for UUID: " + tableUUID;
