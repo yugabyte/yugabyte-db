@@ -152,7 +152,6 @@ function validateSession(store, replacePath, callback) {
     location && location !== '/'
       ? browserHistory.push(`/login?redirectUrl=${location}`)
       : browserHistory.push('/login');
-    // location ? browserHistory.push(`/login?redirectUrl=${location}`) : browserHistory.push('/login');
   } else {
     store.dispatch(validateToken()).then((response) => {
       if (response.error) {
