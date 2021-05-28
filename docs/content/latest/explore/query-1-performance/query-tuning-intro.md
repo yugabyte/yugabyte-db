@@ -174,7 +174,7 @@ In each case, the queries do a `Seq Scan` (sequential scan) on the tables. This 
 
 Avoid `SELECT COUNT(*)` queries in most cases, as they can require a full scan of the table to get the results. This can cause query degradation, and in some cases cause the query to not return at all.
 
-Because most of the queries above use `account_id` as the main qualifier, we can avaoid a sequential scan by creating a direct index on that column, and then use the `INCLUDE` feature to cover the other columns that we also want in the index. Indexing is a powerful tool that can speed up queries with higher latencies. When creating an index, we want to consider the column cardinality, as well as the different index types.
+Because most of the queries above use `account_id` as the main qualifier, you can avoid a sequential scan by creating a direct index on that column, and then using the `INCLUDE` feature to cover the other columns that you also want in the index. Indexing is a powerful tool that can speed up queries with higher latencies. When creating an index, consider the column cardinality, as well as the different index types.
 
 We create the index as follows:
 
