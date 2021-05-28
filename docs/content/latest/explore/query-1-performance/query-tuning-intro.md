@@ -354,7 +354,7 @@ Sort (cost=152.33..154.83 rows=1000 width=237)
             Filter: (account_id = 6873)
 ```
 
-The query runs a sequential scan on the account_type table, so by adding an index on `account_id`, we can prevent the full scan of the table, as follows:
+The query runs a sequential scan on the account_type table, so adding an index on `account_id` prevents the full scan of the table, as follows:
 
 ```sql
 create index account_id on account_type(account_id);
