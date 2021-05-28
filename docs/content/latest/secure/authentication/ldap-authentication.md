@@ -215,9 +215,9 @@ To use LDAP password authentication on a new YugabyteDB cluster, follow these st
     host   all         all      0.0.0.0/0  ldap ldapserver=ldap.forumsys.com ldapprefix="uid=" ldapsuffix=", dc=example, dc=com" ldapport=389
     ```
 
-5. Configure database role(s) for the LDAP user(s).
+5. Configure database roles for LDAP users.
 
-    We are creating a ROLE for username riemann supported by the test LDAP server. 
+    To create a `ROLE` for username `riemann` supported by the test LDAP server: 
 
     ```sql
     yugabyte=# CREATE ROLE riemann WITH LOGIN;
