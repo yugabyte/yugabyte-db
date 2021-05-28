@@ -170,7 +170,7 @@ Aggregate (cost=107.50..107.51 rows=1 width=8)
 (3 rows)
 ```
 
-In each case, the queries do a `Seq Scan` (sequential scan) on the tables. This operation requires scanning the entire table to retrieve the desired columns. Even though we are using the partition keys to do the look up, it still needs to do a lot of scanning. 
+In each case, the queries do a `Seq Scan` (sequential scan) on the tables. This operation requires scanning the entire table to retrieve the desired columns. Even using the partition keys to do the lookup, it still needs to do a lot of scanning. 
 
 Generally, you want to avoid `SELECT COUNT(*)` queries as they can require a full scan of the table to get the results. This can cause query degradation and in some cases cause the query to not return at all.
 
