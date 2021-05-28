@@ -10,8 +10,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 
@@ -68,7 +68,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @Mock private RuntimeConfig<Model> config;
 
-  @Mock SettableRuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @InjectMocks private CustomerTaskController controller;
 
