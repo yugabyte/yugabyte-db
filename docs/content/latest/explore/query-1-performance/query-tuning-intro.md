@@ -176,7 +176,7 @@ Avoid `SELECT COUNT(*)` queries in most cases, as they can require a full scan o
 
 Because most of the queries above use `account_id` as the main qualifier, you can avoid a sequential scan by creating a direct index on that column, and then using the `INCLUDE` feature to cover the other columns that you also want in the index. Indexing is a powerful tool that can speed up queries with higher latencies. When creating an index, consider the column cardinality, as well as the different index types.
 
-We create the index as follows:
+Create the index as follows:
 
 ```sql
 create index contacts_account_id on contacts (account_id hash, updated_at desc) include (is_paid, is_over_charged);
