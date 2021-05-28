@@ -6,7 +6,7 @@ description: Learn how YugabyteDB uses hash and range sharding for horizontal sc
 aliases:
   - /latest/architecture/docdb/sharding/
   - /latest/architecture/concepts/sharding/
-  - /latest/architecture/concepts/docdb-sharding/sharding/
+  - /latest/architecture/concepts/docdb/sharding/
 menu:
   latest:
     identifier: docdb-sharding
