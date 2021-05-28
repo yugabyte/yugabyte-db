@@ -40,15 +40,32 @@ YugabyteDB also allows you to specify the maximum staleness of data when reading
 Start a new local universe with three nodes and a replication factor (RF) of `3`.
 
 ```sh
-$ ./bin/yugabyted start --base_dir=node-1/ --listen=127.0.0.1
-$ ./bin/yugabyted start --base_dir=node-2/ --listen=127.0.0.2 --join=127.0.0.1
-$ ./bin/yugabyted start --base_dir=node-3/ --listen=127.0.0.3 --join=127.0.0.1
+$ ./bin/yugabyted start \
+                  --base_dir=node-1 \
+                  --listen=127.0.0.1
+```
+
+```sh
+$ ./bin/yugabyted start \
+                  --base_dir=node-2 \
+                  --listen=127.0.0.2 \
+                  --join=127.0.0.1
+```
+
+```sh
+$ ./bin/yugabyted start \
+                  --base_dir=node-3 \
+                  --listen=127.0.0.3 \
+                  --join=127.0.0.1
 ```
 
 Add 1 more node.
 
 ```sh
-$ ./bin/yugabyted start --base_dir=node-4/ --listen=127.0.0.4 --join=127.0.0.1
+$ ./bin/yugabyted start \
+                  --base_dir=node-4 \
+                  --listen=127.0.0.4 \
+                  --join=127.0.0.1
 ```
 
 ## 2. Write some data
