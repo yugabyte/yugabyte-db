@@ -18,3 +18,5 @@ addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "5.2.4")
 
 // Plugin for formatting code.
 addSbtPlugin("com.swoval" % "sbt-jvm-format" % "0.3.1")
+
+//addSbtPlugin("com.hootsuite" %% "sbt-swagger" % "1.0.0")
