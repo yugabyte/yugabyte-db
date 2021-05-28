@@ -95,7 +95,7 @@ The following example is drawn from a real-world scenario, using the `EXPLAIN` s
 
 ### Optimizing `SELECT COUNT` using an index
 
-The following table is representative of what the customer was running.
+The following table is representative of the customer's data.
 
 ```output
                                     Table "public.contacts"
