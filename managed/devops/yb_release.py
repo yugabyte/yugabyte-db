@@ -28,7 +28,7 @@ parser.add_argument("--force", action="store_true",
 args = parser.parse_args()
 
 try:
-    init_env(verbose=False)
+    init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
     options = {
         "repository": script_dir,
