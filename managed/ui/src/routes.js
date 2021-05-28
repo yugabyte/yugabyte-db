@@ -40,7 +40,9 @@ import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 
-export const clearCredentials = (pathToRedirect = null) => {
+export const clearCredentials = () => {
+  const searchParam = new URLSearchParams(window.location.search);
+  const pathToRedirect = searchParam.get('redirectUrl');
   localStorage.removeItem('authToken');
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
@@ -63,12 +65,9 @@ export const clearCredentials = (pathToRedirect = null) => {
   Cookies.remove('authToken');
   Cookies.remove('customerId');
   Cookies.remove('userId');
-  if(pathToRedirect) {
-    browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
-  } else {
-    browserHistory.push('/')
-  }
-  ;
+  pathToRedirect
+    ? browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
+    : browserHistory.push('/');
 };
 
 const autoLogin = (params) => {
@@ -125,10 +124,9 @@ function validateSession(store, replacePath, callback) {
   // Otherwise, go to login/register.
   const userId = Cookies.get('userId') || localStorage.getItem('userId');
   const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
-  const searchParam = new URLSearchParams(window.location.search)
+  const searchParam = new URLSearchParams(window.location.search);
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
-    const location =
-      searchParam.get('redirectUrl') || window.location.pathname;
+    const location = searchParam.get('redirectUrl') || window.location.pathname;
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
         store.dispatch(insecureLoginResponse(response));
@@ -151,11 +149,9 @@ function validateSession(store, replacePath, callback) {
       }
     });
     store.dispatch(customerTokenError());
-    if(location && location !== '/') {
-      browserHistory.push(`/login?redirectUrl=${location}`)
-    } else {
-      browserHistory.push('/login')
-    }
+    location && location !== '/'
+      ? browserHistory.push(`/login?redirectUrl=${location}`)
+      : browserHistory.push('/login');
     // location ? browserHistory.push(`/login?redirectUrl=${location}`) : browserHistory.push('/login');
   } else {
     store.dispatch(validateToken()).then((response) => {
