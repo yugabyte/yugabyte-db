@@ -324,6 +324,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<bool> ForeignKeyReferenceExists(
       PgOid table_id, const Slice& ybctid, const YbctidReader& reader);
   void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
+  void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
 
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);

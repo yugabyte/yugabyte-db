@@ -1361,6 +1361,10 @@ void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   pg_session_->DeleteForeignKeyReference(table_id, ybctid);
 }
 
+void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  pg_session_->AddForeignKeyReference(table_id, ybctid);
+}
+
 void PgApiImpl::SetTimeout(const int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }

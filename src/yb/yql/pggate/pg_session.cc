@@ -1171,6 +1171,12 @@ void PgSession::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid
   }
 }
 
+void PgSession::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
+    fk_reference_cache_.emplace(table_id, ybctid.ToBuffer());
+  }
+}
+
 void PgSession::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   Erase(&fk_reference_cache_, table_id, ybctid);
 }
