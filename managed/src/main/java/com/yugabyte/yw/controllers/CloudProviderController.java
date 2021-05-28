@@ -9,9 +9,8 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
-import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.cloud.CloudAPI;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -24,11 +23,14 @@ import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData.ZoneData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -39,6 +41,7 @@ import java.util.*;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
 
+@Api("Provider")
 public class CloudProviderController extends AuthenticatedController {
   private final Config config;
 
@@ -87,6 +90,7 @@ public class CloudProviderController extends AuthenticatedController {
    *
    * @return JSON response with provider's
    */
+  @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
     List<Provider> providerList = Provider.getAll(customerUUID);
     ArrayNode providers = Json.newArray();
@@ -101,6 +105,7 @@ public class CloudProviderController extends AuthenticatedController {
 
   // This endpoint we are using only for deleting provider for integration test purpose. our
   // UI should call cleanup endpoint.
+  @ApiOperation(value = "deleteProvider")
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -128,6 +133,14 @@ public class CloudProviderController extends AuthenticatedController {
    *
    * @return JSON response of newly created provider
    */
+  @ApiOperation(value = "createProvider", response = Provider.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "providerFormData",
+          value = "provider form data",
+          paramType = "body",
+          dataTypeClass = CloudProviderFormData.class,
+          required = true))
   public Result create(UUID customerUUID) throws IOException {
     Form<CloudProviderFormData> formData =
         formFactory.getFormDataOrBadRequest(CloudProviderFormData.class);
@@ -414,6 +427,13 @@ public class CloudProviderController extends AuthenticatedController {
     return awsInitializer.initialize(customerUUID, providerUUID);
   }
 
+  @ApiOperation(value = "bootstrap", response = YWResults.YWTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          value = "bootstrap params",
+          dataTypeClass = CloudBootstrap.Params.class,
+          paramType = "body",
+          required = true))
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): Need to manually parse maps, maybe add try/catch on parse?
     JsonNode requestBody = request().body().asJson();
@@ -487,6 +507,14 @@ public class CloudProviderController extends AuthenticatedController {
     */
   }
 
+  @ApiOperation(value = "editProvider", response = Provider.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          value = "edit provider form data",
+          name = "editProviderFormData",
+          dataTypeClass = Object.class,
+          required = true,
+          paramType = "body"))
   public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     JsonNode formData = request().body().asJson();

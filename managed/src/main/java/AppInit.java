@@ -1,27 +1,24 @@
 // Copyright (c) YugaByte, Inc.
 
-import java.lang.ReflectiveOperationException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
+import com.google.common.collect.ImmutableMap;
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.*;
 import io.ebean.Ebean;
-import com.google.common.collect.ImmutableMap;
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.AWSInitializer;
-
+import io.prometheus.client.hotspot.DefaultExports;
 import play.Application;
 import play.Configuration;
 import play.Environment;
 import play.Logger;
 
-import io.prometheus.client.hotspot.DefaultExports;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareVersion;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.YugawareMetadata;
