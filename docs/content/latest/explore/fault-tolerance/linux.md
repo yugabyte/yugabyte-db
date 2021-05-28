@@ -61,6 +61,7 @@ Start a new local three-node cluster with a replication factor of `3`. First cre
 ```
 
 Next, create a 3 node cluster by joining two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
+
 ```sh
 ./bin/yugabyted start \
                 --listen=127.0.0.2 \
