@@ -94,9 +94,9 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /**
-   * Find universe by name
+   * Find universe with name filter.
    *
-   * @return Need to update
+   * @return List of Universe UUID
    */
   public Result find(UUID customerUUID) {
     // Verify the customer with this universe is present.
@@ -110,7 +110,7 @@ public class UniverseController extends AuthenticatedController {
        }
        return Results.status(OK, Json.toJson(Collections.emptyList()));
     }
-
+    LOG.info("Fetching All Universes.");
     Set<UUID> result = Universe.getAllUUIDs(customer);
     return Results.status(OK, Json.toJson(result));
   }

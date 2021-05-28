@@ -1555,7 +1555,6 @@ public class UniverseControllerTest extends WithApplication {
     assertAuditEntry(0, customer.uuid);
   }
 
-
   @Test
   public void testCustomConfigureCreateWithMultiAZMultiRegion() {
     Provider p = ModelFactory.awsProvider(customer);
