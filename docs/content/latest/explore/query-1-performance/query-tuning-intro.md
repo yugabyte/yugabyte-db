@@ -126,7 +126,7 @@ Running the following queries with `EXPLAIN` output shows the query execution pl
 ```sql
 yugabyte=# explain SELECT COUNT(*) FROM contacts WHERE contacts.account_id = 1234 
     AND contacts.is_paid = TRUE 
-    AND contacts.is_over_chared = TRUE 
+    AND contacts.is_over_charged = TRUE 
     AND (updated_at > '2021-04-12 12:00:00 '); 
 ```
 
