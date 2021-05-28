@@ -172,7 +172,7 @@ Aggregate (cost=107.50..107.51 rows=1 width=8)
 
 In each case, the queries do a `Seq Scan` (sequential scan) on the tables. This operation requires scanning the entire table to retrieve the desired columns. Even using the partition keys to do the lookup, it still needs to do a lot of scanning. 
 
-Generally, you want to avoid `SELECT COUNT(*)` queries as they can require a full scan of the table to get the results. This can cause query degradation and in some cases cause the query to not return at all.
+Avoid `SELECT COUNT(*)` queries in most cases, as they can require a full scan of the table to get the results. This can cause query degradation, and in some cases cause the query to not return at all.
 
 Because most of the queries above use `account_id` as the main qualifier, we can avaoid a sequential scan by creating a direct index on that column, and then use the `INCLUDE` feature to cover the other columns that we also want in the index. Indexing is a powerful tool that can speed up queries with higher latencies. When creating an index, we want to consider the column cardinality, as well as the different index types.
 
