@@ -111,7 +111,13 @@ For unidirectional replication, connect to the yugabyte-consumer universe using 
 
 ### Bidirectional Replication
 
-For bidirectional replication, repeat the procedure described in [Unidirectional Replication](#unidirectional-replication), but pump data into yugabyte-consumer. 
+For bidirectional replication, repeat the procedure described in [Unidirectional Replication](#unidirectional-replication), but reverse the source and destination information, as follows:
+
+1. Run `yb-admin setup_universe_replication` on the yugabyte-consumer universe, pointing to yugabyte-producer.
+2. Use the workload generator to start loading data into the yugabyte-consumer universe.
+3. Verify Replication from yugabyte-consumer to yugabyte-producer.
+
+Is there a key offset or some other parameter in `yb-sample-apps.jar` that we can use to differentiate the generated load from the initial setup? 
 
 To avoid primary key conflict errors, keep the key ranges for the two universes separate.
 
