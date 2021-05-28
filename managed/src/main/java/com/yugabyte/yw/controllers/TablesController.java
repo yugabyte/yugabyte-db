@@ -65,42 +65,40 @@ public class TablesController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Form<TableDefinitionTaskParams> formData =
         formFactory.getFormDataOrBadRequest(TableDefinitionTaskParams.class);
-    try {
-      TableDefinitionTaskParams taskParams = formData.get();
-
-      // Submit the task to create the table.
-      TableDetails tableDetails = taskParams.tableDetails;
-      UUID taskUUID = commissioner.submit(TaskType.CreateCassandraTable, taskParams);
-      LOG.info(
-          "Submitted create table for {}:{}, task uuid = {}.",
-          taskParams.tableUUID,
-          tableDetails.tableName,
-          taskUUID);
-
-      // Add this task uuid to the user universe.
-      // TODO: check as to why we aren't populating the tableUUID from middleware
-      // Which means all the log statements above and below are basically logging null?
-      CustomerTask.create(
-          customer,
-          universe.universeUUID,
-          taskUUID,
-          CustomerTask.TargetType.Table,
-          CustomerTask.TaskType.Create,
-          tableDetails.tableName);
-      LOG.info(
-          "Saved task uuid {} in customer tasks table for table {}:{}.{}",
-          taskUUID,
-          taskParams.tableUUID,
-          tableDetails.keyspace,
-          tableDetails.tableName);
-
-      ObjectNode resultNode = Json.newObject();
-      resultNode.put("taskUUID", taskUUID.toString());
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return Results.status(OK, resultNode);
-    } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+    TableDefinitionTaskParams taskParams = formData.get();
+    // Submit the task to create the table.
+    if (taskParams.tableDetails == null) {
+      throw new YWServiceException(BAD_REQUEST, "Table details can not be null.");
     }
+    TableDetails tableDetails = taskParams.tableDetails;
+    UUID taskUUID = commissioner.submit(TaskType.CreateCassandraTable, taskParams);
+    LOG.info(
+        "Submitted create table for {}:{}, task uuid = {}.",
+        taskParams.tableUUID,
+        tableDetails.tableName,
+        taskUUID);
+
+    // Add this task uuid to the user universe.
+    // TODO: check as to why we aren't populating the tableUUID from middleware
+    // Which means all the log statements above and below are basically logging null?
+    CustomerTask.create(
+        customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Table,
+        CustomerTask.TaskType.Create,
+        tableDetails.tableName);
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for table {}:{}.{}",
+        taskUUID,
+        taskParams.tableUUID,
+        tableDetails.keyspace,
+        tableDetails.tableName);
+
+    ObjectNode resultNode = Json.newObject();
+    resultNode.put("taskUUID", taskUUID.toString());
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return Results.status(OK, resultNode);
   }
 
   public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID) {
@@ -208,8 +206,9 @@ public class TablesController extends AuthenticatedController {
     }
 
     String certificate = universe.getCertificateNodetoNode();
+    YBClient client = null;
     try {
-      YBClient client = ybService.getClient(masterAddresses, certificate);
+      client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
@@ -235,7 +234,9 @@ public class TablesController extends AuthenticatedController {
       }
       return ok(resultNode);
     } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
   }
 

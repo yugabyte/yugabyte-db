@@ -214,7 +214,7 @@ public class TablesControllerTest extends FakeDBApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/tables";
     ObjectNode emptyJson = Json.newObject();
-    String errorString = "null";
+    String errorString = "Table details can not be null.";
 
     Result result =
         assertThrows(
