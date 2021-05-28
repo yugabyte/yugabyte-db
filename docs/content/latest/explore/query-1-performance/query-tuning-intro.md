@@ -317,7 +317,7 @@ Previous run time: 426.627 ms
 
 ### Optimize `SELECT` using an index
 
-The following example shows another query running a sequential scan, which we can fix by adding an index.
+The query in the following example runs a sequential scan, which you can fix by adding an index.
 
 ```sql
 yugabyte=# \d account_type
