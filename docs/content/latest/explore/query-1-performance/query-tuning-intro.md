@@ -26,7 +26,7 @@ Use the `pg_stat_statements` extension to get statistics on the execution of que
 * memory consumption
 * temporary space consumption
 
-The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before the `pg_stat_statements` view can be queried.
+The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before you can query the `pg_stat_statements` view.
 
 ```sql
 CREATE EXTENSION pg_stat_statements;
