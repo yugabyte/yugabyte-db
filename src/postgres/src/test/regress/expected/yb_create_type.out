@@ -66,9 +66,6 @@ SELECT 'moo'::enum_type;
  moo
 (1 row)
 
--- Following should error
-CREATE TABLE enum_table_indexed (a enum_type PRIMARY KEY, b BOOLEAN);
-ERROR:  PRIMARY KEY containing column of type 'user_defined_type' not yet supported
 CREATE TABLE enum_table (a enum_type, b BOOLEAN);
 INSERT INTO enum_table (a) VALUES ('baa');
 INSERT INTO enum_table (a, b) VALUES ('caw', FALSE);
