@@ -69,8 +69,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   @Mock private Config config;
   @Mock private RuntimeConfigFactory configFactory;
 
-  @InjectMocks
-  private CustomerTaskController controller;
+  @InjectMocks private CustomerTaskController controller;
 
   @Before
   public void setUp() {
@@ -328,10 +327,17 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskHistoryLimit() {
     String authToken = user.createAuthToken();
     Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
-    when(config.getInt(CustomerTaskController.CUSTOMER_TASK_DB_QUERY_LIMIT))
-      .thenReturn(5);
-    IntStream.range(0, 100).forEach(i -> createTaskWithStatus(
-        universe.universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0));
+    when(config.getInt(CustomerTaskController.CUSTOMER_TASK_DB_QUERY_LIMIT)).thenReturn(5);
+    IntStream.range(0, 100)
+        .forEach(
+            i ->
+                createTaskWithStatus(
+                    universe.universeUUID,
+                    CustomerTask.TargetType.Universe,
+                    Create,
+                    "Foo",
+                    "Running",
+                    50.0));
     Result result = controller.list(customer.uuid);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
