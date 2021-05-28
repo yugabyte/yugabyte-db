@@ -25,6 +25,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name", "code"}))
 @Entity
 public class Provider extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Provider.class);
@@ -196,6 +197,24 @@ public class Provider extends Model {
         .eq("customer_uuid", customerUUID)
         .eq("code", code.toString())
         .findList();
+  }
+
+  /**
+   * Get Provider by name, cloud for a given customer uuid. If there is multiple providers with the
+   * same name, cloud will raise a exception.
+   *
+   * @param customerUUID
+   * @param name
+   * @param code
+   * @return
+   */
+  public static Provider get(UUID customerUUID, String name, Common.CloudType code) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("name", name)
+        .eq("code", code.toString())
+        .findOne();
   }
 
   // Use get Or bad request

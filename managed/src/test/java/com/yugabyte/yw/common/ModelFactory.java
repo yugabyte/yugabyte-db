@@ -95,6 +95,10 @@ public class ModelFactory {
     return Provider.create(customer.uuid, cloud, cloud.toString());
   }
 
+  public static Provider newProvider(Customer customer, Common.CloudType cloud, String name) {
+    return Provider.create(customer.uuid, cloud, name);
+  }
+
   public static Provider newProvider(
       Customer customer, Common.CloudType cloud, Map<String, String> config) {
     return Provider.create(customer.uuid, cloud, cloud.toString(), config);
