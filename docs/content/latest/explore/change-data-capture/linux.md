@@ -35,7 +35,7 @@ showAsideToc: true
 
 [Change data capture (CDC)](../../../architecture/cdc-architecture) can be used to asynchronously stream data changes from a YugabyteDB cluster to external systems like message queues and OLAP warehouses. The data changes in YugabyteDB are detected, captured, and then output to the specified target.  In the steps below, you will use a local YugabyteDB cluster to stream data changes to `stdout` using the CDC API.
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) local cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
 ## 1. Create a universe
 
@@ -174,7 +174,7 @@ changes {
 
 ## 6. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shutdown the local cluster you created.
 
 ```sh
 $ ./bin/yugabyted destroy

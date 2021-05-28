@@ -38,12 +38,14 @@ In workloads that do very little IOPS and have a small data set, the bottleneck 
 
 Colocating various SQL tables puts all of their data into a single tablet, called the _colocation tablet_. Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) local cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
 ## 1. Create a universe
 
 ```sh
-$ ./bin/yugabyted start
+$ ./bin/yugabyted start \
+                  --master_flags "ysql_num_shards_per_tserver=2" \
+                  --tserver_flags "ysql_num_shards_per_tserver=2"
 ```
 
 ## 2. Create a colocated database

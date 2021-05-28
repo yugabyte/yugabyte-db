@@ -46,7 +46,7 @@ showAsideToc: true
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) local cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
 ## Prerequisite
 
@@ -60,9 +60,26 @@ Prometheus is installed on your local machine. If you have not done so already, 
 Start a new local YugabyteDB cluster - this will create a three-node universe with a replication factor of `3`.
 
 ```sh
-$ ./bin/yugabyted start --base_dir=node-1/ --listen=127.0.0.1 --tserver_flags="start_redis_proxy=true"
-$ ./bin/yugabyted start --base_dir=node-2/ --listen=127.0.0.2 --join=127.0.0.1 --tserver_flags="start_redis_proxy=true"
-$ ./bin/yugabyted start --base_dir=node-3/ --listen=127.0.0.3 --join=127.0.0.1 --tserver_flags="start_redis_proxy=true"
+$ ./bin/yugabyted start \
+                  --base_dir=node-1 \
+                  --listen=127.0.0.1 \
+                  --tserver_flags="start_redis_proxy=true"
+```
+
+```sh
+$ ./bin/yugabyted start \
+                  --base_dir=node-2 \
+                  --listen=127.0.0.2 \
+                  --join=127.0.0.1 \
+                  --tserver_flags="start_redis_proxy=true"
+```
+
+```
+$ ./bin/yugabyted start \
+                  --base_dir=node-3 \
+                  --listen=127.0.0.3 \
+                  --join=127.0.0.1 \
+                  --tserver_flags="start_redis_proxy=true"
 ```
 
 ## 2. Run the YugabyteDB workload generator

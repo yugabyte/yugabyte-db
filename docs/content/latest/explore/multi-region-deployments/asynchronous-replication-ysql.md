@@ -48,10 +48,12 @@ This tutorial simulates a geo-distributed two data center (2DC) deployment using
 Create and start your first local cluster that will simulate "Data Center - East" by running the following `yugabyted start` command from your YugabyteDB home directory.
 
 ```sh
-$ ./bin/yugabyted start --base_dir=datacenter-east/ --listen=127.0.0.1
+$ ./bin/yugabyted start \
+                  --base_dir=datacenter-east \
+                  --listen=127.0.0.1
 ```
 
-This will start up a one-node local cluster using the IP address of `127.0.0.1:7100`. Upon starting, you should see a screen similar to the following.
+This will start up a one-node local cluster using the IP address of `127.0.0.1:7100` and create `datacenter-east` as the data directory. Upon starting, you should see a screen similar to the following.
 
 ```
 Starting yugabyted...
@@ -78,7 +80,9 @@ Starting yugabyted...
 Create and start your second local cluster that will simulate "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory.
 
 ```sh
-$ ./bin/yugabyted start --base_dir=datacenter-west/ --listen=127.0.0.2
+$ ./bin/yugabyted start \
+                  --base_dir=datacenter-west \
+                  --listen=127.0.0.2
 ```
 
 This will start up a one-node cluster using IP address of `127.0.0.2`. Upon starting, you should see a screen similar to the following.
@@ -275,7 +279,8 @@ To stop the simulated "data centers", use the `yugabyted stop` commands using th
 **Example - stopping "Data Center - East"**
 
 ```sh
-$ ./bin/yugabyted stop --base_dir=datacenter-east/
+$ ./bin/yugabyted stop \
+                  --base_dir=datacenter-east
 ```
 
 To destroy the simulated "data centers" and remove its associate directory, use the `yugabyted destroy` command with the `--base_dir` option to specify the cluster.
@@ -283,7 +288,8 @@ To destroy the simulated "data centers" and remove its associate directory, use 
 **Example — destroying and removing the "Data Center - West"**
 
 ```sh
-$ ./bin/yugabyted destroy --base_dir=datacenter-west/
+$ ./bin/yugabyted destroy \
+                  --base_dir=datacenter-west
 ```
 
 ## What's next?
