@@ -298,7 +298,7 @@ To optimize this query, adjust the sorting of the table by the primary key to be
 CREATE TABLE public.accounts ( id bigint NOT NULL, ... ,PRIMARY KEY(id desc);
 ```
 
-The result is the query no longer does a sequential scan; instead it uses an index scan, cutting execution time from 460ms to 3ms.
+Now, the query no longer does a sequential scan; instead it uses an index scan, cutting execution time from 430ms to 3ms.
 
 ```sql
 yugabyte=# explain SELECT accounts.* FROM accounts 
