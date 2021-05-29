@@ -20,6 +20,7 @@ import {
   YBTextInputWithLabel,
   YBSelectWithLabel,
   YBMultiSelectWithLabel,
+  YBNumericInputWithLabel,
   YBRadioButtonBarWithLabel,
   YBToggle,
   YBUnControlledNumericInput,
@@ -39,6 +40,7 @@ import {
 } from '../../../utils/UniverseUtils';
 import pluralize from 'pluralize';
 import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
+import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -53,6 +55,7 @@ const API_UI_STORAGE_TYPES = {
   Persistent: 'Persistent',
   IO1: 'IO1',
   GP2: 'GP2',
+  GP3: 'GP3',
   Premium_LRS: 'Premium',
   StandardSSD_LRS: 'Standard',
   UltraSSD_LRS: 'Ultra'
@@ -73,7 +76,7 @@ const DEFAULT_PORTS = {
 
 const DEFAULT_STORAGE_TYPES = {
   AWS: 'GP2',
-  GCP: 'Scratch',
+  GCP: 'Persistent',
   AZU: 'Premium_LRS'
 };
 
@@ -84,6 +87,14 @@ export const EXPOSING_SERVICE_STATE_TYPES = {
   Exposed: 'EXPOSED',
   Unexposed: 'UNEXPOSED'
 };
+
+const IO1_DEFAULT_DISK_IOPS = 1000;
+const IO1_MAX_DISK_IOPS = 64000;
+const GP3_DEFAULT_DISK_IOPS = 3000;
+const GP3_MAX_IOPS = 16000;
+const GP3_DEFAULT_DISK_THROUGHPUT = 125;
+const GP3_MAX_THROUGHPUT = 1000;
+const GP3_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 
 const initialState = {
   universeName: '',
@@ -111,8 +122,8 @@ const initialState = {
   // By default, we don't want to expose the service.
   enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
   enableYEDIS: false,
-  enableNodeToNodeEncrypt: false,
-  enableClientToNodeEncrypt: false,
+  enableNodeToNodeEncrypt: true,
+  enableClientToNodeEncrypt: true,
   enableEncryptionAtRest: false,
   customizePorts: false
 };
@@ -131,6 +142,7 @@ export default class ClusterFields extends Component {
     this.numVolumesChanged = this.numVolumesChanged.bind(this);
     this.volumeSizeChanged = this.volumeSizeChanged.bind(this);
     this.diskIopsChanged = this.diskIopsChanged.bind(this);
+    this.throughputChanged = this.throughputChanged.bind(this);
     this.setDeviceInfo = this.setDeviceInfo.bind(this);
     this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
@@ -140,7 +152,6 @@ export default class ClusterFields extends Component {
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
-    this.clientToNodeEncryptField = this.clientToNodeEncryptField.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
     this.handleAwsArnChange = this.handleAwsArnChange.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
@@ -166,7 +177,9 @@ export default class ClusterFields extends Component {
         this.state = {
           ...initialState,
           isReadOnlyExists: true,
-          editNotAllowed: this.props.editNotAllowed
+          editNotAllowed: this.props.editNotAllowed,
+          awsInstanceWithEphemeralStorage: false,
+          gcpInstanceWithEphemeralStorage: false
         };
       } else {
         this.state = { ...initialState, isReadOnlyExists: false, editNotAllowed: false };
@@ -629,21 +642,26 @@ export default class ClusterFields extends Component {
         .join(',');
     }
     if (volumeDetail) {
+      let storageType = DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
+      if (instanceTypeSelectedData.providerCode === 'aws' &&
+        isEphemeralAwsStorageInstance(instanceTypeCode)) {
+        storageType = null;
+      }
+
       const deviceInfo = {
         volumeSize: volumeDetail.volumeSizeGB,
         numVolumes: volumesList.length,
         mountPoints: mountPoints,
-        storageType:
-          volumeDetail.volumeType === 'EBS'
-            ? DEFAULT_STORAGE_TYPES['AWS']
-            : DEFAULT_STORAGE_TYPES['GCP'],
+        storageType: storageType,
         storageClass: 'standard',
-        diskIops: null
+        diskIops: null,
+        throughput: null
       };
       updateFormField(`${clusterType}.volumeSize`, volumeDetail.volumeSizeGB);
       updateFormField(`${clusterType}.numVolumes`, volumesList.length);
       updateFormField(`${clusterType}.diskIops`, volumeDetail.diskIops);
-      updateFormField(`${clusterType}.storageType`, volumeDetail.storageType);
+      updateFormField(`${clusterType}.throughput`, volumeDetail.throughput);
+      updateFormField(`${clusterType}.storageType`, deviceInfo.storageType);
       updateFormField(`${clusterType}.mountPoints`, mountPoints);
       this.setState({ deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType });
     }
@@ -659,14 +677,24 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     const currentDeviceInfo = _.clone(this.state.deviceInfo);
     currentDeviceInfo.storageType = storageValue;
-    if (currentDeviceInfo.storageType === 'IO1' && currentDeviceInfo.diskIops == null) {
-      currentDeviceInfo.diskIops = 1000;
-      updateFormField(`${clusterType}.diskIops`, 1000);
+    if (currentDeviceInfo.storageType === 'IO1') {
+      currentDeviceInfo.diskIops = IO1_DEFAULT_DISK_IOPS;
+      currentDeviceInfo.throughput = null;
+      updateFormField(`${clusterType}.diskIops`, IO1_DEFAULT_DISK_IOPS);
+    } else if (currentDeviceInfo.storageType === 'GP3') {
+      currentDeviceInfo.diskIops = GP3_DEFAULT_DISK_IOPS;
+      currentDeviceInfo.throughput = GP3_DEFAULT_DISK_THROUGHPUT;
+      updateFormField(`${clusterType}.diskIops`, GP3_DEFAULT_DISK_IOPS);
+      updateFormField(`${clusterType}.throughput`, GP3_DEFAULT_DISK_THROUGHPUT);
     } else {
       currentDeviceInfo.diskIops = null;
+      currentDeviceInfo.throughput = null;
+    }
+    if (storageValue === 'Scratch') {
+      this.setState({ gcpInstanceWithEphemeralStorage: true });
     }
     updateFormField(`${clusterType}.storageType`, storageValue);
-    this.setState({ deviceInfo: currentDeviceInfo, storageType: storageValue });
+    this.setState({ deviceInfo: currentDeviceInfo });
   }
 
   numVolumesChanged(val) {
@@ -681,11 +709,38 @@ export default class ClusterFields extends Component {
     this.setState({ deviceInfo: { ...this.state.deviceInfo, volumeSize: val } });
   }
 
+  setThroughputByIops(currentIops, currentThroughput) {
+    const { updateFormField, clusterType } = this.props;
+    if (this.state.deviceInfo.storageType === 'GP3') {
+      if ((currentIops > GP3_DEFAULT_DISK_IOPS ||
+          currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
+          currentIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT) {
+        const newThroughput = Math.min(GP3_MAX_THROUGHPUT,
+          Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT));
+        updateFormField(`${clusterType}.throughput`, newThroughput);
+        this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: newThroughput } });
+      }
+    }
+  }
+
   diskIopsChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.diskIops`, val);
-    if (this.state.deviceInfo.storageType === 'IO1') {
-      this.setState({ deviceInfo: { ...this.state.deviceInfo, diskIops: val } });
+    const maxDiskIops = this.state.deviceInfo.storageType === 'IO1' ?
+      IO1_MAX_DISK_IOPS : GP3_MAX_IOPS;
+    const actualVal = Math.max(0, Math.min(maxDiskIops, val));
+    updateFormField(`${clusterType}.diskIops`, actualVal);
+    if (this.state.deviceInfo.storageType === 'IO1' || this.state.deviceInfo.storageType === 'GP3') {
+      this.setState({ deviceInfo: { ...this.state.deviceInfo, diskIops: actualVal } });
+      this.setThroughputByIops(actualVal, this.state.deviceInfo.throughput);
+    }
+  }
+
+  throughputChanged(val) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.throughput`, val);
+    if (this.state.deviceInfo.storageType === 'GP3') {
+      this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: val } });
+      this.setThroughputByIops(this.state.deviceInfo.diskIops, val);
     }
   }
 
@@ -770,11 +825,8 @@ export default class ClusterFields extends Component {
     // keep the async cluster to use the same value as primary.
     if (clusterType === 'primary') {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
-      updateFormField('async.NodeToNodeEncrypt', event.target.checked);
-      this.setState({
-        enableNodeToNodeEncrypt: event.target.checked,
-        enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked
-      });
+      updateFormField('async.enableNodeToNodeEncrypt', event.target.checked);
+      this.setState({ enableNodeToNodeEncrypt: event.target.checked });
     }
   }
 
@@ -784,7 +836,7 @@ export default class ClusterFields extends Component {
     // keep the async cluster to use the same value as primary.
     if (clusterType === 'primary') {
       updateFormField('primary.enableClientToNodeEncrypt', event.target.checked);
-      updateFormField('async.ClientToNodeEncrypt', event.target.checked);
+      updateFormField('async.enableClientToNodeEncrypt', event.target.checked);
       this.setState({ enableClientToNodeEncrypt: event.target.checked });
     }
   }
@@ -985,6 +1037,10 @@ export default class ClusterFields extends Component {
     return this.props.cloud.providers.data.find((provider) => provider.uuid === providerUUID);
   }
 
+  setDefaultProviderStorage = (providerData) => {
+    this.storageTypeChanged(DEFAULT_STORAGE_TYPES[providerData.code.toUpperCase()]);
+  }
+
   providerChanged = (value) => {
     const {
       updateFormField,
@@ -1014,21 +1070,16 @@ export default class ClusterFields extends Component {
       }
       updateFormField(`${clusterType}.accessKeyCode`, defaultAccessKeyCode);
 
-      if (currentProviderData.code === 'gcp') {
-        this.storageTypeChanged(DEFAULT_STORAGE_TYPES['GCP']);
-      } else if (currentProviderData.code === 'aws') {
-        this.storageTypeChanged(DEFAULT_STORAGE_TYPES['AWS']);
-      } else if (currentProviderData.code === 'azu') {
-        this.storageTypeChanged(DEFAULT_STORAGE_TYPES['AZU']);
-      }
-
       this.setState({
         nodeSetViaAZList: false,
         regionList: [],
         providerSelected: providerUUID,
         deviceInfo: {},
-        accessKeyCode: defaultAccessKeyCode
+        accessKeyCode: defaultAccessKeyCode,
+        awsInstanceWithEphemeralStorage: false,
+        gcpInstanceWithEphemeralStorage: false
       });
+
       this.props.getRegionListItems(providerUUID, true);
       this.props.getInstanceTypeListItems(providerUUID);
     }
@@ -1039,6 +1090,8 @@ export default class ClusterFields extends Component {
     this.setState({
       isKubernetesUniverse: currentProviderData.code === 'kubernetes'
     });
+
+    this.setDefaultProviderStorage(currentProviderData);
   };
 
   accessKeyChanged(event) {
@@ -1049,9 +1102,11 @@ export default class ClusterFields extends Component {
   instanceTypeChanged(value) {
     const { updateFormField, clusterType } = this.props;
     const instanceTypeValue = value;
+    this.setState({
+      awsInstanceWithEphemeralStorage: isEphemeralAwsStorageInstance(instanceTypeValue)
+    });
     updateFormField(`${clusterType}.instanceType`, instanceTypeValue);
     this.setState({ instanceTypeSelected: instanceTypeValue, nodeSetViaAZList: false });
-
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
   }
 
@@ -1074,7 +1129,9 @@ export default class ClusterFields extends Component {
 
   validateUserTags(value) {
     if (value.length) {
-      const forbiddenEntry = value.find(x => FORBIDDEN_GFLAG_KEYS.has(x.name?.trim?.()?.toUpperCase()));
+      const forbiddenEntry = value.find((x) =>
+        FORBIDDEN_GFLAG_KEYS.has(x.name?.trim?.()?.toUpperCase())
+      );
       return forbiddenEntry ? `User tag "${forbiddenEntry.name}" is not allowed.` : undefined;
     }
   }
@@ -1095,9 +1152,10 @@ export default class ClusterFields extends Component {
   instanceTypeGroupsToOptions = (groups) => {
     return Object.entries(groups).map(([group, list]) => (
       <optgroup label={`${group} type instances`} key={group}>
-        {list.map(item => (
+        {list.map((item) => (
           <option key={item.instanceTypeCode} value={item.instanceTypeCode}>
-            {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB RAM)
+            {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB
+            RAM)
           </option>
         ))}
       </optgroup>
@@ -1105,7 +1163,15 @@ export default class ClusterFields extends Component {
   };
 
   render() {
-    const { clusterType, cloud, softwareVersions, accessKeys, universe, formValues } = this.props;
+    const {
+      clusterType,
+      cloud,
+      softwareVersions,
+      accessKeys,
+      universe,
+      formValues,
+      featureFlags
+    } = this.props;
     const { hasInstanceTypeChanged } = this.state;
     const self = this;
     let gflagArray = <span />;
@@ -1136,9 +1202,10 @@ export default class ClusterFields extends Component {
     }
 
     // Spot price and EBS types
-    let storageTypeSelector = <span />;
+    let storageTypeSelector = null;
     let deviceDetail = null;
-    let iopsField = <span />;
+    let iopsField = null;
+    let throughputField = null;
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
@@ -1147,7 +1214,7 @@ export default class ClusterFields extends Component {
       cloud.ebsTypes.sort().map(function (ebsType, idx) {
         return (
           <option key={ebsType} value={ebsType}>
-            {ebsType}
+            {API_UI_STORAGE_TYPES[ebsType]}
           </option>
         );
       });
@@ -1170,11 +1237,12 @@ export default class ClusterFields extends Component {
         );
       });
 
+    const configList = cloud.authConfig.data ?? [];
     const kmsConfigList = [
       <option value="" key={`kms-option-0`}>
         Select Configuration
       </option>,
-      ...cloud.authConfig.data.map?.((config, index) => {
+      ...configList.map((config, index) => {
         const labelName = config.metadata.provider + ' - ' + config.metadata.name;
         return (
           <option value={config.metadata.configUUID} key={`kms-option-${index + 1}`}>
@@ -1213,6 +1281,9 @@ export default class ClusterFields extends Component {
       if (isNonEmptyString(currentCluster.diskIops)) {
         deviceInfo['diskIops'] = currentCluster.diskIops;
       }
+      if (isNonEmptyString(currentCluster.throughput)) {
+        deviceInfo['throughput'] = currentCluster.throughput;
+      }
       if (isNonEmptyObject(currentCluster.storageType)) {
         deviceInfo['storageType'] = currentCluster.storageType;
       }
@@ -1233,28 +1304,36 @@ export default class ClusterFields extends Component {
         const fixedVolumeInfo =
           (self.state.volumeType === 'SSD' || self.state.volumeType === 'NVME') &&
           currentProvider.code !== 'kubernetes' &&
-          deviceInfo.storageType === 'Scratch' &&
+          (!deviceInfo.storageType || deviceInfo.storageType === 'Scratch') &&
           currentProvider.code !== 'azu';
         const fixedNumVolumes =
           (self.state.volumeType === 'SSD' || self.state.volumeType === 'NVME') &&
           currentProvider.code !== 'kubernetes' &&
           currentProvider.code !== 'gcp' &&
           currentProvider.code !== 'azu';
-        const isIoType = deviceInfo.storageType === 'IO1';
-        if (isIoType) {
+        const isProvisionalIOType =
+          deviceInfo.storageType === 'IO1' || deviceInfo.storageType === 'GP3';
+        if (isProvisionalIOType) {
           iopsField = (
-            <span className="volume-info form-group-shrinked  volume-info-iops">
-              <label className="form-item-label">Provisioned IOPS</label>
-              <span className="volume-info-field">
-                <Field
-                  name={`${clusterType}.diskIops`}
-                  component={YBUnControlledNumericInput}
-                  label="Provisioned IOPS"
-                  onInputChanged={self.diskIopsChanged}
-                  readOnly={isFieldReadOnly}
-                />
-              </span>
-            </span>
+            <Field
+              name={`${clusterType}.diskIops`}
+              component={YBNumericInputWithLabel}
+              label="Provisioned IOPS"
+              onInputChanged={self.diskIopsChanged}
+              readOnly={isFieldReadOnly}
+            />
+          );
+        }
+        const isProvisionalThroughput = deviceInfo.storageType === 'GP3';
+        if (isProvisionalThroughput) {
+          throughputField = (
+            <Field
+              name={`${clusterType}.throughput`}
+              component={YBNumericInputWithLabel}
+              label="Provisioned Throughput (MiB/sec)"
+              onInputChanged={self.throughputChanged}
+              readOnly={isFieldReadOnly}
+            />
           );
         }
         const numVolumes = (
@@ -1304,17 +1383,25 @@ export default class ClusterFields extends Component {
           );
         } else if (isInGcp) {
           storageTypeSelector = (
-            <span className="volume-info form-group-shrinked">
-              <Field
-                name={`${clusterType}.storageType`}
-                component={YBSelectWithLabel}
-                options={gcpTypesList}
-                label="Storage Type (SSD)"
-                defaultValue={DEFAULT_STORAGE_TYPES['GCP']}
-                onInputChanged={self.storageTypeChanged}
-                readOnlySelect={isFieldReadOnly}
-              />
-            </span>
+            <>
+              <span className="volume-info form-group-shrinked">
+                <Field
+                  name={`${clusterType}.storageType`}
+                  component={YBSelectWithLabel}
+                  options={gcpTypesList}
+                  label="Storage Type (SSD)"
+                  defaultValue={DEFAULT_STORAGE_TYPES['GCP']}
+                  onInputChanged={self.storageTypeChanged}
+                  readOnlySelect={isFieldReadOnly}
+                />
+              </span>
+              {/* this.state.gcpInstanceWithEphemeralStorage && (
+                <span className="gcp-ephemeral-storage-warning">
+                  ! Selected type is ephemeral storage, If you will pause this universe your data
+                  will get lost.
+                </span>
+              ) */}
+            </>
           );
         } else if (isInAzu) {
           storageTypeSelector = (
@@ -1393,10 +1480,7 @@ export default class ClusterFields extends Component {
         <Field
           name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle}
-          isReadOnly={this.clientToNodeEncryptField(
-            isFieldReadOnly,
-            this.state.enableNodeToNodeEncrypt
-          )}
+          isReadOnly={isFieldReadOnly}
           disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}
@@ -1513,8 +1597,10 @@ export default class ClusterFields extends Component {
       );
     }
     // Only enable Time Sync Service toggle for AWS/GCP.
-    if (isDefinedNotNull(currentProvider) &&
-        (currentProvider.code === 'aws' || currentProvider.code === 'gcp')) {
+    if (
+      isDefinedNotNull(currentProvider) &&
+      (currentProvider.code === 'aws' || currentProvider.code === 'gcp')
+    ) {
       const providerCode = currentProvider.code === 'aws' ? 'AWS' : 'GCP';
       useTimeSync = (
         <Field
@@ -1559,7 +1645,8 @@ export default class ClusterFields extends Component {
                 .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
                 .map((item, arrIdx) => (
                   <option key={idx + arrIdx} value={item.instanceTypeCode}>
-                    {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB RAM)
+                    {item.instanceTypeCode} ({pluralize('core', item.numCores, true)},{' '}
+                    {item.memSizeGB}GB RAM)
                   </option>
                 ))}
             </optgroup>
@@ -1571,7 +1658,7 @@ export default class ClusterFields extends Component {
       const list = cloud.instanceTypes?.data || [];
       _.sortBy(list, 'instanceTypeCode');
 
-      list.forEach(item => {
+      list.forEach((item) => {
         const prefix = item.instanceTypeCode.split('-')[0].toUpperCase();
         groups[prefix] = groups[prefix] || [];
         groups[prefix].push(item);
@@ -1585,7 +1672,7 @@ export default class ClusterFields extends Component {
       _.sortBy(list, 'instanceTypeCode');
 
       for (const [group, regexp] of Object.entries(AZURE_INSTANCE_TYPE_GROUPS)) {
-        list.forEach(item => {
+        list.forEach((item) => {
           if (regexp.test(item.instanceTypeCode)) {
             groups[group] = groups[group] || [];
             groups[group].push(item);
@@ -1595,7 +1682,7 @@ export default class ClusterFields extends Component {
       }
 
       // catch uncategorized instance types, if any
-      list.forEach(item => {
+      list.forEach((item) => {
         if (!item.processed) {
           groups['Other'] = groups['Other'] || [];
           groups['Other'].push(item);
@@ -1887,6 +1974,14 @@ export default class ClusterFields extends Component {
                   readOnlySelect={getPromiseState(cloud.instanceTypes).isLoading()}
                 />
               </div>
+              {this.state.awsInstanceWithEphemeralStorage &&
+                (featureFlags.test['pausedUniverse'] ||
+                  featureFlags.released['pausedUniverse']) && (
+                  <span className="aws-instance-with-ephemeral-storage-warning">
+                    ! Selected instance type is with ephemeral storage, If you will pause this
+                    universe your data will get lost.
+                  </span>
+                )}
             </Col>
             <Col sm={12} md={12} lg={6}>
               {deviceDetail && (
@@ -1904,9 +1999,6 @@ export default class ClusterFields extends Component {
                     <div className="form-group universe-form-instance-info">
                       {storageTypeSelector}
                     </div>
-                  </div>
-                  <div className="form-inline-controls">
-                    <div className="form-group universe-form-instance-info">{iopsField}</div>
                   </div>
                 </div>
               )}
@@ -1928,7 +2020,9 @@ export default class ClusterFields extends Component {
             </Col>
             <Col sm={12} md={6} lg={4}>
               <div className="form-right-aligned-labels right-side-form-field">
-                <Row>{selectEncryptionAtRestConfig}</Row>
+                {iopsField}
+                {throughputField}
+                {selectEncryptionAtRestConfig}
               </div>
             </Col>
           </Row>
@@ -2191,9 +2285,7 @@ export default class ClusterFields extends Component {
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
         </div>
-        {clusterType === 'primary' && (
-          <div className="form-section no-border">{tagsArray}</div>
-        )}
+        {clusterType === 'primary' && <div className="form-section no-border">{tagsArray}</div>}
       </div>
     );
   }

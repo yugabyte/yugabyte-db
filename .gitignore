@@ -101,3 +101,8 @@ rrdiagram*.jar*
 .cache
 
 target/
+
+thirdparty/
+
+# We don't use any submodules anymore.
+submodules/

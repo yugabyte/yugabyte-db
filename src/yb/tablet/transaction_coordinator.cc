@@ -38,6 +38,8 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/transaction_dump.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
@@ -220,8 +222,8 @@ class TransactionState {
 
     if (replicating_ != nullptr) {
       auto replicating_op_id = replicating_->consensus_round()->id();
-      if (replicating_op_id.IsInitialized()) {
-        if (!consensus::OpIdEquals(replicating_->consensus_round()->id(), data.op_id)) {
+      if (!replicating_op_id.empty()) {
+        if (replicating_op_id != data.op_id) {
           LOG_WITH_PREFIX(DFATAL)
               << "Replicated unexpected operation, replicating: " << AsString(replicating_)
               << ", replicated: " << AsString(data);
@@ -270,8 +272,12 @@ class TransactionState {
   void ProcessAborted(const TransactionCoordinator::AbortedData& data) {
     VLOG_WITH_PREFIX(4) << Format("ProcessAborted: $0, replicating: $1", data.state, replicating_);
 
-    DCHECK(replicating_ == nullptr || !replicating_->op_id().IsInitialized() ||
-           consensus::OpIdEquals(replicating_->op_id(), data.op_id));
+    LOG_IF(DFATAL,
+           replicating_ != nullptr && !replicating_->op_id().empty() &&
+           replicating_->op_id() != data.op_id)
+        << "Aborted wrong operation, expected " << AsString(replicating_) << ", but "
+        << AsString(data) << " aborted";
+
     replicating_ = nullptr;
 
     // We are not leader, so could abort all queued requests.
@@ -474,7 +480,14 @@ class TransactionState {
 
     auto it = involved_tablets_.find(state.tablets(0));
     if (it == involved_tablets_.end()) {
-      LOG_WITH_PREFIX(DFATAL) << "Applied in unknown tablet: " << state.tablets(0);
+      // This can happen when transaction coordinator retried apply to post-split tablets,
+      // transaction coordinator moved to new status tablet leader and here new transaction
+      // coordinator receives notification about txn is applied in post-split tablet not yet known
+      // to new transaction coordinator.
+      // It is safe to just log warning and ignore, because new transaction coordinator is sending
+      // again apply requests to all involved tablet it knows and will be retrying for ones that
+      // will reply have been already split.
+      LOG_WITH_PREFIX(WARNING) << "Applied in unknown tablet: " << state.tablets(0);
       return Status::OK();
     }
     if (!it->second.all_intents_applied) {
@@ -559,16 +572,16 @@ class TransactionState {
     auto txn_status = state.status();
     if (txn_status == TransactionStatus::COMMITTED) {
       status = HandleCommit();
-    } else if (txn_status == TransactionStatus::PENDING) {
+    } else if (txn_status == TransactionStatus::PENDING ||
+               txn_status == TransactionStatus::CREATED) {
+        // Handling txn_status of CREATED when the current status (status_) is PENDING is only
+        // allowed for backward compatibility with versions prior to D11210, which could send
+        // transaction creation retries with the same id.
       if (status_ != TransactionStatus::PENDING) {
         status = STATUS_FORMAT(IllegalState,
             "Transaction in wrong state during heartbeat: $0",
             TransactionStatus_Name(status_));
-      } else {
-        status = Status::OK();
       }
-    } else {
-      status = Status::OK();
     }
 
     if (!status.ok()) {
@@ -637,7 +650,7 @@ class TransactionState {
     }
 
     status_ = TransactionStatus::ABORTED;
-    first_entry_raft_index_ = data.op_id.index();
+    first_entry_raft_index_ = data.op_id.index;
     NotifyAbortWaiters(TransactionStatusResult::Aborted());
     return Status::OK();
   }
@@ -674,7 +687,7 @@ class TransactionState {
       involved_tablets_.emplace(data.state.tablets(idx), state);
     }
 
-    first_entry_raft_index_ = data.op_id.index();
+    first_entry_raft_index_ = data.op_id.index;
     return Status::OK();
   }
 
@@ -688,9 +701,11 @@ class TransactionState {
       return status;
     }
 
+    YB_TRANSACTION_DUMP(Commit, id_, data.hybrid_time, data.state.tablets().size());
+
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
-    first_entry_raft_index_ = data.op_id.index();
+    first_entry_raft_index_ = data.op_id.index;
     involved_tablets_.reserve(data.state.tablets().size());
     for (const auto& tablet : data.state.tablets()) {
       InvolvedTabletState state = {
@@ -720,6 +735,9 @@ class TransactionState {
                         << ", leader: " << context_.leader();
     last_touch_ = data.hybrid_time;
     status_ = TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
+
+    YB_TRANSACTION_DUMP(Applied, id_, data.hybrid_time);
+
     return Status::OK();
   }
 
@@ -737,7 +755,7 @@ class TransactionState {
       return Status::OK();
     }
     last_touch_ = data.hybrid_time;
-    first_entry_raft_index_ = data.op_id.index();
+    first_entry_raft_index_ = data.op_id.index;
     return Status::OK();
   }
 
@@ -859,6 +877,10 @@ struct PostponedLeaderActions {
 
 } // namespace
 
+std::string TransactionCoordinator::AbortedData::ToString() const {
+  return YB_STRUCT_TO_STRING(state, op_id);
+}
+
 // Real implementation of transaction coordinator, as in PImpl idiom.
 class TransactionCoordinator::Impl : public TransactionStateContext {
  public:
@@ -888,13 +910,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     PostponedLeaderActions postponed_leader_actions;
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
+      HybridTime leader_safe_time;
       postponed_leader_actions_.leader_term = leader_term;
       for (const auto& transaction_id : transaction_ids) {
         auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
 
         auto it = managed_transactions_.find(id);
         std::vector<ExpectedTabletBatches> expected_tablet_batches;
-        auto txn_status_with_ht = it != managed_transactions_.end()
+        bool known_txn = it != managed_transactions_.end();
+        auto txn_status_with_ht = known_txn
             ? VERIFY_RESULT(it->GetStatus(&expected_tablet_batches))
             : TransactionStatusResult(TransactionStatus::ABORTED, HybridTime::kMax);
         VLOG_WITH_PREFIX(4) << __func__ << ": " << id << " => " << txn_status_with_ht;
@@ -903,6 +927,18 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           txn_status_with_ht = VERIFY_RESULT(ResolveSealedStatus(
               id, txn_status_with_ht.status_time, expected_tablet_batches,
               /* abort_if_not_replicated = */ false, &lock));
+        }
+        if (!known_txn) {
+          if (!leader_safe_time) {
+            // We should pick leader safe time only after managed_mutex_ is locked.
+            // Otherwise applied transaction could be removed after this safe time.
+            leader_safe_time = VERIFY_RESULT(context_.LeaderSafeTime());
+          }
+          // Please note that for known transactions we send 0, that means invalid hybrid time.
+          // We would wait for safe time only for case when transaction is unknown to coordinator.
+          // Since it is only case when transaction could be actually committed.
+          response->mutable_coordinator_safe_time()->Resize(response->status().size(), 0);
+          response->add_coordinator_safe_time(leader_safe_time.ToUint64());
         }
         response->add_status(txn_status_with_ht.status);
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
@@ -1142,8 +1178,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
               << LogPrefix() << "Request to unknown transaction " << id << ": "
               << state.ShortDebugString();
-          auto status = STATUS(Expired, "Transaction expired or aborted by a conflict",
-                               PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+          auto status = STATUS_EC_FORMAT(
+              Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+              "Transaction $0 expired or aborted by a conflict", *id);
           status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
           request->CompleteWithStatus(status);
           return;
@@ -1213,11 +1250,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   > ManagedTransactions;
 
   void SendUpdateTransactionRequest(
-      const NotifyApplyingData& action, const CoarseTimePoint& deadline) {
+      const NotifyApplyingData& action, HybridTime now,
+      const CoarseTimePoint& deadline) {
     VLOG_WITH_PREFIX(3) << "Notify applying: " << action.ToString();
 
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(action.tablet);
+    req.set_propagated_hybrid_time(now.ToUint64());
     auto& state = *req.mutable_state();
     state.set_transaction_id(action.transaction.data(), action.transaction.size());
     state.set_status(TransactionStatus::APPLYING);
@@ -1233,7 +1272,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           context_.client_future().get(),
           &req,
           [this, handle, action]
-              (const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
+              (const Status& status,
+               const tserver::UpdateTransactionRequestPB& req,
+               const tserver::UpdateTransactionResponsePB& resp) {
             client::UpdateClock(resp, &context_);
             rpcs_.Unregister(handle);
             if (status.ok()) {
@@ -1274,7 +1315,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
                 NotifyApplyingData new_action = action;
                 for (const auto& split_child_tablet_id : split_child_tablet_ids) {
                   new_action.tablet = split_child_tablet_id;
-                  SendUpdateTransactionRequest(new_action, new_deadline);
+                  SendUpdateTransactionRequest(new_action, context_.clock().Now(), new_deadline);
                 }
               }
             }
@@ -1293,9 +1334,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
 
     if (!actions->notify_applying.empty()) {
+      auto now = context_.clock().Now();
       auto deadline = TransactionRpcDeadline();
       for (const auto& action : actions->notify_applying) {
-        SendUpdateTransactionRequest(action, deadline);
+        SendUpdateTransactionRequest(action, now, deadline);
       }
     }
 

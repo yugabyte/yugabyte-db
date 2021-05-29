@@ -8,6 +8,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import org.apache.commons.exec.OS;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
@@ -36,11 +37,9 @@ import static org.mockito.Mockito.*;
 public class SwamperHelperTest extends FakeDBApplication {
   private Customer defaultCustomer;
 
-  @Mock
-  Configuration appConfig;
+  @Mock Configuration appConfig;
 
-  @InjectMocks
-  SwamperHelper swamperHelper;
+  @InjectMocks SwamperHelper swamperHelper;
 
   static String SWAMPER_TMP_PATH = "/tmp/swamper/";
 
@@ -62,13 +61,14 @@ public class SwamperHelperTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     try {
       swamperHelper.writeUniverseTargetJson(u.universeUUID);
-      BufferedReader br = new BufferedReader(new FileReader(
-          SWAMPER_TMP_PATH + "yugabyte." + u.universeUUID + ".json"));
+      BufferedReader br =
+          new BufferedReader(
+              new FileReader(SWAMPER_TMP_PATH + "yugabyte." + u.universeUUID + ".json"));
       String line;
       StringBuilder sb = new StringBuilder();
       while ((line = br.readLine()) != null) {
@@ -114,11 +114,11 @@ public class SwamperHelperTest extends FakeDBApplication {
 
   @Test(expected = RuntimeException.class)
   public void testUniverseTargetWriteFailure() {
-    File dir = new File("/tmp/non-writable");
-    dir.mkdir();
-    dir.setWritable(false);
-
-    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(dir.getPath());
+    String swamperFilePath = "/sys";
+    if (OS.isFamilyMac()) {
+      swamperFilePath = "/System";
+    }
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(swamperFilePath);
     Universe u = createUniverse();
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     swamperHelper.writeUniverseTargetJson(u.universeUUID);

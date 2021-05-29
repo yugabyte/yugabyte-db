@@ -28,10 +28,9 @@ YQLTablesVTable::YQLTablesVTable(const TableName& table_name,
 Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables, true);
-  for (scoped_refptr<TableInfo> table : tables) {
 
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  for (const auto& table : tables) {
     // Skip non-YQL tables.
     if (!CatalogManager::IsYcqlTable(*table)) {
       continue;
@@ -43,14 +42,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     }
 
     // Get namespace for table.
-    NamespaceIdentifierPB nsId;
-    nsId.set_id(table->namespace_id());
-    scoped_refptr<NamespaceInfo> nsInfo;
-    RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
+    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+        table->namespace_id()));
 
     // Create appropriate row for the table;
     QLRow& row = vtable->Extend();
-    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, nsInfo->name(), &row));
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
 
     // Create appropriate flags entry.

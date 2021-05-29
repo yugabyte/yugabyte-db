@@ -47,6 +47,8 @@
 #include "yb/common/transaction.h"
 #include "yb/common/ql_storage_interface.h"
 
+#include "yb/consensus/log_fwd.h"
+
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
@@ -68,6 +70,7 @@
 
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/mvcc.h"
+#include "yb/tablet/operation_filter.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -99,10 +102,6 @@ class RowChangeList;
 
 namespace docdb {
 class ConsensusFrontier;
-}
-
-namespace log {
-class LogAnchorRegistry;
 }
 
 namespace server {
@@ -188,7 +187,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Create a new tablet.
   //
-  // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
+  // If 'metric_registry' is non-nullptr, then this tablet will create a 'tablet' entity
   // within the provided registry. Otherwise, no metrics are collected.
   explicit Tablet(const TabletInitData& data);
 
@@ -200,37 +199,61 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS EnableCompactions(ScopedRWOperationPause* operation_pause);
 
-  Result<std::string> BackfillIndexesForYsql(
+  // Performs backfill for the key range beginning from the row immediately after
+  // <backfill_from>, until either it reaches the end of the tablet
+  //    or the current time is past deadline.
+  // <backfilled_until> will be set to the first row that was not backfilled, so that the
+  //    next API call can resume from where the backfill was left off.
+  //    Note that <backfilled_until> only applies to the non-failing indexes.
+  //
+  // TODO(#5326): For now YSQL does not support chunking, so backfill will always run to the
+  // end of the tablet and set backfilled_until as the empty string.
+  CHECKED_STATUS BackfillIndexesForYsql(
       const std::vector<IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
       const HostPort& pgsql_proxy_bind_address,
       const std::string& database_name,
-      const uint64_t postgres_auth_key);
-  Result<std::string> BackfillIndexes(const std::vector<IndexInfo>& indexes,
-                                      const std::string& backfill_from,
-                                      const CoarseTimePoint deadline,
-                                      const HybridTime read_time);
+      const uint64_t postgres_auth_key,
+      std::string* backfilled_until);
+
+  // Performs backfill for the key range beginning from the row <backfill_from>,
+  // until either it reaches the end of the tablet
+  //    or the current time is past deadline.
+  // <failed_indexes> will be updated with the collection of index-ids for which any errors
+  //    were encountered.
+  // <backfilled_until> will be set to the first row that was not backfilled, so that the
+  //    next API call can resume from where the backfill was left off.
+  //    Note that <backfilled_until> only applies to the non-failing indexes.
+  CHECKED_STATUS BackfillIndexes(
+      const std::vector<IndexInfo>& indexes,
+      const std::string& backfill_from,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      std::string* backfilled_until,
+      std::unordered_set<TableId>* failed_indexes);
 
   CHECKED_STATUS UpdateIndexInBatches(
       const QLTableRow& row,
       const std::vector<IndexInfo>& indexes,
       const HybridTime write_time,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      CoarseTimePoint* last_flushed_at);
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes);
 
   CHECKED_STATUS FlushIndexBatchIfRequired(
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       bool force_flush,
       const HybridTime write_time,
-      CoarseTimePoint* last_flushed_at);
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes);
 
-  CHECKED_STATUS
-  FlushWithRetries(
+  CHECKED_STATUS FlushWithRetries(
       std::shared_ptr<client::YBSession> session,
       const std::vector<std::shared_ptr<client::YBqlWriteOp>>& write_ops,
-      int num_retries);
+      int num_retries,
+      std::unordered_set<TableId>* failed_indexes);
 
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
@@ -254,34 +277,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
-
-  // Finish the Prepare phase of a write transaction.
-  //
-  // Starts an MVCC transaction and assigns a timestamp for the transaction.
-  //
-  // This should always be done _after_ any relevant row locks are acquired
-  // (using CreatePreparedInsert/CreatePreparedMutate). This ensures that,
-  // within each row, timestamps only move forward. If we took a timestamp before
-  // getting the row lock, we could have the following situation:
-  //
-  //   Thread 1         |  Thread 2
-  //   ----------------------
-  //   Start tx 1       |
-  //                    |  Start tx 2
-  //                    |  Obtain row lock
-  //                    |  Update row
-  //                    |  Commit tx 2
-  //   Obtain row lock  |
-  //   Delete row       |
-  //   Commit tx 1
-  //
-  // This would cause the mutation list to look like: @t1: DELETE, @t2: UPDATE
-  // which is invalid, since we expect to be able to be able to replay mutations
-  // in increasing timestamp order on a given row.
-  //
-  // TODO: rename this to something like "FinishPrepare" or "StartApply", since
-  // it's not the first thing in a transaction!
-  void StartOperation(WriteOperationState* operation_state);
 
   // Apply all of the row operations associated with this transaction.
   CHECKED_STATUS ApplyRowOperations(
@@ -409,7 +404,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
   // has a very small number of rows.
-  CHECKED_STATUS DebugDump(vector<std::string> *lines = NULL);
+  CHECKED_STATUS DebugDump(vector<std::string>* lines = nullptr);
 
   const yb::SchemaPtr schema() const {
     return metadata_->schema();
@@ -436,12 +431,21 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   const std::string& tablet_id() const override { return metadata_->raft_group_id(); }
 
+  bool system() const override {
+    return false;
+  }
+
   // Return the metrics for this tablet.
-  // May be NULL in unit tests, etc.
+  // May be nullptr in unit tests, etc.
   TabletMetrics* metrics() { return metrics_.get(); }
 
-  // Return handle to the metric entity of this tablet.
-  const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
+  // Return handle to the metric entity of this tablet/table.
+  const scoped_refptr<MetricEntity>& GetTableMetricsEntity() const {
+    return table_metrics_entity_;
+  }
+  const scoped_refptr<MetricEntity>& GetTabletMetricsEntity() const {
+    return tablet_metrics_entity_;
+  }
 
   // Returns a reference to this tablet's memory tracker.
   const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
@@ -525,14 +529,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
-  Result<bool> StillHasParentDataAfterSplit();
+  Result<bool> StillHasOrphanedPostSplitData();
 
-  // Wrapper for StillHasParentDataAfterSplit. Conservatively returns true if
-  // StillHasParentDataAfterSplit failed, otherwise returns the result value.
-  bool MightStillHaveParentDataAfterSplit();
+  // Wrapper for StillHasOrphanedPostSplitData. Conservatively returns true if
+  // StillHasOrphanedPostSplitData failed, otherwise returns the result value.
+  bool MayHaveOrphanedPostSplitData();
 
   // If true, we should report, in our heartbeat to the master, that loadbalancer moves should be
-  // disabled. We do so, for example, when StillHasParentDataAfterSplit() returns true.
+  // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
   bool ShouldDisableLbMove();
 
   void ForceRocksDBCompactInTest();
@@ -561,6 +565,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
+  std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
   void ListenNumSSTFilesChanged(std::function<void()> listener);
@@ -659,6 +664,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS TriggerPostSplitCompactionIfNeeded(
     std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction);
 
+  // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
+  CHECKED_STATUS VerifyDataIntegrity();
+
+  CHECKED_STATUS CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type);
+
+  void RegisterOperationFilter(OperationFilter* filter);
+  void UnregisterOperationFilter(OperationFilter* filter);
+
+  void SplitDone();
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -723,6 +738,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void TriggerPostSplitCompactionSync();
 
+  // Opens read-only rocksdb at the specified directory and checks for any file corruption.
+  CHECKED_STATUS OpenDbAndCheckIntegrity(const std::string& db_dir);
+
   const Schema key_schema_;
 
   RaftGroupMetadataPtr metadata_;
@@ -750,7 +768,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<MemTracker> mem_tracker_;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
 
-  MetricEntityPtr metric_entity_;
+  MetricEntityPtr tablet_metrics_entity_;
+  MetricEntityPtr table_metrics_entity_;
   gscoped_ptr<TabletMetrics> metrics_;
   FunctionGaugeDetacher metric_detacher_;
 
@@ -770,7 +789,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   };
   State state_ = kInitialized;
 
-  // Fault hooks. In production code, these will always be NULL.
+  // Fault hooks. In production code, these will always be nullptr.
   std::shared_ptr<CompactionFaultHooks> compaction_hooks_;
   std::shared_ptr<FlushFaultHooks> flush_hooks_;
   std::shared_ptr<FlushCompactCommonHooks> common_hooks_;
@@ -846,7 +865,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UpdateQLIndexes(std::unique_ptr<WriteOperation> operation);
   void UpdateQLIndexesFlushed(
       WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
-      const IndexOps& index_ops, const Status& status);
+      const IndexOps& index_ops, client::FlushStatus* flush_status);
 
   void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);
 
@@ -867,8 +886,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     CleanupIntentFiles();
   }
 
-  template <class Functor>
-  uint64_t GetRegularDbStat(const Functor& functor) const;
+  template <class Functor, class Value>
+  Value GetRegularDbStat(const Functor& functor, const Value& default_value) const;
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
@@ -902,6 +921,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // compaction if this member is already set, as the existence of this member implies that such a
   // compaction has already been triggered for this instance.
   std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
+
+  std::unique_ptr<ThreadPoolToken> data_integrity_token_;
+
+  boost::intrusive::list<OperationFilter> operation_filters_;
+
+  class CompletedSplitOperationFilter;
+  std::unique_ptr<CompletedSplitOperationFilter> completed_split_operation_filter_;
+  std::unique_ptr<log::LogAnchor> completed_split_log_anchor_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

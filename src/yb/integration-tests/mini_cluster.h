@@ -281,6 +281,9 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
 std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
 
+std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
+    MiniCluster* cluster);
+
 CHECKED_STATUS WaitUntilTabletHasLeader(
     MiniCluster* cluster, const string& tablet_id, MonoTime deadline);
 
@@ -328,7 +331,11 @@ CHECKED_STATUS StartAllTServers(MiniCluster* cluster);
 void ShutdownAllMasters(MiniCluster* cluster);
 CHECKED_STATUS StartAllMasters(MiniCluster* cluster);
 
+YB_DEFINE_ENUM(Connectivity, (kOn)(kOff));
+
 CHECKED_STATUS BreakConnectivity(MiniCluster* cluster, int idx1, int idx2);
+CHECKED_STATUS SetupConnectivity(
+    MiniCluster* cluster, int idx1, int idx2, Connectivity connectivity);
 Result<int> ServerWithLeaders(MiniCluster* cluster);
 
 }  // namespace yb

@@ -23,7 +23,6 @@ import play.libs.Json;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.UUID;
@@ -50,8 +49,7 @@ public class SwamperHelper {
     ]
   */
 
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
 
   public enum TargetType {
     INVALID_EXPORT,
@@ -94,19 +92,17 @@ public class SwamperHelper {
       Universe universe, TargetType t, Collection<NodeDetails> nodes, String exportedInstance) {
     ObjectNode target = Json.newObject();
     ArrayNode targetNodes = Json.newArray();
-    nodes.forEach((node) -> {
-      if (node.isActive()) {
-        targetNodes.add(node.cloudInfo.private_ip + ":" + t.getPort(node));
-      }
-    });
+    nodes.forEach(
+        (node) -> {
+          if (node.isActive()) {
+            targetNodes.add(node.cloudInfo.private_ip + ":" + t.getPort(node));
+          }
+        });
 
     ObjectNode labels = Json.newObject();
     labels.put(
-        LabelType.NODE_PREFIX.toString().toLowerCase(),
-        universe.getUniverseDetails().nodePrefix);
-    labels.put(
-        LabelType.EXPORT_TYPE.toString().toLowerCase(),
-        t.toString().toLowerCase());
+        LabelType.NODE_PREFIX.toString().toLowerCase(), universe.getUniverseDetails().nodePrefix);
+    labels.put(LabelType.EXPORT_TYPE.toString().toLowerCase(), t.toString().toLowerCase());
     if (exportedInstance != null) {
       labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), exportedInstance);
     }
@@ -124,8 +120,8 @@ public class SwamperHelper {
     File swamperTargetFolder = new File(swamperFile);
 
     if (swamperTargetFolder.exists() && swamperTargetFolder.isDirectory()) {
-      return String.format("%s/%s.%s.json",
-          swamperTargetFolder.toString(), prefix, universeUUID.toString());
+      return String.format(
+          "%s/%s.%s.json", swamperTargetFolder.toString(), prefix, universeUUID.toString());
     }
     return null;
   }
@@ -147,15 +143,22 @@ public class SwamperHelper {
   }
 
   public void writeUniverseTargetJson(UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
     // Write out the node specific file.
     ArrayNode nodeTargets = Json.newArray();
     String swamperFile = getSwamperFile(universeUUID, "node");
-    universe.getNodes().forEach((node) -> {
-      nodeTargets.add(getIndividualConfig(
-          universe, TargetType.NODE_EXPORT, Collections.singletonList(node), node.nodeName));
-    });
+    universe
+        .getNodes()
+        .forEach(
+            (node) -> {
+              nodeTargets.add(
+                  getIndividualConfig(
+                      universe,
+                      TargetType.NODE_EXPORT,
+                      Collections.singletonList(node),
+                      node.nodeName));
+            });
     writeTargetJsonFile(swamperFile, nodeTargets);
 
     // Write out the yugabyte specific file.
@@ -163,15 +166,18 @@ public class SwamperHelper {
     swamperFile = getSwamperFile(universeUUID, "yugabyte");
     for (TargetType t : TargetType.values()) {
       if (t != TargetType.NODE_EXPORT && t != TargetType.INVALID_EXPORT) {
-        universe.getNodes().forEach((node) -> {
-          // Since some nodes might not be active (for example removed),
-          // we do not want to add them to the swamper targets.
-          if (node.isActive()) {
-            ybTargets.add(getIndividualConfig(
-              universe, t, Collections.singletonList(node), node.nodeName
-            ));
-          }
-        });
+        universe
+            .getNodes()
+            .forEach(
+                (node) -> {
+                  // Since some nodes might not be active (for example removed),
+                  // we do not want to add them to the swamper targets.
+                  if (node.isActive()) {
+                    ybTargets.add(
+                        getIndividualConfig(
+                            universe, t, Collections.singletonList(node), node.nodeName));
+                  }
+                });
       }
     }
     writeTargetJsonFile(swamperFile, ybTargets);
@@ -195,4 +201,3 @@ public class SwamperHelper {
     removeUniverseTargetJson(universeUUID, "yugabyte");
   }
 }
-

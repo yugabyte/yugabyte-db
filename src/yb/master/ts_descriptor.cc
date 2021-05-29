@@ -37,10 +37,14 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/flag_tags.h"
@@ -160,9 +164,18 @@ std::string TSDescriptor::placement_id() const {
   return placement_id_;
 }
 
-void TSDescriptor::UpdateHeartbeatTime() {
-  std::lock_guard<decltype(lock_)> l(lock_);
-  last_heartbeat_ = MonoTime::Now();
+void TSDescriptor::UpdateHeartbeat(const TSHeartbeatRequestPB* req) {
+  DCHECK_GE(req->num_live_tablets(), 0);
+  DCHECK_GE(req->leader_count(), 0);
+  {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    last_heartbeat_ = MonoTime::Now();
+    num_live_replicas_ = req->num_live_tablets();
+    leader_count_ = req->leader_count();
+    physical_time_ = req->ts_physical_time();
+    hybrid_time_ = HybridTime::FromPB(req->ts_hybrid_time());
+    heartbeat_rtt_ = MonoDelta::FromMicroseconds(req->rtt_us());
+  }
 }
 
 MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
@@ -233,18 +246,20 @@ const std::shared_ptr<TSInformationPB> TSDescriptor::GetTSInformationPB() const 
 
 bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
   SharedLock<decltype(lock_)> l(lock_);
-  const auto& ci = ts_information_->registration().common().cloud_info();
+  const auto& ts_ci = ts_information_->registration().common().cloud_info();
 
-  return cloud_info.placement_cloud() == ci.placement_cloud() &&
-         cloud_info.placement_region() == ci.placement_region() &&
-         cloud_info.placement_zone() == ci.placement_zone();
+  // cloud_info should be a prefix of ts_ci.
+  return CatalogManagerUtil::IsCloudInfoPrefix(cloud_info, ts_ci);
 }
 
-bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
+CloudInfoPB TSDescriptor::GetCloudInfo() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return ts_information_->registration().common().cloud_info();
+}
+
+template<typename Lambda>
+bool TSDescriptor::DoesRegistrationMatch(Lambda predicate) const {
   TSRegistrationPB reg = GetRegistration();
-  auto predicate = [&hp](const HostPortPB& rhs) {
-    return rhs.host() == hp.host() && rhs.port() == hp.port();
-  };
   if (std::find_if(reg.common().private_rpc_addresses().begin(),
                    reg.common().private_rpc_addresses().end(),
                    predicate) != reg.common().private_rpc_addresses().end()) {
@@ -256,6 +271,20 @@ bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
     return true;
   }
   return false;
+}
+
+bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
+  auto predicate = [&blacklist](const HostPortPB& rhs) {
+    return blacklist.count(HostPortFromPB(rhs)) > 0;
+  };
+  return DoesRegistrationMatch(predicate);
+}
+
+bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
+  auto predicate = [&hp](const HostPortPB& rhs) {
+    return rhs.host() == hp.host() && rhs.port() == hp.port();
+  };
+  return DoesRegistrationMatch(predicate);
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
@@ -281,6 +310,10 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.read_ops_per_sec = metrics.read_ops_per_sec();
   ts_metrics_.write_ops_per_sec = metrics.write_ops_per_sec();
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
+  for (const auto& path_metric : metrics.path_metrics()) {
+    ts_metrics_.path_metrics[path_metric.path_id()] =
+        { path_metric.used_space(), path_metric.total_space() };
+  }
 }
 
 void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
@@ -293,6 +326,12 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
   metrics->set_read_ops_per_sec(ts_metrics_.read_ops_per_sec);
   metrics->set_write_ops_per_sec(ts_metrics_.write_ops_per_sec);
   metrics->set_uptime_seconds(ts_metrics_.uptime_seconds);
+  for (const auto& path_metric : ts_metrics_.path_metrics) {
+    auto* new_path_metric = metrics->add_path_metrics();
+    new_path_metric->set_path_id(path_metric.first);
+    new_path_metric->set_used_space(path_metric.second.used_space);
+    new_path_metric->set_total_space(path_metric.second.total_space);
+  }
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {
@@ -328,6 +367,10 @@ std::size_t TSDescriptor::NumTasks() const {
 bool TSDescriptor::IsLive() const {
   return TimeSinceHeartbeat().ToMilliseconds() <
          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms) && !IsRemoved();
+}
+
+bool TSDescriptor::IsLiveAndHasReported() const {
+  return IsLive() && has_tablet_report();
 }
 
 std::string TSDescriptor::ToString() const {

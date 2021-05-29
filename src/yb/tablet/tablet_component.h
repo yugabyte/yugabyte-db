@@ -54,6 +54,8 @@ class TabletComponent {
 
   rocksdb::Env& rocksdb_env() const;
 
+  void RefreshYBMetaDataCache();
+
  private:
   Tablet& tablet_;
 };

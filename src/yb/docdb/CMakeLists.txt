@@ -82,6 +82,8 @@ set(DOCDB_SRCS
         shared_lock_manager.cc
         subdocument.cc
         subdoc_reader.cc
+        transaction_dump.cc
+        transaction_status_cache.cc
         value.cc
         kv_debug.cc
         )
@@ -132,6 +134,7 @@ set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIB
 ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
 ADD_YB_TEST(doc_operation-test)
+ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docrowwiseiterator-test)
 ADD_YB_TEST(primitive_value-test)

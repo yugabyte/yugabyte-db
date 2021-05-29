@@ -57,6 +57,7 @@
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
@@ -76,6 +77,9 @@ DECLARE_bool(TEST_simulate_crash_after_table_marked_deleting);
 DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
 DECLARE_bool(TEST_tablegroup_master_only);
 DECLARE_bool(TEST_simulate_port_conflict_error);
+
+METRIC_DECLARE_counter(block_cache_misses);
+METRIC_DECLARE_counter(block_cache_hits);
 
 namespace yb {
 namespace master {
@@ -554,6 +558,37 @@ TEST_F(MasterTest, TestCatalog) {
   }
 }
 
+TEST_F(MasterTest, TestCatalogHasBlockCache) {
+  // Restart mini_master
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  // Check prometheus metrics via webserver to verify block_cache metrics exist
+  string addr = AsString(mini_master_->bound_http_addr());
+  string url = strings::Substitute("http://$0/prometheus-metrics", AsString(addr));
+  EasyCurl curl;
+  faststring buf;
+
+  ASSERT_OK(curl.FetchURL(url, &buf));
+  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_misses");
+  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_hits");
+
+  // Check block cache metrics directly and verify
+  // that the counters are greater than 0
+  const unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
+    mini_master_->master()->metric_entity()->UnsafeMetricsMapForTests();
+
+  scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(
+      FindOrDie(metric_map,
+                &METRIC_block_cache_misses).get());
+  scoped_refptr<Counter> cache_hits_counter = down_cast<Counter *>(
+      FindOrDie(metric_map,
+                &METRIC_block_cache_hits).get());
+
+  ASSERT_GT(cache_misses_counter->value(), 0);
+  ASSERT_GT(cache_hits_counter->value(), 0);
+}
+
 TEST_F(MasterTest, TestTablegroups) {
   // Tablegroup ID must be 32 characters in length
   const char *kTablegroupId = "test_tablegroup00000000000000000";
@@ -650,7 +685,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
   vector<TabletId> tablet_ids;
   {
-    SharedLock<CatalogManager::LockType> l(mini_master_->master()->catalog_manager()->lock_);
+    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
     for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
       auto tablet = elem.second;
       if (tablet->table()->name() == kTableName) {
@@ -669,12 +704,12 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
 
   // Verify that the test table's tablets are in the DELETED state.
   {
-    SharedLock<CatalogManager::LockType> l(mini_master_->master()->catalog_manager()->lock_);
+    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
     for (const auto& tablet_id : tablet_ids) {
       auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
       ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
       auto l = iter->second->LockForRead();
-      ASSERT_EQ(l->data().pb.state(), SysTabletsEntryPB::DELETED);
+      ASSERT_EQ(l->pb.state(), SysTabletsEntryPB::DELETED);
     }
   }
 }
@@ -728,34 +763,12 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
   s = DoCreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
-  // Succeed the CreateTable call, but expect to have errors on call.
+  // Fail because there are no TServers matching the given placement policy.
   pb->set_min_num_replicas(live_replicas->num_replicas());
   cloud_info->set_placement_cloud("fail");
   UpdateMasterClusterConfig(&cluster_config);
-  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
-
-  IsCreateTableDoneRequestPB is_create_req;
-  IsCreateTableDoneResponsePB is_create_resp;
-
-  is_create_req.mutable_table()->set_table_name(kTableName);
-  is_create_req.mutable_table()->mutable_namespace_()->set_name(default_namespace_name);
-
-  // TODO(bogdan): once there are mechanics to cancel a create table, or for it to be cancelled
-  // automatically by the master, refactor this retry loop to an explicit wait and check the error.
-  int num_retries = 10;
-  while (num_retries > 0) {
-    s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
-    LOG(INFO) << s.ToString();
-    // The RPC layer will respond OK, but the internal fields will be set to error.
-    ASSERT_TRUE(s.ok());
-    ASSERT_TRUE(is_create_resp.has_done());
-    ASSERT_FALSE(is_create_resp.done());
-    if (is_create_resp.has_error()) {
-      ASSERT_EQ(is_create_resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
-    }
-
-    --num_retries;
-  }
+  s = DoCreateTable(kTableName, schema, &req);
+  ASSERT_TRUE(s.IsInvalidArgument());
 }
 
 TEST_F(MasterTest, TestNamespaces) {
@@ -1737,8 +1750,8 @@ TEST_F(MasterTest, TestFullTableName) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "The object does not exist");
+    auto status = StatusFromPB(resp.error().status());
+    ASSERT_EQ(MasterError(status), MasterErrorPB::OBJECT_NOT_FOUND);
   }
 
   // Delete the table.

@@ -126,7 +126,7 @@ PgDocOp::~PgDocOp() {
   // Wait for result in case request was sent.
   // Operation can be part of transaction it is necessary to complete it before transaction commit.
   if (response_.InProgress()) {
-    __attribute__((unused)) auto status = response_.GetStatus(*pg_session_);
+    WARN_NOT_OK(response_.GetStatus(pg_session_.get()), "Operation completion failed");
   }
 }
 
@@ -167,7 +167,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
     }
 
     DCHECK(response_.InProgress());
-    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus(*pg_session_)));
+    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus(pg_session_.get())));
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
     DCHECK(!rows.empty() || end_of_data_);
@@ -278,17 +278,15 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(const Status& status) {
 Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
 
-  // Check for errors reported by tablet server.
-  for (int op_index = 0; op_index < active_op_count_; op_index++) {
-    RETURN_NOT_OK(pg_session_->HandleResponse(*pgsql_ops_[op_index], PgObjectId()));
-  }
-
   // Process data coming from tablet server.
   std::list<PgDocResult> result;
   bool no_sorting_order = batch_row_orders_.size() == 0;
 
   rows_affected_count_ = 0;
+  // Check for errors reported by tablet server.
   for (int op_index = 0; op_index < active_op_count_; op_index++) {
+    RETURN_NOT_OK(pg_session_->HandleResponse(*pgsql_ops_[op_index], PgObjectId()));
+
     YBPgsqlOp *pgsql_op = pgsql_ops_[op_index].get();
     // Get total number of rows that are operated on.
     rows_affected_count_ += pgsql_op->response().rows_affected_count();
@@ -409,8 +407,8 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
     SCHECK(ybctid.size() > 0, InternalError, "Invalid ybctid value");
     // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
     // the following lines?
-    int partition = VERIFY_RESULT(table_desc_->FindPartitionIndex(ybctid));
-    SCHECK(partition >= 0 || partition < table_desc_->GetPartitionCount(), InternalError,
+    size_t partition = VERIFY_RESULT(table_desc_->FindPartitionIndex(ybctid));
+    SCHECK(partition < table_desc_->GetPartitionCount(), InternalError,
            "Ybctid value is not within partition boundary");
 
     // Assign ybctids to operators.

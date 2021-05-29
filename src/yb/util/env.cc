@@ -38,6 +38,10 @@ CHECKED_STATUS Env::CreateDirs(const std::string& dirname) {
 RandomAccessFile::~RandomAccessFile() {
 }
 
+Status WritableFile::AppendVector(const std::vector<Slice>& data_vector) {
+  return AppendSlices(data_vector.data(), data_vector.size());
+}
+
 WritableFile::~WritableFile() {
 }
 
@@ -105,6 +109,16 @@ Status ReadFileToString(Env* env, const std::string& fname, faststring* data) {
 }
 
 EnvWrapper::~EnvWrapper() {
+}
+
+Status DeleteIfExists(const std::string& path, Env* env) {
+  if (env->DirExists(path)) {
+    return env->DeleteRecursively(path);
+  }
+  if (env->FileExists(path)) {
+    return env->DeleteFile(path);
+  }
+  return Status::OK();
 }
 
 }  // namespace yb

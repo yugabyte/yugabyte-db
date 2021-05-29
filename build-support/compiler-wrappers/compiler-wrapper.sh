@@ -266,7 +266,6 @@ has_yb_c_files=false
 
 compiler_args_no_output=()
 analyzer_checkers_specified=false
-is_linking=false
 
 while [[ $# -gt 0 ]]; do
   is_output_arg=false
@@ -291,9 +290,6 @@ while [[ $# -gt 0 ]]; do
           # We will use this later to add custom compilation flags to PostgreSQL source files that
           # we contributed, e.g. for stricter error checking.
           has_yb_c_files=true
-        fi
-        if [[ $1 == *.o ]]; then
-          is_linking=true
         fi
       fi
     ;;
@@ -627,7 +623,7 @@ if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-}
   if [[ -n ${YB_CCACHE_DIR:-} ]]; then
     export CCACHE_DIR=$YB_CCACHE_DIR
   else
-    jenkins_ccache_dir=/n/jenkins/ccache
+    jenkins_ccache_dir=/Volumes/n/jenkins/ccache
     if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
       # Enable reusing cache entries from builds in different directories, potentially with
       # incorrect file paths in debug information. This is OK for Jenkins because we probably won't

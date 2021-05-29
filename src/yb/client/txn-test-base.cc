@@ -21,6 +21,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/consensus/consensus.h"
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -40,6 +41,7 @@ DECLARE_string(time_source);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_bool(TEST_combine_batcher_errors);
+DECLARE_bool(TEST_export_intentdb_metrics);
 
 namespace yb {
 namespace client {
@@ -101,6 +103,7 @@ void TransactionTestBase<MiniClusterType>::SetUp() {
   FLAGS_transaction_status_tablet_log_segment_size_bytes = log_segment_size_bytes();
   FLAGS_log_min_seconds_to_retain = 5;
   FLAGS_intents_flush_max_delay_ms = 250;
+  FLAGS_TEST_export_intentdb_metrics = true;
 
   server::SkewedClock::Register();
   FLAGS_time_source = server::SkewedClock::kName;
@@ -258,8 +261,8 @@ void TransactionTestBase<MiniClusterType>::VerifyData(
   }
 }
 
-template <class MiniClusterType>
-bool TransactionTestBase<MiniClusterType>::HasTransactions() {
+template <>
+bool TransactionTestBase<MiniCluster>::HasTransactions() {
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
     auto peers = tablet_manager->GetTabletPeers();
@@ -278,18 +281,18 @@ bool TransactionTestBase<MiniClusterType>::HasTransactions() {
   return false;
 }
 
-template <class MiniClusterType>
-size_t TransactionTestBase<MiniClusterType>::CountRunningTransactions() {
+template <>
+size_t TransactionTestBase<MiniCluster>::CountRunningTransactions() {
   return yb::CountRunningTransactions(cluster_.get());
 }
 
-template <class MiniClusterType>
-void TransactionTestBase<MiniClusterType>::AssertNoRunningTransactions() {
+template <>
+void TransactionTestBase<MiniCluster>::AssertNoRunningTransactions() {
   yb::AssertNoRunningTransactions(cluster_.get());
 }
 
-template <class MiniClusterType>
-bool TransactionTestBase<MiniClusterType>::CheckAllTabletsRunning() {
+template <>
+bool TransactionTestBase<MiniCluster>::CheckAllTabletsRunning() {
   bool result = true;
   size_t count = 0;
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -324,6 +327,7 @@ void TransactionTestBase<MiniClusterType>::SetIsolationLevel(IsolationLevel isol
 }
 
 template class TransactionTestBase<MiniCluster>;
+template class TransactionTestBase<ExternalMiniCluster>;
 
 } // namespace client
 } // namespace yb

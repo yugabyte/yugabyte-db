@@ -44,6 +44,7 @@
 #include <boost/tti/has_member_function.hpp>
 
 #include <google/protobuf/util/json_util.h>
+#include <gtest/gtest.h>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
@@ -308,6 +309,13 @@ class TableNameResolver::Impl {
     return values_;
   }
 
+  master::NamespaceIdentifierPB last_namespace() {
+    if (!current_namespace_) {
+      return master::NamespaceIdentifierPB();
+    }
+    return *current_namespace_;
+  }
+
  private:
   Result<bool> FeedImpl(const std::string& str) {
     auto parts = SplitByDot(str);
@@ -426,6 +434,10 @@ Result<bool> TableNameResolver::Feed(const std::string& value) {
 
 std::vector<client::YBTableName>& TableNameResolver::values() {
   return impl_->values();
+}
+
+master::NamespaceIdentifierPB TableNameResolver::last_namespace() {
+  return impl_->last_namespace();
 }
 
 ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout)
@@ -1210,6 +1222,17 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_ta
   return Status::OK();
 }
 
+Status ClusterAdminClient::LaunchBackfillIndexForTable(const YBTableName& table_name) {
+  master::LaunchBackfillIndexForTableRequestPB req;
+  table_name.SetIntoTableIdentifierPB(req.mutable_table_identifier());
+  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::LaunchBackfillIndexForTable,
+                                            master_proxy_.get(), req));
+  if (resp.has_error()) {
+    return STATUS(RemoteError, resp.error().DebugString());
+  }
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id) {
   master::GetTabletLocationsRequestPB req;
   req.add_tablet_ids(tablet_id);
@@ -1655,7 +1678,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
 
   // Create a new cluster config.
   std::vector<std::string> placement_info_split = strings::Split(
-      placement_info, ",", strings::SkipEmpty());
+      placement_info, ",", strings::AllowEmpty());
   if (placement_info_split.size() < 1) {
     return STATUS(InvalidCommand, "Cluster config must be a list of "
     "placement infos seperated by commas. "
@@ -1667,20 +1690,30 @@ Status ClusterAdminClient::ModifyPlacementInfo(
       resp_cluster_config.mutable_cluster_config();
   master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
   live_replicas->set_num_replicas(replication_factor);
+
   // Iterate over the placement blocks of the placementInfo structure.
+  std::unordered_map<std::string, int> placement_to_min_replicas;
   for (int iter = 0; iter < placement_info_split.size(); iter++) {
-    std::vector<std::string> block = strings::Split(placement_info_split[iter], ".",
-                                                    strings::SkipEmpty());
-    if (block.size() != 3) {
-      return STATUS(InvalidCommand, "Each placement info must have exactly 3 values seperated"
-          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
-          + " is invalid");
-    }
+    placement_to_min_replicas[placement_info_split[iter]]++;
+  }
+
+  for (const auto& placement_block : placement_to_min_replicas) {
+    std::vector<std::string> block = strings::Split(placement_block.first, ".",
+                                                    strings::AllowEmpty());
     auto pb = live_replicas->add_placement_blocks();
-    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
-    pb->mutable_cloud_info()->set_placement_region(block[1]);
-    pb->mutable_cloud_info()->set_placement_zone(block[2]);
-    pb->set_min_num_replicas(1);
+    if (block.size() > 0 && block[0] != "") {
+      pb->mutable_cloud_info()->set_placement_cloud(block[0]);
+    }
+
+    if (block.size() > 1 && block[1] != "") {
+      pb->mutable_cloud_info()->set_placement_region(block[1]);
+    }
+
+    if (block.size() > 2 && block[2] != "") {
+      pb->mutable_cloud_info()->set_placement_zone(block[2]);
+    }
+
+    pb->set_min_num_replicas(placement_block.second);
   }
 
   if (!optional_uuid.empty()) {

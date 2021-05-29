@@ -10,7 +10,7 @@
 
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
-    AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod
+    AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set
@@ -44,7 +44,7 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="AWS Key Pair name")
         self.parser.add_argument("--security_group_id", default=None,
                                  help="AWS comma delimited security group IDs.")
-        self.parser.add_argument("--volume_type", choices=["gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance (if desired)")
@@ -156,7 +156,7 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
     """
     def __init__(self, base_command):
         super(AwsPauseInstancesMethod, self).__init__(base_command, "pause")
-        
+
     def add_extra_args(self):
         super(AwsPauseInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
@@ -169,7 +169,7 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
             get_all=False,
             private_ip=args.node_ip
         )
-       
+
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
@@ -184,7 +184,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
     """
     def __init__(self, base_command):
         super(AwsResumeInstancesMethod, self).__init__(base_command, "resume")
-        
+
     def add_extra_args(self):
         super(AwsResumeInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
@@ -207,7 +207,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-        self.cloud.start_instance(host_info)
+        self.cloud.start_instance(host_info, int(args.custom_ssh_port))
 
 
 class AwsTagsMethod(AbstractInstancesMethod):
@@ -233,19 +233,12 @@ class AwsAccessAddKeyMethod(AbstractAccessMethod):
         print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
 
 
-class AwsAccessDeleteKeyMethod(AbstractAccessMethod):
+class AwsAccessDeleteKeyMethod(AccessDeleteKeyMethod):
     def __init__(self, base_command):
-        super(AwsAccessDeleteKeyMethod, self).__init__(base_command, "delete-key")
+        super(AwsAccessDeleteKeyMethod, self).__init__(base_command)
 
-    def callback(self, args):
-        try:
-            self.cloud.delete_key_pair(args)
-            for key_file in glob.glob("{}/{}.*".format(args.key_file_path, args.key_pair_name)):
-                os.remove(key_file)
-            print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
-        except Exception as e:
-            logging.error(e)
-            print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))
+    def _delete_key_pair(self, args):
+        self.cloud.delete_key_pair(args)
 
 
 class AwsAccessListKeysMethod(AbstractMethod):
@@ -315,7 +308,7 @@ class AwsQueryCurrentHostMethod(AbstractMethod):
         try:
             print(json.dumps(self.cloud.get_current_host_info(args)))
         except YBOpsRuntimeError as ye:
-            print(json.dumps({"error": get_exception_message(ye)}))
+            print(json.dumps(get_exception_message(ye)))
 
 
 class AwsQueryPricingMethod(AbstractMethod):

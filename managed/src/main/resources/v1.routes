@@ -49,6 +49,7 @@ DELETE  /customers/:cUUID/providers/:pUUID/instance_types/:code                c
 POST    /customers/:cUUID/providers/setup_docker                               com.yugabyte.yw.controllers.CloudProviderController.setupDocker(cUUID: java.util.UUID)
 POST    /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.create(cUUID: java.util.UUID)
 GET     /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.list(cUUID: java.util.UUID)
+PUT     /customers/:cUUID/configs/:configUUID                                  com.yugabyte.yw.controllers.CustomerConfigController.edit(cUUID: java.util.UUID, configUUID: java.util.UUID)
 DELETE  /customers/:cUUID/configs/:configUUID                                  com.yugabyte.yw.controllers.CustomerConfigController.delete(cUUID: java.util.UUID, configUUID: java.util.UUID)
 
 #---------------------------------------------------------------------------------------------------
@@ -145,7 +146,7 @@ GET     /customers/:cUUID/universes/:uniUUID/redisservers                      c
 GET     /customers/:cUUID/universes/:uniUUID/leader                            com.yugabyte.yw.controllers.UniverseController.getMasterLeaderIP(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade                           com.yugabyte.yw.controllers.UniverseController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/disk_update                       com.yugabyte.yw.controllers.UniverseController.updateDiskSize(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseController.status(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseController.status1(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/find/:universeName                         com.yugabyte.yw.controllers.UniverseController.findByName(cUUID: java.util.UUID, universeName: String)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
@@ -159,7 +160,9 @@ POST    /customers/:cUUID/universes/:uniUUID/create_db_credentials             c
 PUT     /customers/:cUUID/universes/:uniUUID/mark_helm3_compatible             com.yugabyte.yw.controllers.UniverseController.setHelm3Compatible(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/live_queries                      com.yugabyte.yw.controllers.UniverseController.getLiveQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseController.getSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+DELETE  /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseController.resetSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/setup_universe_2dc                com.yugabyte.yw.controllers.UniverseController.resetVersion(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/:nodeName/download_logs           com.yugabyte.yw.controllers.UniverseController.downloadNodeLogs(cUUID: java.util.UUID, uniUUID: java.util.UUID, nodeName: String)
 
 # Cluster under universe
 POST    /customers/:cUUID/universes/:uniUUID/cluster                           com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -176,7 +179,7 @@ PUT     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID/create_backup   c
 PUT     /customers/:cUUID/universes/:uniUUID/multi_table_backup                com.yugabyte.yw.controllers.TablesController.createMultiTableBackup(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/backups                           com.yugabyte.yw.controllers.BackupsController.list(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/backups/restore                   com.yugabyte.yw.controllers.BackupsController.restore(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-DELETE  /customers/:cUUID/backups/:backupUUID                                  com.yugabyte.yw.controllers.BackupsController.delete(cUUID: java.util.UUID, backupUUID: java.util.UUID)
+DELETE  /customers/:cUUID/backups                                              com.yugabyte.yw.controllers.BackupsController.delete(cUUID: java.util.UUID)
 
 # Task History API
 GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
@@ -248,3 +251,4 @@ GET    /settings/ha/internal/config                                            c
 PUT    /settings/ha/internal/config/demote/:timestamp                          com.yugabyte.yw.controllers.InternalHAController.demoteLocalLeader(timestamp: java.lang.Long)
 PUT    /settings/ha/internal/config/sync/:timestamp                            com.yugabyte.yw.controllers.InternalHAController.syncInstances(timestamp: java.lang.Long)
 POST   /settings/ha/internal/upload                                            com.yugabyte.yw.controllers.InternalHAController.syncBackups()
+

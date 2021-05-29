@@ -55,7 +55,6 @@ class SnapshotOperationState :
   bool CheckOperationRequirements();
 
  private:
-  Result<std::string> TopSnapshotsDir() const;
   CHECKED_STATUS DoCheckOperationRequirements();
 
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperationState);
@@ -82,7 +81,6 @@ class SnapshotOperation : public Operation {
 
  private:
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.
-  void DoStart() override;
   CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
   CHECKED_STATUS DoAborted(const Status& status) override;
 

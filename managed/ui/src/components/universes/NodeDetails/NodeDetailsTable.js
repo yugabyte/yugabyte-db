@@ -192,6 +192,7 @@ export default class NodeDetailsTable extends Component {
       return (
         <NodeAction
           currentRow={row}
+          universeUUID={universeUUID}
           providerUUID={providerUUID}
           disableStop={isKubernetes}
           disableRemove={isKubernetes}
@@ -282,7 +283,7 @@ export default class NodeDetailsTable extends Component {
             >
               Processes
             </TableHeaderColumn>
-            {displayNodeActions && (           
+            {displayNodeActions && (
               <TableHeaderColumn
                 dataField="nodeAction"
                 className={'yb-actions-cell'}

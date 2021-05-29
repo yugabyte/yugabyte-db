@@ -5,12 +5,14 @@ package com.yugabyte.yw.models.helpers;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.common.NodeActionType;
+
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Represents all the details of a cloud node that are of interest.
- */
+import static com.yugabyte.yw.common.NodeActionType.*;
+
+/** Represents all the details of a cloud node that are of interest. */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
@@ -33,44 +35,54 @@ public class NodeDetails {
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
-    ToBeAdded,
+    ToBeAdded(DELETE),
     // Set when a new node is provisioned and configured but before it is added into
     // the existing cluster.
-    ToJoinCluster,
+    ToJoinCluster(REMOVE),
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step.
-    Provisioned,
+    Provisioned(),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
-    SoftwareInstalled,
+    SoftwareInstalled(START, DELETE),
     // Set after the YB software is upgraded via Rolling Restart.
-    UpgradeSoftware,
+    UpgradeSoftware(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
-    UpdateGFlags,
+    UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
-    Live,
+    Live(STOP, REMOVE, QUERY),
 
     // Set when node is about to enter the stopped state.
-    Stopping,
+    Stopping(),
     // Set when node is about to be set to live state.
-    Starting,
+    Starting(),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped,
+    Stopped(START, RELEASE, QUERY),
     // Set when node is unreachable but has not been Removed from the universe.
-    Unreachable,
+    Unreachable(),
     // Set when a node is marked for removal. Note that we will wait to get all its data out.
-    ToBeRemoved,
+    ToBeRemoved(REMOVE),
     // Set just before sending the request to the IaaS provider to terminate this node.
-    Removing,
+    Removing(),
     // Set after the node has been removed.
-    Removed,
+    Removed(ADD, RELEASE, DELETE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
-    Adding,
+    Adding(DELETE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
-    BeingDecommissioned,
+    BeingDecommissioned(),
     // After a stopped/removed node is returned back to the IaaS.
-    Decommissioned,
+    Decommissioned(ADD, DELETE),
     // Set when the cert is being updated.
-    UpdateCert
+    UpdateCert();
+
+    private final NodeActionType[] allowedActions;
+
+    NodeState(NodeActionType... allowedActions) {
+      this.allowedActions = allowedActions;
+    }
+
+    public ImmutableSet<NodeActionType> allowedActions() {
+      return ImmutableSet.copyOf(allowedActions);
+    }
   }
 
   // The current state of the node.
@@ -132,38 +144,45 @@ public class NodeDetails {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("name: ").append(nodeName).append(", ")
-      .append(cloudInfo.toString())
-      .append(", isMaster: ").append(isMaster)
-      .append(", isTserver: ").append(isTserver)
-      .append(", state: ").append(state)
-      .append(", azUuid: ").append(azUuid)
-      .append(", placementUuid: ").append(placementUuid);
+    sb.append("name: ")
+        .append(nodeName)
+        .append(", ")
+        .append(cloudInfo.toString())
+        .append(", isMaster: ")
+        .append(isMaster)
+        .append(", isTserver: ")
+        .append(isTserver)
+        .append(", state: ")
+        .append(state)
+        .append(", azUuid: ")
+        .append(azUuid)
+        .append(", placementUuid: ")
+        .append(placementUuid);
     return sb.toString();
   }
 
   @JsonIgnore
   public boolean isActive() {
-    return !(state == NodeState.Unreachable ||
-      state == NodeState.ToBeRemoved ||
-      state == NodeState.Removing ||
-      state == NodeState.Removed ||
-      state == NodeState.Starting ||
-      state == NodeState.Stopped ||
-      state == NodeState.Adding ||
-      state == NodeState.BeingDecommissioned ||
-      state == NodeState.Decommissioned);
+    return !(state == NodeState.Unreachable
+        || state == NodeState.ToBeRemoved
+        || state == NodeState.Removing
+        || state == NodeState.Removed
+        || state == NodeState.Starting
+        || state == NodeState.Stopped
+        || state == NodeState.Adding
+        || state == NodeState.BeingDecommissioned
+        || state == NodeState.Decommissioned);
   }
 
   @JsonIgnore
   public boolean isQueryable() {
-    return (state == NodeState.UpgradeSoftware ||
-      state == NodeState.UpdateGFlags ||
-      state == NodeState.Live ||
-      state == NodeState.ToBeRemoved ||
-      state == NodeState.Removing ||
-      state == NodeState.Stopping ||
-      state == NodeState.UpdateCert);
+    return (state == NodeState.UpgradeSoftware
+        || state == NodeState.UpdateGFlags
+        || state == NodeState.Live
+        || state == NodeState.ToBeRemoved
+        || state == NodeState.Removing
+        || state == NodeState.Stopping
+        || state == NodeState.UpdateCert);
   }
 
   @JsonIgnore
@@ -173,8 +192,10 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isRemovable() {
-    return state == NodeState.ToBeAdded || state == NodeState.Adding
-        || state == NodeState.SoftwareInstalled || state == NodeState.Removed
+    return state == NodeState.ToBeAdded
+        || state == NodeState.Adding
+        || state == NodeState.SoftwareInstalled
+        || state == NodeState.Removed
         || state == NodeState.Decommissioned;
   }
 
@@ -195,5 +216,9 @@ public class NodeDetails {
 
   public int getNodeIdx() {
     return this.nodeIdx;
+  }
+
+  public UUID getAzUuid() {
+    return azUuid;
   }
 }

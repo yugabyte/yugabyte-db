@@ -135,6 +135,28 @@ ADD_YB_LIBRARY(tserver_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
+# tserver_forward_service_proto
+#########################################
+
+YRPC_GENERATE(
+  TSERVER_FORWARD_RPC_SRCS TSERVER_FORWARD_RPC_HDRS TSERVER_FORWARD_RPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES tserver_forward_service.proto)
+set(TSERVER_FORWARD_RPC_LIBS
+  yrpc
+  yb_common_proto
+  protobuf
+  remote_bootstrap_proto
+  rpc_header_proto
+  tserver_proto
+  wire_protocol_proto)
+ADD_YB_LIBRARY(tserver_forward_service_proto
+  SRCS ${TSERVER_FORWARD_RPC_SRCS}
+  DEPS ${TSERVER_FORWARD_RPC_LIBS}
+  NONLINK_DEPS ${TSERVER_YRPC_TGTS})
+
+#########################################
 # tserver_util
 #########################################
 
@@ -163,10 +185,10 @@ set(TSERVER_SRCS
   remote_bootstrap_session.cc
   remote_bootstrap_snapshots.cc
   service_util.cc
+  tablet_memory_manager.cc
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
-  tablet_split_heartbeat_data_provider.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
@@ -178,6 +200,7 @@ set(TSERVER_DEPS
   tserver_proto
   tserver_admin_proto
   tserver_service_proto
+  tserver_forward_service_proto
   remote_bootstrap_proto
   master_rpc
   master_proto

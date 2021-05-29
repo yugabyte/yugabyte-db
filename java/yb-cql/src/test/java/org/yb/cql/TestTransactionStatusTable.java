@@ -38,13 +38,13 @@ public class TestTransactionStatusTable extends BaseCQLTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerArgs("--TEST_txn_status_table_tablet_creation_delay_ms=5000");
+    builder.addCommonTServerFlag("TEST_txn_status_table_tablet_creation_delay_ms", "5000");
     // Adjust following flags, so delay of txn status tablets opening doesn't block the whole
     // tablets opening thread pool.
-    builder.addCommonTServerArgs("--transaction_table_num_tablets=4");
-    builder.addCommonTServerArgs("--num_tablets_to_open_simultaneously=8");
+    builder.addCommonTServerFlag("transaction_table_num_tablets", "4");
+    builder.addCommonTServerFlag("num_tablets_to_open_simultaneously", "8");
     // Reduce the number of tablets per table.
-    builder.addMasterArgs("--yb_num_shards_per_tserver=1");
+    builder.addMasterFlag("yb_num_shards_per_tserver", "1");
   }
 
   @Test
@@ -70,7 +70,7 @@ public class TestTransactionStatusTable extends BaseCQLTest {
               new SimpleStatement(String.format(
                   "create table %s (k int primary key, v int) " +
                   "with transactions = {'enabled' : true};", tableName))
-              .setReadTimeoutMillis((int) (36000 * SanitizerUtil.getTimeoutMultiplier())));
+              .setReadTimeoutMillis((int) SanitizerUtil.adjustTimeout(36000)));
           LOG.info("Created table " + tableName);
           session.execute(String.format("create index on %s (v);", tableName));
           LOG.info("Created index on " + tableName);
@@ -86,7 +86,7 @@ public class TestTransactionStatusTable extends BaseCQLTest {
           LOG.info("Checked selected data from " + tableName);
         });
       }
-      MiscUtil.runInParallel(cmds, startSignal, (int) (60 * SanitizerUtil.getTimeoutMultiplier()));
+      MiscUtil.runInParallel(cmds, startSignal, (int) SanitizerUtil.adjustTimeout(60));
       for (Session s : sessions) {
         s.close();
       }

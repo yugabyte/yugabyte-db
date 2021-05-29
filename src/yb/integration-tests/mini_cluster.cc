@@ -643,11 +643,13 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPee
       return ListTabletPeers(cluster, [](const auto& peer) { return true; });
     case ListPeersFilter::kLeaders:
       return ListTabletPeers(cluster, [](const auto& peer) {
-        return peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+        auto consensus = peer->shared_consensus();
+        return consensus && consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
       });
     case ListPeersFilter::kNonLeaders:
       return ListTabletPeers(cluster, [](const auto& peer) {
-        return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+        auto consensus = peer->shared_consensus();
+        return consensus && consensus->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
       });
   }
 
@@ -707,6 +709,17 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
     }
   }
   return result;
+}
+
+std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(MiniCluster* cluster) {
+  return ListTabletPeers(cluster, [](const auto& peer) {
+    const auto tablet_meta = peer->tablet_metadata();
+    const auto consensus = peer->shared_consensus();
+    return tablet_meta && tablet_meta->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE &&
+           tablet_meta->tablet_data_state() !=
+               tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
+           consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+  });
 }
 
 std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
@@ -851,11 +864,9 @@ int NumRunningFlushes(MiniCluster* cluster) {
 Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name) {
   auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
-  scoped_refptr<master::TableInfo> table_info;
   master::TableIdentifierPB identifier;
   table_name.SetIntoTableIdentifierPB(&identifier);
-  RETURN_NOT_OK(catalog_manager->FindTable(identifier, &table_info));
-  return table_info;
+  return catalog_manager->FindTable(identifier);
 }
 
 Status WaitForInitDb(MiniCluster* cluster) {
@@ -945,20 +956,41 @@ Status StartAllMasters(MiniCluster* cluster) {
   return Status::OK();
 }
 
-Status BreakConnectivity(MiniCluster* cluster, int idx1, int idx2) {
+void SetupConnectivity(
+    rpc::Messenger* messenger, const IpAddress& address, Connectivity connectivity) {
+  switch (connectivity) {
+    case Connectivity::kOn:
+      messenger->RestoreConnectivityTo(address);
+      return;
+    case Connectivity::kOff:
+      messenger->BreakConnectivityTo(address);
+      return;
+  }
+  FATAL_INVALID_ENUM_VALUE(Connectivity, connectivity);
+}
+
+Status SetupConnectivity(MiniCluster* cluster, int idx1, int idx2, Connectivity connectivity) {
   for (int from_idx : {idx1, idx2}) {
     int to_idx = idx1 ^ idx2 ^ from_idx;
     for (auto type : {server::Private::kFalse, server::Private::kTrue}) {
       // TEST_RpcAddress is 1-indexed; we expect from_idx/to_idx to be 0-indexed.
       auto address = VERIFY_RESULT(HostToAddress(TEST_RpcAddress(to_idx + 1, type)));
-      for (auto messenger : { cluster->mini_master(from_idx)->master()->messenger(),
-                              cluster->mini_tablet_server(from_idx)->server()->messenger() }) {
-        messenger->BreakConnectivityTo(address);
+      if (from_idx < cluster->num_masters()) {
+        SetupConnectivity(
+            cluster->mini_master(from_idx)->master()->messenger(), address, connectivity);
+      }
+      if (from_idx < cluster->num_tablet_servers()) {
+        SetupConnectivity(
+            cluster->mini_tablet_server(from_idx)->server()->messenger(), address, connectivity);
       }
     }
   }
 
   return Status::OK();
+}
+
+Status BreakConnectivity(MiniCluster* cluster, int idx1, int idx2) {
+  return SetupConnectivity(cluster, idx1, idx2, Connectivity::kOff);
 }
 
 Result<int> ServerWithLeaders(MiniCluster* cluster) {

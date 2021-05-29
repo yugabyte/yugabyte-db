@@ -59,6 +59,7 @@ class MonoTime;
 // may not be used for any operation.
 class MonoDelta {
  public:
+  static MonoDelta FromMinutes(double minutes);
   static MonoDelta FromSeconds(double seconds);
   static MonoDelta FromMilliseconds(int64_t ms);
   static MonoDelta FromMicroseconds(int64_t us);
@@ -156,6 +157,9 @@ class MonoTime {
 
   static constexpr int64_t kNanosecondsPerSecond =
       kNanosecondsPerMillisecond * kMillisecondsPerSecond;
+
+  static constexpr int64_t kNanosecondsPerMinute =
+      kNanosecondsPerSecond * kSecondsPerMinute;
 
   static const MonoTime kMin;
   static const MonoTime kMax;

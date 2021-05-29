@@ -92,6 +92,7 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
   }
 
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_master_flags.push_back("--sys_catalog_respect_affinity_task=true");
     opts->extra_master_flags.push_back("--placement_cloud=c");
     opts->extra_master_flags.push_back("--placement_region=r");
     opts->extra_master_flags.push_back("--placement_zone=z${index}");
@@ -129,6 +130,38 @@ TEST_F(SysCatalogRespectAffinityTest, TestMoveToPreferredZone) {
   ASSERT_OK(yb_admin_client_->SetPreferredZones({ Substitute("c.r.$0", next_zone) }));
   ASSERT_OK(WaitFor([&]() {
     return IsMasterLeaderInZone("c", "r", next_zone);
+  }, kDefaultTimeout, "Master leader stepdown"));
+}
+
+// Note for these tests: there is an edge case where the master goes down between ListMasters
+// and StepDown, which is not tested here. The behavior should be the same, however.
+
+TEST_F(SysCatalogRespectAffinityTest, TestPreferredZoneMasterDown) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  std::string leader_zone = ASSERT_RESULT(GetMasterLeaderZone());
+  int leader_zone_idx = leader_zone[1] - '0';
+  int next_zone_idx = (leader_zone_idx + 1) % 3;
+
+  external_mini_cluster()->master(next_zone_idx)->Shutdown();
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({ Substitute("c.r.z$0", next_zone_idx)}));
+  SleepFor(MonoDelta::FromMilliseconds(2000));
+  ASSERT_OK(WaitFor([&]() {
+    return IsMasterLeaderInZone("c", "r", leader_zone);
+  }, kDefaultTimeout, "Master leader stepdown"));
+}
+
+TEST_F(SysCatalogRespectAffinityTest, TestMultiplePreferredZones) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  std::string leader_zone = ASSERT_RESULT(GetMasterLeaderZone());
+  int leader_zone_idx = leader_zone[1] - '0';
+  int first_zone_idx = (leader_zone_idx + 1) % 3;
+  int second_zone_idx = (leader_zone_idx + 2) % 3;
+
+  external_mini_cluster()->master(first_zone_idx)->Shutdown();
+  ASSERT_OK(yb_admin_client_->SetPreferredZones(
+      { Substitute("c.r.z$0", first_zone_idx), Substitute("c.r.z$0", second_zone_idx) }));
+  ASSERT_OK(WaitFor([&]() {
+    return IsMasterLeaderInZone("c", "r", Substitute("z$0", second_zone_idx));
   }, kDefaultTimeout, "Master leader stepdown"));
 }
 

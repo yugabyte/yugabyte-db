@@ -2,52 +2,54 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import com.yugabyte.yw.common.ApiResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
-import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
-
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Api
 public class AvailabilityZoneController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZoneController.class);
 
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
   /**
    * GET endpoint for listing availability zones
+   *
    * @return JSON response with availability zone's
    */
+  @ApiOperation(value = "listAZ", response = AvailabilityZone.class, responseContainer = "List")
   public Result list(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
     if (region == null) {
-      LOG.warn("PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID);
+      LOG.warn(
+          "PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID);
       return ApiResponse.error(BAD_REQUEST, "Invalid PlacementRegion/Provider UUID");
     }
 
     try {
-      List<AvailabilityZone>  zoneList = AvailabilityZone.find.query().where()
-          .eq("region", region)
-          .findList();
+      List<AvailabilityZone> zoneList =
+          AvailabilityZone.find.query().where().eq("region", region).findList();
       return ApiResponse.success(zoneList);
     } catch (Exception e) {
       LOG.error(e.getMessage());
@@ -57,11 +59,20 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
   /**
    * POST endpoint for creating new region(s)
+   *
    * @return JSON response of newly created region(s)
    */
+  @ApiOperation(value = "createAZ", response = AvailabilityZone.class, responseContainer = "Map")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "azFormData",
+          value = "az form data",
+          paramType = "body",
+          dataTypeClass = AvailabilityZoneFormData.class,
+          required = true))
   public Result create(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    Form<AvailabilityZoneFormData> formData = formFactory.form(AvailabilityZoneFormData.class)
-                                                         .bindFromRequest();
+    Form<AvailabilityZoneFormData> formData =
+        formFactory.form(AvailabilityZoneFormData.class).bindFromRequest();
     Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
     if (region == null) {
@@ -76,10 +87,11 @@ public class AvailabilityZoneController extends AuthenticatedController {
     Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
     try {
       for (AvailabilityZoneData azData : azDataList) {
-        AvailabilityZone az = AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
+        AvailabilityZone az =
+            AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
         availabilityZones.put(az.code, az);
       }
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(availabilityZones);
     } catch (Exception e) {
       LOG.error(e.getMessage());
@@ -90,11 +102,13 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
   /**
    * DELETE endpoint for deleting a existing availability zone.
+   *
    * @param providerUUID Provider UUID
    * @param regionUUID Region UUID
    * @param azUUID AvailabilityZone UUID
    * @return JSON response on whether or not delete region was successful or not.
    */
+  @ApiOperation(value = "deleteAZ", response = Object.class)
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
@@ -102,8 +116,8 @@ public class AvailabilityZoneController extends AuthenticatedController {
       ApiResponse.error(BAD_REQUEST, "Invalid PlacementRegion/Provider UUID");
     }
 
-    AvailabilityZone az = AvailabilityZone.find.query().where().
-            idEq(azUUID).eq("region_uuid", regionUUID).findOne();
+    AvailabilityZone az =
+        AvailabilityZone.find.query().where().idEq(azUUID).eq("region_uuid", regionUUID).findOne();
 
     if (az == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
@@ -113,11 +127,12 @@ public class AvailabilityZoneController extends AuthenticatedController {
       az.setActiveFlag(false);
       az.update();
       ObjectNode responseJson = Json.newObject();
-      Audit.createAuditEntry(ctx(), request());
+      auditService().createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to flag AZ UUID as deleted: " + azUUID);
+      return ApiResponse.error(
+          INTERNAL_SERVER_ERROR, "Unable to flag AZ UUID as deleted: " + azUUID);
     }
   }
 }

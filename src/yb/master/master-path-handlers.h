@@ -177,6 +177,7 @@ class MasterPathHandlers {
   void HandleGetUnderReplicationStatus(const Webserver::WebRequest &req,
                                         Webserver::WebResponse *resp);
   void HandleVersionInfoDump(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
+  void HandleLBStatistics(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);

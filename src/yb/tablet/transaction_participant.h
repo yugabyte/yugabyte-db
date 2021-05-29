@@ -68,7 +68,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
-  OpIdPB op_id;
+  OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
   bool sealed = false;
@@ -80,7 +80,7 @@ struct TransactionApplyData {
 };
 
 struct RemoveIntentsData {
-  OpIdPB op_id;
+  OpId op_id;
   HybridTime log_ht;
 };
 
@@ -122,6 +122,8 @@ class TransactionParticipantContext {
 
   // Returns hybrid time that lower than any future transaction apply record.
   virtual HybridTime SafeTimeForTransactionParticipant() = 0;
+
+  virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
 
   std::string LogPrefix() const;
 
@@ -188,7 +190,7 @@ class TransactionParticipant : public TransactionStatusManager {
   struct ReplicatedData {
     int64_t leader_term = -1;
     const tserver::TransactionStatePB& state;
-    const OpIdPB& op_id;
+    const OpId& op_id;
     HybridTime hybrid_time;
     bool sealed = false;
     AlreadyAppliedToRegularDB already_applied_to_regular_db;
@@ -216,6 +218,8 @@ class TransactionParticipant : public TransactionStatusManager {
   TransactionParticipantContext* context() const;
 
   HybridTime MinRunningHybridTime() const override;
+
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
   // When minimal start hybrid time of running transaction will be at least `ht` applier
   // method `MinRunningHybridTimeSatisfied` will be invoked.

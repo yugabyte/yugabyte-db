@@ -125,7 +125,7 @@ class MultiThreadedLogTest : public LogTestBase {
 
         auto entry_batch_pb = CreateBatchFromAllocatedOperations(batch_replicates);
 
-        ASSERT_OK(log_->Reserve(REPLICATE, &entry_batch_pb, &entry_batch));
+        log_->Reserve(REPLICATE, &entry_batch_pb, &entry_batch);
       } // lock_guard scope
       auto cb = new CustomLatchCallback(&latch, &errors);
       ASSERT_OK(log_->TEST_AsyncAppendWithReplicates(
@@ -169,10 +169,10 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_->env(), NULL, kTestTablet,
+  ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, kTestTablet,
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                             fs_manager_->uuid(),
-                            NULL, &reader));
+                            nullptr, nullptr, &reader));
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 

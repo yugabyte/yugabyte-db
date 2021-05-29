@@ -81,6 +81,10 @@ DEFINE_bool(detect_duplicates_for_retryable_requests, true,
             "Enable tracking of write requests that prevents the same write from being applied "
                 "twice.");
 
+DEFINE_bool(ysql_forward_rpcs_to_local_tserver, false,
+            "When true, forward the PGSQL rpcs to the local tServer.");
+
+
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
 using namespace std::placeholders;
@@ -306,7 +310,6 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
   if (async_rpc_metrics_) {
     async_rpc_metrics_->time_to_send->Increment(ToMicroseconds(end_time - start_));
   }
-
   CallRemoteMethod();
 }
 
@@ -491,9 +494,8 @@ void WriteRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.proxy()->WriteAsync(
-      req_, &resp_, PrepareController(),
-      std::bind(&WriteRpc::Finished, this, Status::OK()));
+  tablet_invoker_.WriteAsync(req_, &resp_, PrepareController(),
+                             std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
@@ -710,9 +712,8 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.proxy()->ReadAsync(
-      req_, &resp_, PrepareController(),
-      std::bind(&ReadRpc::Finished, this, Status::OK()));
+  tablet_invoker_.ReadAsync(req_, &resp_, PrepareController(),
+                            std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
@@ -795,6 +796,9 @@ void ReadRpc::SwapRequestsAndResponses(bool skip_responses) {
         }
         // Restore PGSQL read request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
+        if (resp_.has_used_read_time()) {
+          pgsql_op->SetUsedReadTime(ReadHybridTime::FromPB(resp_.used_read_time()));
+        }
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {

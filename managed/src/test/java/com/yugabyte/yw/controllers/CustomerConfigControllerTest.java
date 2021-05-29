@@ -7,14 +7,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.forms.PasswordPolicyFormData;
+import com.yugabyte.yw.models.*;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.Ignore;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -40,8 +36,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   public void testCreateWithInvalidParams() {
     ObjectNode bodyJson = Json.newObject();
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", url,
-        defaultUser.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), bodyJson);
 
     JsonNode node = Json.parse(contentAsString(result));
     assertErrorNodeValue(node, "data", "This field is required");
@@ -59,8 +56,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.set("data", data);
     bodyJson.put("type", "foo");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", url,
-        defaultUser.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), bodyJson);
 
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
@@ -75,8 +73,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("data", "foo");
     bodyJson.put("type", "STORAGE");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", url,
-        defaultUser.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), bodyJson);
 
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
@@ -92,8 +91,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", url,
-        defaultUser.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), bodyJson);
 
     JsonNode node = Json.parse(contentAsString(result));
     assertOk(result);
@@ -106,8 +106,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   public void testListCustomeWithData() {
     ModelFactory.createS3StorageConfig(defaultCustomer);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url,
-        defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(1, node.size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -116,8 +115,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testListCustomerWithoutData() {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url,
-        defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(0, node.size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -126,12 +124,21 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteValidCustomerConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    Alert.create(
+        defaultCustomer.uuid,
+        configUUID,
+        Alert.TargetType.CustomerConfigType,
+        "Error code",
+        "",
+        "");
+
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
-    Result result = FakeApiHelper.doRequestWithAuthToken("DELETE", url,
-        defaultUser.createAuthToken());
-    JsonNode node = Json.parse(contentAsString(result));
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertEquals(
+        0, Alert.getActiveCustomerAlertsByTargetUuid(defaultCustomer.uuid, configUUID).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -140,8 +147,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer("nc", "New Customer");
     UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
-    Result result = FakeApiHelper.doRequestWithAuthToken("DELETE", url,
-        defaultUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertBadRequest(result, "Invalid configUUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -150,23 +157,131 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInUseStorageConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
-    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(),
-                                              configUUID);
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
-    Result result = FakeApiHelper.doRequestWithAuthToken("DELETE", url,
-        defaultUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertInternalServerError(result, "Customer Configuration could not be deleted.");
     backup.delete();
-    Schedule schedule = ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(),
-                                                          configUUID);
-    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url,
-        defaultUser.createAuthToken());
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertInternalServerError(result, "Customer Configuration could not be deleted.");
     schedule.delete();
-    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url,
-        defaultUser.createAuthToken());
+    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditInUseStorageConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data =
+        Json.parse(
+            "{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY\", "
+                + "\"ACCESS_SECRET\": \"A-SECRET\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    backup.delete();
+    result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
+  }
+
+  @Test
+  public void testEditInvalidCustomerConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    Customer customer = ModelFactory.testCustomer("nc", "New Customer");
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+    assertBadRequest(result, "Invalid configUUID: " + configUUID);
+    assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
+  }
+
+  public void testValidPasswordPolicy() {
+    Result result = testPasswordPolicy(8, 1, 1, 1, 1);
+    assertOk(result);
+    assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testNegativePasswordPolicy() {
+    Result result = testPasswordPolicy(8, -1, 1, 1, 1);
+    assertBadRequest(
+        result, "{\"password policy\":[\"Minimal number of uppercase letters should be > 0\"]}");
+    assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditWithBackupLocation() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data =
+        Json.parse(
+            "{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY-NEW\", "
+                + "\"ACCESS_SECRET\": \"DATA\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    // Should not update the field BACKUP_LOCATION to "test".
+    assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
+    // SHould be updated and the API response should give asked data.
+    assertEquals("A-*****EW", json.get("data").get("ACCESS_KEY").textValue());
+    assertEquals("********", json.get("data").get("ACCESS_SECRET").textValue());
+  }
+
+  public void testInvalidPasswordPolicy() {
+    Result result = testPasswordPolicy(8, 3, 3, 2, 1);
+    assertBadRequest(
+        result,
+        "{\"password policy\":[\"Minimal length should be not less than"
+            + " the sum of minimal counts for upper case, lower case, digits and special characters\"]}");
+    assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  private Result testPasswordPolicy(
+      int minLength, int minUpperCase, int minLowerCase, int minDigits, int minSpecialCharacters) {
+    PasswordPolicyFormData passwordPolicyFormData = new PasswordPolicyFormData();
+    passwordPolicyFormData.setMinLength(minLength);
+    passwordPolicyFormData.setMinUppercase(minUpperCase);
+    passwordPolicyFormData.setMinLowercase(minLowerCase);
+    passwordPolicyFormData.setMinDigits(minDigits);
+    passwordPolicyFormData.setMinSpecialCharacters(minSpecialCharacters);
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("name", "password policy");
+    bodyJson.set("data", Json.toJson(passwordPolicyFormData));
+    bodyJson.put("type", "PASSWORD_POLICY");
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", url, defaultUser.createAuthToken(), bodyJson);
   }
 }

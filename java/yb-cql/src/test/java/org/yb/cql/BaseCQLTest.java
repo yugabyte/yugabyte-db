@@ -41,6 +41,7 @@ import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
+import org.yb.util.SanitizerUtil;
 import org.yb.util.StringUtil;
 
 import java.io.Closeable;
@@ -85,9 +86,9 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   /** Convenient default session for tests to use, cleaned after each test. */
   protected Session session;
 
-  /** To customize, override and use {@code super} call. */
+  @Override
   protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = new TreeMap<>();
+    Map<String, String> flagMap = super.getTServerFlags();
 
     flagMap.put("start_cql_proxy",
         String.valueOf(startCqlProxy));
@@ -98,30 +99,19 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     flagMap.put("cql_system_query_cache_empty_responses",
         String.valueOf(systemQueryCacheEmptyResponses));
     flagMap.put("client_read_write_timeout_ms",
-        String.valueOf(clientReadWriteTimeoutMs));
+        String.valueOf(SanitizerUtil.adjustTimeout(clientReadWriteTimeoutMs)));
 
     return flagMap;
-  }
-
-  /** To customize, override and use {@code super} call. */
-  protected Map<String, String> getMasterFlags() {
-    return new TreeMap<>();
   }
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
-      builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
-    }
-    for (Map.Entry<String, String> entry : getMasterFlags().entrySet()) {
-      builder.addMasterArgs("--" + entry.getKey() + "=" + entry.getValue());
-    }
     builder.enablePostgres(false);
     // Prevent YB server processes from closing connections which are idle for less than client
     // timeout period.
-    builder.addCommonArgs(String.format(
-        "--rpc_default_keepalive_time_ms=%d", cqlClientTimeoutMs + 5000));
+    builder.addCommonFlag("rpc_default_keepalive_time_ms",
+        String.valueOf(cqlClientTimeoutMs + 5000));
   }
 
   @BeforeClass
@@ -207,7 +197,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @Override
   protected void resetSettings() {
     super.resetSettings();
-    // TODO(alex): Move to a superclass
     startCqlProxy = true;
     startRedisProxy = false;
     systemQueryCacheEmptyResponses = false;
@@ -581,6 +570,19 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     assertEquals(expectedRows, actualRows);
   }
 
+  // Assert presence of expected rows while ensuring no duplicates exist in actual output.
+  protected void assertQueryWithoutDups(Statement stmt, Set<String> expectedRows) {
+    ResultSet rs = session.execute(stmt);
+    Set<String> actualRows = new HashSet<>();
+    int row_cnt = 0;
+    for (Row row : rs) {
+      row_cnt++;
+      actualRows.add(row.toString());
+    }
+    assertEquals(expectedRows, actualRows);
+    assertEquals(row_cnt, expectedRows.size());
+  }
+
   /**
    * Assert the result of a query when the order of the rows is not enforced.
    * To be used, for instance, when querying over multiple hashes where the order is defined by the
@@ -591,6 +593,21 @@ public class BaseCQLTest extends BaseMiniClusterTest {
    */
   protected void assertQueryRowsUnordered(String stmt, String... expectedRows) {
     assertQuery(stmt, Arrays.stream(expectedRows).collect(Collectors.toSet()));
+  }
+
+  /**
+   * Assert the result of a query when the order of the rows is not enforced.
+   * To be used, for instance, when querying over multiple hashes where the order is defined by the
+   * hash function not just the values. Also, ensure that there are no duplicates in the actual
+   * output.
+   *
+   * @param stmt The (select) query to be executed
+   * @param expectedRows the expected rows in no particular order
+   */
+  protected void assertQueryRowsUnorderedWithoutDups(String stmt,
+                                                     String... expectedRows) {
+    assertQueryWithoutDups(new SimpleStatement(stmt),
+      Arrays.stream(expectedRows).collect(Collectors.toSet()));
   }
 
   /**

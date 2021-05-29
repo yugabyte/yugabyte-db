@@ -10,10 +10,20 @@
 
 package com.yugabyte.yw.forms;
 
-public class YWError {
-  public final Object error;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 
-  public YWError(Object error) {
+// TODO: Move this as inner class of YWResults
+@ApiModel("Generic error response from Yugawware Platform API")
+public class YWError {
+  public final boolean success = false;
+
+  @ApiModelProperty(
+      value = "User visible unstructurred error message",
+      example = "There was a problem creating universe")
+  public final String error;
+
+  public YWError(String error) {
     this.error = error;
   }
 }

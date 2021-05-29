@@ -101,24 +101,26 @@ DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
+DECLARE_int32(ysql_transaction_abort_timeout_ms);
+
 namespace yb {
 namespace tablet {
 
-METRIC_DEFINE_histogram(tablet, op_prepare_queue_length, "Operation Prepare Queue Length",
+METRIC_DEFINE_histogram(table, op_prepare_queue_length, "Operation Prepare Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be prepared within this tablet. "
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.",
                         10000, 2);
 
-METRIC_DEFINE_histogram(tablet, op_prepare_queue_time, "Operation Prepare Queue Time",
+METRIC_DEFINE_histogram(table, op_prepare_queue_time, "Operation Prepare Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the prepare queue before being "
                         "processed. High queue times indicate that the server is unable to "
                         "process operations as fast as they are being written to the WAL.",
                         10000000, 2);
 
-METRIC_DEFINE_histogram(tablet, op_prepare_run_time, "Operation Prepare Run Time",
+METRIC_DEFINE_histogram(table, op_prepare_run_time, "Operation Prepare Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being prepared in the tablet. "
                         "High values may indicate that the server is under-provisioned or "
@@ -184,11 +186,11 @@ Status TabletPeer::InitTabletPeer(
     Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<Log>& log,
-    const scoped_refptr<MetricEntity>& metric_entity,
+    const scoped_refptr<MetricEntity>& table_metric_entity,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
-    consensus::RetryableRequests* retryable_requests,
-    const consensus::SplitOpInfo& split_op_info) {
+    consensus::RetryableRequests* retryable_requests) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -250,14 +252,15 @@ Status TabletPeer::InitTabletPeer(
                                           meta_->fs_manager()->uuid(), &cmeta));
 
     if (retryable_requests) {
-      retryable_requests->SetMetricEntity(tablet->GetMetricEntity());
+      retryable_requests->SetMetricEntity(tablet->GetTabletMetricsEntity());
     }
 
     consensus_ = RaftConsensus::Create(
         options,
         std::move(cmeta),
         local_peer_pb_,
-        metric_entity,
+        table_metric_entity,
+        tablet_metric_entity,
         clock_,
         this,
         messenger,
@@ -268,8 +271,7 @@ Status TabletPeer::InitTabletPeer(
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
-        retryable_requests,
-        split_op_info);
+        retryable_requests);
     has_consensus_.store(true, std::memory_order_release);
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
@@ -285,7 +287,7 @@ Status TabletPeer::InitTabletPeer(
 
   if (tablet_->metrics() != nullptr) {
     TRACE("Starting instrumentation");
-    operation_tracker_.StartInstrumentation(tablet_->GetMetricEntity());
+    operation_tracker_.StartInstrumentation(tablet_->GetTabletMetricsEntity());
   }
   operation_tracker_.StartMemoryTracking(tablet_->mem_tracker());
 
@@ -373,6 +375,10 @@ uint64_t TabletPeer::NumSSTFiles() {
 
 void TabletPeer::ListenNumSSTFilesChanged(std::function<void()> listener) {
   tablet_->ListenNumSSTFilesChanged(std::move(listener));
+}
+
+Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
+  return tablet_->CheckOperationAllowed(op_id, op_type);
 }
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
@@ -525,12 +531,35 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-void TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  if (StartShutdown()) {
+Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
+  bool isShutdownInitiated = StartShutdown();
+
+  RETURN_NOT_OK(AbortSQLTransactions());
+
+  if (isShutdownInitiated) {
     CompleteShutdown(is_drop_table);
   } else {
     WaitUntilShutdown();
   }
+  return Status::OK();
+}
+
+Status TabletPeer::AbortSQLTransactions() {
+  // Once raft group state enters QUIESCING state,
+  // new queries cannot be processed from then onwards.
+  // Aborting any remaining active transactions in the tablet.
+  if (tablet_ && tablet_->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    if (tablet_->transaction_participant()) {
+      HybridTime maxCutoff = HybridTime::kMax;
+      LOG(INFO) << "Aborting transactions that started prior to " << maxCutoff
+                << " for tablet id " << tablet_->tablet_id();
+      CoarseTimePoint deadline = CoarseMonoClock::Now() +
+          MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
+      WARN_NOT_OK(tablet_->transaction_participant()->StopActiveTxnsPriorTo(maxCutoff, deadline),
+                  "Cannot abort transactions for tablet " + tablet_->tablet_id());
+    }
+  }
+  return Status::OK();
 }
 
 Status TabletPeer::CheckRunning() const {
@@ -638,8 +667,12 @@ HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
       /* min_allowed= */ HybridTime::kMin, /* deadline= */ CoarseTimePoint::min());
 }
 
+Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
+  return tablet_->SafeTime(RequireLease::kFallbackToFollower, safe_time, deadline);
+}
+
 void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
-  consensus_->GetLastCommittedOpId().ToPB(&data->op_id);
+  data->op_id = consensus_->GetLastCommittedOpId();
   data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
 }
 
@@ -667,6 +700,10 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
   status_pb_out->set_state(state_);
   status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
+  auto tablet = tablet_;
+  if (tablet) {
+    status_pb_out->set_table_type(tablet->table_type());
+  }
   disk_size_info.ToPB(status_pb_out);
 }
 
@@ -870,19 +907,6 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     }
   }
 
-  {
-    // We should prevent Raft log GC from deleting SPLIT_OP designated for this tablet, because
-    // it is used during bootstrap to initialize ReplicaState::split_op_id_ which in its turn
-    // is used to prevent already split tablet from serving new ops.
-    auto split_op_id = consensus()->GetSplitOpId();
-    if (!split_op_id.empty()) {
-      min_index = std::min(min_index, split_op_id.index);
-      if (details) {
-        *details += Format("split_op_id: $0\n", split_op_id.index);
-      }
-    }
-  }
-
   if (details) {
     *details += Format("Earliest needed log index: $0\n", min_index);
   }
@@ -990,7 +1014,7 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
        DCHECK(replicate_msg->has_split_request()) << "SPLIT_OP replica"
           " operation must receive an SplitOpRequestPB";
       return std::make_unique<SplitOperation>(
-          std::make_unique<SplitOperationState>(tablet(), raft_consensus(), tablet_splitter_));
+          std::make_unique<SplitOperationState>(tablet(), tablet_splitter_));
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
@@ -1023,7 +1047,6 @@ Status TabletPeer::StartReplicaOperation(
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
-  auto operation_type = operation->operation_type();
   OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
   // Unretained is required to avoid a refcount cycle.
@@ -1032,11 +1055,6 @@ Status TabletPeer::StartReplicaOperation(
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
-  }
-
-  if (operation_type == OperationType::kWrite ||
-      operation_type == OperationType::kUpdateTransaction) {
-    tablet()->mvcc_manager()->AddPending(&ht);
   }
 
   driver->ExecuteAsync();
@@ -1071,14 +1089,22 @@ shared_ptr<consensus::Consensus> TabletPeer::shared_consensus() const {
   return consensus_;
 }
 
+shared_ptr<consensus::RaftConsensus> TabletPeer::shared_raft_consensus() const {
+  std::lock_guard<simple_spinlock> lock(lock_);
+  return consensus_;
+}
+
 Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
     std::unique_ptr<Operation>* operation, int64_t term) {
+  if (term == OpId::kUnknownTerm) {
+    return STATUS(InvalidArgument, "Leader operation driver for unknown term");
+  }
   return NewOperationDriver(operation, term);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewReplicaOperationDriver(
     std::unique_ptr<Operation>* operation) {
-  return NewOperationDriver(operation, yb::OpId::kUnknownTerm);
+  return NewOperationDriver(operation, OpId::kUnknownTerm);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewOperationDriver(std::unique_ptr<Operation>* operation,
@@ -1130,8 +1156,9 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
         tablet_->GetCurrentVersionSstFilesUncompressedSize();
   }
 
-  if (log_) {
-    info.wal_files_disk_size = log_->OnDiskSize();
+  auto log = log_atomic_.load(std::memory_order_acquire);
+  if (log) {
+    info.wal_files_disk_size = log->OnDiskSize();
   }
 
   info.RecomputeTotalSize();
@@ -1139,7 +1166,8 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
 }
 
 int TabletPeer::GetNumLogSegments() const {
-  return (log_) ? log_->num_segments() : 0;
+  auto log = log_atomic_.load(std::memory_order_acquire);
+  return log ? log->num_segments() : 0;
 }
 
 std::string TabletPeer::LogPrefix() const {
@@ -1153,7 +1181,6 @@ scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
       consensus_.get(),
       log_.get(),
       prepare_thread_.get(),
-      &operation_order_verifier_,
       tablet_->table_type()));
 }
 
@@ -1164,6 +1191,10 @@ int64_t TabletPeer::LeaderTerm() const {
     consensus = consensus_;
   }
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
+}
+
+Result<HybridTime> TabletPeer::LeaderSafeTime() const {
+  return tablet_->SafeTime();
 }
 
 consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
@@ -1181,7 +1212,7 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 
-TableType TabletPeer::table_type() {
+TableType TabletPeer::table_type() EXCLUDES(lock_) {
   // TODO: what if tablet is not set?
   return DCHECK_NOTNULL(tablet())->table_type();
 }
@@ -1242,28 +1273,22 @@ bool TabletPeer::CanBeDeleted() {
     return can_be_deleted_;
   }
 
-  const auto split_op_id = consensus_->GetSplitOpId();
-  const auto all_applied_op_id = consensus_->GetAllAppliedOpId();
-  VLOG_WITH_PREFIX_AND_FUNC(4) << "split_op_id: " << split_op_id
-                               << " all_applied_op_id: " << all_applied_op_id;
-  if (split_op_id.empty() || all_applied_op_id < split_op_id) {
-    return can_be_deleted_;
-  }
   const auto tablet_data_state = tablet()->metadata()->tablet_data_state();
   if (tablet_data_state != TABLET_DATA_SPLIT_COMPLETED) {
-    YB_LOG_WITH_PREFIX_EVERY_N_SECS(DFATAL, 5) << Format(
-        "Expected tablet $0 data state to be TABLET_DATA_SPLIT_COMPLETED, but got: $1. "
-        "all_applied_op_id: $2, split_op_id: $3",
-        tablet_id(), TabletDataState_Name(tablet_data_state), all_applied_op_id,
-        consensus_->GetSplitOpId());
-    return can_be_deleted_;
+    return false;
+  }
+
+  const auto all_applied_op_id = consensus_->GetAllAppliedOpId();
+  const auto committed_op_id = consensus_->GetLastCommittedOpId();
+  if (all_applied_op_id < committed_op_id) {
+    return false;
   }
 
   can_be_deleted_ = true;
   LOG_WITH_PREFIX(INFO) << Format(
       "Marked tablet $0 as requiring cleanup due to all replicas have been split (all applied op "
-      "ID: $1, split op ID: $2)",
-      tablet_id(), all_applied_op_id, split_op_id);
+      "ID: $1, committed op ID: $2)",
+      tablet_id(), all_applied_op_id, committed_op_id);
 
   return can_be_deleted_;
 }

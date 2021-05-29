@@ -67,6 +67,8 @@ class PgApiImpl {
     return async_client_init_.client();
   }
 
+  void ResetCatalogReadTime();
+
   // Initialize ENV within which PGSQL calls will be executed.
   CHECKED_STATUS CreateEnv(PgEnv **pg_env);
   CHECKED_STATUS DestroyEnv(PgEnv *pg_env);
@@ -294,11 +296,6 @@ class PgApiImpl {
                               bool if_exist,
                               PgStatement **handle);
 
-  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
-      const PgObjectId& table_id,
-      const PgObjectId& index_id,
-      const IndexPermissions& target_index_permissions);
-
   CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
 
   CHECKED_STATUS ExecPostponedDdlStmt(PgStatement *handle);
@@ -423,6 +420,13 @@ class PgApiImpl {
   CHECKED_STATUS ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
+  // Analyze.
+  CHECKED_STATUS NewAnalyze(const PgObjectId& table_id,
+                           PgStatement **handle);
+
+  CHECKED_STATUS ExecAnalyze(PgStatement *handle, int32_t* rows);
+
+  //------------------------------------------------------------------------------------------------
   // Transaction control.
   PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
 
@@ -474,6 +478,7 @@ class PgApiImpl {
 
   // Foreign key reference caching.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
+  void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
   Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
   void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
 

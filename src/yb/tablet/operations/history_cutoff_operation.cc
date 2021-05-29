@@ -29,11 +29,10 @@ void HistoryCutoffOperationState::UpdateRequestFromConsensusRound() {
   UseRequest(&consensus_round()->replicate_msg()->history_cutoff());
 }
 
-Status HistoryCutoffOperationState::Replicated(int64_t leader_term) {
+Status HistoryCutoffOperationState::Apply(int64_t leader_term) {
   HybridTime history_cutoff(request()->history_cutoff());
 
-  VLOG_WITH_PREFIX(2)
-      << "History cutoff replicated " << yb::OpId::FromPB(op_id()) << ": " << history_cutoff;
+  VLOG_WITH_PREFIX(2) << "History cutoff replicated " << op_id() << ": " << history_cutoff;
 
   history_cutoff = tablet()->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
   auto regular_db = tablet()->doc_db().regular;
@@ -60,16 +59,10 @@ Status HistoryCutoffOperation::Prepare() {
   return Status::OK();
 }
 
-void HistoryCutoffOperation::DoStart() {
-  VLOG_WITH_PREFIX(2) << "DoStart";
-
-  state()->TrySetHybridTimeFromClock();
-}
-
 Status HistoryCutoffOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   VLOG_WITH_PREFIX(2) << "Replicated";
 
-  return state()->Replicated(leader_term);
+  return state()->Apply(leader_term);
 }
 
 string HistoryCutoffOperation::ToString() const {

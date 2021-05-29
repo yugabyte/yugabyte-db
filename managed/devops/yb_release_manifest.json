@@ -7,6 +7,7 @@
     "python_requirements_frozen.txt",
     "python3_requirements_frozen.txt",
     "python*_modules.tar.gz",
+    "preprovision.yml",
     "use_custom_ssh_port.yml",
     "yb-server-ctl.yml",
     "yb-server-provision.yml",
@@ -26,7 +27,9 @@
     "bin/yb_backup.py",
     "bin/yb_platform_backup.sh",
     "bin/ybcloud.sh",
-    "bin/edit_universe_details.py"
+    "bin/edit_universe_details.py",
+    "bin/support_package.py",
+    "bin/support_package_utils.py"
   ],
   "filter_plugins": [
     "filter_plugins/*"

@@ -620,15 +620,17 @@ class DB {
 
   virtual Status SetOptions(
       ColumnFamilyHandle* /*column_family*/,
-      const std::unordered_map<std::string, std::string>& /*new_options*/) {
+      const std::unordered_map<std::string, std::string>& /*new_options*/,
+      bool dump_options = true) {
     return STATUS(NotSupported, "Not implemented");
   }
   virtual Status SetOptions(
-      const std::unordered_map<std::string, std::string>& new_options) {
-    return SetOptions(DefaultColumnFamily(), new_options);
+      const std::unordered_map<std::string, std::string>& new_options, bool dump_options = true) {
+    return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
   virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
   // compacts them to the specified level. Note that the behavior is different
@@ -794,6 +796,9 @@ class DB {
   // instance.
   virtual uint64_t GetCurrentVersionSstFilesSize() { return 0; }
   virtual uint64_t GetCurrentVersionSstFilesUncompressedSize() { return 0; }
+  virtual std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() {
+    return std::pair<uint64_t, uint64_t>(0, 0);
+  }
 
   // Returns total number of SST Files.
   virtual uint64_t GetCurrentVersionNumSSTFiles() { return 0; }

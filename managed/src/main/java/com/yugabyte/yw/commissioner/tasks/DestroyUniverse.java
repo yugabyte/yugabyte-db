@@ -11,6 +11,9 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionLabel;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,9 +26,11 @@ import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup;
 
 import play.api.Play;
 
+import java.util.List;
 import java.util.UUID;
 
 public class DestroyUniverse extends UniverseTaskBase {
@@ -34,10 +39,11 @@ public class DestroyUniverse extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
     public Boolean isForceDelete;
+    public Boolean isDeleteBackups;
   }
 
   public Params params() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -52,19 +58,25 @@ public class DestroyUniverse extends UniverseTaskBase {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1, true);
       } else {
-        universe = lockUniverseForUpdate(-1 , true);
+        universe = lockUniverseForUpdate(-1, true);
+      }
+
+      if (params().isDeleteBackups) {
+        List<Backup> backupList =
+            Backup.fetchByUniverseUUID(params().customerUUID, universe.universeUUID);
+        createDeleteBackupTasks(backupList, params().customerUUID)
+            .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
       // Cleanup the kms_history table
       createDestroyEncryptionAtRestTask()
-              .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Update the DNS entry for primary cluster to mirror creation.
         Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-        createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                  primaryCluster.userIntent.providerType, primaryCluster.userIntent.provider,
-                                  primaryCluster.userIntent.universeName)
+        createDnsManipulationTask(
+                DnsManager.DnsCommandType.Delete, params().isForceDelete, primaryCluster.userIntent)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.onprem)) {
@@ -77,15 +89,12 @@ public class DestroyUniverse extends UniverseTaskBase {
 
         // Create tasks to destroy the existing nodes.
         createDestroyServerTasks(
-          universe.getNodes(),
-          params().isForceDelete,
-          true /* delete node */
-        ).setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+                universe.getNodes(), params().isForceDelete, true /* delete node */)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
       // Create tasks to remove the universe entry from the Universe table.
-      createRemoveUniverseEntryTask()
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      createRemoveUniverseEntryTask().setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(true /* removeFile */);
@@ -95,6 +104,10 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       AlertManager alertManager = Play.current().injector().instanceOf(AlertManager.class);
       alertManager.resolveAlerts(params().customerUUID, params().universeUUID, "%");
+      AlertDefinition.delete(
+          params().customerUUID,
+          new AlertDefinitionLabel(
+              KnownAlertLabels.UNIVERSE_UUID, params().universeUUID.toString()));
 
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update

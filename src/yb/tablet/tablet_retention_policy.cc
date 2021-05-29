@@ -24,7 +24,7 @@
 
 using namespace std::literals;
 
-DEFINE_int32(timestamp_history_retention_interval_sec, 120,
+DEFINE_int32(timestamp_history_retention_interval_sec, 900,
              "The time interval in seconds to retain DocDB history for. Point-in-time reads at a "
              "hybrid time further than this in the past might not be allowed after a compaction. "
              "Set this to be higher than the expected maximum duration of any single transaction "

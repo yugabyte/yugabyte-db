@@ -329,18 +329,10 @@ void PreparerImpl::ReplicateSubBatch(
   // Operation successfully processed by ReplicateBatch, but ReplicateBatch did not return yet.
   // Submit of follower side operation is called from another thread.
   bool should_fail = prepare_should_fail_.load(std::memory_order_acquire);
-  const Status s = consensus_->ReplicateBatch(&rounds_to_replicate_);
+  const Status s = consensus_->ReplicateBatch(rounds_to_replicate_);
   rounds_to_replicate_.clear();
 
-  if (PREDICT_FALSE(!s.ok())) {
-    VLOG(1) << "ReplicateBatch failed with status " << s.ToString()
-            << ", treating all " << std::distance(batch_begin, batch_end) << " operations as "
-            << "failed with that status";
-    // Treat all the operations in the batch as failed.
-    for (auto batch_iter = batch_begin; batch_iter != batch_end; ++batch_iter) {
-      (*batch_iter)->ReplicationFailed(s);
-    }
-  } else if (should_fail) {
+  if (s.ok() && should_fail) {
     LOG(DFATAL) << "Operations should fail, but was successfully prepared: "
                 << AsString(boost::make_iterator_range(batch_begin, batch_end));
   }

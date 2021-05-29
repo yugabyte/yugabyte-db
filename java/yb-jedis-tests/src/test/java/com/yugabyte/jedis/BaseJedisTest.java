@@ -195,7 +195,7 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
 
     // TODO(bogdan): Fake sleep until after #4663 is fixed, as we're seeing issues with test work
     // starting, while initial leaders are still moving.
-    Thread.sleep((long)(10000 * SanitizerUtil.getTimeoutMultiplier()));
+    Thread.sleep(SanitizerUtil.adjustTimeout(10000));
 
     GetTableSchemaResponse tableSchema = miniCluster.getClient().getTableSchema(
         YBClient.REDIS_KEYSPACE_NAME, tableName);
@@ -285,7 +285,7 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
     }
   }
 
-  protected void readAndWriteFromDBs(Collection<String> dbs, int numKeys) throws Exception {
+  protected void readAndWriteFromDBs(List<String> dbs, int numKeys) throws Exception {
     RandomStringGenerator generator = new RandomStringGenerator.Builder()
         .withinRange('a', 'z').build();
     ArrayList<String> keys = new ArrayList<String>(numKeys);

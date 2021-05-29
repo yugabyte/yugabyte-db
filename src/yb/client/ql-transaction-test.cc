@@ -24,6 +24,8 @@
 
 #include "yb/consensus/consensus.h"
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/rpc/rpc.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -517,7 +519,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
       write_ops[i].push_back(ASSERT_RESULT(WriteRow(
           sessions.back(), r, i, WriteOpType::INSERT, Flush::kFalse)));
     }
-    session->FlushAsync([&latch](const Status& status) { latch.CountDown(); });
+    session->FlushAsync([&latch](FlushStatus* flush_status) { latch.CountDown(); });
   }
   latch.Wait();
 
@@ -627,11 +629,14 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
   struct ActiveTransaction {
     YBTransactionPtr transaction;
     YBSessionPtr session;
-    std::future<Status> flush_future;
+    std::future<FlushStatus> flush_future;
     std::future<Status> commit_future;
 
     std::string ToString() const {
-      return transaction ? transaction->ToString() : "no-txn";
+      ANNOTATE_IGNORE_READS_BEGIN();
+      auto str = transaction ? transaction->ToString() : "no-txn";
+      ANNOTATE_IGNORE_READS_END();
+      return str;
     }
   };
 
@@ -691,16 +696,15 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
 
     auto w = active_transactions.begin();
     for (auto i = active_transactions.begin(); i != active_transactions.end(); ++i) {
-      const auto txn_id = i->ToString();
       if (!i->commit_future.valid()) {
         if (IsReady(i->flush_future)) {
-          auto flush_status = i->flush_future.get();
+          auto flush_status = i->flush_future.get().status;
           if (!flush_status.ok()) {
-            LOG(INFO) << "TXN: " << txn_id << ", flush failed: " << flush_status;
+            LOG(INFO) << "TXN: " << i->ToString() << ", flush failed: " << flush_status;
             continue;
           }
           ++flushed;
-          LOG(INFO) << "TXN: " << txn_id << ", flushed";
+          LOG(INFO) << "TXN: " << i->ToString() << ", flushed";
           if (!i->transaction) {
             ++written;
             continue;
@@ -710,10 +714,10 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
       } else if (IsReady(i->commit_future)) {
         auto commit_status = i->commit_future.get();
         if (!commit_status.ok()) {
-          LOG(INFO) << "TXN: " << txn_id << ", commit failed: " << commit_status;
+          LOG(INFO) << "TXN: " << i->ToString() << ", commit failed: " << commit_status;
           continue;
         }
-        LOG(INFO) << "TXN: " << txn_id << ", committed";
+        LOG(INFO) << "TXN: " << i->ToString() << ", committed";
         ++written;
         continue;
       }
@@ -1312,8 +1316,8 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
       for (size_t key = 0; key != kWriteThreads; ++key) {
         reads[j].push_back(ReadRow(session, key));
       }
-      session->FlushAsync([&latch](const Status& status) {
-        ASSERT_OK(status);
+      session->FlushAsync([&latch](FlushStatus* flush_status) {
+        ASSERT_OK(flush_status->status);
         latch.CountDown();
       });
     }

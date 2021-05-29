@@ -57,6 +57,9 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
+import io.swagger.annotations.*;
+
+@Api
 public class ImportController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ImportController.class);
 
@@ -72,22 +75,19 @@ public class ImportController extends AuthenticatedController {
   // Expected string for node exporter http request.
   private static final String NODE_EXPORTER_RESP = "Node Exporter";
 
-  @Inject
-  FormFactory formFactory;
+  @Inject FormFactory formFactory;
 
-  @Inject
-  YBClientService ybService;
+  @Inject YBClientService ybService;
 
-  @Inject
-  ApiHelper apiHelper;
+  @Inject ApiHelper apiHelper;
 
-  @Inject
-  ConfigHelper configHelper;
+  @Inject ConfigHelper configHelper;
 
+  @ApiOperation(value = "import", response = Object.class)
   public Result importUniverse(UUID customerUUID) {
     // Get the submitted form data.
     Form<ImportUniverseFormData> formData =
-      formFactory.form(ImportUniverseFormData.class).bindFromRequest();
+        formFactory.form(ImportUniverseFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
@@ -101,7 +101,7 @@ public class ImportController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid customer uuid : " + customerUUID.toString());
     }
 
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
 
     if (importForm.singleStep) {
       importForm.currentState = State.BEGIN;
@@ -125,8 +125,8 @@ public class ImportController extends AuthenticatedController {
         case FINISHED:
           return ApiResponse.success(results);
         default:
-          return ApiResponse.error(BAD_REQUEST,
-            "Unknown current state: " + importForm.currentState.toString());
+          return ApiResponse.error(
+              BAD_REQUEST, "Unknown current state: " + importForm.currentState.toString());
       }
     }
   }
@@ -135,9 +135,9 @@ public class ImportController extends AuthenticatedController {
   // Returns null if there are parsing or invalid port errors.
   private Map<String, Integer> getMastersList(String masterAddresses) {
     Map<String, Integer> userMasterIpPorts = new HashMap<>();
-    String nodesList[] = masterAddresses.split(",");
+    String[] nodesList = masterAddresses.split(",");
     for (String hostPort : nodesList) {
-      String parts[] = hostPort.split(":");
+      String[] parts = hostPort.split(":");
       if (parts.length != 2) {
         LOG.error("Incorrect host:port format: " + hostPort);
         return null;
@@ -158,70 +158,63 @@ public class ImportController extends AuthenticatedController {
 
   // Helper function to verify masters are up and running on the saved set of nodes.
   // Returns true if there are no errors.
-  private boolean verifyMastersRunning(UniverseDefinitionTaskParams taskParams,
-                                       ObjectNode results) {
-    UniverseDefinitionTaskBase checkMasters = new UniverseDefinitionTaskBase() {
-      @Override
-      public void run() {
-        try {
-          // Create the task list sequence.
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-          // Get the list of masters.
-          // Note that at this point, we have only added the masters into the cluster.
-          Set<NodeDetails> masterNodes =
-            taskParams().getNodesInCluster(taskParams().getPrimaryCluster().uuid);
-          // Wait for new masters to be responsive.
-          createWaitForServersTasks(masterNodes, ServerType.MASTER, RPC_TIMEOUT_MS);
-          // Run the task.
-          subTaskGroupQueue.run();
-        } catch (Throwable t) {
-          LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-          throw t;
-        }
-      }
-    };
+  private boolean verifyMastersRunning(
+      UniverseDefinitionTaskParams taskParams, ObjectNode results) {
+    UniverseDefinitionTaskBase checkMasters =
+        new UniverseDefinitionTaskBase() {
+          @Override
+          public void run() {
+            try {
+              // Create the task list sequence.
+              subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+              // Get the list of masters.
+              // Note that at this point, we have only added the masters into the cluster.
+              Set<NodeDetails> masterNodes =
+                  taskParams().getNodesInCluster(taskParams().getPrimaryCluster().uuid);
+              // Wait for new masters to be responsive.
+              createWaitForServersTasks(masterNodes, ServerType.MASTER, RPC_TIMEOUT_MS);
+              // Run the task.
+              subTaskGroupQueue.run();
+            } catch (Throwable t) {
+              LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+              throw t;
+            }
+          }
+        };
     checkMasters.initialize(taskParams);
     // Execute the task. If it fails, sets the error in the results.
-    if (!executeITask(checkMasters, "check_masters_are_running", results)) {
-      return false;
-    }
-    return true;
+    return executeITask(checkMasters, "check_masters_are_running", results);
   }
 
   // Helper function to check that a master leader exists.
   // Returns true if there are no errors.
-  private boolean verifyMasterLeaderExists(UniverseDefinitionTaskParams taskParams,
-                                           ObjectNode results) {
-    UniverseDefinitionTaskBase checkMasterLeader = new UniverseDefinitionTaskBase() {
-      @Override
-      public void run() {
-        try {
-          // Create the task list sequence.
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-          // Wait for new masters to be responsive.
-          createWaitForMasterLeaderTask();
-          // Run the task.
-          subTaskGroupQueue.run();
-        } catch (Throwable t) {
-          LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-          throw t;
-        }
-      }
-    };
+  private boolean verifyMasterLeaderExists(
+      UniverseDefinitionTaskParams taskParams, ObjectNode results) {
+    UniverseDefinitionTaskBase checkMasterLeader =
+        new UniverseDefinitionTaskBase() {
+          @Override
+          public void run() {
+            try {
+              // Create the task list sequence.
+              subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+              // Wait for new masters to be responsive.
+              createWaitForMasterLeaderTask();
+              // Run the task.
+              subTaskGroupQueue.run();
+            } catch (Throwable t) {
+              LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+              throw t;
+            }
+          }
+        };
     checkMasterLeader.initialize(taskParams);
     // Execute the task. If it fails, return an error.
-    if (!executeITask(checkMasterLeader, "check_master_leader_election", results)) {
-      return false;
-    }
-    return true;
+    return executeITask(checkMasterLeader, "check_master_leader_election", results);
   }
 
-  /**
-   * Given the master addresses, create a basic universe object.
-   */
-  private Result importUniverseMasters(ImportUniverseFormData importForm,
-                                       Customer customer,
-                                       ObjectNode results) {
+  /** Given the master addresses, create a basic universe object. */
+  private Result importUniverseMasters(
+      ImportUniverseFormData importForm, Customer customer, ObjectNode results) {
     String universeName = importForm.universeName;
     String masterAddresses = importForm.masterAddresses;
 
@@ -239,45 +232,58 @@ public class ImportController extends AuthenticatedController {
 
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Get the user specified master node ips.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     Map<String, Integer> userMasterIpPorts = getMastersList(masterAddresses);
     if (userMasterIpPorts == null) {
-      return ApiResponse.error(BAD_REQUEST, "Could not parse host:port from masterAddresseses: " +
-        masterAddresses);
+      return ApiResponse.error(
+          BAD_REQUEST, "Could not parse host:port from masterAddresseses: " + masterAddresses);
     }
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Create a universe object in the DB with the information so far: master info, cloud, etc.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     Universe universe = null;
     UniverseDefinitionTaskParams taskParams = null;
     // Attempt to find an existing universe with this id
     if (importForm.universeUUID != null) {
-      try {
-        universe = Universe.get(importForm.universeUUID);
-      } catch (Exception e) {
-        universe = null;
-      }
+      universe = Universe.maybeGet(importForm.universeUUID).orElse(null);
     }
 
     try {
       if (null == universe) {
-        universe = createNewUniverseForImport(customer, importForm,
-          Util.getNodePrefix(customer.getCustomerId(),
-            universeName),
-          universeName, userMasterIpPorts);
+        universe =
+            createNewUniverseForImport(
+                customer,
+                importForm,
+                Util.getNodePrefix(customer.getCustomerId(), universeName),
+                universeName,
+                userMasterIpPorts);
       }
-      Provider provider = Provider.get(customer.uuid, importForm.providerType);
+
+      List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+      Provider provider = null;
+      if (!providerList.isEmpty()) {
+        provider = providerList.get(0);
+      } else {
+        // Understand about this better.
+        results.with("checks").put("is_provider_present", "FAILURE");
+        results.put(
+            "error",
+            String.format(
+                "Providers for the customer: %s and type: %s" + " are not present",
+                customer.uuid, importForm.providerType));
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
+      }
+
       Region region = Region.getByCode(provider, importForm.regionCode);
       AvailabilityZone zone = AvailabilityZone.getByCode(provider, importForm.zoneCode);
       taskParams = universe.getUniverseDetails();
       // Update the universe object and refresh it.
-      universe = addServersToUniverse(
-        userMasterIpPorts, taskParams,
-        provider, region, zone, true /*isMaster*/
-      );
+      universe =
+          addServersToUniverse(
+              userMasterIpPorts, taskParams, provider, region, zone, true /*isMaster*/);
       results.with("checks").put("create_db_entry", "OK");
       results.put("universeUUID", universe.universeUUID.toString());
     } catch (Exception e) {
@@ -287,16 +293,16 @@ public class ImportController extends AuthenticatedController {
     }
     taskParams = universe.getUniverseDetails();
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Verify the master processes are running on the master nodes.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     if (!verifyMastersRunning(taskParams, results)) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
     }
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Wait for the master leader election if needed.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     if (!verifyMasterLeaderExists(taskParams, results)) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
     }
@@ -305,51 +311,45 @@ public class ImportController extends AuthenticatedController {
 
     LOG.info("Done importing masters " + masterAddresses);
     results.put("state", State.IMPORTED_MASTERS.toString());
-    results.put("universeName", universeName.toString());
-    results.put("masterAddresses", masterAddresses.toString());
+    results.put("universeName", universeName);
+    results.put("masterAddresses", masterAddresses);
 
     return ApiResponse.success(results);
   }
 
   private void setImportedState(Universe universe, ImportedState newState) {
-    UniverseUpdater updater = new UniverseUpdater() {
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails.importedState = newState;
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            universeDetails.importedState = newState;
+            universe.setUniverseDetails(universeDetails);
+          }
+        };
     Universe.saveDetails(universe.universeUUID, updater, false);
   }
 
-  /**
-   * Import the various tablet servers from the masters.
-   */
-  private Result importUniverseTservers(ImportUniverseFormData importForm,
-                                        Customer customer,
-                                        ObjectNode results) {
+  /** Import the various tablet servers from the masters. */
+  private Result importUniverseTservers(
+      ImportUniverseFormData importForm, Customer customer, ObjectNode results) {
     String masterAddresses = importForm.masterAddresses;
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
-      results.put("error", "Valid universe uuid needs to be set instead of " +
-        importForm.universeUUID);
+      results.put(
+          "error", "Valid universe uuid needs to be set instead of " + importForm.universeUUID);
       return ApiResponse.error(BAD_REQUEST, results);
     }
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
-    Universe universe = null;
-    try {
-      universe = Universe.get(importForm.universeUUID);
-    } catch (RuntimeException re) {
-      String errMsg = "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
-      LOG.error(errMsg);
-      results.put("error", errMsg);
-      return ApiResponse.error(BAD_REQUEST, results);
-    }
+    Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.MASTERS_ADDED) {
-      results.put("error", "Unexpected universe state " + curState.name() + " expecteed " +
-        ImportedState.MASTERS_ADDED.name());
+      results.put(
+          "error",
+          "Unexpected universe state "
+              + curState.name()
+              + " expecteed "
+              + ImportedState.MASTERS_ADDED.name());
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
@@ -357,9 +357,9 @@ public class ImportController extends AuthenticatedController {
     // TODO: move this into a common location.
     results.put("universeUUID", universe.universeUUID.toString());
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Verify tservers count and list.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     Map<String, Integer> tservers_list = getTServers(masterAddresses, results);
     if (tservers_list.isEmpty()) {
       results.put("error", "No tservers known to the master leader in " + masterAddresses);
@@ -373,69 +373,82 @@ public class ImportController extends AuthenticatedController {
       arrayNode.add(tserver);
     }
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Update the universe object in the DB with new information : complete set of nodes.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Find the provider, region and zone. These should have been created during master info update.
-    Provider provider = Provider.get(customer.uuid, importForm.providerType);
+    List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+    Provider provider = null;
+    if (!providerList.isEmpty()) {
+      provider = providerList.get(0);
+    } else {
+      // Understand about this better.
+      results.with("checks").put("is_provider_present", "FAILURE");
+      results.put(
+          "error",
+          String.format(
+              "Providers for the customer: %s and type: %s" + " are not present",
+              customer.uuid, importForm.providerType));
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
+    }
+
     Region region = Region.getByCode(provider, importForm.regionCode);
     AvailabilityZone zone = AvailabilityZone.getByCode(provider, importForm.zoneCode);
     // Update the universe object and refresh it.
-    universe = addServersToUniverse(
-      tservers_list, taskParams, provider,
-      region, zone, false /*isMaster*/
-    );
+    universe =
+        addServersToUniverse(tservers_list, taskParams, provider, region, zone, false /*isMaster*/);
     // Refresh the universe definition object as well.
     taskParams = universe.getUniverseDetails();
 
-
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Verify that the tservers processes are running.
-    //---------------------------------------------------------------------------------------------
-    UniverseDefinitionTaskBase checkTservers = new UniverseDefinitionTaskBase() {
-      @Override
-      public void run() {
-        try {
-          // Create the task list sequence.
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-          // Get the list of tservers.
-          Set<NodeDetails> tserverNodes =
-            taskParams().getNodesInCluster(taskParams().getPrimaryCluster().uuid);
-          // Wait for tservers to be responsive.
-          createWaitForServersTasks(tserverNodes, ServerType.TSERVER);
-          // Run the task.
-          subTaskGroupQueue.run();
-        } catch (Throwable t) {
-          LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-          throw t;
-        }
-      }
-    };
+    // ---------------------------------------------------------------------------------------------
+    UniverseDefinitionTaskBase checkTservers =
+        new UniverseDefinitionTaskBase() {
+          @Override
+          public void run() {
+            try {
+              // Create the task list sequence.
+              subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+              // Get the list of tservers.
+              Set<NodeDetails> tserverNodes =
+                  taskParams().getNodesInCluster(taskParams().getPrimaryCluster().uuid);
+              // Wait for tservers to be responsive.
+              createWaitForServersTasks(tserverNodes, ServerType.TSERVER);
+              // Run the task.
+              subTaskGroupQueue.run();
+            } catch (Throwable t) {
+              LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+              throw t;
+            }
+          }
+        };
     checkTservers.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(checkTservers, "check_tservers_are_running", results)) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
     }
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Wait for all these tservers to heartbeat to the master leader.
-    //---------------------------------------------------------------------------------------------
-    UniverseDefinitionTaskBase waitForTserverHBs = new UniverseDefinitionTaskBase() {
-      @Override
-      public void run() {
-        try {
-          // Create the task list sequence.
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-          // Wait for the master leader to hear from all the tservers.
-          createWaitForTServerHeartBeatsTask();
-          // Run the task.
-          subTaskGroupQueue.run();
-        } catch (Throwable t) {
-          LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-          throw t;
-        }
-      }
-    };
+    // ---------------------------------------------------------------------------------------------
+    UniverseDefinitionTaskBase waitForTserverHBs =
+        new UniverseDefinitionTaskBase() {
+          @Override
+          public void run() {
+            try {
+              // Create the task list sequence.
+              subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+              // Wait for the master leader to hear from all the tservers.
+              createWaitForTServerHeartBeatsTask();
+              // Run the task.
+              subTaskGroupQueue.run();
+            } catch (Throwable t) {
+              LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+              throw t;
+            }
+          }
+        };
     waitForTserverHBs.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(waitForTserverHBs, "check_tserver_heartbeats", results)) {
@@ -447,40 +460,34 @@ public class ImportController extends AuthenticatedController {
     setImportedState(universe, ImportedState.TSERVERS_ADDED);
 
     results.put("state", State.IMPORTED_TSERVERS.toString());
-    results.put("masterAddresses", masterAddresses.toString());
-    results.put("universeName", importForm.universeName.toString());
+    results.put("masterAddresses", masterAddresses);
+    results.put("universeName", importForm.universeName);
 
     return ApiResponse.success(results);
   }
 
   /**
-   * Finalizes the universe in the database by:
-   * - setting up Prometheus config for metrics.
-   * - adding the universe to the active list of universes for this customer.
-   * - checking if node_exporter is reachable on all the nodes.
+   * Finalizes the universe in the database by: - setting up Prometheus config for metrics. - adding
+   * the universe to the active list of universes for this customer. - checking if node_exporter is
+   * reachable on all the nodes.
    */
-  private Result finishUniverseImport(ImportUniverseFormData importForm,
-                                      Customer customer,
-                                      ObjectNode results) {
+  private Result finishUniverseImport(
+      ImportUniverseFormData importForm, Customer customer, ObjectNode results) {
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
       results.put("error", "Valid universe uuid needs to be set.");
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
-    Universe universe = null;
-    try {
-      universe = Universe.get(importForm.universeUUID);
-    } catch (RuntimeException re) {
-      String errMsg = "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
-      LOG.error(errMsg);
-      results.put("error", errMsg);
-      return ApiResponse.error(BAD_REQUEST, results);
-    }
+    Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.TSERVERS_ADDED) {
-      results.put("error", "Unexpected universe state " + curState.name() + " expecteed " +
-        ImportedState.TSERVERS_ADDED.name());
+      results.put(
+          "error",
+          "Unexpected universe state "
+              + curState.name()
+              + " expecteed "
+              + ImportedState.TSERVERS_ADDED.name());
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
@@ -488,37 +495,38 @@ public class ImportController extends AuthenticatedController {
     // TODO: move to common location.
     results.put("universeUUID", universe.universeUUID.toString());
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Configure metrics.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
 
     // TODO: verify we can reach the various YB ports.
 
-    UniverseDefinitionTaskBase createPrometheusConfig = new UniverseDefinitionTaskBase() {
-      @Override
-      public void run() {
-        try {
-          // Create the task list sequence.
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-          // Create a Prometheus config to pull from targets.
-          createSwamperTargetUpdateTask(false /* removeFile */);
-          // Run the task.
-          subTaskGroupQueue.run();
-        } catch (Throwable t) {
-          LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-          throw t;
-        }
-      }
-    };
+    UniverseDefinitionTaskBase createPrometheusConfig =
+        new UniverseDefinitionTaskBase() {
+          @Override
+          public void run() {
+            try {
+              // Create the task list sequence.
+              subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+              // Create a Prometheus config to pull from targets.
+              createSwamperTargetUpdateTask(false /* removeFile */);
+              // Run the task.
+              subTaskGroupQueue.run();
+            } catch (Throwable t) {
+              LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+              throw t;
+            }
+          }
+        };
     createPrometheusConfig.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(createPrometheusConfig, "create_prometheus_config", results)) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
     }
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Check if node_exporter is enabled on all nodes.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     Map<String, String> nodeExporterIPsToError = new HashMap<String, String>();
     for (NodeDetails node : universe.getTServers()) {
       String nodeIP = node.cloudInfo.private_ip;
@@ -526,13 +534,13 @@ public class ImportController extends AuthenticatedController {
       String basePage = "http://" + nodeIP + ":" + nodeExporterPort;
       ObjectNode resp = apiHelper.getHeaderStatus(basePage + "/metrics");
       if (resp.isNull() || !resp.get("status").asText().equals("OK")) {
-        nodeExporterIPsToError.put(nodeIP,
-          resp.isNull() ? "Invalid response" : resp.get("status").asText());
+        nodeExporterIPsToError.put(
+            nodeIP, resp.isNull() ? "Invalid response" : resp.get("status").asText());
       } else {
         String body = apiHelper.getBody(basePage);
         if (!body.contains(NODE_EXPORTER_RESP)) {
-          nodeExporterIPsToError.put(nodeIP,
-            basePage + "response does not contain '" + NODE_EXPORTER_RESP + "'");
+          nodeExporterIPsToError.put(
+              nodeIP, basePage + "response does not contain '" + NODE_EXPORTER_RESP + "'");
         }
       }
     }
@@ -542,19 +550,17 @@ public class ImportController extends AuthenticatedController {
       results.with("checks").put("node_exporter_ip_error_map", nodeExporterIPsToError.toString());
     }
 
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Create a simple redis table if needed.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
 
-
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Update the DNS entry for all the clusters in this universe.
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
 
-
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Finalize universe entry in DB
-    //---------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Add the universe to the current user account
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
@@ -566,65 +572,75 @@ public class ImportController extends AuthenticatedController {
     return ApiResponse.success(results);
   }
 
-
   /**
-   * Helper function to add a list of servers into an existing universe.
-   * It creates a new node entry if the node does not exist, otherwise it sets the
-   * appropriate flag (master/tserver) on the existing node.
+   * Helper function to add a list of servers into an existing universe. It creates a new node entry
+   * if the node does not exist, otherwise it sets the appropriate flag (master/tserver) on the
+   * existing node.
    */
-  private Universe addServersToUniverse(Map<String, Integer> tserverList,
-                                        UniverseDefinitionTaskParams taskParams,
-                                        Provider provider, Region region, AvailabilityZone zone,
-                                        boolean isMaster) {
+  private Universe addServersToUniverse(
+      Map<String, Integer> tserverList,
+      UniverseDefinitionTaskParams taskParams,
+      Provider provider,
+      Region region,
+      AvailabilityZone zone,
+      boolean isMaster) {
     // Update the node details and persist into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        // Get the details of the universe to be updated.
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        Cluster cluster = universeDetails.getPrimaryCluster();
-        int index = cluster.index;
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            // Get the details of the universe to be updated.
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            Cluster cluster = universeDetails.getPrimaryCluster();
+            int index = cluster.index;
 
-        for (Map.Entry<String, Integer> entry : tserverList.entrySet()) {
-          // Check if this node is already present.
-          NodeDetails node = universe.getNodeByPrivateIP(entry.getKey());
-          if (node == null) {
-            // If the node is not present, create the node details and add it.
-            node = createAndAddNode(universeDetails, entry.getKey(), provider, region,
-              zone, index, cluster.userIntent.instanceType);
+            for (Map.Entry<String, Integer> entry : tserverList.entrySet()) {
+              // Check if this node is already present.
+              NodeDetails node = universe.getNodeByPrivateIP(entry.getKey());
+              if (node == null) {
+                // If the node is not present, create the node details and add it.
+                node =
+                    createAndAddNode(
+                        universeDetails,
+                        entry.getKey(),
+                        provider,
+                        region,
+                        zone,
+                        index,
+                        cluster.userIntent.instanceType);
 
-            node.isMaster = isMaster;
+                node.isMaster = isMaster;
+              }
+
+              UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
+                  universeDetails.communicationPorts, node);
+
+              node.isTserver = !isMaster;
+              if (isMaster) {
+                node.masterRpcPort = entry.getValue();
+              } else {
+                node.tserverRpcPort = entry.getValue();
+              }
+              index++;
+            }
+
+            // Update the number of nodes in the user intent. TODO: update the correct cluster.
+            cluster.userIntent.numNodes = tserverList.size();
+            cluster.index = index;
+
+            // Update the node details.
+            universe.setUniverseDetails(universeDetails);
           }
-
-          UniverseTaskParams.CommunicationPorts
-            .setCommunicationPorts(universeDetails.communicationPorts, node);
-
-          node.isTserver = !isMaster;
-          if (isMaster) {
-            node.masterRpcPort = entry.getValue();
-          } else {
-            node.tserverRpcPort = entry.getValue();
-          }
-          index++;
-        }
-
-        // Update the number of nodes in the user intent. TODO: update the correct cluster.
-        cluster.userIntent.numNodes = tserverList.size();
-        cluster.index = index;
-
-        // Update the node details.
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+        };
     // Save the updated universe object and return the updated universe.
     // saveUniverseDetails(taskParams.universeUUID);
     return Universe.saveDetails(taskParams.universeUUID, updater, false);
   }
 
   /**
-   * This method queries the master leader and returns a list of tserver ip addresses.
-   * TODO: We need to get the number of nodes information also from the end user and check that
-   * count matches what master leader provides, to ensure no unreachable/failed tservers.
+   * This method queries the master leader and returns a list of tserver ip addresses. TODO: We need
+   * to get the number of nodes information also from the end user and check that count matches what
+   * master leader provides, to ensure no unreachable/failed tservers.
    */
   private Map<String, Integer> getTServers(String masterAddresses, ObjectNode results) {
     Map<String, Integer> tservers_list = new HashMap<>();
@@ -680,11 +696,18 @@ public class ImportController extends AuthenticatedController {
    * Creates a new universe object for the purpose of importing it. Note that we would not have all
    * the information about the universe at this point, so we are just creating the master ip parts.
    */
-  private Universe createNewUniverseForImport(Customer customer, ImportUniverseFormData importForm,
-                                              String nodePrefix, String universeName,
-                                              Map<String, Integer> userMasterIpPorts) {
+  private Universe createNewUniverseForImport(
+      Customer customer,
+      ImportUniverseFormData importForm,
+      String nodePrefix,
+      String universeName,
+      Map<String, Integer> userMasterIpPorts) {
     // Find the provider by the code given, or create a new provider if one does not exist.
-    Provider provider = Provider.get(customer.uuid, importForm.providerType);
+    List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+    Provider provider = null;
+    if (!providerList.isEmpty()) {
+      provider = providerList.get(0);
+    }
     if (provider == null) {
       provider = Provider.create(customer.uuid, importForm.providerType, importForm.cloudName);
     }
@@ -692,10 +715,11 @@ public class ImportController extends AuthenticatedController {
     Region region = getOrCreateRegion(importForm, provider);
     // Find the zone by the code given, or create a new provider if one does not exist.
     AvailabilityZone zone =
-      AvailabilityZone.maybeGetByCode(provider, importForm.zoneCode)
-        .orElseGet(() ->
-          AvailabilityZone.create(region, importForm.zoneCode, importForm.zoneName, null)
-        );
+        AvailabilityZone.maybeGetByCode(provider, importForm.zoneCode)
+            .orElseGet(
+                () ->
+                    AvailabilityZone.create(
+                        region, importForm.zoneCode, importForm.zoneName, null));
 
     // Create the universe definition task params.
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -711,7 +735,7 @@ public class ImportController extends AuthenticatedController {
 
     // Set the various details in the user intent.
     UniverseDefinitionTaskParams.UserIntent userIntent =
-      new UniverseDefinitionTaskParams.UserIntent();
+        new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
     userIntent.provider = provider.uuid.toString();
     userIntent.regionList = new ArrayList<UUID>();
@@ -722,11 +746,15 @@ public class ImportController extends AuthenticatedController {
     userIntent.enableYSQL = true;
     // Currently using YW version instead of YB version.
     // TODO: #1842: Create YBClient endpoint for getting ybSoftwareVersion.
-    userIntent.ybSoftwareVersion = (String) configHelper.getConfig(
-      ConfigHelper.ConfigType.SoftwareVersion).get("version");
+    userIntent.ybSoftwareVersion =
+        (String) configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version");
 
-    InstanceType.upsert(importForm.providerType.toString(), importForm.instanceType.toString(),
-      0 /* numCores */, 0.0 /* memSizeGB */, new InstanceTypeDetails());
+    InstanceType.upsert(
+        provider.uuid,
+        importForm.instanceType,
+        0 /* numCores */,
+        0.0 /* memSizeGB */,
+        new InstanceTypeDetails());
 
     // Placement info for imports default to the current cluster.
     PlacementInfo placementInfo = new PlacementInfo();
@@ -770,17 +798,28 @@ public class ImportController extends AuthenticatedController {
       // TODO: Find real coordinates instead of assuming somwhere in US west.
       double defaultLat = 37;
       double defaultLong = -121;
-      region = Region.create(
-        provider, importForm.regionCode, importForm.regionName, null, defaultLat, defaultLong);
+      region =
+          Region.create(
+              provider,
+              importForm.regionCode,
+              importForm.regionName,
+              null,
+              defaultLat,
+              defaultLong);
     }
     return region;
   }
 
   // TODO: (Daniel) - Do I need to add communictionPorts here?
   // Create a new node with the given placement information.
-  private NodeDetails createAndAddNode(UniverseDefinitionTaskParams taskParams, String nodeIP,
-                                       Provider provider, Region region, AvailabilityZone zone,
-                                       int index, String instanceType) {
+  private NodeDetails createAndAddNode(
+      UniverseDefinitionTaskParams taskParams,
+      String nodeIP,
+      Provider provider,
+      Region region,
+      AvailabilityZone zone,
+      int index,
+      String instanceType) {
     NodeDetails nodeDetails = new NodeDetails();
     // Set the node index and node details.
     nodeDetails.nodeIdx = index;
@@ -813,7 +852,7 @@ public class ImportController extends AuthenticatedController {
 
     // Initialize the tasks threadpool.
     ThreadFactory namedThreadFactory =
-      new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
+        new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
     executor = Executors.newFixedThreadPool(TASK_THREADS, namedThreadFactory);
     LOG.trace("Started Import Thread Pool.");
   }

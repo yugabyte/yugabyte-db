@@ -1,3 +1,4 @@
+bin
 build
 logs
 target
@@ -33,12 +34,14 @@ react/npm-debug.log
 
 conf/*
 src/main/public/*
+src/main/resources/version_metadata.json
 *.pyc
 docker/yugaware/*.yml
 
 ui/.env
 ui/public/map/
 ui/coverage/
+ui/junit.xml
 
 .session.vim*
 

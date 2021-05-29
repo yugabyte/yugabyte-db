@@ -55,15 +55,13 @@ public class CreateTable extends AbstractTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   private Session getCassandraSession() {
     if (cassandraCluster == null) {
       List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().universeUUID);
-      cassandraCluster = Cluster.builder()
-                                .addContactPointsWithPorts(addresses)
-                                .build();
+      cassandraCluster = Cluster.builder().addContactPointsWithPorts(addresses).build();
       LOG.info("Connected to cluster: " + cassandraCluster.getClusterName());
     }
     if (cassandraSession == null) {
@@ -82,21 +80,27 @@ public class CreateTable extends AbstractTaskBase {
     session.execute(tableDetails.getCQLCreateKeyspaceString());
     session.execute(tableDetails.getCQLUseKeyspaceString());
     session.execute(tableDetails.getCQLCreateTableString());
-    LOG.info("Created table '{}.{}' of type {}.", tableDetails.keyspace, taskParams().tableName,
+    LOG.info(
+        "Created table '{}.{}' of type {}.",
+        tableDetails.keyspace,
+        taskParams().tableName,
         taskParams().tableType);
   }
 
   private void createRedisTable() throws Exception {
     // Get the master addresses.
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
-        taskParams().universeUUID, masterAddresses);
+    LOG.info(
+        "Running {}: universe = {}, masterAddress = {}",
+        getName(),
+        taskParams().universeUUID,
+        masterAddresses);
     if (masterAddresses == null || masterAddresses.isEmpty()) {
-      throw new IllegalStateException("No master host/ports for a table creation op in " +
-          taskParams().universeUUID);
+      throw new IllegalStateException(
+          "No master host/ports for a table creation op in " + taskParams().universeUUID);
     }
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
 
     YBClient client = null;
     try {
