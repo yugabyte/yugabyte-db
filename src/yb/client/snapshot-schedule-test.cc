@@ -334,14 +334,19 @@ TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
   ASSERT_OK(WaitScheduleSnapshot(schedule_id, after_time_ht));
   auto snapshot_id = ASSERT_RESULT(PickSuitableSnapshot(schedule_id, before_index_ht));
   ASSERT_OK(RestoreSnapshot(snapshot_id, before_index_ht));
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
-  for (const auto& peer : peers) {
-    auto metadata = peer->tablet_metadata();
-    LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid() << ": table "
-              << metadata->table_name() << ", indexed: "
-              << metadata->indexed_table_id();
-    ASSERT_EQ(metadata->indexed_table_id(), "");
-  }
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      auto metadata = peer->tablet_metadata();
+      if (metadata->indexed_table_id() != "") {
+        LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid() << ": table "
+                  << metadata->table_name() << ", indexed: "
+                  << metadata->indexed_table_id();
+        return false;
+      }
+    }
+    return true;
+  }, 10s, "Cleanup obsolete tablets"));
 }
 
 } // namespace client
