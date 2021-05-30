@@ -5,7 +5,7 @@ PyNaCl==1.4.0
 PyYAML==5.1
 adal==1.2.7
 ansible-vault==2.1.0
-ansible==2.2.3.0
+ansible==2.5.4
 awscli==1.19.73
 azure-common==1.1.25
 azure-mgmt-compute==12.1.0
@@ -35,6 +35,7 @@ idna==2.10
 invoke==1.5.0
 isodate==0.6.0
 jmespath==0.10.0
+mitogen==0.2.9
 msrest==0.6.21
 msrestazure==0.6.4
 oauth2client==3.0.0
