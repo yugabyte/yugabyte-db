@@ -4,8 +4,8 @@ PyJWT==1.7.1
 PyNaCl==1.4.0
 PyYAML==5.1
 adal==1.2.7
-ansible-vault==1.0.4
-ansible==2.2.3.0
+ansible-vault==1.2.0
+ansible==2.5.4
 awscli==1.11.1
 azure-common==1.1.25
 azure-mgmt-compute==12.1.0
@@ -41,6 +41,7 @@ ipaddr==2.1.11
 ipaddress==1.0.23
 isodate==0.6.0
 jmespath==0.10.0
+mitogen==0.2.9
 msrest==0.6.21
 msrestazure==0.6.4
 oauth2client==3.0.0

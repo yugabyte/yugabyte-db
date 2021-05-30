@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import subprocess
+import sysconfig
 
 from ybops.common.exceptions import YBOpsRuntimeError
 import ybops.utils as ybutils
@@ -54,18 +55,19 @@ class AnsibleProcess(object):
         """
 
         playbook_args = self.playbook_args
-        tags = extra_vars.get("tags")
-        skip_tags = extra_vars.get("skip_tags")
+        vars = extra_vars.copy()
+        tags = vars.pop("tags", None)
+        skip_tags = vars.pop("skip_tags", None)
         # Use the ssh_user provided in extra vars as the ssh user to override.
-        ssh_user = extra_vars.get("ssh_user", host_info.get("ssh_user", self.DEFAULT_SSH_USER))
-        ssh_port = extra_vars.get("ssh_port")
-        ssh_host = extra_vars.get("ssh_host")
-        vault_password_file = extra_vars.get("vault_password_file")
-        ask_sudo_pass = extra_vars.get("ask_sudo_pass")
-        sudo_pass_file = extra_vars.get("sudo_pass_file")
-        ssh_key_file = extra_vars.get("private_key_file")
+        ssh_user = vars.pop("ssh_user", host_info.get("ssh_user", self.DEFAULT_SSH_USER))
+        ssh_port = vars.pop("ssh_port", None)
+        ssh_host = vars.pop("ssh_host", None)
+        vault_password_file = vars.pop("vault_password_file", None)
+        ask_sudo_pass = vars.pop("ask_sudo_pass", None)
+        sudo_pass_file = vars.pop("sudo_pass_file", None)
+        ssh_key_file = vars.pop("private_key_file", None)
 
-        playbook_args.update(extra_vars)
+        playbook_args.update(vars)
 
         if self.can_ssh:
             playbook_args.update({
@@ -118,6 +120,8 @@ class AnsibleProcess(object):
             "-c", connection_type,
             "-e", "ansible_python_interpreter='/usr/bin/env python'"
         ])
+
+        os.environ['SITE_PACKAGES'] = sysconfig.get_path('purelib')
 
         # Setup the full list of extra-vars needed for ansible plays.
         process_args.extend(["--extra-vars", json.dumps(playbook_args)])
