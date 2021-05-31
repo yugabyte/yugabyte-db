@@ -52,3 +52,11 @@ archives:
     compiler_type: gcc9
     tag: v20210520175444-8aebe87f79-ubuntu2004-gcc9
     sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+
+  # Added manually to un-break the Ubuntu build on Jenkins. Instead of this, if the compiler type
+  # does not specify a version, we should detect the actual compiler version and match based on
+  # its major version.
+  - os_type: ubuntu18.04
+    compiler_type: gcc
+    tag: v20210520175530-8aebe87f79-ubuntu1804-gcc7
+    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
