@@ -266,7 +266,7 @@ c limit $1
 ```
 
 
-### The 10 consumers of temporary space
+### Top 10 consumers of temporary space
 
 ```sh
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by temp_blks_written desc limit 10;    
