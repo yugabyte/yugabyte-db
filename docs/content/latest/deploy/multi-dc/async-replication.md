@@ -117,8 +117,6 @@ For bidirectional replication, repeat the procedure described in [Unidirectional
 2. Use the workload generator to start loading data into the yugabyte-consumer universe.
 3. Verify Replication from yugabyte-consumer to yugabyte-producer.
 
-Is there a key offset or some other parameter in `yb-sample-apps.jar` that we can use to differentiate the generated load from the initial setup? 
-
 To avoid primary key conflict errors, keep the key ranges for the two universes separate.
 
 ### Replication Lag
@@ -127,7 +125,7 @@ Replication lag is computed at the tablet level as follows:
 
 `replication lag = hybrid_clock_time - last_read_hybrid_time`
 
-*hybrid_clock_time* is the hybrid clock timestamp on the producer's tablet-server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest transaction pulled from the producer.
+*hybrid_clock_time* is the hybrid clock timestamp on the producer's tablet-server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the producer.
 
 An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates the replication lag for you. The script requires the [`jq`](https://stedolan.github.io/jq/) package.
 
