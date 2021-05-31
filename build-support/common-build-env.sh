@@ -1436,8 +1436,7 @@ detect_llvm_toolchain() {
     return
   fi
 
-  if ! "$is_clean_build" &&
-     [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/llvm_path.txt ]]; then
+  if [[ $is_clean_build != "true" && -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/llvm_path.txt ]]; then
     YB_LLVM_TOOLCHAIN_DIR=$(<"$BUILD_ROOT/llvm_path.txt")
     export YB_LLVM_TOOLCHAIN_DIR
     yb_llvm_toolchain_dir_origin=" (from file '$BUILD_ROOT/llvm_path.txt')"
@@ -1840,42 +1839,43 @@ find_or_download_thirdparty() {
   if [[ $is_clean_build == "true" ]]; then
     log "This is a clean build, not loading thirdparty URL or path from files in the build" \
         "directory."
-  fi
+  else
+    if [[ -f $BUILD_ROOT/thirdparty_path.txt ]]; then
+      local thirdparty_dir_from_file
+      thirdparty_dir_from_file=$(<"$BUILD_ROOT/thirdparty_path.txt")
+      if [[ -n ${YB_THIRDPARTY_DIR:-} && "$YB_THIRDPARTY_DIR" != "$thirdparty_dir_from_file" ]]
+      then
+        fatal "YB_THIRDPARTY_DIR is explicitly set to '$YB_THIRDPARTY_DIR' but file" \
+              "'$BUILD_ROOT/thirdparty_path.txt' contains '$thirdparty_dir_from_file'"
+      fi
+      export YB_THIRDPARTY_DIR=$thirdparty_dir_from_file
+      yb_thirdparty_dir_origin=" (from file '$BUILD_ROOT/thirdparty_path.txt')"
 
-  if [[ $is_clean_build != "true" && -f $BUILD_ROOT/thirdparty_path.txt ]]; then
-    local thirdparty_dir_from_file
-    thirdparty_dir_from_file=$(<"$BUILD_ROOT/thirdparty_path.txt")
-    if [[ -n ${YB_THIRDPARTY_DIR:-} && "$YB_THIRDPARTY_DIR" != "$thirdparty_dir_from_file" ]]; then
-      fatal "YB_THIRDPARTY_DIR is explicitly set to '$YB_THIRDPARTY_DIR' but file" \
-            "'$BUILD_ROOT/thirdparty_path.txt' contains '$thirdparty_dir_from_file'"
-    fi
-    export YB_THIRDPARTY_DIR=$thirdparty_dir_from_file
-    yb_thirdparty_dir_origin=" (from file '$BUILD_ROOT/thirdparty_path.txt')"
-
-    # Check if we've succeeded in setting YB_THIRDPARTY_DIR now.
-    if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
-      finalize_yb_thirdparty_dir
-      if [[ -d $YB_THIRDPARTY_DIR ]]; then
-        return
+      # Check if we've succeeded in setting YB_THIRDPARTY_DIR now.
+      if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
+        finalize_yb_thirdparty_dir
+        if [[ -d $YB_THIRDPARTY_DIR ]]; then
+          return
+        fi
       fi
     fi
-  fi
 
-  if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
-    local thirdparty_url_from_file
-    thirdparty_url_from_file=$(<"$BUILD_ROOT/thirdparty_url.txt")
-    if [[ -n ${YB_THIRDPARTY_URL:-} &&
-          "$YB_THIRDPARTY_URL" != "$thirdparty_url_from_file" ]]; then
-      fatal "YB_THIRDPARTY_URL is explicitly set to '$YB_THIRDPARTY_URL' but file" \
-            "'$BUILD_ROOT/thirdparty_url.txt' contains '$thirdparty_url_from_file'"
+    if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
+      local thirdparty_url_from_file
+      thirdparty_url_from_file=$(<"$BUILD_ROOT/thirdparty_url.txt")
+      if [[ -n ${YB_THIRDPARTY_URL:-} &&
+            "$YB_THIRDPARTY_URL" != "$thirdparty_url_from_file" ]]; then
+        fatal "YB_THIRDPARTY_URL is explicitly set to '$YB_THIRDPARTY_URL' but file" \
+              "'$BUILD_ROOT/thirdparty_url.txt' contains '$thirdparty_url_from_file'"
+      fi
+      export YB_THIRDPARTY_URL=$thirdparty_url_from_file
+      yb_thirdparty_url_origin=" (from file '$BUILD_ROOT/thirdparty_url.txt')"
+      if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "0" ]]; then
+        fatal "YB_DOWNLOAD_THIRDPARTY is explicitly set to 0 but file" \
+              "$BUILD_ROOT/thirdparty_url.txt exists"
+      fi
+      export YB_DOWNLOAD_THIRDPARTY=1
     fi
-    export YB_THIRDPARTY_URL=$thirdparty_url_from_file
-    yb_thirdparty_url_origin=" (from file '$BUILD_ROOT/thirdparty_url.txt')"
-    if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "0" ]]; then
-      fatal "YB_DOWNLOAD_THIRDPARTY is explicitly set to 0 but file" \
-            "$BUILD_ROOT/thirdparty_url.txt exists"
-    fi
-    export YB_DOWNLOAD_THIRDPARTY=1
   fi
 
   # Even if YB_THIRDPARTY_DIR is set but it does not exist, it is possible that we need to download
