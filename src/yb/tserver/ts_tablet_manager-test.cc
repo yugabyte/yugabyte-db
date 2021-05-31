@@ -40,7 +40,7 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
@@ -281,6 +281,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     ConsensusRoundPtr round(new ConsensusRound(peer->consensus(), std::move(replicate_ptr)));
     consensus_rounds.emplace_back(round);
     round->BindToTerm(peer->raft_consensus()->TEST_LeaderTerm());
+    round->SetCallback(consensus::MakeNonTrackedRoundCallback(round.get(), [](const Status&){}));
     ASSERT_OK(peer->consensus()->TEST_Replicate(round));
   }
 
