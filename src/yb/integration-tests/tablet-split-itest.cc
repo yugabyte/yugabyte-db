@@ -34,6 +34,7 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_manager.h"
@@ -1350,6 +1351,32 @@ TEST_F(TabletSplitITest, AutomaticTabletSplitting) {
     key += kNumRowsPerBatch;
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
     EXPECT_EQ(peers.size(), 2);
+  }
+}
+
+class TabletSplitYedisTableTest : public integration_tests::RedisTableTestBase {
+ protected:
+  int num_tablets() override { return 1; }
+};
+
+TEST_F(TabletSplitYedisTableTest, BlockSplittingYedisTablet) {
+  constexpr int kNumRows = 10000;
+
+  for (int i = 0; i < kNumRows; ++i) {
+    PutKeyValue(Format("$0", i), Format("$0", i));
+  }
+
+  for (const auto& peer : ListTableActiveTabletPeers(mini_cluster(), table_->id())) {
+    ASSERT_OK(peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  }
+
+  for (const auto& peer : ListTableActiveTabletLeadersPeers(mini_cluster(), table_->id())) {
+    auto catalog_manager = CHECK_NOTNULL(
+        this->mini_cluster()->leader_mini_master()->master())->catalog_manager();
+
+    auto s = DoSplitTablet(catalog_manager, *peer->shared_tablet());
+    EXPECT_NOT_OK(s);
+    EXPECT_TRUE(s.IsNotSupported()) << s.ToString();
   }
 }
 

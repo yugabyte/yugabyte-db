@@ -2110,6 +2110,12 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) con
                               tablet_state);
     }
   }
+  if (tablet_info.table()->GetTableType() == REDIS_TABLE_TYPE) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for YEDIS tables, tablet_id: $0",
+        tablet_info.tablet_id());
+  }
   if (FLAGS_tablet_split_limit_per_table != 0 &&
       tablet_info.table()->NumTablets() >= FLAGS_tablet_split_limit_per_table) {
     // TODO(tsplit): Avoid tablet server of scanning tablets for the tables that already
