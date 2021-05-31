@@ -34,7 +34,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/pgsql_error.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 

@@ -19,7 +19,11 @@
 #include <boost/multi_index/ordered_index.hpp>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
+
+#include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus.pb.h"
+
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
@@ -150,9 +154,9 @@ class ReplicateData {
  public:
   ReplicateData() : client_id_(ClientId::Nil()), write_request_(nullptr) {}
 
-  explicit ReplicateData(const tserver::WriteRequestPB* write_request, const yb::OpIdPB& op_id)
+  explicit ReplicateData(const tserver::WriteRequestPB* write_request, const OpIdPB& op_id)
       : client_id_(write_request->client_id1(), write_request->client_id2()),
-        write_request_(write_request), op_id_(yb::OpId::FromPB(op_id)) {
+        write_request_(write_request), op_id_(OpId::FromPB(op_id)) {
 
   }
 

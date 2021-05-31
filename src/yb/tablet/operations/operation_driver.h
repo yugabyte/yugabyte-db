@@ -38,7 +38,7 @@
 #include <boost/atomic.hpp>
 
 #include "yb/consensus/log_fwd.h"
-#include "yb/consensus/consensus_types.h"
+#include "yb/consensus/consensus_round.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
@@ -104,7 +104,7 @@ class Preparer;
 //
 // This class is thread safe.
 class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
-                        public consensus::ConsensusAppendCallback,
+                        public consensus::ConsensusRoundCallback,
                         public MPSCQueueEntry<OperationDriver> {
 
  public:
@@ -163,7 +163,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   Trace* trace() { return trace_.get(); }
 
-  void HandleConsensusAppend(const OpId& op_id, const OpId& committed_op_id) override;
+  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override;
 
   bool is_leader_side() {
     // TODO: switch state to an atomic.

@@ -80,12 +80,6 @@ class TabletServerErrorPB;
 
 namespace consensus {
 
-typedef int64_t ConsensusTerm;
-
-typedef std::function<void(
-    const Status& status, int64_t leader_term, OpIds* applied_op_ids)>
-        ConsensusReplicatedCallback;
-
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
 struct ConsensusBootstrapInfo {
@@ -187,13 +181,6 @@ class Consensus {
   // Wait until the node has LEADER role.
   // Returns Status::TimedOut if the role is not LEADER within 'timeout'.
   virtual CHECKED_STATUS WaitUntilLeaderForTests(const MonoDelta& timeout) = 0;
-
-  // Creates a new ConsensusRound, the entity that owns all the data
-  // structures required for a consensus round, such as the ReplicateMsg.
-  // ConsensusRound will also point to and increase the reference count for the provided callbacks.
-  ConsensusRoundPtr NewRound(
-      ReplicateMsgPtr replicate_msg,
-      const ConsensusReplicatedCallback& replicated_cb);
 
   // Called by a Leader to replicate an entry to the state machine.
   //
@@ -469,105 +456,6 @@ struct StateChangeContext {
   // defaulting to true as they are majority. For ones that do not hold the lock, setting
   // it to false in their constructor suffices currently, so marking it const.
   const bool is_config_locked_ = true;
-};
-
-// Context for a consensus round on the LEADER side, typically created as an
-// out-parameter of Consensus::Append.
-// This class is ref-counted because we want to ensure it stays alive for the
-// duration of the Operation when it is associated with a Operation, while
-// we also want to ensure it has a proper lifecycle when a ConsensusRound is
-// pushed that is not associated with a Tablet transaction.
-class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
- public:
-  static constexpr int64_t kUnboundTerm = -1;
-
-  // Ctor used for leader transactions. Leader transactions can and must specify the
-  // callbacks prior to initiating the consensus round.
-  ConsensusRound(Consensus* consensus,
-                 ReplicateMsgPtr replicate_msg,
-                 ConsensusReplicatedCallback replicated_cb);
-
-  // Ctor used for follower/learner transactions. These transactions do not use the
-  // replicate callback and the commit callback is set later, after the transaction
-  // is actually started.
-  ConsensusRound(Consensus* consensus, ReplicateMsgPtr replicate_msg);
-
-  std::string ToString() const {
-    return replicate_msg_->ShortDebugString();
-  }
-
-  const ReplicateMsgPtr& replicate_msg() {
-    return replicate_msg_;
-  }
-
-  // Returns the id of the (replicate) operation this context
-  // refers to. This is only set _after_ Consensus::Replicate(context).
-  OpId id() const {
-    return OpId::FromPB(replicate_msg_->id());
-  }
-
-  // Register a callback that is called by Consensus to notify that the round
-  // is considered either replicated, if 'status' is OK(), or that it has
-  // permanently failed to replicate if 'status' is anything else. If 'status'
-  // is OK() then the operation can be applied to the state machine, otherwise
-  // the operation should be aborted.
-  void SetConsensusReplicatedCallback(ConsensusReplicatedCallback replicated_cb) {
-    replicated_cb_ = std::move(replicated_cb);
-  }
-
-  void SetAppendCallback(ConsensusAppendCallback* append_cb) {
-    append_cb_ = append_cb;
-  }
-
-  ConsensusAppendCallback* append_callback() {
-    return append_cb_;
-  }
-
-  // If a continuation was set, notifies it that the round has been replicated.
-  void NotifyReplicationFinished(
-      const Status& status, int64_t leader_term, OpIds* applied_op_ids);
-
-  // Binds this round such that it may not be eventually executed in any term
-  // other than 'term'.
-  // See CheckBoundTerm().
-  void BindToTerm(int64_t term) {
-    bound_term_ = term;
-  }
-
-  // Check for a rare race in which an operation is submitted to the LEADER in some term,
-  // then before the operation is prepared, the replica loses its leadership, receives
-  // more operations as a FOLLOWER, and then regains its leadership. We detect this case
-  // by setting the ConsensusRound's "bound term" when it is first submitted to the
-  // PREPARE queue, and validate that the term is still the same when we have finished
-  // preparing it. See KUDU-597 for details.
-  //
-  // If this round has not been bound to any term, this is a no-op.
-  CHECKED_STATUS CheckBoundTerm(int64_t current_term) const;
-
-  int64_t bound_term() { return bound_term_; }
-
- private:
-  friend class RaftConsensusQuorumTest;
-  friend class RefCountedThreadSafe<ConsensusRound>;
-
-  ~ConsensusRound() {}
-
-  Consensus* consensus_;
-  // This round's replicate message.
-  ReplicateMsgPtr replicate_msg_;
-
-  // The continuation that will be called once the transaction is
-  // deemed committed/aborted by consensus.
-  ConsensusReplicatedCallback replicated_cb_;
-
-  // The leader term that this round was submitted in. CheckBoundTerm()
-  // ensures that, when it is eventually replicated, the term has not
-  // changed in the meantime.
-  //
-  // Set to -1 if no term has been bound.
-  int64_t bound_term_ = kUnboundTerm;
-
-  ConsensusAppendCallback* append_cb_ = nullptr;
 };
 
 class Consensus::ConsensusFaultHooks {

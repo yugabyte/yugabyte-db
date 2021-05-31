@@ -15,8 +15,8 @@
 
 #include "yb/tablet/operations/split_operation.h"
 
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_error.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/tablet/tablet.h"

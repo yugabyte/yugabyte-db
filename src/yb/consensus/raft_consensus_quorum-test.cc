@@ -268,11 +268,13 @@ class RaftConsensusQuorumTest : public YBTest {
     CHECK_OK(peers_->GetPeerByIdx(peer_idx, &peer));
 
     // Use a latch in place of a Transaction callback.
-    gscoped_ptr<Synchronizer> sync(new Synchronizer());
-    *round = peer->NewRound(std::move(msg),
-        [sync = sync.get()](const Status& status, int64_t, OpIds*) {
+    auto sync = std::make_unique<Synchronizer>();
+    *round = make_scoped_refptr<ConsensusRound>(peer.get(), std::move(msg));
+    (**round).SetCallback(MakeNonTrackedRoundCallback(
+        round->get(),
+        [sync = sync.get()](const Status& status) {
       sync->StatusCB(status);
-    });
+    }));
     (**round).BindToTerm(peer->LeaderTerm());
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
