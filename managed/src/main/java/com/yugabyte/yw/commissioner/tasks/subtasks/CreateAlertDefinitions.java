@@ -34,9 +34,13 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
 
       for (AlertDefinitionTemplate definition : AlertDefinitionTemplate.values()) {
         if (definition.isCreateForNewUniverse()) {
-          AlertDefinition.create(customer.uuid, AlertDefinition.TargetType.Universe,
-            definition.getName(), definition.buildTemplate(nodePrefix), true,
-            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+          AlertDefinition.create(
+              customer.uuid,
+              AlertDefinition.TargetType.Universe,
+              definition.getName(),
+              definition.buildTemplate(nodePrefix),
+              true,
+              AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
         }
       }
 

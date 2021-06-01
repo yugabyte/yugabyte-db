@@ -25,15 +25,21 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/experimental.h"
 #include "yb/rocksdb/utilities/convenience.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(use_priority_thread_pool_for_compactions);
 
 using std::atomic;
 using namespace std::literals;
@@ -2773,6 +2779,130 @@ TEST_P(CompactionPriTest, Test) {
   }
 }
 
+namespace {
+
+class CompactionStartedListener : public test::FlushedFileCollector {
+ public:
+  void OnCompactionStarted() override {
+    ++num_compactions_started_;
+  }
+
+  int GetNumCompactionsStarted() { return num_compactions_started_; }
+
+ private:
+  std::atomic<int> num_compactions_started_;
+};
+
+} // namespace
+
+// Test that manual compaction is aborted during shutdown.
+TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
+  FLAGS_use_priority_thread_pool_for_compactions = true;
+
+  // We use two dbs, so manual compaction from the first one will start, but from second one will
+  // be waiting inside thread pool when we start rocksdb shutdown and we expect it to be cancelled.
+  constexpr auto kNumDBs = 2;
+  constexpr auto kMaxBackgroundCompactions = 1;
+  constexpr auto kNumKeysPerSst = 100000;
+  constexpr auto kNumSst = 3;
+  constexpr auto kTimeout = 10s * yb::kTimeMultiplier;
+  constexpr auto kMaxCompactFlushRate = 256_MB;
+
+  yb::PriorityThreadPool thread_pool(kMaxBackgroundCompactions);
+  auto listener = std::make_shared<CompactionStartedListener>();
+  std::shared_ptr<RateLimiter> rate_limiter(NewGenericRateLimiter(kMaxCompactFlushRate));
+  auto* env = Env::Default();
+  std::vector<std::unique_ptr<DB>> dbs;
+
+  for (int db_idx = 0; db_idx < kNumDBs; ++db_idx) {
+    const auto db_name = yb::Format("compact_test_db_$0", db_idx);
+    const auto db_path = test::TmpDir(env) + "/" + db_name;
+
+    Options options;
+    // Setting write_buffer_size big enough, because we use manual flush in this test.
+    options.write_buffer_size = 128_MB;
+    options.arena_block_size = 4_KB;
+    options.num_levels = 1;
+    options.compaction_style = kCompactionStyleUniversal;
+    options.level0_file_num_compaction_trigger = -1;
+    options.disable_auto_compactions = true;
+    options.max_background_compactions = kMaxBackgroundCompactions;
+    options.priority_thread_pool_for_compactions_and_flushes = &thread_pool;
+    options.listeners.push_back(listener);
+    options.log_prefix = db_name + ": ";
+    options.info_log_level = InfoLogLevel::INFO_LEVEL;
+    options.info_log = std::make_shared<yb::YBRocksDBLogger>(options.log_prefix);
+    options.rate_limiter = rate_limiter;
+    options.create_if_missing = true;
+
+    dbs.push_back(ASSERT_RESULT(DB::Open(options, db_path)));
+  }
+
+  for (auto& db : dbs) {
+    rocksdb::FlushOptions flush_options;
+    flush_options.wait = true;
+    for (auto num = 0; num < kNumSst; num++) {
+      for (auto i = 0; i < kNumKeysPerSst; i++) {
+        ASSERT_OK(db->Put(WriteOptions(), DBTestBase::Key(i), ""));
+      }
+      ASSERT_OK(db->Flush(flush_options));
+
+      std::string num_files_str;
+      ASSERT_TRUE(db->GetProperty("rocksdb.num-files-at-level0", &num_files_str));
+      ASSERT_EQ(num_files_str, yb::AsString(num + 1));
+    }
+  }
+
+  rate_limiter->SetBytesPerSecond(1_KB);
+
+  std::vector<std::thread> threads;
+  std::atomic<int> manual_compactions_aborted{0};
+
+  auto manual_compaction_func = [&manual_compactions_aborted](DB* db) {
+    LOG(INFO) << "CompactRange - start";
+    const auto s = db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+    ASSERT_TRUE(s.ok() || s.IsAborted()) << s;
+    if (s.IsAborted()) {
+      manual_compactions_aborted.fetch_add(1);
+    }
+    LOG(INFO) << "CompactRange - completed: " << AsString(s);
+  };
+
+  threads.push_back(std::thread(
+      [&manual_compaction_func, db = dbs[0].get()] { manual_compaction_func(db); }));
+  yb::AssertLoggedWaitFor(
+      [listener] { return listener->GetNumCompactionsStarted() > 0; },
+      kTimeout, "First compaction started");
+
+  for (size_t db_idx = 1; db_idx < dbs.size(); ++db_idx) {
+    threads.push_back(std::thread(
+        [&manual_compaction_func, db = dbs[db_idx].get()] { manual_compaction_func(db); }));
+  }
+  yb::AssertLoggedWaitFor(
+      [&thread_pool] { return thread_pool.TEST_num_tasks_pending() > 1; },
+      kTimeout, "Second compaction scheduled");
+
+  // Second DB shutdown start should cancel second manual compaction task and abort compaction.
+  dbs.back()->StartShutdown();
+  threads.back().join();
+  threads.pop_back();
+
+  // Expect second compaction to be aborted.
+  ASSERT_EQ(manual_compactions_aborted, 1);
+
+  rate_limiter->SetBytesPerSecond(kMaxCompactFlushRate);
+
+  for (auto& t : threads) {
+    t.join();
+  }
+
+  // Shutdown dbs.
+  dbs.clear();
+
+  ASSERT_EQ(listener->GetNumCompactionsStarted(), 1)
+      << "Second manual compaction should be cancelled before starting";
+}
+
 INSTANTIATE_TEST_CASE_P(
     CompactionPriTest, CompactionPriTest,
     ::testing::Values(CompactionPri::kByCompensatedSize,
@@ -2787,6 +2917,7 @@ int main(int argc, char** argv) {
 #if !defined(ROCKSDB_LITE)
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
+  google::ParseCommandLineNonHelpFlags(&argc, &argv, /* remove_flags */ true);
   return RUN_ALL_TESTS();
 #else
   return 0;

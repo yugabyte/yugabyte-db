@@ -61,6 +61,9 @@
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/system_tablet.h"
+#include "yb/master/tablet_split_candidate_filter.h"
+#include "yb/master/tablet_split_driver.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
@@ -128,6 +131,7 @@ static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid
 static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 static const char* const kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
 static const char* const kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
+static const int32 kDelayAfterFailoverSecs = 120;
 
 using PlacementId = std::string;
 
@@ -152,7 +156,10 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
 // the state of each tablet on a given tablet-server.
 //
 // Thread-safe.
-class CatalogManager : public tserver::TabletPeerLookupIf {
+class CatalogManager :
+    public tserver::TabletPeerLookupIf,
+    public TabletSplitCandidateFilterIf,
+    public TabletSplitDriverIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
@@ -734,6 +741,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   }
 
   uintptr_t tablets_version() const NO_THREAD_SAFETY_ANALYSIS {
+    // This method should not hold the lock, because Version method is thread safe.
     return tablet_map_.Version() + table_ids_map_.Version();
   }
 
@@ -745,7 +753,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return *encryption_manager_;
   }
 
-  CHECKED_STATUS SplitTablet(const TabletId& tablet_id);
+  CHECKED_STATUS SplitTablet(const TabletId& tablet_id) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -786,6 +794,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const TablespaceId& tablespace_id);
 
   void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
+
+  void CheckTableDeleted(const TableInfoPtr& table);
+
+  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) const override;
+
+  bool ShouldSplitValidCandidate(const TabletReplicaDriveInfo& drive_info) const override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1492,6 +1506,22 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
       const std::string& split_partition_key);
 
+  // From the list of TServers in 'ts_descs', return the ones that match any placement policy
+  // in 'placement_info'. Returns error if there are insufficient TServers to match the
+  // required replication factor in placement_info.
+  // NOTE: This function will only check whether the total replication factor can be
+  // satisfied, and not the individual min_num_replicas in each placement block.
+  Result<TSDescriptorVector> FindTServersForPlacementInfo(
+      const PlacementInfoPB& placement_info,
+      const TSDescriptorVector& ts_descs);
+
+  // Using the TServer info in 'ts_descs', return the TServers that match 'pplacement_block'.
+  // Returns error if there aren't enough TServers to fulfill the min_num_replicas requirement
+  // outlined in 'placement_block'.
+  Result<TSDescriptorVector> FindTServersForPlacementBlock(
+      const PlacementBlockPB& placement_block,
+      const TSDescriptorVector& ts_descs);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -1502,6 +1532,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   ServerRegistrationPB server_registration_;
 
   BlacklistSet BlacklistSetFromPB();
+
+  TabletSplitManager tablet_split_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

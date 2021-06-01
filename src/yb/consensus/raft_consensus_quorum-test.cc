@@ -202,8 +202,7 @@ class RaftConsensusQuorumTest : public YBTest {
           parent_mem_trackers_[i],
           Bind(&DoNothing),
           DEFAULT_TABLE_TYPE,
-          nullptr /* retryable_requests */,
-          SplitOpInfo()));
+          nullptr /* retryable_requests */));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);
@@ -269,11 +268,13 @@ class RaftConsensusQuorumTest : public YBTest {
     CHECK_OK(peers_->GetPeerByIdx(peer_idx, &peer));
 
     // Use a latch in place of a Transaction callback.
-    gscoped_ptr<Synchronizer> sync(new Synchronizer());
-    *round = peer->NewRound(std::move(msg),
-        [sync = sync.get()](const Status& status, int64_t, OpIds*) {
+    auto sync = std::make_unique<Synchronizer>();
+    *round = make_scoped_refptr<ConsensusRound>(peer.get(), std::move(msg));
+    (**round).SetCallback(MakeNonTrackedRoundCallback(
+        round->get(),
+        [sync = sync.get()](const Status& status) {
       sync->StatusCB(status);
-    });
+    }));
     (**round).BindToTerm(peer->LeaderTerm());
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
@@ -382,7 +383,7 @@ class RaftConsensusQuorumTest : public YBTest {
       scoped_refptr<ConsensusRound> round;
       ASSERT_OK(AppendDummyMessage(leader_idx, &round));
       ASSERT_OK(WaitForReplicate(round.get()));
-      last_op_id->CopyFrom(round->id());
+      round->id().ToPB(last_op_id);
       rounds->push_back(round);
     }
 
@@ -644,7 +645,7 @@ TEST_F(RaftConsensusQuorumTest, TestConsensusStopsIfAMajorityFallsBehind) {
 
     // Append a single message to the queue
     ASSERT_OK(AppendDummyMessage(kLeaderIdx, &round));
-    last_op_id.CopyFrom(round->id());
+    round->id().ToPB(&last_op_id);
     // This should timeout.
     Status status = TimedWaitForReplicate(round.get(), MonoDelta::FromMilliseconds(500));
     ASSERT_TRUE(status.IsTimedOut());
@@ -689,7 +690,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasHandleCommunicationErrors) {
   GetLeaderProxyToPeer(kFollower1Idx, kLeaderIdx)->InjectCommFaultLeaderSide();
 
   // The commit should eventually reach both followers as well.
-  last_op_id = round->id();
+  round->id().ToPB(&last_op_id);
   WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower0Idx, kLeaderIdx);
   WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower1Idx, kLeaderIdx);
 
@@ -700,7 +701,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasHandleCommunicationErrors) {
     scoped_refptr<ConsensusRound> round;
     ASSERT_OK(AppendDummyMessage(kLeaderIdx, &round));
     ConsensusRound* round_ptr = round.get();
-    last_op_id.CopyFrom(round->id());
+    round->id().ToPB(&last_op_id);
     rounds.push_back(round);
 
     // inject comm faults

@@ -12,7 +12,6 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -27,13 +26,12 @@ public class YWResults {
   public static class YWStructuredError {
     public final boolean success = false;
 
-    public final JsonNode  error;
+    public final JsonNode error;
 
     public YWStructuredError(JsonNode err) {
       error = err;
     }
   }
-
 
   static class OkResult {
     public Result asResult() {
@@ -79,5 +77,4 @@ public class YWResults {
       this.taskUUID = taskUUID;
     }
   }
-
 }

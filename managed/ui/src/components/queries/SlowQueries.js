@@ -98,6 +98,7 @@ const SlowQueriesComponent = () => {
   const [columns, setColumns] = useState(initialColumns);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
+  const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
   const { ysqlQueries, loading, errors, getSlowQueries } = useSlowQueriesApi({
     universeUUID,
     enabled: queryMonitoring
@@ -262,21 +263,23 @@ const SlowQueriesComponent = () => {
                 </Alert>
               )
             )}
-            <div className="slow-queries__actions">
-              <YBButtonLink
-                btnIcon="fa fa-undo"
-                btnClass="btn btn-default"
-                btnText="Reset Stats"
-                onClick={handleResetQueries}
-              />
-              <YBToggle
-                label="Query Monitoring"
-                input={{
-                  value: queryMonitoring,
-                  onChange: handleToggleMonitoring
-                }}
-              />
-            </div>
+            {!universePaused && (
+              <div className="slow-queries__actions">
+                <YBButtonLink
+                  btnIcon="fa fa-undo"
+                  btnClass="btn btn-default"
+                  btnText="Reset Stats"
+                  onClick={handleResetQueries}
+                />
+                <YBToggle
+                  label="Query Monitoring"
+                  input={{
+                    value: queryMonitoring,
+                    onChange: handleToggleMonitoring
+                  }}
+                />
+              </div>
+            )}
           </div>
         }
         leftPanel={
@@ -288,7 +291,10 @@ const SlowQueriesComponent = () => {
                 panelState === PANEL_STATE.MAXIMIZED && 'maximized'
               )}
             >
-              <span className="panel-close-icon" onClick={() => setPanelState(PANEL_STATE.MINIMIZED)}>
+              <span
+                className="panel-close-icon"
+                onClick={() => setPanelState(PANEL_STATE.MINIMIZED)}
+              >
                 <i className="fa fa-window-minimize" />
               </span>
               <div className="slow-queries__column-selector">
@@ -313,7 +319,8 @@ const SlowQueriesComponent = () => {
                 </ul>
               </div>
             </div>
-          )}
+          )
+        }
         bodyClassName={clsx(
           panelState === PANEL_STATE.MINIMIZED && 'expand',
           panelState === PANEL_STATE.MAXIMIZED && 'shrink',
@@ -343,9 +350,7 @@ const SlowQueriesComponent = () => {
                 {tableColHeaders}
               </BootstrapTable>
             ) : (
-              <>
-                Enable query monitoring to see slow queries.
-              </>
+              <>Enable query monitoring to see slow queries.</>
             )}
           </div>
         }

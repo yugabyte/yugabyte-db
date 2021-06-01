@@ -37,8 +37,9 @@ public class AlertDefinition extends Model {
 
   public enum TargetType {
     @EnumValue("Universe")
-    Universe(KnownAlertLabels.UNIVERSE_UUID,
-      "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing");
+    Universe(
+        KnownAlertLabels.UNIVERSE_UUID,
+        "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing");
 
     // TODO will need to store threshold and duration in alert definition itself
     // to be able to show better alert message. Also, will be able to use current {{ value }}
@@ -76,8 +77,7 @@ public class AlertDefinition extends Model {
   @Column(columnDefinition = "Text", nullable = false)
   public String query;
 
-  @Constraints.Required
-  public boolean isActive;
+  @Constraints.Required public boolean isActive;
 
   @Constraints.Required
   @Column(nullable = false)
@@ -87,16 +87,15 @@ public class AlertDefinition extends Model {
   private List<AlertDefinitionLabel> labels;
 
   private static final Finder<UUID, AlertDefinition> find =
-    new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
+      new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
 
   public static AlertDefinition create(
-    UUID customerUUID,
-    TargetType targetType,
-    String name,
-    String query,
-    boolean isActive,
-    List<AlertDefinitionLabel> labels
-  ) {
+      UUID customerUUID,
+      TargetType targetType,
+      String name,
+      String query,
+      boolean isActive,
+      List<AlertDefinitionLabel> labels) {
     AlertDefinition definition = new AlertDefinition();
     definition.uuid = UUID.randomUUID();
     definition.targetType = targetType;
@@ -111,30 +110,27 @@ public class AlertDefinition extends Model {
   }
 
   public static AlertDefinition get(UUID alertDefinitionUUID) {
-    return find.query()
-      .fetch("labels")
-      .where().idEq(alertDefinitionUUID)
-      .findOne();
+    return find.query().fetch("labels").where().idEq(alertDefinitionUUID).findOne();
   }
 
   public static AlertDefinition getOrBadRequest(UUID alertDefinitionUUID) {
     AlertDefinition alertDefinition = get(alertDefinitionUUID);
     if (alertDefinition == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: "
-          + alertDefinitionUUID);
+      throw new YWServiceException(
+          BAD_REQUEST, "Invalid Alert Definition UUID: " + alertDefinitionUUID);
     }
     return alertDefinition;
   }
 
   public static AlertDefinition get(UUID customerUUID, UUID universeUUID, String name) {
     return find.query()
-      .fetch("labels")
-      .where()
-      .eq("customer_uuid", customerUUID)
-      .eq("labels.key.name", KnownAlertLabels.UNIVERSE_UUID.labelName())
-      .eq("labels.value", universeUUID.toString())
-      .eq("name", name)
-      .findOne();
+        .fetch("labels")
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("labels.key.name", KnownAlertLabels.UNIVERSE_UUID.labelName())
+        .eq("labels.value", universeUUID.toString())
+        .eq("name", name)
+        .findOne();
   }
 
   public static AlertDefinition getOrBadRequest(UUID customerUUID, UUID universeUUID, String name) {
@@ -147,30 +143,26 @@ public class AlertDefinition extends Model {
 
   public static List<AlertDefinition> get(UUID customerUUID, AlertDefinitionLabel label) {
     return find.query()
-      .fetch("labels")
-      .where()
-      .eq("customer_uuid", customerUUID)
-      .eq("labels.key.name", label.getName())
-      .eq("labels.value", label.getValue())
-      .findList();
+        .fetch("labels")
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("labels.key.name", label.getName())
+        .eq("labels.value", label.getValue())
+        .findList();
   }
 
   public static void delete(UUID customerUUID, AlertDefinitionLabel label) {
     find.query()
-      .fetch("labels")
-      .where()
-      .eq("customer_uuid", customerUUID)
-      .eq("labels.key.name", label.getName())
-      .eq("labels.value", label.getValue())
-      .delete();
+        .fetch("labels")
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("labels.key.name", label.getName())
+        .eq("labels.value", label.getValue())
+        .delete();
   }
 
   public static AlertDefinition update(
-    UUID alertDefinitionUUID,
-    String query,
-    boolean isActive,
-    List<AlertDefinitionLabel> labels
-  ) {
+      UUID alertDefinitionUUID, String query, boolean isActive, List<AlertDefinitionLabel> labels) {
     AlertDefinition alertDefinition = get(alertDefinitionUUID);
     alertDefinition.query = query;
     alertDefinition.isActive = isActive;
@@ -182,11 +174,11 @@ public class AlertDefinition extends Model {
 
   public static Set<AlertDefinition> listActive(UUID customerUUID) {
     return find.query()
-      .fetch("labels")
-      .where()
-      .eq("customer_uuid", customerUUID)
-      .eq("is_active", true)
-      .findSet();
+        .fetch("labels")
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("is_active", true)
+        .findSet();
   }
 
   public List<AlertDefinitionLabel> getLabels() {
@@ -195,21 +187,20 @@ public class AlertDefinition extends Model {
 
   public List<AlertDefinitionLabel> getEffectiveLabels() {
     List<AlertDefinitionLabel> effectiveLabels = new ArrayList<>();
-    effectiveLabels.add(new AlertDefinitionLabel(
-      this, KnownAlertLabels.DEFINITION_UUID, uuid.toString()));
-    effectiveLabels.add(new AlertDefinitionLabel(
-      this, KnownAlertLabels.DEFINITION_NAME, name));
-    effectiveLabels.add(new AlertDefinitionLabel(
-      this, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_UUID, uuid.toString()));
+    effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, name));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString()));
     effectiveLabels.addAll(labels);
     return effectiveLabels;
   }
 
   public UUID getUniverseUUID() {
     return Optional.ofNullable(getLabelValue(KnownAlertLabels.UNIVERSE_UUID))
-      .map(UUID::fromString)
-      .orElseThrow(() -> new IllegalStateException(
-        "Definition " + uuid + " does not have universe UUID"));
+        .map(UUID::fromString)
+        .orElseThrow(
+            () -> new IllegalStateException("Definition " + uuid + " does not have universe UUID"));
   }
 
   public String getLabelValue(KnownAlertLabels knownLabel) {
@@ -217,10 +208,12 @@ public class AlertDefinition extends Model {
   }
 
   public String getLabelValue(String name) {
-    return getEffectiveLabels().stream()
-      .filter(label -> name.equals(label.getName()))
-      .map(AlertDefinitionLabel::getValue)
-      .findFirst().orElse(null);
+    return getEffectiveLabels()
+        .stream()
+        .filter(label -> name.equals(label.getName()))
+        .map(AlertDefinitionLabel::getValue)
+        .findFirst()
+        .orElse(null);
   }
 
   public void setLabels(List<AlertDefinitionLabel> labels) {

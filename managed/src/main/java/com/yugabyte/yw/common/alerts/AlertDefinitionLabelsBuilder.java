@@ -24,10 +24,9 @@ public class AlertDefinitionLabelsBuilder {
   }
 
   public AlertDefinitionLabelsBuilder appendUniverse(Universe universe) {
-    labels.add(new AlertDefinitionLabel(
-      KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString()));
-    labels.add(new AlertDefinitionLabel(
-      KnownAlertLabels.UNIVERSE_NAME, universe.name));
+    labels.add(
+        new AlertDefinitionLabel(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString()));
+    labels.add(new AlertDefinitionLabel(KnownAlertLabels.UNIVERSE_NAME, universe.name));
     return this;
   }
 

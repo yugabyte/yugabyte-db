@@ -15,7 +15,7 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -82,7 +82,7 @@ string UpdateTxnOperation::ToString() const {
 
 Status UpdateTxnOperation::DoAborted(const Status& status) {
   if (state()->tablet()->transaction_coordinator()) {
-    LOG_WITH_PREFIX(INFO) << "Aborted";
+    LOG_WITH_PREFIX(INFO) << "Aborted: " << status;
     TransactionCoordinator::AbortedData data = {
       *state()->request(),
       state()->op_id(),
