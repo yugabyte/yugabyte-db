@@ -17,17 +17,16 @@ Databases can be resource-intensive, consuming a lot of memory CPU, IO, and netw
 
 ## Configuration parameters
 
-|Column|Type|Default|Description|
-|:----:|:----:|:----:|:----:|
-|pg_stat_statements.max|integer|5000|It is the maximum number of statements tracked by the module.|
-|pg_stat_statements.track|enum|top|It controls which statements are counted by the module.|
-|pg_stat_statements.track_utility|boolean|on|It controls whether utility commands are tracked by the module.|
-|pg_stat_statements.save|boolean|on|It specifies whether to save statement statistics across server shutdowns.|
-
-
-The module requires additional shared memory proportional to pg_stat_statements.max. Note that this memory is consumed whenever the module is loaded, even if pg_stat_statements.track is set to none.
-
 You can configure the following parameters in `postgresql.conf`:
+
+| Column | Type | Default | Description |
+| :----- | :--- | :------ | :---------- |
+| `pg_stat_statements.max` | integer | 5000 | Maximum number of statements tracked by the module. |
+| `pg_stat_statements.track` | enum | top | Controls which statements the module tracks. Valid values are `top` (track statements issued directly by clients), `all` (track top-level and nested statements), and `none` (disable statement statistics collection). |
+| `pg_stat_statements.track_utility` | boolean | true | Controls whether the module tracks utility commands. |
+| `pg_stat_statements.save` | boolean | true | Specifies whether to save statement statistics across server shutdowns. |
+
+The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
 
 ```sh
 pg_stat_statements.max = 10000      
@@ -38,28 +37,31 @@ pg_stat_statements.save = on
 
 ## Create pg_stat_statements extension
 
-Loading/unloading pg_stat_statements extension.
+The extension is loaded by default. To control it manually, use the following commands:
 
-```sh
+```sql
 yugabyte=# create extension pg_stat_statements;
-CREATE EXTENSION
-yugabyte=# drop extension pg_stat_statements;
-DROP EXTENSION
 ```
 
-## Restart YugabyteDB
+```output
+CREATE EXTENSION
+```
 
-Restart YugabyteDB with the following command:
+```sql
+yugabyte=# drop extension pg_stat_statements;
+```
 
-```sh
-$ bin/yugabyted stop && bin/yugabyted start
+```output
+DROP EXTENSION
 ```
 
 ## Examples
 
-
-```sh
+```sql
 yugabyte=# \d pg_stat_statements;
+```
+
+```output
                     View "public.pg_stat_statements"
        Column        |       Type       | Collation | Nullable | Default 
 ---------------------+------------------+-----------+----------+---------
@@ -86,9 +88,13 @@ yugabyte=# \d pg_stat_statements;
  temp_blks_written   | bigint           |           |          | 
  blk_read_time       | double precision |           |          | 
  blk_write_time      | double precision |           |          | 
+ ```
  
- 
+ ```sql
  yugabyte=# \dS+ pg_stat_statements;
+ ```
+
+ ```output
                                  View "public.pg_stat_statements"
        Column        |       Type       | Collation | Nullable | Default | Storage  | Description 
 ---------------------+------------------+-----------+----------+---------+----------+-------------
@@ -144,9 +150,12 @@ View definition:
 
 ### Top 10 I/O-intensive queries
 
-```sh
+```sql
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc limit 10;
-  userid  | dbid  |                                                          query                                                         
+```
+
+```output
+  userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select pg_stat_statements_reset()
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
@@ -155,9 +164,12 @@ ls desc limit $1
 (3 rows)
 ```
 
-```sh
+```sql
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) desc limit 10;
-  userid  | dbid  |                                                          query                                                       
+```
+
+```output
+  userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select pg_stat_statements_reset()
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
@@ -170,9 +182,12 @@ c limit $1
 
 ### Top 10 time-consuming queries
 
-```sh
+```sql
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit 10;
-  userid  | dbid  |                                                          query                                                         
+```
+
+```output
+  userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
 ls desc limit $1
@@ -183,9 +198,12 @@ c limit $1
 (4 rows)
 ```
 
-```
+```sql
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit 10;
-  userid  | dbid  |                                                          query                                                         
+```
+
+```output
+  userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
 ls desc limit $1
@@ -199,9 +217,12 @@ c limit $1
 
 ### Top 10 response-time outliers
 
-```sh
+```sql
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit 10;
-  userid  | dbid  |                                                          query                                                       
+```
+
+```output
+  userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
 ls desc limit $1
@@ -213,12 +234,14 @@ c limit $1
 (5 rows)
 ```
 
-
 ### Top 10 queries by memory usage
 
-```sh
+```sql
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (shared_blks_hit+shared_blks_dirtied) desc limit 10;
-  userid  | dbid  |                                                          query                                                         
+```
+
+```output
+  userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select pg_stat_statements_reset()
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
@@ -231,12 +254,14 @@ c limit $1
 (6 rows)
 ```
 
-
 ### Top 10 consumers of temporary space
 
-```sh
+```sql
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by temp_blks_written desc limit 10;    
-  userid  | dbid  |                                                          query                                                        
+```
+
+```output
+  userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select pg_stat_statements_reset()
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
@@ -253,10 +278,13 @@ ed) desc limit $1
 
 ## Reset statistics
 
-pg_stat_statements_reset discards all statistics gathered so far by pg_stat_statements. By default, this function can only be executed by superusers.
+`pg_stat_statements_reset` discards all statistics gathered so far by pg_stat_statements. By default, this function can only be executed by superusers.
 
 ```sh
 yugabyte=# select pg_stat_statements_reset();
+```
+
+```output
  pg_stat_statements_reset 
 --------------------------
  
