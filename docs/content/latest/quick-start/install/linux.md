@@ -50,9 +50,9 @@ showAsideToc: true
 
 ## Prerequisites
 
-1. One of the following operating systems
+1. One of the following operating systems:
 
-    * <i class="icon-centos"></i> CentOS 7
+    * <i class="icon-centos"></i> CentOS 7 or later
 
     * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
 
