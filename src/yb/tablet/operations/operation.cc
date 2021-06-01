@@ -77,14 +77,13 @@ void Operation::Aborted(const Status& status) {
 }
 
 void OperationState::CompleteWithStatus(const Status& status) const {
-  if (completion_clbk_) {
-    completion_clbk_->CompleteWithStatus(status);
+  bool expected = false;
+  if (!complete_.compare_exchange_strong(expected, true)) {
+    LOG_WITH_PREFIX(DFATAL) << __func__ << " called twice, new status: " << status;
+    return;
   }
-}
-
-void OperationState::SetError(const Status& status, tserver::TabletServerErrorPB::Code code) const {
   if (completion_clbk_) {
-    completion_clbk_->set_error(status, code);
+    completion_clbk_(status);
   }
 }
 
@@ -177,42 +176,6 @@ void ExclusiveSchemaOperationStateBase::ReleasePermitToken() {
   permit_token_.Reset();
   TRACE("Released permit token");
 }
-
-OperationCompletionCallback::OperationCompletionCallback()
-    : code_(tserver::TabletServerErrorPB::UNKNOWN_ERROR) {
-}
-
-void OperationCompletionCallback::set_error(const Status& status,
-                                            tserver::TabletServerErrorPB::Code code) {
-  status_ = status;
-  code_ = code;
-}
-
-void OperationCompletionCallback::set_error(const Status& status) {
-  LOG_IF(DFATAL, !status_.ok()) << "OperationCompletionCallback changing from failure status: "
-                                << status_ << " => " << status;
-  TabletServerError ts_error(status);
-
-  if (ts_error.value() == TabletServerErrorPB::Code()) {
-    status_ = status;
-  } else {
-    set_error(status, ts_error.value());
-  }
-}
-
-bool OperationCompletionCallback::has_error() const {
-  return !status_.ok();
-}
-
-const Status& OperationCompletionCallback::status() const {
-  return status_;
-}
-
-const tserver::TabletServerErrorPB::Code OperationCompletionCallback::error_code() const {
-  return code_;
-}
-
-OperationCompletionCallback::~OperationCompletionCallback() {}
 
 }  // namespace tablet
 }  // namespace yb
