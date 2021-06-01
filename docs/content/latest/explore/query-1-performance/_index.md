@@ -41,6 +41,19 @@ menu:
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pg-stat-statements/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="articles">1 article</div>
+        <div class="title">Get query statistics using pg_stat_statements</div>
+      </div>
+      <div class="body">
+        Track planning and execution statistics for all SQL statements executed by a server.
+      </div>
+    </a>
+  </div>
   
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="pg-stat-activity/">
