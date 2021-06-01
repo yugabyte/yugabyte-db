@@ -380,7 +380,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreBackupT
       R"#(
                                                QUERY PLAN
         ----------------------------------------------------------------------------------------
-         Index Only Scan using vendors_v_name_idx on vendors  (cost=0.00..4.11 rows=1 width=32)
+         Index Only Scan using vendors_v_name_idx on vendors  (cost=0.00..0.11 rows=1 width=32)
            Index Cond: (v_name = 'foo'::text)
         (2 rows)
       )#"

@@ -600,6 +600,11 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     return StateToStringUnlocked();
   }
 
+  size_t TEST_num_tasks_pending() EXCLUDES(mutex_) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return tasks_.size();
+  }
+
   void TEST_SetThreadCreationFailureProbability(double probability) {
     thread_creation_failure_probability_ = probability;
   }
@@ -721,9 +726,10 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 
   const PriorityThreadPoolInternalTask* AddTask(
       int priority, TaskPtr task, PriorityThreadPoolWorker* worker) REQUIRES(mutex_) {
+    VLOG(4) << "Adding new task: " << AsString(task);
     auto it = tasks_.emplace(priority, std::move(task), worker, &mutex_).first;
     UpdateMaxPriorityToDefer();
-    VLOG(4) << "New task added " << task->ToString() << ", max to defer: "
+    VLOG(4) << "New task added, max to defer: "
             << max_priority_to_defer_.load(std::memory_order_acquire);
     return &*it;
   }
@@ -841,6 +847,10 @@ bool PriorityThreadPool::ChangeTaskPriority(size_t serial_no, int priority) {
 
 void PriorityThreadPool::TEST_SetThreadCreationFailureProbability(double probability) {
   return impl_->TEST_SetThreadCreationFailureProbability(probability);
+}
+
+size_t PriorityThreadPool::TEST_num_tasks_pending() {
+  return impl_->TEST_num_tasks_pending();
 }
 
 } // namespace yb

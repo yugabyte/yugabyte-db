@@ -55,7 +55,6 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/operation_order_verifier.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/preparer.h"
@@ -68,10 +67,6 @@
 using yb::consensus::StateChangeContext;
 
 namespace yb {
-
-namespace log {
-class LogAnchorRegistry;
-}
 
 namespace tserver {
 class CatchUpServiceTest;
@@ -166,8 +161,7 @@ class TabletPeer : public consensus::ConsensusContext,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
-      consensus::RetryableRequests* retryable_requests,
-      const consensus::SplitOpInfo& split_op_info);
+      consensus::RetryableRequests* retryable_requests);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -236,6 +230,7 @@ class TabletPeer : public consensus::ConsensusContext,
   consensus::RaftConsensus* raft_consensus() const;
 
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
+  std::shared_ptr<consensus::RaftConsensus> shared_raft_consensus() const;
 
   Tablet* tablet() const EXCLUDES(lock_) {
     std::lock_guard<simple_spinlock> lock(lock_);
@@ -430,7 +425,6 @@ class TabletPeer : public consensus::ConsensusContext,
   std::atomic<bool> has_consensus_ = {false};
 
   OperationTracker operation_tracker_;
-  OperationOrderVerifier operation_order_verifier_;
 
   scoped_refptr<log::Log> log_;
   std::atomic<log::Log*> log_atomic_{nullptr};
@@ -462,7 +456,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // Function to mark this TabletPeer's tablet as dirty in the TSTabletManager.
   // This function must be called any time the cluster membership or cluster
   // leadership changes. Note that this function is called synchronously on the followers
-  // or leader via the consensus round completion callback of NonTxRoundReplicationFinished.
+  // or leader via the consensus round completion callback of NonTrackedRoundReplicationFinished.
   // Hence this should be a relatively lightweight function - e.g., update in-memory only state
   // and defer any other heavy duty operations to a thread pool.
   Callback<void(std::shared_ptr<consensus::StateChangeContext> context)> mark_dirty_clbk_;
@@ -494,6 +488,8 @@ class TabletPeer : public consensus::ConsensusContext,
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
   rpc::Scheduler& scheduler() const override;
+  CHECKED_STATUS CheckOperationAllowed(
+      const OpId& op_id, consensus::OperationType op_type) override;
 
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
