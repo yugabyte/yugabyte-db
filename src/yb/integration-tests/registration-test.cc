@@ -88,7 +88,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     YBMiniClusterTestBase::SetUp();
 
-    cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+    cluster_.reset(new MiniCluster(MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
   }
 
