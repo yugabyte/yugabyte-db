@@ -72,11 +72,11 @@ public class ConfigHelperTest extends FakeDBApplication {
     Map<String, Object> jsonMap = new HashMap();
     jsonMap.put("version_number", "1.1.1.1");
     jsonMap.put("build_number", "12345");
-    when(application.resourceAsStream(configFile))
-      .thenReturn(asJsonStream(jsonMap));
+    when(application.resourceAsStream(configFile)).thenReturn(asJsonStream(jsonMap));
     configHelper.loadSoftwareVersiontoDB(application);
-    assertEquals(ImmutableMap.of("version", "1.1.1.1-b12345"),
-      configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
+    assertEquals(
+        ImmutableMap.of("version", "1.1.1.1-b12345"),
+        configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
   }
 
   @Test

@@ -82,8 +82,9 @@ public class ConfigHelper {
     String configFile = "version_metadata.json";
     InputStream inputStream = app.resourceAsStream(configFile);
     if (inputStream == null) { // version_metadata.json not found
-      LOG.info("{} file not found. Reading version from version.txt file",
-        FilenameUtils.getName(configFile));
+      LOG.info(
+          "{} file not found. Reading version from version.txt file",
+          FilenameUtils.getName(configFile));
       Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
       String version = yaml.load(app.resourceAsStream("version.txt"));
       loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
@@ -91,15 +92,18 @@ public class ConfigHelper {
     }
     JsonNode jsonNode = Json.parse(inputStream);
     String buildNumber = jsonNode.get("build_number").asText();
-    String version = jsonNode.get("version_number").asText() + "-" +
-      (NumberUtils.isDigits(buildNumber) ? "b" : "") + buildNumber;
+    String version =
+        jsonNode.get("version_number").asText()
+            + "-"
+            + (NumberUtils.isDigits(buildNumber) ? "b" : "")
+            + buildNumber;
     loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
 
     // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
-    Map <String, Object> ywMetadata = new HashMap<>();
+    Map<String, Object> ywMetadata = new HashMap<>();
     // Assign a new Yugaware UUID if not already present in the DB i.e. first install
-    Object ywUUID = getConfig(ConfigType.YugawareMetadata)
-      .getOrDefault("yugaware_uuid", UUID.randomUUID());
+    Object ywUUID =
+        getConfig(ConfigType.YugawareMetadata).getOrDefault("yugaware_uuid", UUID.randomUUID());
     ywMetadata.put("yugaware_uuid", ywUUID);
     ywMetadata.put("version", version);
     loadConfigToDB(ConfigType.YugawareMetadata, ywMetadata);
