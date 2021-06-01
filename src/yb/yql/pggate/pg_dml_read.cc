@@ -17,11 +17,43 @@
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/table.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/docdb/primitive_value.h"
 
 namespace yb {
 namespace pggate {
+
+namespace {
+
+template<class Key, class Value, class CompatibleKey>
+auto Find(const boost::unordered_map<Key, Value>& map, const CompatibleKey& key) {
+  return map.find(key, boost::hash<CompatibleKey>(), std::equal_to<CompatibleKey>());
+}
+
+using DocKeyBuilder = std::function<docdb::DocKey(const vector<docdb::PrimitiveValue>&)>;
+
+Result<DocKeyBuilder> CreateDocKeyBuilder(
+    const vector<docdb::PrimitiveValue>& hashed_components,
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& hashed_values,
+    const PartitionSchema& partition_schema) {
+
+  if (hashed_values.empty()) {
+    return [](const auto& range_components) {
+      return docdb::DocKey(range_components);
+    };
+  }
+
+  string partition_key;
+  RETURN_NOT_OK(partition_schema.EncodeKey(hashed_values, &partition_key));
+  const auto hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+
+  return [hash, &hashed_components](const auto& range_components) {
+    return docdb::DocKey(hash, hashed_components, range_components);
+  };
+}
+
+} // namespace
 
 using std::make_shared;
 
@@ -112,7 +144,7 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     PgColumn& col = bind_desc_->columns()[i];
     PgsqlExpressionPB* expr = col.bind_pb();
     if (expr_binds_.find(expr) == expr_binds_.end() && !expr->has_condition()) {
-      // For IN clause on hash_column, expr->has_condition() returns 'true'.
+      // For IN clause expr->has_condition() returns 'true'.
       miss_partition_columns = true;
     } else {
       has_partition_columns = true;
@@ -134,9 +166,14 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   size_t num_bound_range_columns = 0;
 
   for (size_t i = bind_desc_->num_hash_key_columns(); i < bind_desc_->num_key_columns(); i++) {
-    PgColumn& col = bind_desc_->columns()[i];
-    const auto expr_bind = expr_binds_.find(col.bind_pb());
-    if (expr_bind == expr_binds_.end()) {
+    auto& col = bind_desc_->columns()[i];
+    auto* expr = col.bind_pb();
+    const auto expr_bind = expr_binds_.find(expr);
+    // For IN clause expr->has_condition() returns 'true'.
+    if (expr->has_condition()) {
+      preceding_key_column_missed = true;
+      RETURN_NOT_OK(MoveBoundKeyInOperator(&col, expr->condition()));
+    } else if (expr_bind == expr_binds_.end()) {
       preceding_key_column_missed = true;
     } else {
       if (preceding_key_column_missed) {
@@ -150,7 +187,7 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
         op1_pb->set_column_id(col.id());
 
         auto attr_value = expr_bind->second;
-        RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
+        RETURN_NOT_OK(attr_value->Eval(op2_pb->mutable_value()));
         expr_binds_.erase(expr_bind);
       } else {
         ++num_bound_range_columns;
@@ -167,15 +204,23 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
 //--------------------------------------------------------------------------------------------------
 
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
+  // Set column references in protobuf and whether query is aggregate.
+  SetColumnRefs();
+
   // Initialize doc operator.
   if (doc_op_) {
     RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
   }
 
-  RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
-
-  // Set column references in protobuf and whether query is aggregate.
-  SetColumnRefs();
+  if (doc_op_ &&
+      !secondary_index_query_ &&
+      exec_params &&
+      (exec_params->rowmark > -1) &&
+      CanBuildYbctidsFromPrimaryBinds()) {
+    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids());
+  } else {
+    RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
+  }
 
   // First, process the secondary index request.
   bool has_ybctid = VERIFY_RESULT(ProcessSecondaryIndexRequest(exec_params));
@@ -242,8 +287,8 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
 
       op1_pb->set_column_id(col->id());
 
-      RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
-      RETURN_NOT_OK(attr_value_end->Eval(this, op3_pb->mutable_value()));
+      RETURN_NOT_OK(attr_value->Eval(op2_pb->mutable_value()));
+      RETURN_NOT_OK(attr_value_end->Eval(op3_pb->mutable_value()));
     } else {
       condition_expr_pb->mutable_condition()->set_op(QL_OP_GREATER_THAN_EQUAL);
 
@@ -252,7 +297,7 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
 
       op1_pb->set_column_id(col->id());
 
-      RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
+      RETURN_NOT_OK(attr_value->Eval(op2_pb->mutable_value()));
     }
   } else {
     if (attr_value_end != nullptr) {
@@ -263,7 +308,7 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
 
       op1_pb->set_column_id(col->id());
 
-      RETURN_NOT_OK(attr_value_end->Eval(this, op2_pb->mutable_value()));
+      RETURN_NOT_OK(attr_value_end->Eval(op2_pb->mutable_value()));
     } else {
       // Unreachable.
     }
@@ -278,8 +323,9 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
     return secondary_index_query_->BindColumnCondIn(attr_num, n_attr_values, attr_values);
   }
 
-  DCHECK(attr_num != static_cast<int>(PgSystemAttrNum::kYBTupleId))
-    << "Operator IN cannot be applied to ROWID";
+  SCHECK(attr_num != static_cast<int>(PgSystemAttrNum::kYBTupleId),
+         InvalidArgument,
+         "Operator IN cannot be applied to ROWID");
 
   // Find column.
   PgColumn *col = VERIFY_RESULT(bind_desc_->FindColumn(attr_num));
@@ -296,9 +342,9 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
     }
   }
 
-  if (col->desc()->is_partition()) {
+  if (col->desc()->is_primary()) {
     // Alloc the protobuf.
-    PgsqlExpressionPB* bind_pb = col->bind_pb();
+    auto *bind_pb = col->bind_pb();
     if (bind_pb == nullptr) {
       bind_pb = AllocColumnBindPB(col);
     } else {
@@ -318,16 +364,11 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
     op2_pb->mutable_condition()->set_op(QL_OP_OR);
 
     for (int i = 0; i < n_attr_values; i++) {
-      auto* attr_pb = op2_pb->mutable_condition()->add_operands();
+      auto *attr_pb = op2_pb->mutable_condition()->add_operands();
       // Link the expression and protobuf. During execution, expr will write result to the pb.
       RETURN_NOT_OK(attr_values[i]->PrepareForRead(this, attr_pb));
 
       expr_binds_[attr_pb] = attr_values[i];
-
-      if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-        CHECK(attr_values[i]->is_constant()) << "Column ybctid must be bound to constant";
-        ybctid_bind_ = true;
-      }
     }
   } else {
     // Alloc the protobuf.
@@ -351,18 +392,138 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
       //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
 
       if (attr_values[i]) {
-        RETURN_NOT_OK(attr_values[i]->Eval(this,
-              op2_pb->mutable_value()->mutable_list_value()->add_elems()));
-      }
-
-      if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-        CHECK(attr_values[i]->is_constant()) << "Column ybctid must be bound to constant";
-        ybctid_bind_ = true;
+        RETURN_NOT_OK(attr_values[i]->Eval(
+            op2_pb->mutable_value()->mutable_list_value()->add_elems()));
       }
     }
   }
-
   return Status::OK();
+}
+
+Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
+  const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
+  std::vector<Slice> ybctidsAsSlice;
+  for (const auto& ybctid : ybctids) {
+    ybctidsAsSlice.emplace_back(ybctid);
+  }
+  expr_binds_.clear();
+  read_req_->clear_partition_column_values();
+  read_req_->clear_range_column_values();
+  read_req_->set_unknown_ybctid_allowed(true);
+  return doc_op_->PopulateDmlByYbctidOps(&ybctidsAsSlice);
+}
+
+// Function builds vector of ybctids from primary key binds.
+// Required precondition that one and only one range key component has IN clause and all
+// other key components are set must be checked by caller code.
+Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
+  google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
+  vector<docdb::PrimitiveValue> hashed_components, range_components;
+  hashed_components.reserve(bind_desc_->num_hash_key_columns());
+  range_components.reserve(
+      bind_desc_->num_hash_key_columns() - bind_desc_->num_hash_key_columns());
+  for (size_t i = 0; i < bind_desc_->num_hash_key_columns(); ++i) {
+    auto& col = bind_desc_->columns()[i];
+    hashed_components.push_back(VERIFY_RESULT(
+        BuildKeyColumnValue(col, *col.bind_pb(), hashed_values.Add())));
+  }
+
+  auto dockey_builder = VERIFY_RESULT(CreateDocKeyBuilder(
+      hashed_components, hashed_values, bind_desc_->table()->partition_schema()));
+
+  for (size_t i = bind_desc_->num_hash_key_columns(); i < bind_desc_->num_key_columns(); ++i) {
+    auto& col = bind_desc_->columns()[i];
+    auto& expr = *col.bind_pb();
+    // For IN clause expr->has_condition() returns 'true'.
+    if (expr.has_condition()) {
+      const auto prefix_len = range_components.size();
+      // Form ybctid for each value in IN clause.
+      std::vector <std::string> ybctids;
+      for (const auto& in_exp : expr.condition().operands(1).condition().operands()) {
+        range_components.push_back(VERIFY_RESULT(BuildKeyColumnValue(col, in_exp)));
+        // Range key component has one and only one IN clause,
+        // all remains components has explicit values. Add them as is.
+        for (size_t j = i + 1; j < bind_desc_->num_key_columns(); ++j) {
+          auto& suffix_col = bind_desc_->columns()[j];
+          range_components.push_back(VERIFY_RESULT(
+              BuildKeyColumnValue(suffix_col, *suffix_col.bind_pb())));
+        }
+        const auto doc_key = dockey_builder(range_components);
+        ybctids.push_back(doc_key.Encode().ToStringBuffer());
+        range_components.resize(prefix_len);
+      }
+      return std::move(ybctids);
+    } else {
+      range_components.push_back(VERIFY_RESULT(BuildKeyColumnValue(col, expr)));
+    }
+  }
+  return STATUS(IllegalState, "Can't build ybctids, bad preconditions");
+}
+
+// Function checks that one and only one range key component has IN clause
+// and all other key components are set.
+bool PgDmlRead::CanBuildYbctidsFromPrimaryBinds() const {
+  if (!bind_desc_) {
+    return false;
+  }
+
+  size_t range_components_in_clause_count = 0;
+
+  for (size_t i = 0; i < bind_desc_->num_key_columns(); ++i) {
+    auto& col = bind_desc_->columns()[i];
+    auto* expr = col.bind_pb();
+    // For IN clause expr->has_condition() returns 'true'.
+    if (expr->has_condition()) {
+      if ((i < bind_desc_->num_hash_key_columns()) || (++range_components_in_clause_count > 1)) {
+        // unsupported IN clause
+        return false;
+      }
+    } else if (expr_binds_.find(expr) == expr_binds_.end()) {
+      // missing key component found
+      return false;
+    }
+  }
+  return range_components_in_clause_count == 1;
+}
+
+// Moves IN operator bound for range key component into 'condition_expr' field
+Status PgDmlRead::MoveBoundKeyInOperator(PgColumn* col, const PgsqlConditionPB& in_operator) {
+  auto* condition_expr_pb = AllocColumnBindConditionExprPB(col);
+  condition_expr_pb->mutable_condition()->set_op(QL_OP_IN);
+
+  auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+  op1_pb->set_column_id(col->id());
+
+  auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+  for (const auto& expr : in_operator.operands(1).condition().operands()) {
+    RETURN_NOT_OK(CopyBoundValue(
+        *col, expr, op2_pb->mutable_value()->mutable_list_value()->add_elems()));
+    expr_binds_.erase(Find(expr_binds_, &expr));
+  }
+  return Status::OK();
+}
+
+Status PgDmlRead::CopyBoundValue(
+    const PgColumn& col, const PgsqlExpressionPB& src, QLValuePB* dest) const {
+  // 'src' expression has no value yet,
+  // it is used as the key to find actual source in 'expr_binds_'.
+  const auto it = Find(expr_binds_, &src);
+  if (it == expr_binds_.end()) {
+    return STATUS_FORMAT(IllegalState, "Bind value not found for $0", col.id());
+  }
+  return it->second->Eval(dest);
+}
+
+Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
+    const PgColumn& col, const PgsqlExpressionPB& src, PgsqlExpressionPB* dest) {
+  RETURN_NOT_OK(CopyBoundValue(col, src, dest->mutable_value()));
+  return docdb::PrimitiveValue::FromQLValuePB(dest->value(), col.desc()->sorting_type());
+}
+
+Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
+    const PgColumn& col, const PgsqlExpressionPB& src) {
+  PgsqlExpressionPB temp_expr;
+  return BuildKeyColumnValue(col, src, &temp_expr);
 }
 
 }  // namespace pggate
