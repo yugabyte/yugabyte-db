@@ -108,13 +108,13 @@ void DBTestBase::CreateEncryptedEnv() {
     LOG(FATAL) << "Could not write slice to file:" << status.ToString();
   }
 
-  auto res = yb::enterprise::UniverseKeyManager::FromKey(kKeyId, key);
+  auto res = yb::UniverseKeyManager::FromKey(kKeyId, key);
   if (!res.ok()) {
     LOG(FATAL) << "Could not get key from bytes:" << res.status().ToString();
   }
   universe_key_manager_ = std::move(*res);
-  encrypted_env_ = yb::enterprise::NewRocksDBEncryptedEnv(
-      yb::enterprise::DefaultHeaderManager(universe_key_manager_.get()));
+  encrypted_env_ = yb::NewRocksDBEncryptedEnv(
+      yb::DefaultHeaderManager(universe_key_manager_.get()));
   delete env_;
   env_ = new rocksdb::SpecialEnv(encrypted_env_.get());
 }

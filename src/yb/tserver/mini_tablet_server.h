@@ -44,6 +44,7 @@
 namespace yb {
 
 class FsManager;
+class UniverseKeyManager;
 
 namespace consensus {
 class RaftConfigPB;
@@ -61,6 +62,10 @@ class MiniTabletServer {
       uint16_t rpc_port,
       int index = 0);
 
+  MiniTabletServer(const std::vector<std::string>& wal_paths,
+                   const std::vector<std::string>& data_paths,
+                   uint16_t rpc_port,
+                   const TabletServerOptions& extra_opts, int index = 0);
   MiniTabletServer(const std::string& fs_root, uint16_t rpc_port,
                    const TabletServerOptions& extra_opts, int index = 0);
   ~MiniTabletServer();
@@ -135,7 +140,7 @@ class MiniTabletServer {
   TabletServerOptions opts_;
   int index_;
 
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<UniverseKeyManager> universe_key_manager_;
   gscoped_ptr<TabletServer> server_;
   std::unique_ptr<Tunnel> tunnel_;
 };
