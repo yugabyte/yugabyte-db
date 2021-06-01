@@ -73,7 +73,7 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
 
     opts.num_tablet_servers = kNumTabletServers;
 
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     YBSchema schema;
