@@ -41,7 +41,9 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_metrics.h"
+
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
@@ -93,8 +95,8 @@ Status ChangeMetadataOperation::Prepare() {
     schema = std::make_unique<Schema>();
     Status s = SchemaFromPB(state()->request()->schema(), schema.get());
     if (!s.ok()) {
-      state()->SetError(s, TabletServerErrorPB::INVALID_SCHEMA);
-      return s;
+      return s.CloneAndAddErrorCode(
+          tserver::TabletServerError(TabletServerErrorPB::INVALID_SCHEMA));
     }
   }
 
@@ -233,8 +235,7 @@ CHECKED_STATUS SyncReplicateChangeMetadataOperation(
 
   Synchronizer synchronizer;
 
-  operation_state->set_completion_callback(
-      std::make_unique<tablet::SynchronizerOperationCompletionCallback>(&synchronizer));
+  operation_state->set_completion_callback(synchronizer.AsStdStatusCallback());
 
   tablet_peer->Submit(std::make_unique<tablet::ChangeMetadataOperation>(
       std::move(operation_state)), term);

@@ -66,8 +66,8 @@ void SubmitWrite(
   auto state = std::make_unique<tablet::WriteOperationState>(
       /* tablet= */ nullptr, &empty_write_request);
   if (synchronizer) {
-    state->set_completion_callback(std::make_unique<
-        tablet::WeakSynchronizerOperationCompletionCallback>(synchronizer));
+    state->set_completion_callback(
+        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
   }
   auto& request = *state->mutable_request();
   *request.mutable_write_batch() = std::move(write_batch);
@@ -130,7 +130,7 @@ class MasterSnapshotCoordinator::Impl {
     auto snapshot_id = VERIFY_RESULT(SubmitCreate(
         entries, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid, TxnSnapshotId::Nil(),
         leader_term,
-        std::make_unique<tablet::WeakSynchronizerOperationCompletionCallback>(synchronizer)));
+        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
     RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
 
     return snapshot_id;
@@ -745,10 +745,9 @@ class MasterSnapshotCoordinator::Impl {
     RETURN_NOT_OK(SubmitCreate(
         entries, false, operation.schedule_id, operation.previous_snapshot_hybrid_time,
         operation.snapshot_id, leader_term,
-        tablet::MakeFunctorOperationCompletionCallback(
-            [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id,
-             synchronizer](
-                const Status& status) {
+        [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id,
+         synchronizer](
+            const Status& status) {
           if (!status.ok()) {
             CreateSnapshotAborted(status, schedule_id, snapshot_id);
           }
@@ -756,7 +755,7 @@ class MasterSnapshotCoordinator::Impl {
           if (locked_synchronizer) {
             locked_synchronizer->StatusCB(status);
           }
-        })));
+        }));
     return Status::OK();
   }
 
@@ -776,7 +775,7 @@ class MasterSnapshotCoordinator::Impl {
   Result<TxnSnapshotId> SubmitCreate(
       const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
       HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id, int64_t leader_term,
-      std::unique_ptr<tablet::OperationCompletionCallback> completion_clbk) {
+      tablet::OperationCompletionCallback completion_clbk) {
     auto operation_state = std::make_unique<tablet::SnapshotOperationState>(/* tablet= */ nullptr);
     auto request = operation_state->AllocateRequest();
 
@@ -820,7 +819,7 @@ class MasterSnapshotCoordinator::Impl {
     request->set_operation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER);
     request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
 
-    operation_state->set_completion_callback(tablet::MakeFunctorOperationCompletionCallback(
+    operation_state->set_completion_callback(
         [this, wsynchronizer = std::weak_ptr<Synchronizer>(synchronizer), snapshot_id]
         (const Status& status) {
           auto synchronizer = wsynchronizer.lock();
@@ -830,7 +829,7 @@ class MasterSnapshotCoordinator::Impl {
           if (!status.ok()) {
             DeleteSnapshotAborted(status, snapshot_id);
           }
-        }));
+        });
     auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
 
     context_.Submit(std::move(operation), leader_term);
@@ -849,8 +848,8 @@ class MasterSnapshotCoordinator::Impl {
       request->set_restoration_id(restoration_id.data(), restoration_id.size());
     }
 
-    operation_state->set_completion_callback(std::make_unique<
-        tablet::WeakSynchronizerOperationCompletionCallback>(synchronizer));
+    operation_state->set_completion_callback(
+        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
     auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
 
     context_.Submit(std::move(operation), leader_term);
