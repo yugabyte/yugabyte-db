@@ -59,6 +59,8 @@ Example log output:
     ORDER BY 2, 3;
 ```
 
+Results are written to the YB-TServer log. For information on the YB-TServer log, refer to [YB-TServer logs](../../../troubleshoot/nodes/check-logs/#yb-tserver-logs).
+
 For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../../reference/configuration/yb-tserver/#ysql-flags).
 
 ### View live queries using pg_stat_activity
