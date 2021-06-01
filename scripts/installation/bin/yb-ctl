@@ -1663,7 +1663,6 @@ class ClusterControl:
                 ts_hp = self.options.get_host_port(daemon_id, "rpc")
                 for ts_status in output_array:
                     if ts_hp in ts_status:
-                        print(ts_status)
                         return "ALIVE" in ts_status
                 return False
             else:
