@@ -280,7 +280,7 @@ ed) desc limit $1
 
 `pg_stat_statements_reset` discards all statistics gathered so far by pg_stat_statements. By default, this function can only be executed by superusers.
 
-```sh
+```sql
 yugabyte=# select pg_stat_statements_reset();
 ```
 
