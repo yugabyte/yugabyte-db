@@ -470,6 +470,19 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
         index_info->add_indexed_range_column_ids(col_desc.id());
       }
     }
+
+    if (index_node->where_clause()) {
+      // TODO (Piyush): Add a ToString method for PTExpr and log the where clause.
+      IndexInfoPB::WherePredicateSpecPB *where_predicate_spec =
+        index_info->mutable_where_predicate_spec();
+
+      RETURN_NOT_OK(PTExprToPB(index_node->where_clause(),
+        where_predicate_spec->mutable_where_expr()));
+
+      for (auto column_id : *(index_node->where_clause_column_refs())) {
+        where_predicate_spec->add_column_ids(column_id);
+      }
+    }
   }
 
   for (const auto& column : tnode->hash_columns()) {
@@ -1400,6 +1413,7 @@ Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
+  const MonoTime start_time = MonoTime::Now();
   const Status s = ql_env_->UseKeyspace(tnode->name());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
@@ -1407,6 +1421,11 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
   }
 
   result_ = std::make_shared<SetKeyspaceResult>(tnode->name());
+
+  if (ql_metrics_ != nullptr) {
+    const auto delta_usec = (MonoTime::Now() - start_time).ToMicroseconds();
+    ql_metrics_->ql_use_->Increment(delta_usec);
+  }
   return Status::OK();
 }
 
@@ -2405,6 +2424,7 @@ void Executor::StatementExecuted(const Status& s) {
             case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTDeleteStmt: FALLTHROUGH_INTENDED;
+            case TreeNodeOpcode::kPTUseKeyspace: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTListNode:   FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTStartTransaction: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTCommit:
@@ -2412,6 +2432,7 @@ void Executor::StatementExecuted(const Status& s) {
               // been completed in FlushAsyncDone(). Exclude PTListNode also as we are interested
               // in the metrics of its constituent DMLs only. Transaction metrics have been
               // updated in CommitDone().
+              // The metrics for USE have been updated in ExecPTNode().
               break;
             default: {
               const MonoTime now = MonoTime::Now();

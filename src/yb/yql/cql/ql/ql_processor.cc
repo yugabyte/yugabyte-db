@@ -70,6 +70,10 @@ METRIC_DEFINE_histogram_with_percentiles(
     "Time spent processing a DELETE statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a DELETE statement", 60000000LU, 2);
 METRIC_DEFINE_histogram_with_percentiles(
+    server, handler_latency_yb_cqlserver_SQLProcessor_UseStmt,
+    "Time spent processing a USE statement", yb::MetricUnit::kMicroseconds,
+    "Time spent processing a USE statement", 60000000LU, 2);
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_SQLProcessor_OtherStmts,
     "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE",
     yb::MetricUnit::kMicroseconds,
@@ -119,6 +123,8 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt.Instantiate(metric_entity);
   ql_delete_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt.Instantiate(metric_entity);
+  ql_use_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_UseStmt.Instantiate(metric_entity);
   ql_others_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_OtherStmts.Instantiate(metric_entity);
   ql_transaction_ =

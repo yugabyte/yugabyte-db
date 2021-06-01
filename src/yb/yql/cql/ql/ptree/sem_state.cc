@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/client/table.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
@@ -28,9 +29,11 @@ SemState::SemState(SemContext *sem_context,
                    const std::shared_ptr<QLType>& expected_ql_type,
                    InternalType expected_internal_type,
                    const MCSharedPtr<MCString>& bindvar_name,
-                   const ColumnDesc *lhs_col)
+                   const ColumnDesc *lhs_col,
+                   NullIsAllowed allow_null)
     : sem_context_(sem_context),
       expected_ql_type_(expected_ql_type),
+      allow_null_ql_type_(allow_null),
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
       lhs_col_(lhs_col) {
@@ -46,6 +49,7 @@ SemState::SemState(SemContext *sem_context,
     // Index analysis states.
     scan_state_ = sem_context->scan_state();
     selecting_from_index_ = sem_context_->selecting_from_index();
+    index_select_prefix_length_ = sem_context_->index_select_prefix_length();
     void_primary_key_condition_ = sem_context_->void_primary_key_condition();
 
     // Clause analysis states.
@@ -54,6 +58,7 @@ SemState::SemState(SemContext *sem_context,
     processing_if_clause_ = sem_context_->processing_if_clause();
     validate_orderby_expr_ = sem_context->validate_orderby_expr();
     processing_set_clause_ = sem_context_->processing_set_clause();
+    idx_predicate_state_ = sem_context->idx_predicate_state();
 
     // Operator states.
     processing_assignee_ = sem_context_->processing_assignee();
@@ -80,8 +85,10 @@ void SemState::ResetContextState() {
 void SemState::SetExprState(const std::shared_ptr<QLType>& ql_type,
                             InternalType internal_type,
                             const MCSharedPtr<MCString>& bindvar_name,
-                            const ColumnDesc *lhs_col) {
+                            const ColumnDesc *lhs_col,
+                            NullIsAllowed allow_null) {
   expected_ql_type_ = ql_type;
+  allow_null_ql_type_ = allow_null;
   expected_internal_type_ = internal_type;
   bindvar_name_ = bindvar_name;
   lhs_col_ = lhs_col;
@@ -90,6 +97,7 @@ void SemState::SetExprState(const std::shared_ptr<QLType>& ql_type,
 void SemState::CopyPreviousStates() {
   if (previous_state_ != nullptr) {
     expected_ql_type_ = previous_state_->expected_ql_type_;
+    allow_null_ql_type_ = previous_state_->allow_null_ql_type_;
     expected_internal_type_ = previous_state_->expected_internal_type_;
     bindvar_name_ = previous_state_->bindvar_name_;
     where_state_ = previous_state_->where_state_;
@@ -124,6 +132,20 @@ bool SemState::is_uncovered_index_select() const {
   // Applicable to SELECT statement only.
   const auto* select_stmt = static_cast<const PTSelectStmt*>(current_dml_stmt_);
   return !select_stmt->index_id().empty() && !select_stmt->covers_fully();
+}
+
+bool SemState::is_partial_index_select() const {
+  if (current_dml_stmt_ == nullptr ||
+      current_dml_stmt_->opcode() != TreeNodeOpcode::kPTSelectStmt) {
+    return false;
+  }
+  // Applicable to SELECT statement only.
+  const auto* select_stmt = static_cast<const PTSelectStmt*>(current_dml_stmt_);
+  if (select_stmt->index_id().empty()) return false;
+
+  std::shared_ptr<client::YBTable> table = select_stmt->table();
+  const IndexInfo& idx_info = table->index_info();
+  return idx_info.where_predicate_spec() != nullptr;
 }
 
 }  // namespace ql}  // namespace ql

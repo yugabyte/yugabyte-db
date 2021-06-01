@@ -49,7 +49,8 @@ add_library(ql_ptree
             pt_option.cc
             process_context.cc
             sem_context.cc
-            sem_state.cc)
+            sem_state.cc
+            ycql_predtest.cc)
 
 target_link_libraries(ql_ptree ql_util yb_client yb_util yb_bfql yb_common)
 add_dependencies(ql_ptree yb_bfql)
