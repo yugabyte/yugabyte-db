@@ -5,13 +5,11 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 
@@ -66,9 +64,6 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   private Users user;
   private Universe universe;
 
-  @Mock private Config config;
-  @Mock private RuntimeConfigFactory configFactory;
-
   @InjectMocks private CustomerTaskController controller;
 
   @Before
@@ -76,7 +71,6 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     universe = createUniverse(customer.getCustomerId());
-    when(configFactory.globalRuntimeConf()).thenReturn(config);
   }
 
   @Test
@@ -326,8 +320,6 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   @Test
   public void testTaskHistoryLimit() {
     String authToken = user.createAuthToken();
-    Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
-    when(config.getInt(CustomerTaskController.CUSTOMER_TASK_DB_QUERY_LIMIT)).thenReturn(5);
     IntStream.range(0, 100)
         .forEach(
             i ->
@@ -338,13 +330,15 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
                     "Foo",
                     "Running",
                     50.0));
-    Result result = controller.list(customer.uuid);
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isObject());
     JsonNode universeTasks = json.get(universe.universeUUID.toString());
     assertTrue(universeTasks.isArray());
-    assertEquals(25, universeTasks.size());
+    assertEquals(5, universeTasks.size());
     assertAuditEntry(0, customer.uuid);
   }
 
