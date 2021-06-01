@@ -206,7 +206,7 @@ public class TablesController extends AuthenticatedController {
     }
 
     String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response = listTables(masterAddresses, certificate);
+    ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
     List<TableInfo> tableInfoList = response.getTableInfoList();
     ArrayNode resultNode = Json.newArray();
     for (TableInfo table : tableInfoList) {
@@ -232,17 +232,21 @@ public class TablesController extends AuthenticatedController {
     return ok(resultNode);
   }
 
-  private ListTablesResponse listTables(String masterAddresses, String certificate) {
+  private ListTablesResponse listTablesOrBadRequest(String masterAddresses, String certificate) {
     YBClient client = null;
+    ListTablesResponse response = null;
     try {
       client = ybService.getClient(masterAddresses, certificate);
-      ListTablesResponse response = client.getTablesList();
-      return response;
+      response = client.getTablesList();
     } catch (Exception e) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
+    if (response == null) {
+      throw new YWServiceException(BAD_REQUEST, "Table list can not be empty");
+    }
+    return response;
   }
 
   /**
