@@ -173,11 +173,6 @@ static void PrintSnapshotLeakWarning(Snapshot snapshot);
 static void PrintFileLeakWarning(File file);
 static void PrintDSMLeakWarning(dsm_segment *seg);
 
-/**
- * YugaByte-specific
- */
-static void PrintYugaByteStmtLeakWarning(YBCPgStatement yb_stmt);
-
 /*****************************************************************************
  *	  INTERNAL ROUTINES														 *
  *****************************************************************************/

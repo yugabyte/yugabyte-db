@@ -12,18 +12,60 @@
 //
 package org.yb.pgsql;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.YBTestRunnerNonTsanOnly;
+
+import com.google.common.collect.ImmutableMap;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgRegressTablespaces extends BasePgSQLTest {
+
+  private List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
+      ImmutableMap.of(
+          "placement_cloud", "cloud1",
+          "placement_region", "region1",
+          "placement_zone", "zone1"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud2",
+          "placement_region", "region2",
+          "placement_zone", "zone2"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud1",
+          "placement_region", "region1",
+          "placement_zone", "zone2"),
+      ImmutableMap.of(
+        "placement_cloud", "cloud1",
+        "placement_region", "region2",
+        "placement_zone", "zone1"));
+
+  private Map<String, String> masterFlags =
+    ImmutableMap.of(
+        "placement_cloud", "cloud1",
+        "placement_region", "region1",
+        "placement_zone", "zone1");
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.enablePgTransactions(true);
+    builder.perTServerFlags(perTserverZonePlacementFlags);
+    builder.numTservers(perTserverZonePlacementFlags.size());
+    builder.addMasterFlags(masterFlags);
+  }
+
+
   @Override
   public int getTestMethodTimeoutSec() {
-    return 500;
+    return 5000;
   }
 
   @Test

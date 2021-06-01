@@ -32,7 +32,7 @@
 
 #include "yb/tablet/operations/operation.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"

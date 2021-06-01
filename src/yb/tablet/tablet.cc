@@ -71,8 +71,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_error.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -2256,7 +2256,23 @@ Status Tablet::BackfillIndexes(
         }
       }
     }
+    if (idx.where_predicate_spec()) {
+      for (const auto col_in_pred : idx.where_predicate_spec()->column_ids()) {
+        ColumnId col_id_in_pred(col_in_pred);
+        if (col_ids_set.find(col_id_in_pred) == col_ids_set.end()) {
+          col_ids_set.insert(col_id_in_pred);
+          auto res = schema()->column_by_id(col_id_in_pred);
+          if (res) {
+            columns.push_back(*res);
+          } else {
+            LOG(DFATAL) << "Unexpected: cannot find the column in the main table for " <<
+              col_id_in_pred;
+          }
+        }
+      }
+    }
   }
+
   Schema projection(columns, {}, schema()->num_key_columns());
   auto iter =
       VERIFY_RESULT(NewRowIterator(projection, boost::none, ReadHybridTime::SingleTime(read_time)));
@@ -2329,7 +2345,8 @@ Status Tablet::UpdateIndexInBatches(
         docdb::CreateAndSetupIndexInsertRequest(
             &expr_executor, /* index_has_write_permission */ true,
             kEmptyRow, row, &index, index_requests));
-    index_request->set_is_backfill(true);
+    if (index_request)
+      index_request->set_is_backfill(true);
   }
 
   // Update the index write op.
@@ -3047,23 +3064,23 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
-Result<bool> Tablet::StillHasParentDataAfterSplit() {
+Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   ScopedRWOperation scoped_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_operation);
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
 }
 
-bool Tablet::MightStillHaveParentDataAfterSplit() {
-  auto res = StillHasParentDataAfterSplit();
+bool Tablet::MayHaveOrphanedPostSplitData() {
+  auto res = StillHasOrphanedPostSplitData();
   if (!res.ok()) {
-    LOG(WARNING) << "Failed to call StillHasParentDataAfterSplit: " << res.ToString();
+    LOG(WARNING) << "Failed to call StillHasOrphanedPostSplitData: " << res.ToString();
     return true;
   }
   return res.get();
 }
 
 bool Tablet::ShouldDisableLbMove() {
-  auto still_has_parent_data_result = StillHasParentDataAfterSplit();
+  auto still_has_parent_data_result = StillHasOrphanedPostSplitData();
   if (still_has_parent_data_result.ok()) {
     return still_has_parent_data_result.get();
   }
@@ -3384,7 +3401,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
     return STATUS(
         IllegalState, "Already triggered post split compaction for this tablet instance.");
   }
-  if (VERIFY_RESULT(StillHasParentDataAfterSplit())) {
+  if (VERIFY_RESULT(StillHasOrphanedPostSplitData())) {
     post_split_compaction_task_pool_token_ = get_token_for_compaction();
     return post_split_compaction_task_pool_token_->SubmitFunc(
         std::bind(&Tablet::TriggerPostSplitCompactionSync, this));

@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 import io.ebean.*;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 
+import com.yugabyte.yw.common.YWServiceException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import play.libs.Json;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class NodeInstance extends Model {
@@ -168,8 +170,17 @@ public class NodeInstance extends Model {
     return outputMap;
   }
 
+  @Deprecated
   public static NodeInstance get(UUID nodeUuid) {
     NodeInstance node = NodeInstance.find.byId(nodeUuid);
+    return node;
+  }
+
+  public static NodeInstance getOrBadRequest(UUID nodeUuid) {
+    NodeInstance node = get(nodeUuid);
+    if (node == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Node UUID: " + nodeUuid);
+    }
     return node;
   }
 

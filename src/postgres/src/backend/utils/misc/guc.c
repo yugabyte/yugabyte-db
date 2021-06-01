@@ -1958,6 +1958,15 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+	{
+		{"yb_enable_geolocation_costing", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Allow the optimizer to cost and choose between duplicate indexes based on locality"),
+			NULL
+		},
+		&yb_enable_geolocation_costing,
+		true,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{

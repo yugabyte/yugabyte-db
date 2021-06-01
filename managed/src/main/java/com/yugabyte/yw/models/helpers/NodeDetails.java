@@ -6,12 +6,11 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.models.Universe;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+
+import static com.yugabyte.yw.common.NodeActionType.*;
 
 /** Represents all the details of a cloud node that are of interest. */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -36,44 +35,54 @@ public class NodeDetails {
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
-    ToBeAdded,
+    ToBeAdded(DELETE),
     // Set when a new node is provisioned and configured but before it is added into
     // the existing cluster.
-    ToJoinCluster,
+    ToJoinCluster(REMOVE),
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step.
-    Provisioned,
+    Provisioned(),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
-    SoftwareInstalled,
+    SoftwareInstalled(START, DELETE),
     // Set after the YB software is upgraded via Rolling Restart.
-    UpgradeSoftware,
+    UpgradeSoftware(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
-    UpdateGFlags,
+    UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
-    Live,
+    Live(STOP, REMOVE, QUERY),
 
     // Set when node is about to enter the stopped state.
-    Stopping,
+    Stopping(),
     // Set when node is about to be set to live state.
-    Starting,
+    Starting(),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped,
+    Stopped(START, RELEASE, QUERY),
     // Set when node is unreachable but has not been Removed from the universe.
-    Unreachable,
+    Unreachable(),
     // Set when a node is marked for removal. Note that we will wait to get all its data out.
-    ToBeRemoved,
+    ToBeRemoved(REMOVE),
     // Set just before sending the request to the IaaS provider to terminate this node.
-    Removing,
+    Removing(),
     // Set after the node has been removed.
-    Removed,
+    Removed(ADD, RELEASE, DELETE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
-    Adding,
+    Adding(DELETE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
-    BeingDecommissioned,
+    BeingDecommissioned(),
     // After a stopped/removed node is returned back to the IaaS.
-    Decommissioned,
+    Decommissioned(ADD, DELETE),
     // Set when the cert is being updated.
-    UpdateCert
+    UpdateCert();
+
+    private final NodeActionType[] allowedActions;
+
+    NodeState(NodeActionType... allowedActions) {
+      this.allowedActions = allowedActions;
+    }
+
+    public ImmutableSet<NodeActionType> allowedActions() {
+      return ImmutableSet.copyOf(allowedActions);
+    }
   }
 
   // The current state of the node.
@@ -179,40 +188,6 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isInTransit() {
     return IN_TRANSIT_STATES.contains(state);
-  }
-
-  public Set<NodeActionType> getAllowedActions() {
-    return new HashSet<>(getStaticAllowedActions());
-  }
-
-  @JsonIgnore
-  public Set<NodeActionType> getStaticAllowedActions() {
-    if (state == null) {
-      return ImmutableSet.of();
-    }
-    switch (state) {
-        // Unexpected/abnormal states.
-      case ToBeAdded:
-      case Adding:
-        return ImmutableSet.of(NodeActionType.DELETE);
-      case ToJoinCluster:
-      case ToBeRemoved:
-        return ImmutableSet.of(NodeActionType.REMOVE);
-      case SoftwareInstalled:
-        return ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE);
-
-        // Expected/normal states.
-      case Live:
-        return ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE);
-      case Stopped:
-        return ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE);
-      case Removed:
-        return ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE);
-      case Decommissioned:
-        return ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE);
-      default:
-        return ImmutableSet.of();
-    }
   }
 
   @JsonIgnore

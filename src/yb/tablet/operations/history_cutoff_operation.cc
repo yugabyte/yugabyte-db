@@ -13,7 +13,7 @@
 
 #include "yb/tablet/operations/history_cutoff_operation.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 
 #include "yb/docdb/consensus_frontier.h"
 

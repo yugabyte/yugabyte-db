@@ -630,6 +630,7 @@ class DB {
   }
 
   virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
   // compacts them to the specified level. Note that the behavior is different
