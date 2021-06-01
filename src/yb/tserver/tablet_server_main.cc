@@ -54,13 +54,19 @@
 #include "yb/server/secure.h"
 #include "yb/tserver/factory.h"
 #include "yb/tserver/tablet_server.h"
+
+#include "yb/util/encrypted_file_factory.h"
 #include "yb/util/flags.h"
+#include "yb/util/header_manager_impl.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/universe_key_manager.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 using namespace std::placeholders;
 
@@ -185,8 +191,22 @@ int TabletServerMain(int argc, char** argv) {
 
   SetProxyAddresses();
 
+  // Object that manages the universe key registry used for encrypting and decrypting data keys.
+  // Copies are given to each Env.
+  std::shared_ptr<UniverseKeyManager> universe_key_manager =
+      std::make_unique<UniverseKeyManager>();
+  // Encrypted env for all non-rocksdb file i/o operations.
+  std::unique_ptr<yb::Env> env =
+      NewEncryptedEnv(DefaultHeaderManager(universe_key_manager.get()));
+  // Encrypted env for all rocksdb file i/o operations.
+  std::unique_ptr<rocksdb::Env> rocksdb_env =
+      NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager.get()));
+
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
+  tablet_server_options->env = env.get();
+  tablet_server_options->rocksdb_env = rocksdb_env.get();
+  tablet_server_options->universe_key_manager = universe_key_manager.get();
   enterprise::Factory factory;
 
   auto server = factory.CreateTabletServer(*tablet_server_options);

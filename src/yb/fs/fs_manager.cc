@@ -498,6 +498,10 @@ const string& FsManager::uuid() const {
   return CHECK_NOTNULL(metadata_.get())->uuid();
 }
 
+set<string> FsManager::GetFsRootDirs() const {
+  return canonicalized_all_fs_roots_;
+}
+
 vector<string> FsManager::GetDataRootDirs() const {
   // Add the data subdirectory to each data root.
   vector<string> data_paths;

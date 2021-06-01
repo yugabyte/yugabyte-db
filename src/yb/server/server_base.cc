@@ -463,7 +463,7 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
-  yb::enterprise::InitOpenSSL();
+  yb::InitOpenSSL();
 
   Status s = fs_manager_->Open();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {

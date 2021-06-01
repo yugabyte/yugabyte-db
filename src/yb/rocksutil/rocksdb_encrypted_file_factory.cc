@@ -20,7 +20,6 @@
 #include "yb/util/encryption_util.h"
 
 namespace yb {
-namespace enterprise {
 
 // An encrypted file implementation for sequential reads.
 class EncryptedSequentialFile : public SequentialFileWrapper {
@@ -106,7 +105,7 @@ class RocksDBEncryptedWritableFile : public rocksdb::WritableFileWrapper {
   }
 
  private:
-  std::unique_ptr<yb::enterprise::BlockAccessCipherStream> stream_;
+  std::unique_ptr<yb::BlockAccessCipherStream> stream_;
   uint32_t header_size_;
 };
 
@@ -182,6 +181,4 @@ std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(
   return encrypted_env;
 }
 
-
-} // namespace enterprise
 } // namespace yb

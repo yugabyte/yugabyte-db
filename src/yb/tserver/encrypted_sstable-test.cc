@@ -103,11 +103,11 @@ void EncryptedSSTableTest::CounterOverflow(
       ikc,
       /*skip_filters=*/ false);
 
-  std::shared_ptr<yb::enterprise::UniverseKeyManager> universe_key_manager =
+  std::shared_ptr<yb::UniverseKeyManager> universe_key_manager =
       GenerateTestUniverseKeyManager();
 
-  auto header_manager = enterprise::DefaultHeaderManager(universe_key_manager.get());
-  auto env = yb::enterprise::NewRocksDBEncryptedEnv(std::move(header_manager));
+  auto header_manager = DefaultHeaderManager(universe_key_manager.get());
+  auto env = yb::NewRocksDBEncryptedEnv(std::move(header_manager));
 
   auto file_name = JoinPathSegments(test_dir, "test-file");
 

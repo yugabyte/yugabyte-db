@@ -117,7 +117,7 @@ class CompactionTest : public YBTest {
     // Start cluster.
     MiniClusterOptions opts;
     opts.num_tablet_servers = 1;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     // These flags should be set after minicluster start, so it wouldn't override them.
     FLAGS_db_write_buffer_size = kMemStoreSize;

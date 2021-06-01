@@ -51,12 +51,8 @@ namespace enterprise {
 using cdc::CDCServiceImpl;
 using yb::rpc::ServiceIf;
 
-TabletServer::TabletServer(const TabletServerOptions& opts) :
-  super(opts),
-  universe_key_manager_(std::make_unique<yb::enterprise::UniverseKeyManager>()),
-  env_(yb::enterprise::NewEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()))),
-  rocksdb_env_(yb::enterprise::NewRocksDBEncryptedEnv(
-      DefaultHeaderManager(universe_key_manager_.get()))) {}
+TabletServer::TabletServer(const TabletServerOptions& opts)
+  : super(opts) {}
 
 TabletServer::~TabletServer() {
   Shutdown();
@@ -106,26 +102,18 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
-Env* TabletServer::GetEnv() {
-  return env_.get();
-}
-
-rocksdb::Env* TabletServer::GetRocksDBEnv() {
-  return rocksdb_env_.get();
-}
-
 CDCConsumer* TabletServer::GetCDCConsumer() {
   std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
   return cdc_consumer_.get();
 }
 
-yb::enterprise::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
-  return universe_key_manager_.get();
+yb::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
+  return opts_.universe_key_manager;
 }
 
 Status TabletServer::SetUniverseKeyRegistry(
     const yb::UniverseKeyRegistryPB& universe_key_registry) {
-  universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
+  opts_.universe_key_manager->SetUniverseKeyRegistry(universe_key_registry);
   return Status::OK();
 }
 

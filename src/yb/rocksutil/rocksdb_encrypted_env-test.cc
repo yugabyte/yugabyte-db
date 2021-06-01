@@ -29,7 +29,6 @@
 #include <gtest/gtest.h>
 
 namespace yb {
-namespace enterprise {
 
 constexpr uint32_t kDataSize = 1000;
 
@@ -38,7 +37,7 @@ class TestRocksDBEncryptedEnv : public YBTest {};
 TEST_F(TestRocksDBEncryptedEnv, FileOps) {
   auto header_manager = GetMockHeaderManager();
   HeaderManager* hm_ptr = header_manager.get();
-  auto env = yb::enterprise::NewRocksDBEncryptedEnv(std::move(header_manager));
+  auto env = yb::NewRocksDBEncryptedEnv(std::move(header_manager));
   auto fname = "test-file";
   auto bytes = RandomBytes(kDataSize);
   Slice data(bytes.data(), bytes.size());
@@ -62,5 +61,4 @@ TEST_F(TestRocksDBEncryptedEnv, FileOps) {
   }
 }
 
-} // namespace enterprise
 } // namespace yb

@@ -20,7 +20,6 @@
 #include "yb/util/encryption_util.h"
 
 namespace yb {
-namespace enterprise {
 
 // An encrypted file implementation for a writable file.
 class EncryptedWritableFile : public WritableFileWrapper {
@@ -35,7 +34,7 @@ class EncryptedWritableFile : public WritableFileWrapper {
 
   // Default constructor.
   EncryptedWritableFile(std::unique_ptr<WritableFile> file,
-                        std::unique_ptr<yb::enterprise::BlockAccessCipherStream> stream,
+                        std::unique_ptr<yb::BlockAccessCipherStream> stream,
                         uint32_t header_size)
       : WritableFileWrapper(std::move(file)), stream_(std::move(stream)), header_size_(header_size)
   {}
@@ -98,5 +97,4 @@ std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_m
   return encrypted_env;
 }
 
-} // namespace enterprise
 } // namespace yb

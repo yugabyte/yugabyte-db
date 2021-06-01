@@ -92,7 +92,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_tservers_;
     opts.num_masters = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(cluster_->WaitForTabletServerCount(opts.num_tablet_servers));

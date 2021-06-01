@@ -25,7 +25,7 @@ void CqlTestBase::SetUp() {
 
   MiniClusterOptions options;
   options.num_tablet_servers = 3;
-  cluster_ = std::make_unique<MiniCluster>(env_.get(), options);
+  cluster_ = std::make_unique<MiniCluster>(options);
   ASSERT_OK(cluster_->Start());
 
   ASSERT_OK(CreateClient());

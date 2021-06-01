@@ -26,7 +26,6 @@
 static const string kEncryptionMagic = "encrypt!";
 
 namespace yb {
-namespace enterprise {
 
 class HeaderManagerImpl : public HeaderManager {
  public:
@@ -142,5 +141,4 @@ std::unique_ptr<HeaderManager> DefaultHeaderManager(UniverseKeyManager* universe
   return std::make_unique<HeaderManagerImpl>(universe_key_manager);
 }
 
-} // namespace enterprise
 } // namespace yb

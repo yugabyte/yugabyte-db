@@ -33,7 +33,6 @@ TAG_FLAG(encryption_counter_overflow_read_path_workaround, advanced);
 TAG_FLAG(encryption_counter_overflow_read_path_workaround, hidden);
 
 namespace yb {
-namespace enterprise {
 
 Status EncryptedRandomAccessFile::Create(
     std::unique_ptr<RandomAccessFile>* result, HeaderManager* header_manager,
@@ -91,5 +90,4 @@ Status EncryptedRandomAccessFile::ReadAndValidate(
   return status_without_workaround;
 }
 
-} // namespace enterprise
 } // namespace yb

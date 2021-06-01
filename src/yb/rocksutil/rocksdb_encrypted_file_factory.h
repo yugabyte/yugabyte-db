@@ -17,13 +17,11 @@
 #include "yb/rocksdb/env.h"
 
 namespace yb {
-namespace enterprise {
 
 class HeaderManager;
 
 std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(std::unique_ptr<HeaderManager> header_manager);
 
-} // namespace enterprise
 } // namespace yb
 
 

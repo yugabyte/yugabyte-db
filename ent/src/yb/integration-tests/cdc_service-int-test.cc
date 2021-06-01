@@ -92,7 +92,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
     SetAtomicFlag(GetParam(), &FLAGS_cdc_enable_replicate_intents);
     opts.num_tablet_servers = server_count();
     opts.num_masters = 1;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());

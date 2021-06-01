@@ -493,11 +493,11 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
 }
 
 Env* TabletServer::GetEnv() {
-  return Env::Default();
+  return opts_.env;
 }
 
 rocksdb::Env* TabletServer::GetRocksDBEnv() {
-  return rocksdb::Env::Default();
+  return opts_.rocksdb_env;
 }
 
 int TabletServer::GetSharedMemoryFd() {

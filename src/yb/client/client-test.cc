@@ -178,7 +178,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
@@ -2060,7 +2060,7 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
   MiniClusterOptions options;
   options.num_tablet_servers = 0;
   // Start minicluster with only master (to simulate tserver not yet heartbeating).
-  cluster_.reset(new MiniCluster(env_.get(), options));
+  cluster_.reset(new MiniCluster(options));
   ASSERT_OK(cluster_->Start());
 
   // Connect to the cluster.

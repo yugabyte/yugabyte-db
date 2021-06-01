@@ -285,7 +285,7 @@ YB_RPC_SSL_TYPE_DEFINE(X509)
 }
 
 SecureContext::SecureContext() {
-  yb::enterprise::InitOpenSSL();
+  yb::InitOpenSSL();
 
   context_.reset(SSL_CTX_new(SSLv23_method()));
   DCHECK(context_);

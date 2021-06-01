@@ -74,7 +74,7 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     FLAGS_tserver_unresponsive_timeout_ms = 5000;
     opts.num_tablet_servers = kNumTablets;
     opts.num_masters = num_masters();
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     Endpoint master_http_endpoint = cluster_->leader_mini_master()->bound_http_addr();

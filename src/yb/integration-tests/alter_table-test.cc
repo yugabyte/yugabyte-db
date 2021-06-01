@@ -144,7 +144,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_replicas();
     FLAGS_replication_factor = num_replicas();
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas()));
 

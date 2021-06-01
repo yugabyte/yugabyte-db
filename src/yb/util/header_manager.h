@@ -18,7 +18,6 @@
 #include "yb/util/result.h"
 
 namespace yb {
-namespace enterprise {
 
 struct EncryptionParams;
 typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
@@ -47,7 +46,6 @@ class HeaderManager {
   virtual bool IsEncryptionEnabled() = 0;
 };
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_HEADER_MANAGER_H

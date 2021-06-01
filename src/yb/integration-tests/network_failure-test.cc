@@ -49,7 +49,7 @@ class NetworkFailureTest : public MiniClusterTestWithClient<MiniCluster> {
     auto opts = MiniClusterOptions();
     opts.num_tablet_servers = 4;
     opts.num_masters = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(CreateClient());
