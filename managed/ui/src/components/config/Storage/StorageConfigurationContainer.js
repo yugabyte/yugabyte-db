@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-import React from 'react';
+
 import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import { StorageConfiguration } from '../../config';
@@ -15,7 +15,6 @@ import {
   updateCustomerConfigResponse
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
-import { toast } from 'react-toastify';
 
 const mapStateToProps = (state) => {
   return {
@@ -32,21 +31,6 @@ const mapDispatchToProps = (dispatch) => {
   return {
     addCustomerConfig: (config) => {
       return dispatch(addCustomerConfig(config)).then((response) => {
-        if (response.error) {
-          const errorMessageObject =
-            response.payload?.response?.data?.error || response.payload.message;
-          Object.keys(errorMessageObject).forEach((errorKey) => {
-            toast.error(
-              <ol>
-                {errorMessageObject[errorKey].map((error) => (
-                  <li>{error}</li>
-                ))}
-              </ol>
-            );
-          });
-        } else {
-          toast.success('Successfully added the backup configuration.');
-        }
         return dispatch(addCustomerConfigResponse(response.payload));
       });
     },
