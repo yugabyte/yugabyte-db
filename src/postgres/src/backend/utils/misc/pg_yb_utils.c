@@ -1191,7 +1191,7 @@ static int buffering_nesting_level = 0;
 
 void YBBeginOperationsBuffering() {
 	if (++buffering_nesting_level == 1) {
-		YBCPgStartOperationsBuffering();
+		HandleYBStatus(YBCPgStartOperationsBuffering());
 	}
 }
 
@@ -1206,7 +1206,7 @@ void YBEndOperationsBuffering() {
 
 void YBResetOperationsBuffering() {
 	buffering_nesting_level = 0;
-	YBCPgResetOperationsBuffering();
+	HandleYBStatus(YBCPgResetOperationsBuffering());
 }
 
 bool YBReadFromFollowersEnabled() {

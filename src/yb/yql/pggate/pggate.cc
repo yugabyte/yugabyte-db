@@ -937,8 +937,8 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
   return STATUS_FORMAT(Corruption, "Not all attributes ($0) were resolved", remain_attr);
 }
 
-void PgApiImpl::StartOperationsBuffering() {
-  pg_session_->StartOperationsBuffering();
+Status PgApiImpl::StartOperationsBuffering() {
+  return pg_session_->StartOperationsBuffering();
 }
 
 Status PgApiImpl::StopOperationsBuffering() {

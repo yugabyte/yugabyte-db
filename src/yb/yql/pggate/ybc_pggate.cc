@@ -582,8 +582,8 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
-void YBCPgStartOperationsBuffering() {
-  pgapi->StartOperationsBuffering();
+YBCStatus YBCPgStartOperationsBuffering() {
+  return ToYBCStatus(pgapi->StartOperationsBuffering());
 }
 
 YBCStatus YBCPgStopOperationsBuffering() {
