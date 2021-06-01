@@ -189,8 +189,6 @@ class CallResponse {
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };
 
-typedef ThreadSafeObjectPool<RemoteMethodPB> RemoteMethodPool;
-
 class InvokeCallbackTask : public rpc::ThreadPoolTask {
  public:
   InvokeCallbackTask() {}
@@ -361,7 +359,7 @@ class OutboundCall : public RpcCall {
   // This will only be non-NULL if status().IsRemoteError().
   const ErrorStatusPB* error_pb() const;
 
-  CHECKED_STATUS InitHeader(RequestHeader* header);
+  CHECKED_STATUS InitHeader(RequestHeader* header, bool copy);
 
   // Lock for state_ status_, error_pb_ fields, since they
   // may be mutated by the reactor thread while the client thread
@@ -398,8 +396,6 @@ class OutboundCall : public RpcCall {
   scoped_refptr<Trace> trace_;
 
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
-
-  RemoteMethodPool* remote_method_pool_;
 
   RpcMetrics* rpc_metrics_;
 
