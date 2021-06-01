@@ -119,7 +119,7 @@ Create the `customers` keyspace.
 ycqlsh> CREATE KEYSPACE customers;
 ```
 
-Run the following `USE` statement to use the keyspace.
+Enter the keyspace.
 
 ```sql
 ycqlsh> USE customers;
