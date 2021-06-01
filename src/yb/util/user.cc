@@ -65,10 +65,12 @@ Status GetLoggedInUser(string* user_name) {
     return STATUS(RuntimeError, "Malloc failed", Errno(errno));
   }
 
-  int ret = getpwuid_r(getuid(), &pwd, buf.get(), bufsize, &result);
+  auto uid = getuid();
+  int ret = getpwuid_r(uid, &pwd, buf.get(), bufsize, &result);
   if (result == nullptr) {
     if (ret == 0) {
-      return STATUS(NotFound, "Current logged-in user not found! This is an unexpected error.");
+      return STATUS_FORMAT(
+          NotFound, "Current logged-in user $0 not found! This is an unexpected error.", uid);
     } else {
       // Errno in ret
       return STATUS(RuntimeError, "Error calling getpwuid_r()", Errno(ret));
