@@ -64,8 +64,6 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   private Users user;
   private Universe universe;
 
-  @InjectMocks private CustomerTaskController controller;
-
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
