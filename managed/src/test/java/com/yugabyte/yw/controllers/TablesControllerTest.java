@@ -214,9 +214,14 @@ public class TablesControllerTest extends FakeDBApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/tables";
     ObjectNode emptyJson = Json.newObject();
-    String errorString = "NullPointerException";
+    String errorString = "Table details can not be null.";
 
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson);
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson))
+            .getResult();
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
     assertAuditEntry(0, customer.uuid);
@@ -347,11 +352,15 @@ public class TablesControllerTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
-    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(universe.universeUUID);
+    final Universe u = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(u.universeUUID);
     customer.save();
 
-    Result result = tablesController.describe(customer.uuid, universe.universeUUID, mockTableUUID2);
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> tablesController.describe(customer.uuid, u.universeUUID, mockTableUUID2))
+            .getResult();
     assertEquals(BAD_REQUEST, result.status());
     // String errMsg = "Invalid Universe UUID: " + universe.universeUUID;
     String errMsg =
@@ -459,7 +468,11 @@ public class TablesControllerTest extends FakeDBApplication {
     topJson.put("keyspace", "mock_ks");
     topJson.put("tableName", "mock_table");
 
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson))
+            .getResult();
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString("Invalid S3 Bucket provided: foobar"));
     assertAuditEntry(0, customer.uuid);
@@ -481,7 +494,12 @@ public class TablesControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
 
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthTokenAndBody(
+                        "PUT", url, user.createAuthToken(), bodyJson))
+            .getResult();
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
@@ -510,7 +528,12 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", randomUUID.toString());
 
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthTokenAndBody(
+                        "PUT", url, user.createAuthToken(), bodyJson))
+            .getResult();
     assertBadRequest(result, "Invalid StorageConfig UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
@@ -642,15 +665,19 @@ public class TablesControllerTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
-    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(universe.universeUUID);
+    final Universe u = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(u.universeUUID);
     customer.save();
 
     TablesController mockTablesController = spy(tablesController);
 
     doReturn(true).when(mockTablesController).disableBackupOnTables(any(), any());
     UUID uuid = UUID.randomUUID();
-    Result r = mockTablesController.createBackup(customer.uuid, universe.universeUUID, uuid);
+    Result r =
+        assertThrows(
+                YWServiceException.class,
+                () -> mockTablesController.createBackup(customer.uuid, u.universeUUID, uuid))
+            .getResult();
 
     assertBadRequest(r, "Invalid Table UUID: " + uuid + ". Cannot backup index or YSQL table.");
   }
@@ -682,7 +709,12 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
 
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthTokenAndBody(
+                        "PUT", url, user.createAuthToken(), bodyJson))
+            .getResult();
 
     String errMsg =
         String.format(
@@ -781,7 +813,12 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
 
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthTokenAndBody(
+                        "PUT", url, user.createAuthToken(), bodyJson))
+            .getResult();
     String errMsg =
         String.format(
             "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
@@ -891,14 +928,18 @@ public class TablesControllerTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
-    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(universe.universeUUID);
+    final Universe u = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(u.universeUUID);
     customer.save();
 
     UUID badTableUUID = UUID.randomUUID();
     String errorString = "No table for UUID: " + badTableUUID;
 
-    Result result = tablesController.drop(customer.uuid, universe.universeUUID, badTableUUID);
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> tablesController.drop(customer.uuid, u.universeUUID, badTableUUID))
+            .getResult();
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
     assertAuditEntry(0, customer.uuid);
