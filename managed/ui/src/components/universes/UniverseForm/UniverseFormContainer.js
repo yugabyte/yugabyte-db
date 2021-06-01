@@ -61,11 +61,11 @@ import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    submitConfigureUniverse: (values, uuid = null) => {
+    submitConfigureUniverse: (values, universeUUID = null) => {
       dispatch(configureUniverseTemplateLoading());
       return dispatch(configureUniverseTemplate(values)).then((response) => {
-        if(response.error && uuid) {
-          dispatch(fetchUniverseInfo(uuid)).then((response) => {
+        if(response.error && universeUUID) {
+          dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
             dispatch(fetchUniverseInfoResponse(response.payload));
           });
         }
