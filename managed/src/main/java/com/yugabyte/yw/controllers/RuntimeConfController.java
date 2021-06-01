@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
@@ -58,7 +59,8 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   private static Optional<ScopedConfig> getScopedConfigInternal(UUID customerUUID, UUID scopeUUID) {
-    RuntimeConfigFormData runtimeConfigFormData = listScopesInternal(Customer.get(customerUUID));
+    RuntimeConfigFormData runtimeConfigFormData =
+        listScopesInternal(Customer.getOrBadRequest(customerUUID));
     return runtimeConfigFormData
         .scopedConfigList
         .stream()
@@ -95,7 +97,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   public Result listScopes(UUID customerUUID) {
-    RuntimeConfigFormData formData = listScopesInternal(Customer.get(customerUUID));
+    RuntimeConfigFormData formData = listScopesInternal(Customer.getOrBadRequest(customerUUID));
     return ApiResponse.success(formData);
   }
 
@@ -109,7 +111,7 @@ public class RuntimeConfController extends AuthenticatedController {
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
 
     if (!optScopedConfig.isPresent()) {
-      return ApiResponse.error(
+      throw new YWServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
@@ -135,36 +137,33 @@ public class RuntimeConfController extends AuthenticatedController {
 
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
-      return ApiResponse.error(NOT_FOUND, "No mutable key found: " + path);
+      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     Optional<ScopedConfig> scopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
 
     if (!scopedConfig.isPresent()) {
-      return ApiResponse.error(
+      throw new YWServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
-    RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.get(scopeUUID, path);
-    if (runtimeConfigEntry == null)
-      return ApiResponse.error(
-          NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
+    RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.getOrBadRequest(scopeUUID, path);
     return ok(runtimeConfigEntry.getValue());
   }
 
   public Result setKey(UUID customerUUID, UUID scopeUUID, String path) {
     String newValue = request().body().asText();
     if (!mutableKeys.contains(path)) {
-      return ApiResponse.error(NOT_FOUND, "No mutable key found: " + path);
+      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
 
     if (!optScopedConfig.isPresent()) {
-      return ApiResponse.error(
+      throw new YWServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
     if (!optScopedConfig.get().mutableScope)
-      return ApiResponse.error(
+      throw new YWServiceException(
           FORBIDDEN,
           "Customer "
               + customerUUID
@@ -181,16 +180,16 @@ public class RuntimeConfController extends AuthenticatedController {
 
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
-      return ApiResponse.error(NOT_FOUND, "No mutable key found: " + path);
+      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
     if (!optScopedConfig.isPresent()) {
-      return ApiResponse.error(
+      throw new YWServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
     if (!optScopedConfig.get().mutableScope)
-      return ApiResponse.error(
+      throw new YWServiceException(
           FORBIDDEN,
           "Customer "
               + customerUUID

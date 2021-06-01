@@ -1,5 +1,6 @@
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.Transactional;
@@ -14,6 +15,7 @@ import java.util.UUID;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static java.util.stream.Collectors.toMap;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 @Entity
 public class RuntimeConfigEntry extends Model {
@@ -50,8 +52,17 @@ public class RuntimeConfigEntry extends Model {
     return findInScope.query().where().eq("scope_uuid", scope).findList();
   }
 
+  @Deprecated
   public static RuntimeConfigEntry get(UUID scope, String path) {
     return findOne.byId(new RuntimeConfigEntryKey(scope, path));
+  }
+
+  public static RuntimeConfigEntry getOrBadRequest(UUID scope, String path) {
+    RuntimeConfigEntry runtimeConfigEntry = get(scope, path);
+    if (runtimeConfigEntry == null)
+      throw new YWServiceException(
+          NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scope));
+    return runtimeConfigEntry;
   }
 
   public static Map<String, String> getAsMapForScope(UUID scope) {

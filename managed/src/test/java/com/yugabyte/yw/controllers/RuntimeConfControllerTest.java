@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
@@ -105,13 +106,21 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   public void key() {
-    assertEquals(NOT_FOUND, getGCInterval(defaultUniverse.universeUUID).status());
+    assertEquals(
+        NOT_FOUND,
+        assertThrows(YWServiceException.class, () -> getGCInterval(defaultUniverse.universeUUID))
+            .getResult()
+            .status());
     String newInterval = "2 days";
     Result result = setGCInterval(newInterval, defaultUniverse.universeUUID);
     assertEquals(OK, result.status());
     assertEquals(newInterval, contentAsString(getGCInterval(defaultUniverse.universeUUID)));
     assertEquals(OK, deleteGCInterval(defaultUniverse.universeUUID).status());
-    assertEquals(NOT_FOUND, getGCInterval(defaultUniverse.universeUUID).status());
+    assertEquals(
+        NOT_FOUND,
+        assertThrows(YWServiceException.class, () -> getGCInterval(defaultUniverse.universeUUID))
+            .getResult()
+            .status());
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
