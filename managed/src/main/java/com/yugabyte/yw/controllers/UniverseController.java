@@ -111,16 +111,15 @@ public class UniverseController extends AuthenticatedController {
     if (universeName != null) {
       LOG.info("Finding Universe with name {}.", universeName);
       Optional<Universe> universe = Universe.maybeGetUniverseByName(universeName);
-       if (universe.isPresent()) {
-          return Results.status(OK, Json.toJson(Arrays.asList(universe.get().universeUUID)));
-       }
-       return Results.status(OK, Json.toJson(Collections.emptyList()));
+      if (universe.isPresent()) {
+        return Results.status(OK, Json.toJson(Arrays.asList(universe.get().universeUUID)));
+      }
+      return Results.status(OK, Json.toJson(Collections.emptyList()));
     }
     LOG.info("Fetching All Universes.");
     Set<UUID> result = Universe.getAllUUIDs(customer);
     return Results.status(OK, Json.toJson(result));
   }
-
 
   @ApiOperation(value = "setDatabaseCredentials", response = YWSuccess.class)
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
