@@ -2,21 +2,26 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.typesafe.config.Config;
+import io.ebean.Query;
+
+import com.yugabyte.yw.forms.SubTaskFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
-import com.yugabyte.yw.forms.SubTaskFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Query;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -25,6 +30,10 @@ import java.util.*;
 public class CustomerTaskController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
+
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+
+  static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
 
   protected static final int TASK_HISTORY_LIMIT = 6;
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
@@ -53,6 +62,8 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
+    List<CustomerTask> customerTaskList;
+
     Query<CustomerTask> customerTaskQuery =
         CustomerTask.find
             .query()
@@ -64,11 +75,16 @@ public class CustomerTaskController extends AuthenticatedController {
       customerTaskQuery.where().eq("target_uuid", targetUUID);
     }
 
-    Set<CustomerTask> pendingTasks = customerTaskQuery.findSet();
+    customerTaskList =
+        customerTaskQuery
+            .setMaxRows(
+                runtimeConfigFactory.globalRuntimeConf().getInt(CUSTOMER_TASK_DB_QUERY_LIMIT))
+            .findPagedList()
+            .getList();
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
-    for (CustomerTask task : pendingTasks) {
+    for (CustomerTask task : customerTaskList) {
       try {
         CustomerTaskFormData taskData = new CustomerTaskFormData();
 

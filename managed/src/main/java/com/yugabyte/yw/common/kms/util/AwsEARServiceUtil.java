@@ -141,6 +141,7 @@ public class AwsEARServiceUtil {
     } catch (Exception e) {
       String errMsg = "Error occurred retrieving default cmk policy base";
       LOG.error(errMsg, e);
+    }
     return policy;
   }
 
