@@ -15,40 +15,6 @@ showAsideToc: true
 
 Databases can be resource-intensive, consuming a lot of memory CPU, IO, and network resources. Optimizing your SQL can be very helpful in minimizing resource utilization. The `pg_stat_statements` module helps you track planning and execution statistics for all the SQL statements executed by a server. It is installed by default.
 
-
-## Install pg_stat_statements module/extension
-
-
-Open `var/data/pg_data/postgresql.conf` for your YugabyteDB instance in a text editor, and modify the `shared_preload_libraries` parameter. To load only this extension, the line would look like this: 
-
-
-```text
-shared_preload_libraries = 'pg_stat_statements'  # (change requires restart)
-```
-
-Note that the `var` directory is located in your home directory by default; use `bin/yugabyted status` to check your instance's configuration.
-
-Check your instance's `shared_preload_libraries` setting in YSQL with the following command:
-
-```sql
-yugabyte=# show shared_preload_libraries;
-         shared_preload_libraries         
-------------------------------------------
- pg_stat_statements,yb_pg_metrics,pgaudit
-(1 row)
-```
-To track IO elapsed time, turn on the `track_io_timing` parameter  in `postgresql.conf`:
-
-```sh
-track_io_timing = on
-```
-
-The `track_activity_query_size` parameter sets the number of characters to display when reporting a SQL query. Raise this value if you're not seeing longer queries in their entirety. For example:
-
-```sh
-track_activity_query_size = 2048 
-```
-
 ## Configuration parameters
 
 |Column|Type|Default|Description|
