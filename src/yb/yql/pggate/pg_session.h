@@ -216,7 +216,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<master::AnalyzeTableResponsePB> AnalyzeTable(const PgObjectId& table_id);
 
   // Start operation buffering. Buffering must not be in progress.
-  void StartOperationsBuffering();
+  CHECKED_STATUS StartOperationsBuffering();
   // Flush all pending buffered operation and stop further buffering.
   // Buffering must be in progress.
   CHECKED_STATUS StopOperationsBuffering();
