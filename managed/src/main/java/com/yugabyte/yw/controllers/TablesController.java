@@ -206,33 +206,38 @@ public class TablesController extends AuthenticatedController {
     }
 
     String certificate = universe.getCertificateNodetoNode();
+    ListTablesResponse response = listTables(masterAddresses, certificate);
+    List<TableInfo> tableInfoList = response.getTableInfoList();
+    ArrayNode resultNode = Json.newArray();
+    for (TableInfo table : tableInfoList) {
+      String tableKeySpace = table.getNamespace().getName();
+      if (!tableKeySpace.toLowerCase().equals("system")
+          && !tableKeySpace.toLowerCase().equals("system_schema")
+          && !tableKeySpace.toLowerCase().equals("system_auth")
+          && !tableKeySpace.toLowerCase().equals("system_platform")) {
+        ObjectNode node = Json.newObject();
+        node.put("keySpace", tableKeySpace);
+        node.put("tableType", table.getTableType().toString());
+        node.put("tableName", table.getName());
+        String tableUUID = table.getId().toStringUtf8();
+        node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
+        node.put("isIndexTable", table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
+        Double tableSize = tableSizes.get(tableUUID);
+        if (tableSize != null) {
+          node.put("sizeBytes", tableSize);
+        }
+        resultNode.add(node);
+      }
+    }
+    return ok(resultNode);
+  }
+
+  private ListTablesResponse listTables(String masterAddresses, String certificate) {
     YBClient client = null;
     try {
       client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
-      List<TableInfo> tableInfoList = response.getTableInfoList();
-      ArrayNode resultNode = Json.newArray();
-      for (TableInfo table : tableInfoList) {
-        String tableKeySpace = table.getNamespace().getName();
-        if (!tableKeySpace.toLowerCase().equals("system")
-            && !tableKeySpace.toLowerCase().equals("system_schema")
-            && !tableKeySpace.toLowerCase().equals("system_auth")
-            && !tableKeySpace.toLowerCase().equals("system_platform")) {
-          ObjectNode node = Json.newObject();
-          node.put("keySpace", tableKeySpace);
-          node.put("tableType", table.getTableType().toString());
-          node.put("tableName", table.getName());
-          String tableUUID = table.getId().toStringUtf8();
-          node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
-          node.put("isIndexTable", table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
-          Double tableSize = tableSizes.get(tableUUID);
-          if (tableSize != null) {
-            node.put("sizeBytes", tableSize);
-          }
-          resultNode.add(node);
-        }
-      }
-      return ok(resultNode);
+      return response;
     } catch (Exception e) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     } finally {
