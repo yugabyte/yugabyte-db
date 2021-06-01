@@ -17,7 +17,6 @@ import play.Logger;
 import java.util.List;
 import java.util.Map;
 
-
 /** We will use this singleton to do actions specific to the app environment, like db seed etc. */
 @Singleton
 public class AppInit {
