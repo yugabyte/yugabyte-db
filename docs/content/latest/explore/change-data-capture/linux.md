@@ -174,7 +174,7 @@ changes {
 
 ## 6. Clean up (optional)
 
-Optionally, you can shutdown the local cluster you created.
+Optionally, you can shut down the local cluster you created.
 
 ```sh
 $ ./bin/yugabyted destroy

@@ -139,7 +139,7 @@ will handle routing the data to the correct tablet.
 
 ## 6. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
 $ ./bin/yugabyted destroy

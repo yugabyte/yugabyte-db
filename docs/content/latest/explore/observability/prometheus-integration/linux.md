@@ -57,7 +57,7 @@ Prometheus is installed on your local machine. If you have not done so already, 
 
 ## 1. Create universe
 
-Start a new local YugabyteDB cluster - this will create a three-node universe with a replication factor of `3`.
+Start a new local three-node universe with a replication factor of `3`.
 
 ```sh
 $ ./bin/yugabyted start \
@@ -74,7 +74,7 @@ $ ./bin/yugabyted start \
                   --tserver_flags="start_redis_proxy=true"
 ```
 
-```
+```sh
 $ ./bin/yugabyted start \
                   --base_dir=node-3 \
                   --listen=127.0.0.3 \
@@ -224,9 +224,15 @@ avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
-$ ./bin/yugabyted destroy --base_dir=node-1/ && \
-    ./bin/yugabyted destroy --base_dir=node-2/ && \
-    ./bin/yugabyted destroy --base_dir=node-3/
+$ ./bin/yugabyted destroy --base_dir=node-1
+```
+
+```sh
+$ ./bin/yugabyted destroy --base_dir=node-2
+```
+
+```sh
+$ ./bin/yugabyted destroy --base_dir=node-3
 ```
 
 ## What's next?

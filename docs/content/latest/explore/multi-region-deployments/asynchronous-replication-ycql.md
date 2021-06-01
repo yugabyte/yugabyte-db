@@ -51,26 +51,25 @@ $ ./bin/yugabyted start \
 
 This will start up a one-node local cluster using the IP address of `127.0.0.1:7100`. Upon starting, you should see a screen similar to the following.
 
-```
+```output
 Starting yugabyted...
-✅ System checks
+✅ System checks           
 
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
 +--------------------------------------------------------------------------------------------------+
-| Status              : Running                                                                    |
+| Status              : Running. Leader Master is present                                          |
 | Web console         : http://127.0.0.1:7000                                                      |
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
 | YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /home/ubuntu/yugabyte-2.3.3.0/datacenter-east/data                         |
-| Log Dir             : /home/ubuntu/yugabyte-2.3.3.0/datacenter-east/logs                         |
-| Universe UUID       : 414d27ec-d34a-46ac-b2f5-bdaad2645302                                       |
+| Data Dir            : /Users/sanketkedia/yugabyte-2.7.1.1/datacenter-east/data                   |
+| Log Dir             : /Users/sanketkedia/yugabyte-2.7.1.1/datacenter-east/logs                   |
+| Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
 +--------------------------------------------------------------------------------------------------+
 🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
 🎉 Join us on Slack at https://www.yugabyte.com/slack
 👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-
 ```
 
 Create and start your second local cluster that will simulate "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory.
@@ -83,31 +82,30 @@ $ ./bin/yugabyted start \
 
 This will start up a one-node cluster using IP address of `127.0.0.2` and create `datacenter-west` as the data directory. Upon starting, you should see a screen like the following.
 
-```
+```output
 Starting yugabyted...
-✅ System checks
+✅ System checks           
 
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
 +--------------------------------------------------------------------------------------------------+
-| Status              : Running                                                                    |
+| Status              : Running. Leader Master is present                                          |
 | Web console         : http://127.0.0.2:7000                                                      |
 | JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh -h 127.0.0.2  -U yugabyte -d yugabyte                           |
 | YCQL                : bin/ycqlsh 127.0.0.2 9042 -u cassandra                                     |
-| Data Dir            : /home/ubuntu/yugabyte-2.3.3.0/datacenter-west/data                         |
-| Log Dir             : /home/ubuntu/yugabyte-2.3.3.0/datacenter-west/logs                         |
-| Universe UUID       : e4461169-ff30-4e93-93e1-c996c9679ac9                                       |
+| Data Dir            : /Users/sanketkedia/yugabyte-2.7.1.1/datacenter-west/data                   |
+| Log Dir             : /Users/sanketkedia/yugabyte-2.7.1.1/datacenter-west/logs                   |
+| Universe UUID       : ad78f70c-0741-4c7e-b610-315d55d7f248                                       |
 +--------------------------------------------------------------------------------------------------+
 🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
 🎉 Join us on Slack at https://www.yugabyte.com/slack
 👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-
 ```
 
 ## 2. Create keyspace and tables
 
-Create the keyspace `demo` and table `users` on the "Data Center - East" cluster.
+Create the keyspace `customers` and table `users` on the "Data Center - East" cluster.
 
 Open `ycqlsh` specifying the host IP address of `127.0.0.1`.
 
@@ -115,22 +113,19 @@ Open `ycqlsh` specifying the host IP address of `127.0.0.1`.
 $ ./bin/ycqlsh 127.0.0.1
 ```
 
-Create a keyspace by running the following statement.
+Create the `customers` keyspace.
 
 ```sql
 ycqlsh> CREATE KEYSPACE customers;
 ```
 
-<<<<<<< HEAD
-=======
 Run the following `USE` statement to use the keyspace.
 
->>>>>>> Review comments
 ```sql
 ycqlsh> USE customers;
 ```
 
-Run the following `CREATE TABLE` statement.
+Create the `users` table.
 
 ``` sql
 CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
@@ -143,18 +138,20 @@ Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127
 ```sh
 $ ./bin/ycqlsh 127.0.0.2
 ```
-Create a keyspace by running the following statement.
+
+Create the `customers` keyspace.
 
 ```sql
 ycqlsh> CREATE KEYSPACE customers;
 ```
 
-Run the following `USE` statement to use the keyspace.
+Enter the keyspace.
 
 ```sql
 ycqlsh> USE customers;
 ```
-Run the following `CREATE TABLE` statement.
+
+Create the `users` table.
 
 ```sql
 CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
@@ -189,7 +186,7 @@ setup_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d 127.0.0.1:7100 0
 
 You should see a message like the following:
 
-```
+```output
 Replication setup successfully
 ```
 
@@ -220,7 +217,7 @@ ycqlsh:customers> SELECT * FROM users;
 
 You should see the following in the results.
 
-```
+```output
        email         | username
 ---------------------+----------
  hector@example.com  | hector
@@ -246,7 +243,7 @@ setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394  127.0.0.2:7100 
 
 You should see a message that shows the following:
 
-```
+```output
 Replication setup successfully
 ```
 
@@ -277,7 +274,7 @@ ycqlsh:customers> SELECT * FROM users;
 
 You should see the following in the results.
 
-```
+```output
        email         | username
 ---------------------+----------
  hector@example.com  | hector
@@ -300,7 +297,7 @@ $ ./bin/yugabyted stop \
                   --base_dir=datacenter-east
 ```
 
-To destroy the simulated "data centers" and remove its associate directory, use the `yugabyted destroy` command with the `--base_dir` option to specify the cluster.
+To destroy a simulated "data center" and remove its associated directory, use the `yugabyted destroy` command with the `--base_dir` option to specify the cluster.
 
 **Example — destroying and removing the "Data Center - West"**
 

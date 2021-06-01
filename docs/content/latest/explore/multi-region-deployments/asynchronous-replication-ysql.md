@@ -37,7 +37,7 @@ showAsideToc: true
 
 By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments/) in the Architecture section.
 
-This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the [yugabyted](../../../reference/configuration/yugabyted) and [yb-admin](../../../admin/yb-admin) utilities.
+This tutorial simulates a geo-distributed two data center deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the [yugabyted](../../../reference/configuration/yugabyted) and [yb-admin](../../../admin/yb-admin) utilities.
 
 ## Prerequisites
 
@@ -55,26 +55,25 @@ $ ./bin/yugabyted start \
 
 This will start up a one-node local cluster using the IP address of `127.0.0.1:7100` and create `datacenter-east` as the data directory. Upon starting, you should see a screen similar to the following.
 
-```
+```output
 Starting yugabyted...
-✅ System checks
+✅ System checks           
 
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
 +--------------------------------------------------------------------------------------------------+
-| Status              : Running                                                                    |
+| Status              : Running. Leader Master is present                                          |
 | Web console         : http://127.0.0.1:7000                                                      |
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
 | YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /home/ubuntu/yugabyte-2.3.3.0/datacenter-east/data                         |
-| Log Dir             : /home/ubuntu/yugabyte-2.3.3.0/datacenter-east/logs                         |
-| Universe UUID       : 414d27ec-d34a-46ac-b2f5-bdaad2645302                                       |
+| Data Dir            : /Users/sanketkedia/yugabyte-2.7.1.1/datacenter-east/data                   |
+| Log Dir             : /Users/sanketkedia/yugabyte-2.7.1.1/datacenter-east/logs                   |
+| Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
 +--------------------------------------------------------------------------------------------------+
 🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
 🎉 Join us on Slack at https://www.yugabyte.com/slack
 👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-
 ```
 
 Create and start your second local cluster that will simulate "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory.
@@ -87,26 +86,25 @@ $ ./bin/yugabyted start \
 
 This will start up a one-node cluster using IP address of `127.0.0.2`. Upon starting, you should see a screen similar to the following.
 
-```
+```output
 Starting yugabyted...
-✅ System checks
+✅ System checks           
 
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
 +--------------------------------------------------------------------------------------------------+
-| Status              : Running                                                                    |
+| Status              : Running. Leader Master is present                                          |
 | Web console         : http://127.0.0.2:7000                                                      |
 | JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh -h 127.0.0.2  -U yugabyte -d yugabyte                           |
 | YCQL                : bin/ycqlsh 127.0.0.2 9042 -u cassandra                                     |
-| Data Dir            : /home/ubuntu/yugabyte-2.3.3.0/datacenter-west/data                         |
-| Log Dir             : /home/ubuntu/yugabyte-2.3.3.0/datacenter-west/logs                         |
-| Universe UUID       : e4461169-ff30-4e93-93e1-c996c9679ac9                                       |
+| Data Dir            : /Users/sanketkedia/yugabyte-2.7.1.1/datacenter-west/data                   |
+| Log Dir             : /Users/sanketkedia/yugabyte-2.7.1.1/datacenter-west/logs                   |
+| Universe UUID       : ad78f70c-0741-4c7e-b610-315d55d7f248                                       |
 +--------------------------------------------------------------------------------------------------+
 🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
 🎉 Join us on Slack at https://www.yugabyte.com/slack
 👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-
 ```
 
 ## 2. Create database tables
@@ -119,7 +117,7 @@ Open `ysqlsh` specifying the host IP address of `127.0.0.1`.
 $ ./bin/ysqlsh -h 127.0.0.1
 ```
 
-Run the following `CREATE TABLE` statement.
+Create the table `users`.
 
 ```sql
 CREATE TABLE users (
@@ -136,7 +134,7 @@ Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127
 $ ./bin/ysqlsh -h 127.0.0.2
 ```
 
-Run the following `CREATE TABLE` statement.
+Create the table `users`.
 
 ```sql
 CREATE TABLE users (
@@ -145,7 +143,7 @@ CREATE TABLE users (
     );
 ```
 
-You now have the identical database table on each of your clusters and can now set up 2DC asynchronous replication.
+You now have the identical database table on each of your clusters and can now set up asynchronous replication across the two datacenters.
 
 ## 3. Configure unidirectional replication
 
@@ -174,7 +172,7 @@ setup_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d 127.0.0.1:7100 0
 
 You should see a message like the following:
 
-```
+```output
 Replication setup successfully
 ```
 
@@ -204,7 +202,7 @@ yugabyte=# SELECT * FROM users;
 
 You should see the following in the results.
 
-```
+```output
        email         | username
 ---------------------+----------
  hector@example.com  | hector
@@ -230,7 +228,7 @@ setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394  127.0.0.2:7100 
 
 You should see a message that shows the following:
 
-```
+```output
 Replication setup successfully
 ```
 
@@ -260,7 +258,7 @@ yugabyte=# SELECT * FROM users;
 
 You should see the following in the results.
 
-```
+```output
        email         | username
 ---------------------+----------
  hector@example.com  | hector
@@ -283,7 +281,7 @@ $ ./bin/yugabyted stop \
                   --base_dir=datacenter-east
 ```
 
-To destroy the simulated "data centers" and remove its associate directory, use the `yugabyted destroy` command with the `--base_dir` option to specify the cluster.
+To destroy a simulated "data center" and remove its associated directory, use the `yugabyted destroy` command with the `--base_dir` option to specify the cluster.
 
 **Example — destroying and removing the "Data Center - West"**
 
