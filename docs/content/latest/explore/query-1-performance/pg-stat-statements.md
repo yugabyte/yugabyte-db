@@ -6,7 +6,7 @@ headerTitle: Get query statistics using pg_stat_statements
 image: /images/section_icons/index/develop.png
 menu:
   latest:
-    identifier: pg_stat_statements
+    identifier: pg-stat-statements
     parent: query-1-performance
     weight: 600
 isTocNested: true
