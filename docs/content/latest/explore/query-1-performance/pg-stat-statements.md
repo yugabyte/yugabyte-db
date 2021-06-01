@@ -157,7 +157,10 @@ View definition:
 ### Top 10 I/O-intensive queries
 
 ```sql
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc limit 10;
+yugabyte=# select userid::regrole, dbid, query
+    from pg_stat_statements
+    order by (blk_read_time+blk_write_time)/calls desc
+    limit 10;
 ```
 
 ```output
@@ -171,7 +174,10 @@ ls desc limit $1
 ```
 
 ```sql
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) desc limit 10;
+yugabyte=# select userid::regrole, dbid, query
+    from pg_stat_statements
+    order by (blk_read_time+blk_write_time) desc
+    limit 10;
 ```
 
 ```output
@@ -189,7 +195,10 @@ c limit $1
 ### Top 10 time-consuming queries
 
 ```sql
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit 10;
+yugabyte=# select userid::regrole, dbid, query
+    from pg_stat_statements
+    order by mean_time desc
+    limit 10;
 ```
 
 ```output
@@ -205,7 +214,10 @@ c limit $1
 ```
 
 ```sql
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit 10;
+yugabyte=# select userid::regrole, dbid, query
+    from pg_stat_statements
+    order by total_time desc
+    limit 10;
 ```
 
 ```output
@@ -224,7 +236,10 @@ c limit $1
 ### Top 10 response-time outliers
 
 ```sql
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit 10;
+yugabyte=# select userid::regrole, dbid, query
+    from pg_stat_statements
+    order by stddev_time desc
+    limit 10;
 ```
 
 ```output
@@ -243,7 +258,10 @@ c limit $1
 ### Top 10 queries by memory usage
 
 ```sql
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (shared_blks_hit+shared_blks_dirtied) desc limit 10;
+yugabyte=# select userid::regrole, dbid, query
+    from pg_stat_statements
+    order by (shared_blks_hit+shared_blks_dirtied) desc
+    limit 10;
 ```
 
 ```output
@@ -263,7 +281,10 @@ c limit $1
 ### Top 10 consumers of temporary space
 
 ```sql
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by temp_blks_written desc limit 10;    
+yugabyte=# select userid::regrole, dbid, query
+    from pg_stat_statements
+    order by temp_blks_written desc
+    limit 10;
 ```
 
 ```output
