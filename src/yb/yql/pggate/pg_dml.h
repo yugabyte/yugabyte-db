@@ -15,6 +15,8 @@
 #ifndef YB_YQL_PGGATE_PG_DML_H_
 #define YB_YQL_PGGATE_PG_DML_H_
 
+#include <boost/unordered_map.hpp>
+
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_doc_op.h"
@@ -172,7 +174,7 @@ class PgDml : public PgStatement {
   // * Bind values are used to identify the selected rows to be operated on.
   // * Set values are used to hold columns' new values in the selected rows.
   bool ybctid_bind_ = false;
-  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
+  boost::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // Used for colocated TRUNCATE that doesn't bind any columns.

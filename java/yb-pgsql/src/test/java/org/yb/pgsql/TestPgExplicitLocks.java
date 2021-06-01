@@ -141,14 +141,14 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithConflict(
       builder.select("h = 1 AND r1 = 10"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 102"));
-    // SELECT must lock (h:1) as r1 value is ambiguous
+    // SELECT must lock (h:1, r1:10, r2:102) and (h:1, r1:11, r2:102)
     runner.runWithConflict(
       builder.select("h = 1 AND r1 IN (10, 11) AND r2 = 102"),
-      builder.delete("h = 1 AND r1 = 12 AND r2 = 102"));
-    // SELECT must lock (h:1, r1: 11)
+      builder.delete("h = 1 AND r1 = 11 AND r2 = 102"));
+    // SELECT must lock (h:1, r1: 11, r2: 98) and (h:1, r1: 11, r2: 99)
     runner.runWithConflict(
       builder.select("h = 1 AND r1 = 11 AND r2 IN (98, 99)"),
-      builder.delete("h = 1 AND r1 = 11 AND r2 = 102"));
+      builder.delete("h = 1 AND r1 = 11 AND r2 = 99"));
     // SELECT must lock (h:1)
     runner.runWithConflict(
       builder.select("h = 1 AND r2 = 102"),
@@ -174,11 +174,11 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithoutConflict(
       builder.select("h = 1 AND r1 = 10"),
       builder.delete("h = 1 AND r1 = 11 AND r2 = 101"));
-    // SELECT must lock (h:1)
+    // SELECT must lock (h:1, r1:10, r2:102) and (h:1, r1:11, r2:102)
     runner.runWithoutConflict(
       builder.select("h = 1 AND r1 in (10, 11) AND r2 = 102"),
       builder.delete("h = 2 AND r1 = 21 AND r2 = 201"));
-    // SELECT must lock (h:1, r1: 11)
+    // SELECT must lock (h:1, r1: 11, r2: 100) and (h:1, r1: 11, r2: 101)
     runner.runWithoutConflict(
       builder.select("h = 1 AND r1 = 11 AND r2 in (100, 101)"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));

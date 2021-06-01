@@ -176,7 +176,7 @@ Status PgDml::UpdateBindPBs() {
   for (const auto &entry : expr_binds_) {
     PgsqlExpressionPB *expr_pb = entry.first;
     PgExpr *attr_value = entry.second;
-    RETURN_NOT_OK(attr_value->Eval(this, expr_pb));
+    RETURN_NOT_OK(attr_value->Eval(expr_pb));
   }
 
   return Status::OK();
@@ -232,7 +232,7 @@ Status PgDml::UpdateAssignPBs() {
   for (const auto &entry : expr_assigns_) {
     PgsqlExpressionPB *expr_pb = entry.first;
     PgExpr *attr_value = entry.second;
-    RETURN_NOT_OK(attr_value->Eval(this, expr_pb));
+    RETURN_NOT_OK(attr_value->Eval(expr_pb));
   }
 
   return Status::OK();

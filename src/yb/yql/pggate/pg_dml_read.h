@@ -94,6 +94,16 @@ class PgDmlRead : public PgDml {
 
  private:
   CHECKED_STATUS ProcessEmptyPrimaryBinds();
+  bool CanBuildYbctidsFromPrimaryBinds() const;
+  Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
+  CHECKED_STATUS SubstitutePrimaryBindsWithYbctids();
+  CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const PgsqlConditionPB& in_operator);
+  CHECKED_STATUS CopyBoundValue(
+      const PgColumn& col, const PgsqlExpressionPB& src, QLValuePB* dest) const;
+  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
+      const PgColumn& col, const PgsqlExpressionPB& src, PgsqlExpressionPB* dest);
+  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
+      const PgColumn& col, const PgsqlExpressionPB& src);
 };
 
 }  // namespace pggate
