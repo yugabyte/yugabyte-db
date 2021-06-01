@@ -35,6 +35,18 @@ pg_stat_statements.track_utility = off
 pg_stat_statements.save = on  
 ```
 
+To track IO elapsed time, turn on the `track_io_timing` parameter in `postgresql.conf`:
+
+ ```sh
+ track_io_timing = on
+ ```
+
+ The `track_activity_query_size` parameter sets the number of characters to display when reporting a SQL query. Raise this value if you're not seeing longer queries in their entirety. For example:
+
+ ```sh
+ track_activity_query_size = 2048 
+ ```
+
 ## Create pg_stat_statements extension
 
 The extension is loaded by default. To control it manually, use the following commands:
@@ -43,16 +55,8 @@ The extension is loaded by default. To control it manually, use the following co
 yugabyte=# create extension pg_stat_statements;
 ```
 
-```output
-CREATE EXTENSION
-```
-
 ```sql
 yugabyte=# drop extension pg_stat_statements;
-```
-
-```output
-DROP EXTENSION
 ```
 
 ## Examples
