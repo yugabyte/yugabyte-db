@@ -92,12 +92,7 @@ class StorageConfiguration extends Component {
     super(props);
 
     this.state = {
-      enableEdit: {
-        s3: false,
-        nfs: false,
-        gcs: false,
-        az: false
-      },
+      editingTab: '',
       iamRoleEnabled: false
     };
   }
@@ -176,12 +171,7 @@ class StorageConfiguration extends Component {
     }
 
     if (values.type === 'update') {
-      this.setState({
-        enableEdit: {
-          ...this.state.enableEdit,
-          [props.activeTab]: false
-        }
-      });
+      this.setState({ editingTab: false });
       return this.props
         .updateCustomerConfig({
           type: 'STORAGE',
@@ -200,12 +190,7 @@ class StorageConfiguration extends Component {
           }
         });
     } else {
-      this.setState({
-        enableEdit: {
-          ...this.state.enableEdit,
-          [props.activeTab]: false
-        }
-      });
+      this.setState({ editingTab: false });
       return this.props
         .addCustomerConfig({
           type: 'STORAGE',
@@ -225,12 +210,9 @@ class StorageConfiguration extends Component {
     }
   };
 
-  deleteStorageConfig = (configUUID, activeTab) => {
+  deleteStorageConfig = (configUUID) => {
     this.setState({
-      enableEdit: {
-        ...this.state.enableEdit,
-        [activeTab]: false
-      },
+      editingTab: false,
       iamRoleEnabled: false
     });
   
@@ -254,10 +236,7 @@ class StorageConfiguration extends Component {
    */
   onEditConfig = (config, activeTab) => {
     this.setState({
-      enableEdit: {
-        ...this.state.enableEdit,
-        [activeTab]: true
-      },
+      editingTab: activeTab,
       iamRoleEnabled: config?.IAM_INSTANCE_PROFILE || this.state.iamRoleEnabled
     });
   };
@@ -265,13 +244,10 @@ class StorageConfiguration extends Component {
   /**
    * This method will disable the edit input fields.
    */
-  disableEditFields = (activeTab) => {
+  disableEditFields = () => {
     this.props.reset();
     this.setState({
-      enableEdit: {
-        ...this.state.enableEdit,
-        [activeTab]: false
-      },
+      editingTab: false,
       iamRoleEnabled: !this.state.iamRoleEnabled
     });
   };
@@ -283,9 +259,9 @@ class StorageConfiguration extends Component {
    * @param {string} fieldKey Input Field Id.
    * @returns Boolean.
    */
-  disableInputFields = (fieldKey, enableEdit, activeTab) => {
+  disableInputFields = (fieldKey, activeTab, editingTab) => {
     const tab = activeTab.toUpperCase();
-    return !enableEdit || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false;
+    return editingTab !== activeTab || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false;
   };
 
   /**
@@ -367,8 +343,8 @@ class StorageConfiguration extends Component {
       initialValues
     } = this.props;
     const {
-      enableEdit,
-      iamRoleEnabled
+      iamRoleEnabled,
+      editingTab
     } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
@@ -394,7 +370,7 @@ class StorageConfiguration extends Component {
             deleteStorageConfig={this.deleteStorageConfig}
             iamRoleEnabled={iamRoleEnabled}
             iamInstanceToggle={this.iamInstanceToggle}
-            enableEdit={enableEdit[activeTab]}
+            editingTab={editingTab}
             onEditConfig={this.onEditConfig}
           />
         </Tab>
@@ -428,7 +404,7 @@ class StorageConfiguration extends Component {
                     name={field.id}
                     placeHolder={field.placeHolder}
                     component={YBTextInputWithLabel}
-                    isReadOnly={this.disableInputFields(field.id, enableEdit[activeTab], activeTab)}
+                    isReadOnly={this.disableInputFields(field.id, activeTab, editingTab)}
                   />
                 </Col>
               </Row>
@@ -457,7 +433,7 @@ class StorageConfiguration extends Component {
                   submitting ||
                   loading ||
                   isEmptyObject(config) ||
-                  (enableEdit[activeTab] && activeTab !== 'nfs')
+                  (editingTab === activeTab && activeTab !== 'nfs')
                 }
                 btnClass={'btn btn-default'}
                 onClick={
@@ -477,7 +453,7 @@ class StorageConfiguration extends Component {
                 <YBConfirmModal
                   name="delete-storage-config"
                   title={'Confirm Delete'}
-                  onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.configUUID, activeTab))}
+                  onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.configUUID))}
                   currentModal={'delete' + config.name + 'StorageConfig'}
                   visibleModal={this.props.visibleModal}
                   hideConfirmModal={this.props.hideDeleteStorageConfig}
@@ -536,14 +512,14 @@ class StorageConfiguration extends Component {
                   />
                 ) : (
                   <>
-                    {enableEdit[activeTab] && activeTab !== 'nfs' && (
+                    {editingTab === activeTab && activeTab !== 'nfs' && (
                       <YBButton btnText="Update" btnClass={'btn btn-orange'} btnType="submit" />
                     )}
-                    {enableEdit[activeTab] && activeTab !== 'nfs' && (
+                    {editingTab === activeTab && activeTab !== 'nfs' && (
                       <YBButton
                         btnText="Cancel"
                         btnClass={'btn btn-default'}
-                        onClick={() => this.disableEditFields(activeTab)}
+                        onClick={this.disableEditFields}
                       />
                     )}
                   </>
