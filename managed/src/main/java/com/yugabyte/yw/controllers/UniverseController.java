@@ -374,6 +374,7 @@ public class UniverseController extends AuthenticatedController {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
       c.userIntent.providerType = CloudType.valueOf(provider.code);
+      c.validate();
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
       if (c.userIntent.enableExposingService == ExposingServiceState.NONE) {
         c.userIntent.enableExposingService = ExposingServiceState.UNEXPOSED;
@@ -1135,6 +1136,7 @@ public class UniverseController extends AuthenticatedController {
     Cluster c = taskParams.clusters.get(0);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
     c.userIntent.providerType = CloudType.valueOf(provider.code);
+    c.validate();
 
     if (c.userIntent.providerType.equals(CloudType.kubernetes)) {
       try {
@@ -1535,8 +1537,7 @@ public class UniverseController extends AuthenticatedController {
     if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
       throw new YWServiceException(BAD_REQUEST, "Scratch type disk cannot be modified.");
     }
-    if (primaryIntent.instanceType.startsWith("i3.")
-        || primaryIntent.instanceType.startsWith("c5d.")) {
+    if (taskParams.getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
       throw new YWServiceException(BAD_REQUEST, "Cannot modify instance volumes.");
     }
 

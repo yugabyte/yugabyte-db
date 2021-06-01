@@ -79,6 +79,10 @@ public class ModelFactory {
     return Provider.create(customer.uuid, Common.CloudType.gcp, "Google");
   }
 
+  public static Provider azuProvider(Customer customer) {
+    return Provider.create(customer.uuid, Common.CloudType.azu, "Azure");
+  }
+
   public static Provider onpremProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.onprem, "OnPrem");
   }
