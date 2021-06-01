@@ -15,6 +15,7 @@ showAsideToc: true
 ---
 
 ## Tuning queries in YugabyteDB
+
 Improving the performance of queries in YugabyteDB typically involves some combination of the following general steps.
 
 ### Find slow queries using pg_stat_statements
