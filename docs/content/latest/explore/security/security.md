@@ -34,13 +34,13 @@ Using client authentication, you can define how the database server establishes 
 
 The methods include the following:
 
-* **Password** - authenticate using MD5 or SCRAM-SHA-256.
+* **Password** - authenticate using MD5 or SCRAM-SHA-256.<br/>
 
   MD5 is the default password encryption for YugabyteDB clusters. To set SCRAM-SHA-256 authentication, you must set the YB-TServer `--ysql_hba_conf` flag to `scram-sha-256`.
 
 * **LDAP** - use external LDAP services to perform client authentication.
 
-* **Host-based** - authenticate local and remote clients based on IP address and using TLS certificates.
+* **Host-based** - authenticate local and remote clients based on IP address and using TLS certificates.<br/>
 
   The default YugabyteDB `listen_addresses` setting accepts connections only from localhost. To allow remote connections, you must add client authentication records to the YB-TServer `--ysql_hba_conf` flag.
 
@@ -101,7 +101,7 @@ yugabyte=# \z
 
 The output should look similar to below, where you see that the `engineering` role has `SELECT` privileges on the `data` resource.
 
-```
+```output
  Schema |       Name        | Type  |     Access privileges     | Column privileges | Policies
 --------+-------------------+-------+---------------------------+-------------------+----------
  public | integration_tests | table | yugabyte=arwdDxt/yugabyte+|                   |
