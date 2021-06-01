@@ -23,8 +23,8 @@ You can configure the following parameters in `postgresql.conf`:
 | :----- | :--- | :------ | :---------- |
 | `pg_stat_statements.max` | integer | 5000 | Maximum number of statements tracked by the module. |
 | `pg_stat_statements.track` | enum | top | Controls which statements the module tracks. Valid values are `top` (track statements issued directly by clients), `all` (track top-level and nested statements), and `none` (disable statement statistics collection). |
-| `pg_stat_statements.track_utility` | boolean | true | Controls whether the module tracks utility commands. |
-| `pg_stat_statements.save` | boolean | true | Specifies whether to save statement statistics across server shutdowns. |
+| `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
+| `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
 
 The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
 
@@ -47,9 +47,7 @@ To track IO elapsed time, turn on the `track_io_timing` parameter in `postgresql
  track_activity_query_size = 2048 
  ```
 
-## Create pg_stat_statements extension
-
-The extension is loaded by default. To control it manually, use the following commands:
+The extension is created by default. To add or remove it manually, use the following statements:
 
 ```sql
 yugabyte=# create extension pg_stat_statements;
@@ -60,6 +58,8 @@ yugabyte=# drop extension pg_stat_statements;
 ```
 
 ## Examples
+
+Describe the columns in the view:
 
 ```sql
 yugabyte=# \d pg_stat_statements;
@@ -93,7 +93,9 @@ yugabyte=# \d pg_stat_statements;
  blk_read_time       | double precision |           |          | 
  blk_write_time      | double precision |           |          | 
  ```
- 
+
+Describe the view's columns, including storage type and description:
+
  ```sql
  yugabyte=# \dS+ pg_stat_statements;
  ```
