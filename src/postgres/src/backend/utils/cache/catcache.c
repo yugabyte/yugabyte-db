@@ -1148,32 +1148,34 @@ SetCatCacheList(CatCache *cache,
 			hashIndex = HASH_INDEX(hashValue, cache->cc_nbuckets);
 
 			bucket = &cache->cc_bucket[hashIndex];
-			dlist_foreach(iter, bucket)
+
+			if (!IsYugaByteEnabled())
+			/* Cannot rely on ctid comparison in YB mode */
 			{
-				ct = dlist_container(CatCTup, cache_elem, iter.cur);
-
-				if (ct->dead || ct->negative)
-					continue;    /* ignore dead and negative entries */
-
-				if (ct->hash_value != hashValue)
-					continue;    /* quickly skip entry if wrong hash val */
-
-				if (IsYugaByteEnabled())
-					continue; /* Cannot rely on ctid comparison in YB mode */
-
-				if (!ItemPointerEquals(&(ct->tuple.t_self),
-									   &(ntp->t_self)))
-					continue;    /* not same tuple */
-
-				/*
-				 * Found a match, but can't use it if it belongs to another
-				 * list already
-				 */
-				if (ct->c_list)
-					continue;
-
-				found = true;
-				break;            /* A-OK */
+				dlist_foreach(iter, bucket)
+				{
+					ct = dlist_container(CatCTup, cache_elem, iter.cur);
+	
+					if (ct->dead || ct->negative)
+						continue;    /* ignore dead and negative entries */
+	
+					if (ct->hash_value != hashValue)
+						continue;    /* quickly skip entry if wrong hash val */
+	
+					if (!ItemPointerEquals(&(ct->tuple.t_self),
+										   &(ntp->t_self)))
+						continue;    /* not same tuple */
+	
+					/*
+					 * Found a match, but can't use it if it belongs to another
+					 * list already
+					 */
+					if (ct->c_list)
+						continue;
+	
+					found = true;
+					break;            /* A-OK */
+				}
 			}
 
 			if (!found)
@@ -2082,31 +2084,32 @@ SearchCatCacheList(CatCache *cache,
 			hashIndex = HASH_INDEX(hashValue, cache->cc_nbuckets);
 
 			bucket = &cache->cc_bucket[hashIndex];
-			dlist_foreach(iter, bucket)
+			/* Cannot rely on ctid comparison in YB mode */
+			if (!IsYugaByteEnabled())
 			{
-				ct = dlist_container(CatCTup, cache_elem, iter.cur);
-
-				if (ct->dead || ct->negative)
-					continue;	/* ignore dead and negative entries */
-
-				if (ct->hash_value != hashValue)
-					continue;	/* quickly skip entry if wrong hash val */
-
-				if (IsYugaByteEnabled())
-					continue; /* Cannot rely on ctid comparison in YB mode */
-
-				if (!ItemPointerEquals(&(ct->tuple.t_self), &(ntp->t_self)))
-					continue;	/* not same tuple */
-
-				/*
-				 * Found a match, but can't use it if it belongs to another
-				 * list already
-				 */
-				if (ct->c_list)
-					continue;
-
-				found = true;
-				break;			/* A-OK */
+				dlist_foreach(iter, bucket)
+				{
+					ct = dlist_container(CatCTup, cache_elem, iter.cur);
+	
+					if (ct->dead || ct->negative)
+						continue;	/* ignore dead and negative entries */
+	
+					if (ct->hash_value != hashValue)
+						continue;	/* quickly skip entry if wrong hash val */
+	
+					if (!ItemPointerEquals(&(ct->tuple.t_self), &(ntp->t_self)))
+						continue;	/* not same tuple */
+	
+					/*
+					 * Found a match, but can't use it if it belongs to another
+					 * list already
+					 */
+					if (ct->c_list)
+						continue;
+	
+					found = true;
+					break;			/* A-OK */
+				}
 			}
 
 			if (!found)
