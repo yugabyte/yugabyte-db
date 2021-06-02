@@ -4,6 +4,8 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.helpers.TaskType;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
@@ -266,5 +268,52 @@ public class Backup extends Model {
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList.size() != 0;
+  }
+
+  public static Set<Universe> getAssociatedUniverses(UUID configUUID) {
+    Set<UUID> universeUUIDs = new HashSet<>();
+    List<Backup> backupList =
+        find.query()
+            .where()
+            .in("state", BackupState.Completed, BackupState.InProgress)
+            .findList();
+    backupList =
+        backupList
+            .stream()
+            .filter(
+                b ->
+                    b.getBackupInfo().storageConfigUUID.equals(configUUID)
+                        && universeUUIDs.add(b.getBackupInfo().universeUUID))
+            .collect(Collectors.toList());
+
+    List<Schedule> scheduleList =
+        Schedule.find
+            .query()
+            .where()
+            .in("task_type", TaskType.BackupUniverse, TaskType.MultiTableBackup)
+            .eq("status", "Active")
+            .findList();
+    scheduleList =
+        scheduleList
+            .stream()
+            .filter(
+                s ->
+                    s.getTaskParams()
+                            .path("storageConfigUUID")
+                            .asText()
+                            .equals(configUUID.toString())
+                        && universeUUIDs.add(
+                            UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
+            .collect(Collectors.toList());
+    Set<Universe> universes = new HashSet<>();
+    for (UUID universeUUID : universeUUIDs) {
+      try {
+        universes.add(Universe.getOrBadRequest(universeUUID));
+      }
+      // Backup is present but universe does no. We are ignoring such backups.
+      catch (Exception e) {
+      }
+    }
+    return universes;
   }
 }
