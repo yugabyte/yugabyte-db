@@ -1,7 +1,7 @@
 ---
 title: Build a Java application using Apache Spark and YugabyteDB
-headerTitle: Apache Spark 3 and YCQL
-linkTitle: Apache Spark 3 and YCQL
+headerTitle: Apache Spark
+linkTitle: Apache Spark
 description: Build a Java-based application using Apache Spark and YugabyteDB.
 menu:
   latest:
@@ -36,9 +36,9 @@ isTocNested: true
 
 </ul>
 
-## Setting Up the Project with Maven
+## Setting Up a Project with Maven
 
-To build a Java application using the YugabyteDB Spark Connector for YCQL, add the following snippet to your `pom.xml` file for Scala 2.12:
+To build a Java application using the YugabyteDB Spark Connector for YCQL, add the following to your `pom.xml` file for Scala 2.12:
 
 ```xml
 <dependency>
