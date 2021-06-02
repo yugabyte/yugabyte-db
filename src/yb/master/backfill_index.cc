@@ -1255,17 +1255,16 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
 }
 
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
-                             const std::string& start_key) : 
-                             RetryingTSRpcTask(backfill_tablet->master(),
-                                              backfill_tablet->threadpool(),
-                                              gscoped_ptr<TSPicker>(new PickLeaderReplica(
-                                              backfill_tablet->tablet())),
-                            backfill_tablet->tablet()->table().get()),
-                            indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
-                            backfill_tablet_(backfill_tablet),
-                            start_key_(start_key), 
-                            requested_index_names_(RetrieveIndexNames(backfill_tablet->master()->catalog_manager(),
-                                                                      indexes_being_backfilled_)) {
+                             const std::string& start_key)
+    : RetryingTSRpcTask(backfill_tablet->master(),
+                        backfill_tablet->threadpool(),
+                        gscoped_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
+                        backfill_tablet->tablet()->table().get()),
+      indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
+      backfill_tablet_(backfill_tablet),
+      start_key_(start_key),
+      requested_index_names_(RetrieveIndexNames(backfill_tablet->master()->catalog_manager(),
+                                                indexes_being_backfilled_)) {
   deadline_ = MonoTime::Max(); // Never time out.
 }
 
