@@ -39,9 +39,18 @@ import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 
-export const clearCredentials = () => {
+/**
+ * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
+ */
+const redirectToUrl = () => {
   const searchParam = new URLSearchParams(window.location.search);
   const pathToRedirect = searchParam.get('redirectUrl');
+  pathToRedirect
+    ? browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
+    : browserHistory.push('/');
+}
+
+export const clearCredentials = () => {
   localStorage.removeItem('authToken');
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
@@ -64,9 +73,7 @@ export const clearCredentials = () => {
   Cookies.remove('authToken');
   Cookies.remove('customerId');
   Cookies.remove('userId');
-  pathToRedirect
-    ? browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
-    : browserHistory.push('/');
+  redirectToUrl();
 };
 
 const autoLogin = (params) => {
