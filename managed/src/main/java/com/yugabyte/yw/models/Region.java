@@ -22,16 +22,24 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import play.data.validation.Constraints;
 import play.libs.Json;
+import com.yugabyte.yw.common.YWServiceException;
 
 import static io.ebean.Ebean.beginTransaction;
 import static io.ebean.Ebean.commitTransaction;
 import static io.ebean.Ebean.endTransaction;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@ApiModel(
+    description =
+        "Region within a given provider. Typically this will map to a "
+            + "single cloud provider region")
 public class Region extends Model {
   private static final String SECURITY_GROUP_KEY = "sg_id";
   private static final String VNET_KEY = "vnet";
@@ -39,6 +47,7 @@ public class Region extends Model {
   @Id public UUID uuid;
 
   @Column(length = 25, nullable = false)
+  @ApiModelProperty(value = "Cloud provider region code", example = "us-west-2", required = true)
   public String code;
 
   @Column(length = 100, nullable = false)
@@ -197,6 +206,8 @@ public class Region extends Model {
     return region;
   }
 
+  /** DEPRECATED: use {@link #getOrBadRequest()} */
+  @Deprecated()
   public static Region get(UUID regionUUID) {
     return find.query().fetch("provider").where().idEq(regionUUID).findOne();
   }
@@ -209,6 +220,15 @@ public class Region extends Model {
     return find.query().where().eq("provider_uuid", providerUUID).findList();
   }
 
+  public static Region getOrBadRequest(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    Region region = get(customerUUID, providerUUID, regionUUID);
+    if (region == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Provider/Region UUID");
+    }
+    return region;
+  }
+
+  @Deprecated
   public static Region get(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     String regionQuery =
         " select r.uuid, r.code, r.name"

@@ -20,6 +20,7 @@ import java.util.*;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.fail;
 
 import org.yb.YBTestRunner;
 
@@ -821,4 +822,165 @@ public class TestUserDefinedTypes extends BaseCQLTest {
     }
   }
 
+  @Test
+  public void testNull() throws Exception {
+    session.execute("CREATE TYPE test_type (a int)");
+    //----------------------------------------------------------------------------------------------
+    // Testing UDT.
+    //----------------------------------------------------------------------------------------------
+    String tableName = "test_udt";
+    session.execute("CREATE TABLE " + tableName + "(h int, r int, " +
+        "vt test_type, primary key((h), r))");
+    String insertTemplate = "INSERT INTO %s (h, r, vt) VALUES (%d, %d, %s)";
+    String selectTemplate = "SELECT * FROM %s WHERE h = %d AND r = %d";
+
+    { // INSERT: ROW(1, 1, {a:1})
+      session.execute(String.format(insertTemplate, tableName, 1, 1, "{a:1}"));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(1, val.getInt("a"));
+      assertFalse(rows.hasNext());
+    }
+
+    { // INSERT: ROW(1, 1, null)
+      session.execute(String.format(insertTemplate, tableName, 1, 1, "null"));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(null, val);
+      assertFalse(rows.hasNext());
+    }
+
+    { // INSERT: ROW(1, 1, {a:1})
+      session.execute(String.format(insertTemplate, tableName, 1, 1, "{a:1}"));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(1, val.getInt("a"));
+      assertFalse(rows.hasNext());
+    }
+
+    { // INSERT: ROW(1, 1, {a:null})
+      session.execute(String.format(insertTemplate, tableName, 1, 1, "{a:null}"));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(null, val);
+      assertFalse(rows.hasNext());
+    }
+
+    runInvalidStmt(String.format(insertTemplate, tableName, 1, 1, "{null:1}"),
+                   "Invalid Arguments. Field names for user-defined types must be field reference");
+
+    //----------------------------------------------------------------------------------------------
+    // Testing FROZEN<UDT>.
+    //----------------------------------------------------------------------------------------------
+    tableName = "test_frozen_udt";
+    session.execute("CREATE TABLE " + tableName + "(h int, r int, " +
+        "vt frozen<test_type>, primary key((h), r))");
+
+    { // INSERT: ROW(1, 1, {a:1})
+      session.execute(String.format(insertTemplate, tableName, 1, 1, "{a:1}"));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(1, val.getInt("a"));
+      assertFalse(rows.hasNext());
+    }
+
+    { // INSERT: ROW(1, 1, null)
+      session.execute(String.format(insertTemplate, tableName, 1, 1, "null"));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(null, val);
+      assertFalse(rows.hasNext());
+    }
+
+    { // INSERT: ROW(1, 1, {a:1})
+      session.execute(String.format(insertTemplate, tableName, 1, 1, "{a:1}"));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(1, val.getInt("a"));
+      assertFalse(rows.hasNext());
+    }
+
+    { // INSERT: ROW(1, 1, {a:null})
+      session.execute(String.format(insertTemplate, tableName, 1, 1, "{a:null}"));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(0, val.getInt("a"));
+      assertFalse(rows.hasNext());
+    }
+
+    runInvalidStmt(String.format(insertTemplate, tableName, 1, 1, "{null:1}"),
+                   "Invalid Arguments. Field names for user-defined types must be field reference");
+  }
+
+  @Test
+  public void testNullInPrepared() throws Exception {
+    session.execute("CREATE TYPE test_type (a int)");
+    UserType udt =
+        cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("test_type");
+
+    String tableName = "test_udt";
+    session.execute("CREATE TABLE " + tableName + "(h int, r int, " +
+        "vt test_type, primary key((h), r))");
+    String selectTemplate = "SELECT * FROM %s WHERE h = %d AND r = %d";
+
+    String insertPrepared = "INSERT INTO %s (h, r, vt) VALUES (?, ?, ?)";
+    PreparedStatement stmt = session.prepare(String.format(insertPrepared, tableName));
+
+    { // INSERT: ROW(1, 1, null)
+      session.execute(stmt.bind(new Integer(1), new Integer(1), null));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 1, 1));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(null, val);
+      assertFalse(rows.hasNext());
+    }
+
+    { // INSERT: ROW(2, 2, {a:null})
+      UDTValue u = udt.newValue().set("a", null, Integer.class);
+      session.execute(stmt.bind(new Integer(2), new Integer(2), u));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 2, 2));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(null, val);
+      assertFalse(rows.hasNext());
+    }
+
+    // UDT: {null:1}
+    try {
+      UDTValue u = udt.newValue().set(null, 1, Integer.class);
+      fail("UDT initialization did not fail with Null as field name");
+    } catch (java.lang.IllegalArgumentException e) {
+      LOG.info("Expected exception", e);
+      assertTrue(e.getMessage().contains("null is not a field defined in this UDT"));
+    }
+
+    { // INSERT: ROW(3, 3, {a:1})
+      UDTValue u = udt.newValue().set("a", 1, Integer.class);
+      session.execute(stmt.bind(new Integer(3), new Integer(3), u));
+
+      Iterator<Row> rows = runSelect(String.format(selectTemplate, tableName, 3, 3));
+      Row row = rows.next();
+      UDTValue val = row.getUDTValue("vt");
+      assertEquals(1, val.getInt("a"));
+      assertFalse(rows.hasNext());
+    }
+  }
 }

@@ -110,6 +110,10 @@ class ColumnDesc {
     return internal_type_;
   }
 
+  void set_id(int id) {
+    id_ = id;
+  }
+
  private:
   int index_ = -1;
   int id_ = -1;

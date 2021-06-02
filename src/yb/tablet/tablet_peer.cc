@@ -1050,8 +1050,7 @@ Status TabletPeer::StartReplicaOperation(
   OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
   // Unretained is required to avoid a refcount cycle.
-  state->consensus_round()->SetConsensusReplicatedCallback(
-      std::bind(&OperationDriver::ReplicationFinished, driver.get(), _1, _2, _3));
+  state->consensus_round()->SetCallback(driver.get());
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
