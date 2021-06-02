@@ -126,33 +126,15 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from an absolute time
 
-1. Get a timestamp. YCQL doesn't have a `now()` function, so use a command such as one of the following. You can also use a [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
-
-    ```sh
-    # Ruby: remove the decimal point before using the timestamp
-    $ ruby -e 'puts Time.now.to_f'
-    ```
-
-    ```output
-    1620418801.439626
-    ```
+1. Get a timestamp. YCQL doesn't have a `now()` function, so use a command such as the following. You can also use a [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
 
     ```sh
     # Python: remove the decimal point before using the timestamp
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s.%f")'
+    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
-    1620418817.729963
-    ```
-
-    ```sh
-    # Linux and some other systems (but NOT macOS): use the timestamp as-is
-    $ date +%s%N | cut -b1-16
-    ```
-
-    ```output
-    1620418843757085
+    1620418817729963
     ```
 
 1. Add a row for employee 9999 to the table:

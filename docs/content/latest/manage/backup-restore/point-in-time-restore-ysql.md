@@ -31,7 +31,7 @@ showAsideToc: true
 
 The BETA point-in-time restore feature allows you to restore the state of your cluster's data from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
-_Point-in-time restores_ (also referred to here as PITR) and _incremental backups_ go hand in hand. These two features help in recovering from a number of error or failure scenarios by allowing the database to be rolled back to a specific point in time (in the past). The rollback starts from the last full backup, and replays all of the updates from that point until the requested restore point.
+_Point-in-time restores_ (also referred to here as PITR) and _incremental backups_ go hand in hand. These two features help in recovering from a number of error or failure scenarios by allowing the database to be restored to a specific point in time (in the past).
 
 Point-in-time restores and incremental backups depend on _full backups_ (also referred to as base backups). A full backup, as the name suggests, is a complete transactional backup of data up to a certain point in time. The entire data set in the database is backed up for all of the namespaces and tables you selected. Full backups are resource-intensive, and can consume considerable amounts of CPU time, bandwidth, and disk space.
 
@@ -306,12 +306,12 @@ Relative times can be in any of the following formats (again, note that you can 
 
 ### App and operator errors
 
-Point in time recovery allows recovery from the following scenarios by rolling the database back to a point in time before the error occurred. The errors could be any of the following:
+Point in time recovery allows recovery from the following scenarios by restoring the database to a point in time before the error occurred. The errors could be any of the following:
 
 * DDL errors: A table is dropped by mistake
 * DML errors: An erroneous UPDATE statement is run on the table
 
-In both cases, you roll the table back to a point in time before the error occurred.
+In both cases, you restore the table to a point in time before the error occurred.
 
 ### Disk or filesystem corruption
 
@@ -339,11 +339,11 @@ This section describes the features that enable PITR and incremental backups.
 
 ### Flashback database
 
-The flashback database feature allows rolling back an existing database or an existing backup to a specific point in time in the past, up to some maximum time history. For example, if a database is configured for flashback up to the last 25 hours, you can roll this database back to a point in time that is up to 25 hours ago. Any backups taken from this database preserve the same ability to rollback to a point in time.
+The flashback database feature allows restoring an existing database or an existing backup to a specific point in time in the past, up to some maximum time history. For example, if a database is configured for flashback up to the last 25 hours, you can restore this database back to a point in time that is up to 25 hours ago.
 
 **Notes**:
 
-* The time granularity of the point in time that one can roll back to (1 second, 1 minute etc) is a separate parameter / specification.
+* The time granularity of the point in time that one can restore to (1 second, 1 minute etc) is a separate parameter / specification.
 * This feature does not help with reducing the size of backups, since this would be comparable to a full backup
 
 ### Incremental backups
@@ -357,8 +357,8 @@ Incremental backups should cover the following scenarios:
 * Any updates for tables that may get dropped in that time interval
 
 This feature helps dealing with developer and operator error recovery (mentioned in the Scenarios section A).
-The rollback should also include any DDL changes, such as create/drop/alter tables.
-The time granularity of the point in time that one can roll back to (1 second, 1 minute etc) is a separate parameter / specification.
+The restore should also include any DDL changes, such as create/drop/alter tables.
+The time granularity of the point in time that one can restore to (1 second, 1 minute etc) is a separate parameter / specification.
 Differential incremental backups require applying multiple incremental backups on top of a base backup
 
 Compared to flashbacks, incremental backups:
@@ -391,7 +391,7 @@ The following table provides a quick comparison of the intended usage patterns.
 
 ## Limitations
 
-This is a BETA feature, and is in active development. Currently, you can **restore data only**. The feature doesn't support metadata; in other words, rolling back past operations such as CREATE, ALTER, TRUNCATE, and DROP TABLE is unsupported.
+This is a BETA feature, and is in active development. Currently, you can **restore data only**. The feature doesn't support metadata; in other words, restoring past operations such as CREATE, ALTER, TRUNCATE, and DROP TABLE is unsupported.
 
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
