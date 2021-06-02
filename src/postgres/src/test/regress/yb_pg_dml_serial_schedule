@@ -5,10 +5,10 @@
 # NOTES:
 # The following tests are copied from Postgres original code. Whenever Postgres updates
 # these tests, we need to update ours also.
-#   - yb_insert_conflict
+#   - yb_pg_insert_conflict
 # Other tests are YugaByte tests.
 ####################################################################################################
-test: yb_insert_conflict
+test: yb_pg_insert_conflict
 test: yb_dml_insert_conflict
 test: yb_dml_read_time
 test: yb_dml_single_row
