@@ -55,7 +55,7 @@ This is the scenario in which the data in the entire source cluster is lost irre
 
 {{< note title="Not all features are implemented yet" >}}
 
-As this is a BETA feature in active development, not all features are implemented yet. Refer to the [Limitations](#limitations) section for details.
+As this feature is in active development, not all features are implemented yet. Refer to the [Limitations](#limitations) section for details.
 
 {{< /note >}}
 
