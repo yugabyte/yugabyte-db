@@ -5,12 +5,12 @@
 # This suite includes all tests on datatypes that are enabled for YugaByte.
 ####################################################################################################
 
-test: yb_bit
+test: yb_pg_bit
 test: yb_char
 test: yb_pg_text
 test: yb_bytea
-test: yb_tstypes
-test: yb_uuid
+test: yb_pg_tstypes
+test: yb_pg_uuid
 
 # TODO(neil) Must build postgres with --with-libxml
-# test: yb_xml
+# test: yb_pg_xml
