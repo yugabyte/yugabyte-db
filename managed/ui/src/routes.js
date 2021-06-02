@@ -39,6 +39,17 @@ import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 
+/**
+ * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
+ */
+const redirectToUrl = () => {
+  const searchParam = new URLSearchParams(window.location.search);
+  const pathToRedirect = searchParam.get('redirectUrl');
+  pathToRedirect
+    ? browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
+    : browserHistory.push('/');
+}
+
 export const clearCredentials = () => {
   localStorage.removeItem('authToken');
   localStorage.removeItem('apiToken');
@@ -62,7 +73,7 @@ export const clearCredentials = () => {
   Cookies.remove('authToken');
   Cookies.remove('customerId');
   Cookies.remove('userId');
-  browserHistory.push('/');
+  redirectToUrl();
 };
 
 const autoLogin = (params) => {
@@ -110,7 +121,9 @@ function validateSession(store, replacePath, callback) {
   // Otherwise, go to login/register.
   const userId = Cookies.get('userId') || localStorage.getItem('userId');
   const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
+  const searchParam = new URLSearchParams(window.location.search);
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
+    const location = searchParam.get('redirectUrl') || window.location.pathname;
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
         store.dispatch(insecureLoginResponse(response));
@@ -133,7 +146,9 @@ function validateSession(store, replacePath, callback) {
       }
     });
     store.dispatch(customerTokenError());
-    browserHistory.push('/login');
+    location && location !== '/'
+      ? browserHistory.push(`/login?redirectUrl=${location}`)
+      : browserHistory.push('/login');
   } else {
     store.dispatch(validateToken()).then((response) => {
       if (response.error) {
@@ -159,6 +174,10 @@ function validateSession(store, replacePath, callback) {
           localStorage.setItem('customerId', response.payload.data['uuid']);
         }
         localStorage.setItem('userId', userId);
+        if (searchParam.get('redirectUrl')) {
+          browserHistory.push(searchParam.get('redirectUrl'));
+          searchParam.delete('redirectUrl')
+        }
       } else {
         store.dispatch(resetCustomer());
         clearCredentials();
