@@ -33,7 +33,7 @@ from downloadutil.downloader import Downloader
 from downloadutil.download_config import DownloadConfig
 
 
-FOSSA_VERSION_RE = re.compile(r'^fossa-cli version ([^ ]+) .*$')
+FOSSA_VERSION_RE = re.compile(r'^(?:fossa-cli|spectrometer:) version ([^ ]+) .*$')
 MIN_FOSSA_CLI_VERSION = '1.1.7'
 
 
@@ -52,19 +52,21 @@ def main():
     args = parser.parse_args()
     init_env(args.verbose)
 
+    # TODO: We may also want to try using the v2 option --unpack-archives
+    #       Though that may be going to deeper level than we want.
     fossa_cmd_line = ['fossa', 'analyze']
     fossa_cmd_line.extend(args.fossa_cli_args)
 
     should_upload = not any(
         arg in args.fossa_cli_args for arg in ('--show-output', '--output', '-o'))
 
-    if not should_upload and not os.getenv('FOSSA_API_KEY'):
+    if should_upload and not os.getenv('FOSSA_API_KEY'):
         # --output is used for local analysis only, without uploading the results. In all other
         # cases we would like .
         raise RuntimeError('FOSSA_API_KEY must be specified in order to upload analysis results.')
 
     logging.info(
-        f"FOSSA CLI command line (except the configuration path): {shlex_join(fossa_cmd_line)}")
+        f"FOSSA CLI command line: {shlex_join(fossa_cmd_line)}")
 
     fossa_version_str = subprocess.check_output(['fossa', '--version']).decode('utf-8')
     fossa_version_match = FOSSA_VERSION_RE.match(fossa_version_str)
@@ -73,7 +75,7 @@ def main():
     fossa_version = fossa_version_match.group(1)
     if version.parse(fossa_version) < version.parse(MIN_FOSSA_CLI_VERSION):
         raise RuntimeError(
-            f"fossa-cli version too old: {fossa_version} "
+            f"fossa version too old: {fossa_version} "
             f"(expected {MIN_FOSSA_CLI_VERSION} or later)")
 
     download_cache_path = get_download_cache_dir()
@@ -84,7 +86,7 @@ def main():
     )
     downloader = Downloader(download_config)
 
-    fossa_yml_path = os.path.join(YB_SRC_ROOT, '.fossa.yml')
+    fossa_yml_path = os.path.join(YB_SRC_ROOT, '.fossa-local.yml')
     fossa_yml_data = load_yaml_file(fossa_yml_path)
     modules = fossa_yml_data['analyze']['modules']
 
@@ -106,7 +108,7 @@ def main():
             url = fossa_module_yb_metadata['url']
             if url in seen_urls:
                 # Due to a bug in some versions of yugabyte-db-thirdparty scripts, as of 04/20/2021
-                # we may include the same dependency twince in the fossa_modules.yml file. We just
+                # we may include the same dependency twice in the fossa_modules.yml file. We just
                 # skip the duplicates here.
                 continue
             seen_urls.add(url)
@@ -121,7 +123,9 @@ def main():
             fossa_module_data['target'] = downloaded_path
             modules.append(fossa_module_data)
 
-        effective_fossa_yml_path = os.path.join(os.getenv('BUILD_ROOT'), 'effective_fossa.yml')
+        # TODO: Once we move to v2 fossa, we may want to use fossa-dep.yml file instead of
+        #       re-writing the main file.
+        effective_fossa_yml_path = os.path.join(YB_SRC_ROOT, '.fossa.yml')
         write_yaml_file(fossa_yml_data, effective_fossa_yml_path)
 
         logging.info(f"Wrote the expanded FOSSA file to {effective_fossa_yml_path}")
@@ -131,8 +135,6 @@ def main():
             f"from FOSSA analysis.")
 
         effective_fossa_yml_path = fossa_yml_path
-
-    fossa_cmd_line += ['--config', effective_fossa_yml_path]
 
     elapsed_time_sec = time.time() - start_time_sec
     logging.info("Generated the effective FOSSA configuration file in %.1f sec", elapsed_time_sec)
