@@ -70,7 +70,7 @@ YugabyteDB supports several languages and client drivers. Below is a brief list.
 
 # What's being worked on?
 
-> This section was last updated in **May, 2021**.
+> This section was last updated in **June, 2021**.
 
 ## Current roadmap
 
@@ -79,19 +79,21 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | [Automatic tablet splitting enabled by default](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |
-| [Point in time restores](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) | PROGRESS  |  v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/7120) |  |
-| YSQL: table statistics and CBO | PROGRESS  |  v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) |  |
-| [Support `GIN` indexes](https://github.com/jaki/ysql-gin-doc/releases/download/v2.2.1/gin.pdf) | PROGRESS | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/7850) | |
+| [Point in time Recovery](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) | PROGRESS  |  v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/7120) |  |
+| YSQL: table statistics and Cost based optimizer(CBO) | PROGRESS  |  v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) |  |
+| [[YSQL] Support `GIN` indexes](https://github.com/jaki/ysql-gin-doc/releases/download/v2.2.1/gin.pdf) | PROGRESS | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/7850) | |
 | [[YSQL] Feature support - ALTER TABLE](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
-| [Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) |  |
-| Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.7           |                 |               |
-| Support Spark 3 on YCQL | DONE | v2.5, v2.6           |  [Track](https://github.com/yugabyte/yugabyte-db/issues/6488)  |               |
+| [[YSQL] Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) |  |
+| [YSQL] Collation Support - support COLLATE option for text-based columns | PROGRESS | v2.7           |[Track](https://github.com/yugabyte/yugabyte-db/issues/7853)                 |               |
+[YSQL] Support SAVEPOINT - Transaction Control Commands | PROGRESS | v2.7           |[Track](https://github.com/yugabyte/yugabyte-db/issues/1125) |  |
+| [YCQL] LDAP Support for Yugabyte's YCQL API | PROGRESS | v2.7           |[Track](https://github.com/yugabyte/yugabyte-db/issues/4421)  |  |
 | Incorporate PostgreSQL 12 features | PLANNING  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) |  |
 | Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
 | [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | Enhance YSQL language support |
 | Improve TPC-C benchmarking | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
 | Transparently restart transactions | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | Decrease the incidence of transaction restart errors seen in various scenarios |
-| Pessimistic locking | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
+| Pessimistic locking Design | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
+| Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.7           |                 |               |
 
 
 ## Planned additions to the roadmap
@@ -109,6 +111,7 @@ The following items are being planned as additions to the roadmap.
 
 | Feature                                         | Status    | Release Target | Docs / Enhancements |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | ------------------- | ------------- |
+| Support Spark 3.x on YCQL API | ✅ *DONE* | v2.5, v2.6           |  [Track](https://github.com/yugabyte/yugabyte-db/issues/6488)  |     
 | [Support `ALTER TABLE` add primary key](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
 | Identity and access management in YSQL | ✅ *DONE*  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) | LDAP and Active Directory support |
 | Follower reads in YSQL | ✅ *BETA* | v2.5 | [Issue](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL.  |
