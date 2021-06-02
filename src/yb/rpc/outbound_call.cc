@@ -59,18 +59,16 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_send_time, "Time taken to send the request ",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the request to the wire",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the request to the wire");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_time_to_response, "Time taken to get the response ",
     yb::MetricUnit::kMicroseconds,
-    "Microseconds spent to send the request and get a response on the wire", 60000000LU, 2);
+    "Microseconds spent to send the request and get a response on the wire");
 
 // 100M cycles should be about 50ms on a 2Ghz box. This should be high
 // enough that involuntary context switches don't trigger it, but low enough
