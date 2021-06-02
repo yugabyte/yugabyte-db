@@ -216,52 +216,45 @@ DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
 namespace yb {
 namespace tserver {
 
-METRIC_DEFINE_histogram(server, op_apply_queue_length, "Operation Apply Queue Length",
+METRIC_DEFINE_coarse_histogram(server, op_apply_queue_length, "Operation Apply Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be applied to the tablet. "
                         "High queue lengths indicate that the server is unable to process "
-                        "operations as fast as they are being written to the WAL.",
-                        10000, 2);
+                        "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(server, op_apply_queue_time, "Operation Apply Queue Time",
+METRIC_DEFINE_coarse_histogram(server, op_apply_queue_time, "Operation Apply Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the apply queue before being "
                         "processed. High queue times indicate that the server is unable to "
-                        "process operations as fast as they are being written to the WAL.",
-                        10000000, 2);
+                        "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(server, op_apply_run_time, "Operation Apply Run Time",
+METRIC_DEFINE_coarse_histogram(server, op_apply_run_time, "Operation Apply Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being applied to the tablet. "
                         "High values may indicate that the server is under-provisioned or "
-                        "that operations consist of very large batches.",
-                        10000000, 2);
+                        "that operations consist of very large batches.");
 
-METRIC_DEFINE_histogram(server, op_read_queue_length, "Operation Read op Queue Length",
+METRIC_DEFINE_coarse_histogram(server, op_read_queue_length, "Operation Read op Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be applied to the tablet. "
                             "High queue lengths indicate that the server is unable to process "
-                            "operations as fast as they are being written to the WAL.",
-                        10000, 2);
+                            "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(server, op_read_queue_time, "Operation Read op Queue Time",
+METRIC_DEFINE_coarse_histogram(server, op_read_queue_time, "Operation Read op Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the read queue before being "
                             "processed. High queue times indicate that the server is unable to "
-                            "process operations as fast as they are being written to the WAL.",
-                        10000000, 2);
+                            "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(server, op_read_run_time, "Operation Read op Run Time",
+METRIC_DEFINE_coarse_histogram(server, op_read_run_time, "Operation Read op Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being applied to the tablet. "
                             "High values may indicate that the server is under-provisioned or "
-                            "that operations consist of very large batches.",
-                        10000000, 2);
+                            "that operations consist of very large batches.");
 
-METRIC_DEFINE_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
+METRIC_DEFINE_coarse_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
                         MetricUnit::kMicroseconds,
-                        "Time that the tablet server takes to bootstrap all of its tablets.",
-                        10000000, 2);
+                        "Time that the tablet server takes to bootstrap all of its tablets.");
 
 THREAD_POOL_METRICS_DEFINE(
     server, post_split_trigger_compaction_pool, "Thread pool for tablet compaction jobs.");
