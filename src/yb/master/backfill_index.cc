@@ -635,7 +635,8 @@ std::unordered_set<TableId> IndexIdsFromInfos(const std::vector<IndexInfoPB>& in
   return idx_ids;
 }
 
-std::string RetrieveIndexNames(CatalogManager* mgr, const std::unordered_set<std::string>& index_ids) {
+std::string RetrieveIndexNames(CatalogManager* mgr,
+                               const std::unordered_set<std::string>& index_ids) {
   std::ostringstream out;
   out << "{ ";
   bool first = true;
