@@ -40,12 +40,10 @@ DEFINE_int32(num_inserter_threads, 8, "Number of inserter threads to run");
 DEFINE_int32(num_inserts_per_thread, 0, "Number of inserts from each thread");
 DECLARE_bool(enable_maintenance_manager);
 
-METRIC_DEFINE_histogram(test, insert_latency,
+METRIC_DEFINE_coarse_histogram(test, insert_latency,
                         "Insert Latency",
                         yb::MetricUnit::kMicroseconds,
-                        "TabletServer single threaded insert latency.",
-                        10000000,
-                        2);
+                        "TabletServer single threaded insert latency.");
 
 namespace yb {
 namespace tserver {

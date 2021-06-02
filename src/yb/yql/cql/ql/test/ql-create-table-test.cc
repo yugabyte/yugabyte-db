@@ -403,7 +403,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
   FLAGS_tserver_enable_metrics_snapshotter = true;
 
   std::vector<std::string> table_metrics =
-  {"rocksdb_db_write_stall_sum", "rocksdb_db_write_stall_count"};
+  {"rocksdb_bytes_per_read_sum", "rocksdb_bytes_per_read_count"};
   FLAGS_metrics_snapshotter_table_metrics_whitelist = boost::algorithm::join(table_metrics, ",");
 
   std::vector<std::string> tserver_metrics = {

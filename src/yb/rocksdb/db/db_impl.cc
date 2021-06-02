@@ -5298,7 +5298,6 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
   uint64_t time_delayed = 0;
   bool delayed = false;
   {
-    StopWatch sw(env_, stats_, WRITE_STALL, &time_delayed);
     auto delay = write_controller_.GetDelay(env_, num_bytes);
     if (delay > 0) {
       mutex_.Unlock();
@@ -5316,8 +5315,6 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     }
   }
   if (delayed) {
-    default_cf_internal_stats_->AddDBStats(InternalDBStatsType::WRITE_STALL_MICROS,
-                                           time_delayed);
     RecordTick(stats_, STALL_MICROS, time_delayed);
   }
 

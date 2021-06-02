@@ -79,11 +79,10 @@ DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
             "For testing purposes. Enables the rpc's to be considered timed out in the queue even "
             "when we have not had any backpressure in the recent past.");
 
-METRIC_DEFINE_histogram(server, rpc_incoming_queue_time,
+METRIC_DEFINE_coarse_histogram(server, rpc_incoming_queue_time,
                         "RPC Queue Time",
                         yb::MetricUnit::kMicroseconds,
-                        "Number of microseconds incoming RPC requests spend in the worker queue",
-                        60000000LU, 3);
+                        "Number of microseconds incoming RPC requests spend in the worker queue");
 
 METRIC_DEFINE_counter(server, rpcs_timed_out_in_queue,
                       "RPC Queue Timeouts",

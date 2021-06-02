@@ -684,12 +684,10 @@ TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
 
 TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   METRIC_DEFINE_entity(test);
-  METRIC_DEFINE_histogram(test, insert_latency,
+  METRIC_DEFINE_coarse_histogram(test, insert_latency,
                           "Insert Latency",
                           MetricUnit::kMicroseconds,
-                          "TabletServer single threaded insert latency.",
-                          10000000,
-                          2);
+                          "TabletServer single threaded insert latency.");
 
   scoped_refptr<Histogram> histogram = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
 

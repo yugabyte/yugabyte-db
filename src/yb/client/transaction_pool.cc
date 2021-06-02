@@ -37,9 +37,9 @@ DEFINE_double(transaction_pool_reserve_factor, 2,
                   " average number or take requests during prepration multiplied by this factor");
 
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
     server, transaction_pool_cache, "Rate of hitting transaction pool cache",
-    yb::MetricUnit::kCacheHits, "Rate of hitting transaction pool cache", 100LU, 2);
+    yb::MetricUnit::kCacheHits, "Rate of hitting transaction pool cache");
 
 METRIC_DEFINE_counter(server, transaction_pool_cache_hits,
                       "Total number of hits in transaction pool cache", yb::MetricUnit::kCacheHits,

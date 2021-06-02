@@ -168,12 +168,11 @@ METRIC_DEFINE_gauge_int64(tablet, is_raft_leader,
                           "Keeps track whether tablet is raft leader"
                           "1 indicates that the tablet is raft leader");
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
   table, dns_resolve_latency_during_update_raft_config,
   "yb.consensus.RaftConsensus.UpdateRaftConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
-  "Microseconds spent resolving DNS requests during RaftConsensus::UpdateRaftConfig",
-  60000000LU, 2);
+  "Microseconds spent resolving DNS requests during RaftConsensus::UpdateRaftConfig");
 
 DEFINE_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
              "Leader lease duration. A leader keeps establishing a new lease or extending the "

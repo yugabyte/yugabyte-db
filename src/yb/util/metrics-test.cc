@@ -221,8 +221,8 @@ TEST_F(MetricsTest, TEstExposeGaugeAsCounter) {
   ASSERT_EQ(MetricType::kCounter, METRIC_counter_as_gauge.type());
 }
 
-METRIC_DEFINE_histogram(test_entity, test_hist, "Test Histogram",
-                        MetricUnit::kMilliseconds, "A default histogram.", 1000000, 3);
+METRIC_DEFINE_histogram_with_percentiles(test_entity, test_hist, "Test Histogram",
+                        MetricUnit::kMilliseconds, "A default histogram.", 100000000L, 2);
 
 METRIC_DEFINE_gauge_int32(test_entity, test_sum_gauge, "Test Sum Gauge", MetricUnit::kMilliseconds,
                           "Test Gauge with SUM aggregation.");

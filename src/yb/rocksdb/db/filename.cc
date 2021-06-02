@@ -411,7 +411,6 @@ Status SyncManifest(Env* env, const DBOptions* db_options,
   if (db_options->disableDataSync) {
     return Status::OK();
   } else {
-    StopWatch sw(env, db_options->statistics.get(), MANIFEST_FILE_SYNC_MICROS);
     return file->Sync(db_options->use_fsync);
   }
 }

@@ -187,7 +187,6 @@ Status BuildTable(const std::string& dbname,
 
     // Finish and check for file errors
     if (s.ok() && !empty && !ioptions.disable_data_sync) {
-      StopWatch sw(env, ioptions.statistics, TABLE_SYNC_MICROS);
       if (is_split_sst) {
         RETURN_NOT_OK(data_file_writer->Sync(ioptions.use_fsync));
       }
