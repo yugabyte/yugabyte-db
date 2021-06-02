@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +22,7 @@ public class ExtraMigrationManager extends DevopsBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(ExtraMigrationManager.class);
 
-  @Inject
-  TemplateManager templateManager;
+  @Inject TemplateManager templateManager;
 
   @Override
   protected String getCommandType() {
@@ -30,13 +30,17 @@ public class ExtraMigrationManager extends DevopsBase {
   }
 
   private void recreateProvisionScripts() {
-    for (AccessKey accessKey: AccessKey.getAll()) {
+    for (AccessKey accessKey : AccessKey.getAll()) {
       Provider p = Provider.get(accessKey.getProviderUUID());
       if (p != null && p.code.equals(onprem.name())) {
         AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
         templateManager.createProvisionTemplate(
-          accessKey, keyInfo.airGapInstall, keyInfo.passwordlessSudoAccess,
-          keyInfo.installNodeExporter, keyInfo.nodeExporterPort, keyInfo.nodeExporterUser);
+            accessKey,
+            keyInfo.airGapInstall,
+            keyInfo.passwordlessSudoAccess,
+            keyInfo.installNodeExporter,
+            keyInfo.nodeExporterPort,
+            keyInfo.nodeExporterUser);
       }
     }
   }
@@ -55,20 +59,22 @@ public class ExtraMigrationManager extends DevopsBase {
       for (UUID universeUUID : Universe.getAllUUIDs(c)) {
         Optional<Universe> u = Universe.maybeGet(universeUUID);
         if (u.isPresent()) {
+          Universe universe = u.get();
           for (AlertDefinitionTemplate template : AlertDefinitionTemplate.values()) {
             if (template.isCreateOnMigration()
                 && (AlertDefinition.get(c.uuid, universeUUID, template.getName()) == null)
-                && (u.get().getUniverseDetails() != null)) {
+                && (universe.getUniverseDetails() != null)) {
               LOG.debug(
                   "Going to create alert definition for universe {} with name '{}'",
                   universeUUID,
                   template.getName());
               AlertDefinition.create(
                   c.uuid,
-                  universeUUID,
+                  AlertDefinition.TargetType.Universe,
                   template.getName(),
-                  template.buildTemplate(u.get().getUniverseDetails().nodePrefix),
-                  true);
+                  template.buildTemplate(universe.getUniverseDetails().nodePrefix),
+                  true,
+                  AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
             }
           }
         } else {

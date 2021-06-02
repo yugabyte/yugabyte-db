@@ -12,7 +12,6 @@
 # under the License.
 
 import os
-import yaml
 import subprocess
 import argparse
 import tempfile
@@ -26,7 +25,8 @@ import time
 from packaging import version
 
 from yb.common_util import (
-    YB_SRC_ROOT, get_thirdparty_dir, get_download_cache_dir, load_yaml_file, init_env, shlex_join
+    YB_SRC_ROOT, get_thirdparty_dir, get_download_cache_dir, load_yaml_file, init_env, shlex_join,
+    write_yaml_file
 )
 
 from downloadutil.downloader import Downloader
@@ -122,8 +122,7 @@ def main():
             modules.append(fossa_module_data)
 
         effective_fossa_yml_path = os.path.join(os.getenv('BUILD_ROOT'), 'effective_fossa.yml')
-        with open(effective_fossa_yml_path, 'w') as effective_fossa_yml_file:
-            effective_fossa_yml_file.write(yaml.dump(fossa_yml_data, default_flow_style=False))
+        write_yaml_file(fossa_yml_data, effective_fossa_yml_path)
 
         logging.info(f"Wrote the expanded FOSSA file to {effective_fossa_yml_path}")
     else:

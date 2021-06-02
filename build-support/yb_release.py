@@ -23,7 +23,7 @@ import subprocess
 import tempfile
 import traceback
 import uuid
-import yaml
+import ruamel.yaml
 
 from yb.library_packager import LibraryPackager, add_common_arguments
 from yb import library_packager as library_packager_module
@@ -190,6 +190,7 @@ def main():
         raise IOError("The build script failed to generate build descriptor file at '{}'".format(
                 build_desc_path))
 
+    yaml = ruamel.yaml.YAML()
     with open(build_desc_path) as build_desc_file:
         build_desc = yaml.load(build_desc_file)
 

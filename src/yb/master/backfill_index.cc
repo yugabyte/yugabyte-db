@@ -352,10 +352,10 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
       VLOG(1) << "Index permissions update skipped, leaving schema_version at "
               << indexed_table_pb.version();
     }
-    indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
-                                 Substitute("Alter table version=$0 ts=$1",
-                                            indexed_table_pb.version(),
-                                            LocalTimeAsString()));
+    indexed_table_data.set_state(
+        SysTablesEntryPB::ALTERING,
+        Format("Update index permission version=$0 ts=$1",
+               indexed_table_pb.version(), LocalTimeAsString()));
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
@@ -1232,8 +1232,7 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
     VLOG(3) << "GetSafeTime for " << tablet_->ToString() << " got an error. Returning "
             << safe_time;
   } else if (state() != MonitoredTaskState::kComplete) {
-    status = STATUS_SUBSTITUTE(InternalError, "$0 in state $1", description(),
-                               ToString(state()));
+    status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
   } else {
     safe_time = HybridTime(resp_.safe_time());
     if (safe_time.is_special()) {
@@ -1371,9 +1370,14 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
 
   if (resp_.has_error()) {
     status = StatusFromPB(resp_.error().status());
-    for (int i = 0; i < resp_.failed_index_ids_size(); i++) {
-      VLOG(1) << " Added to failed index " << resp_.failed_index_ids(i);
-      failed_indexes.insert(resp_.failed_index_ids(i));
+    if (resp_.failed_index_ids_size() > 0) {
+      for (int i = 0; i < resp_.failed_index_ids_size(); i++) {
+        VLOG(1) << " Added to failed index " << resp_.failed_index_ids(i);
+        failed_indexes.insert(resp_.failed_index_ids(i));
+      }
+    } else {
+      // No specific index was marked as a failure. So consider all of them as failed.
+      failed_indexes = indexes_being_backfilled_;
     }
   } else if (state() != MonitoredTaskState::kComplete) {
     // There is no response, so the error happened even before we could
@@ -1382,8 +1386,7 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
     VLOG(3) << "Considering all indexes : "
             << yb::ToString(indexes_being_backfilled_)
             << " as failed.";
-    status = STATUS_SUBSTITUTE(InternalError, "$0 in state $1", description(),
-                               ToString(state()));
+    status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
   }
 
   if (resp_.has_backfilled_until()) {

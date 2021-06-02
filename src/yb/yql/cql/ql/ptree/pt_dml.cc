@@ -15,11 +15,16 @@
 // Treenode implementation for DML including SELECT statements.
 //--------------------------------------------------------------------------------------------------
 
+#include <unordered_map>
+
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 DECLARE_bool(use_cassandra_authentication);
@@ -55,6 +60,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
       hash_col_bindvars_(memctx),
       column_refs_(memctx),
       static_column_refs_(memctx),
+      column_ref_cnts_(memctx),
       pk_only_indexes_(memctx),
       non_pk_only_indexes_(memctx) {
 }
@@ -80,6 +86,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other, bool copy_if
       hash_col_bindvars_(memctx),
       column_refs_(memctx),
       static_column_refs_(memctx),
+      column_ref_cnts_(memctx),
       pk_only_indexes_(memctx),
       non_pk_only_indexes_(memctx) {
 }
@@ -364,11 +371,24 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
   for (const auto& itr : table_->index_map()) {
     const TableId& index_id = itr.first;
     const IndexInfo& index = itr.second;
-    // If the index indexes the primary key columns only, index updates can be issued from the CQL
-    // proxy side without reading the current row so long as the DML does not delete the column
-    // (including setting the value to null). Otherwise, the updates needed can only be determined
-    // from the tserver side after the current values are read.
-    if (index.PrimaryKeyColumnsOnly(indexed_schema)) {
+
+    bool primary_key_cols_only = index.PrimaryKeyColumnsOnly(indexed_schema);
+
+    std::shared_ptr<const IndexInfoPB::WherePredicateSpecPB>& where_predicate_spec_pb =
+      index.where_predicate_spec();
+
+    // If the index has primary key columns only and doesn't reference non-pk columns in
+    // predicate, index updates can be issued from the CQL proxy side without reading the current
+    // row as long as the DML does not delete the column (including setting the value to null).
+    // Otherwise, the updates needed can only be determined from the tserver side after the current
+    // values are read.
+
+    // TODO (Piyush) - Right now we are not distinguishing between -
+    //   1. primary columns only in index where clause (if it is present) and
+    //   2. non-primary columns in index where clause.
+    // This distinction can help in optimizing the index write path as per discussion
+    // in the Partial Indexes design doc.
+    if (primary_key_cols_only && !where_predicate_spec_pb) {
       std::shared_ptr<client::YBTable> index_table = sem_context->GetTableDesc(index_id);
       if (index_table == nullptr) {
         return sem_context->Error(this, Substitute("Index table $0 not found", index_id).c_str(),
@@ -382,6 +402,13 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
         if (!indexed_schema.is_key_column(indexed_column_id)) {
           column_refs_.insert(indexed_column_id);
         }
+      }
+
+      // In case non-pk columns are present in the index predicate (valid only for a partial index),
+      // add those references as well.
+      if (where_predicate_spec_pb) {
+        for (auto column_id : where_predicate_spec_pb->column_ids())
+          column_refs_.insert(column_id);
       }
     }
   }
@@ -477,11 +504,83 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                        const ColumnDesc *col_desc,
                                        PTExpr::SharedPtr value,
                                        PTExprListNode::SharedPtr col_args) {
-  // If this is a nested select from an uncovered index, ignore column that is uncovered.
-  if (col_desc == nullptr && sem_context->IsUncoveredIndexSelect()) {
-    return Status::OK();
+  // If this is a nested select from an uncovered index/partial index,
+  // ignore column that is uncovered/only in partial index predicate and not in index cols.
+  if (col_desc == nullptr) {
+    if (sem_context->IsUncoveredIndexSelect() || sem_context->IsPartialIndexSelect())
+      return Status::OK();
+
+    return STATUS(InternalError, "Column does not exist");
   }
-  if (col_desc->is_primary() && sem_context->void_primary_key_condition()) {
+
+  // If a SELECT involves a partial index scan, we can safely ignore some sub-clauses of WHERE
+  // clause if they are taken care of by the index predicate.
+  //
+  // Preserve the sub-clause in case of below exceptions for child SELECT:
+  //    For col = val type of sub-clauses on a prefix of the index's primary key, it is better
+  //    to again take note of the sub-clauses because it will help decide -
+  //      i) the tserver to land on (if all hash cols are specified)
+  //      ii) the range to scan (if range col is specified and is part of a prefix found in WHERE)
+
+  if (statement_type_ == TreeNodeOpcode::kPTSelectStmt) {
+    PTSelectStmt* select_stmt = static_cast<PTSelectStmt*>(sem_context->current_dml_stmt());
+    if (select_stmt->child_select()) {
+      // Parent SELECT (of a nested select).
+      std::shared_ptr<client::YBTable> table = select_stmt->table();
+      std::unordered_map<TableId, IndexInfo>::const_iterator it =
+        table->index_map().find(select_stmt->child_select()->index_id());
+
+      RSTATUS_DCHECK(it != table->index_map().end(), InternalError, "Index should be present");
+      const IndexInfo& idx_info = it->second;
+
+      if (idx_info.where_predicate_spec()) {
+        // It is a partial index.
+        ColumnOp op(col_desc, value, expr->ql_op());
+        if (VERIFY_RESULT(OpInExpr(idx_info.where_predicate_spec()->where_expr(), op))) {
+          return Status::OK();
+        }
+      }
+    } else if (!select_stmt->index_id().empty()) {
+      // Child SELECT.
+      std::shared_ptr<client::YBTable> table = select_stmt->table();
+      const IndexInfo& idx_info = table->index_info();
+
+      if (idx_info.where_predicate_spec()) {
+        // First attempt to preserve the sub-clause if it might be useful.
+        bool preserve_col_op = false;
+        int prefix_len = sem_context->index_select_prefix_length();
+        // Only in case all hash cols are set, we can even attempt to preserve the sub-clause.
+        bool all_hash_cols_set = prefix_len >= idx_info.hash_column_count();
+        if (all_hash_cols_set) {
+          if (col_desc->index() < prefix_len && expr->ql_op() == QL_OP_EQUAL)
+            preserve_col_op = true;
+          else if (col_desc->index() == prefix_len + 1 &&
+                   col_desc->index() < idx_info.range_column_count() &&
+                   (expr->ql_op() == QL_OP_LESS_THAN ||
+                    expr->ql_op() == QL_OP_LESS_THAN_EQUAL ||
+                    expr->ql_op() == QL_OP_GREATER_THAN ||
+                    expr->ql_op() == QL_OP_GREATER_THAN_EQUAL)
+                  )
+            preserve_col_op = true;
+        }
+
+        if (!preserve_col_op) {
+          const IndexInfo::IndexColumn& idx_col = idx_info.column(col_desc->index());
+          // Change to id in indexed table because we are have those ids in the index predicate
+          // as well.
+          ColumnDesc translated_col_desc(*col_desc);
+          translated_col_desc.set_id(idx_col.indexed_column_id);
+
+          ColumnOp op(&translated_col_desc, value, expr->ql_op());
+          if (VERIFY_RESULT(OpInExpr(idx_info.where_predicate_spec()->where_expr(), op))) {
+            return Status::OK();
+          }
+        }
+      }
+    }
+  }
+
+  if (sem_context->void_primary_key_condition() && col_desc->is_primary()) {
     // Drop the key condition from where clause as instructed.
     return Status::OK();
   }

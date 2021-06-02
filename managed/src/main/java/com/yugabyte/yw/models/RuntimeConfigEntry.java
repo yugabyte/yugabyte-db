@@ -1,5 +1,6 @@
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.Transactional;
@@ -14,13 +15,13 @@ import java.util.UUID;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static java.util.stream.Collectors.toMap;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 @Entity
 public class RuntimeConfigEntry extends Model {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfigEntry.class);
 
-  @EmbeddedId
-  private final RuntimeConfigEntryKey idKey;
+  @EmbeddedId private final RuntimeConfigEntryKey idKey;
 
   private String value;
 
@@ -42,27 +43,33 @@ public class RuntimeConfigEntry extends Model {
   }
 
   private static final Finder<UUID, RuntimeConfigEntry> findInScope =
-    new Finder<UUID, RuntimeConfigEntry>(RuntimeConfigEntry.class) {
-    };
+      new Finder<UUID, RuntimeConfigEntry>(RuntimeConfigEntry.class) {};
 
   private static final Finder<RuntimeConfigEntryKey, RuntimeConfigEntry> findOne =
-    new Finder<RuntimeConfigEntryKey, RuntimeConfigEntry>(RuntimeConfigEntry.class) {
-    };
+      new Finder<RuntimeConfigEntryKey, RuntimeConfigEntry>(RuntimeConfigEntry.class) {};
 
   public static List<RuntimeConfigEntry> getAll(UUID scope) {
     return findInScope.query().where().eq("scope_uuid", scope).findList();
   }
 
+  @Deprecated
   public static RuntimeConfigEntry get(UUID scope, String path) {
     return findOne.byId(new RuntimeConfigEntryKey(scope, path));
   }
 
+  public static RuntimeConfigEntry getOrBadRequest(UUID scope, String path) {
+    RuntimeConfigEntry runtimeConfigEntry = get(scope, path);
+    if (runtimeConfigEntry == null)
+      throw new YWServiceException(
+          NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scope));
+    return runtimeConfigEntry;
+  }
+
   public static Map<String, String> getAsMapForScope(UUID scope) {
-    List<RuntimeConfigEntry> scopedValues =
-      getAll(scope);
+    List<RuntimeConfigEntry> scopedValues = getAll(scope);
     return scopedValues
-      .stream()
-      .collect(toMap(RuntimeConfigEntry::getPath, RuntimeConfigEntry::getValue));
+        .stream()
+        .collect(toMap(RuntimeConfigEntry::getPath, RuntimeConfigEntry::getValue));
   }
 
   @Transactional
@@ -121,9 +128,6 @@ public class RuntimeConfigEntry extends Model {
 
   @Override
   public String toString() {
-    return "RuntimeConfigEntry{" +
-      "idKey=" + idKey +
-      ", value='" + value + '\'' +
-      '}';
+    return "RuntimeConfigEntry{" + "idKey=" + idKey + ", value='" + value + '\'' + '}';
   }
 }

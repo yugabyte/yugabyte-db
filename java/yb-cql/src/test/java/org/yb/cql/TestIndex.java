@@ -694,24 +694,22 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testCreateIndexWithWhereClause() throws Exception {
-    LOG.info("Start test: " + getCurrentTestMethodName());
+  public void testBlockCreateIndexWithWhereClause() throws Exception {
     destroyMiniCluster();
+
+    // cql_raise_index_where_clause_error=false by default.
     createMiniCluster(
-        Collections.emptyMap(),
-        Collections.singletonMap("cql_raise_index_where_clause_error", "false"));
+      Collections.emptyMap(),
+      Collections.singletonMap("cql_raise_index_where_clause_error", "true"));
     setUpCqlClient();
 
     // Create test table.
-    LOG.info("create test table");
     session.execute("create table test_create_index " +
-                    "(h1 int, h2 text, r1 int, r2 text, " +
-                    "c1 int, c2 text, c3 decimal, c4 timestamp, c5 boolean, " +
+                    "(h1 int, h2 text, r1 int, r2 text, c1 int, " +
                     "primary key ((h1, h2), r1, r2)) " +
                     "with transactions = {'enabled' : true};");
     LOG.info("create test index");
-    session.execute("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
-    LOG.info("End test: " + getCurrentTestMethodName());
+    runInvalidStmt("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
   }
 
   @Test
@@ -2090,15 +2088,12 @@ public class TestIndex extends BaseCQLTest {
 
     // Cannot pass NULL into IN-list via PreparedStatement API.
     if (!tp.usePreparedQueries()) {
-      assertQuery(tp, "SELECT * FROM test_in WHERE name IN (null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a80310, NULL, NULL]");
-
-      assertQuery(tp, "SELECT * FROM test_in WHERE name NOT IN ('', null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]");
-
-      assertQuery(tp, "SELECT * FROM test_in WHERE name NOT IN (null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e3, , ]" +
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]");
+      runInvalidStmt("SELECT * FROM test_in WHERE name IN (null)",
+                     "null is not supported inside collections");
+      runInvalidStmt("SELECT * FROM test_in WHERE name NOT IN ('', null)",
+                     "null is not supported inside collections");
+      runInvalidStmt("SELECT * FROM test_in WHERE name NOT IN (null)",
+                     "null is not supported inside collections");
     }
 
     // Create test table and index.

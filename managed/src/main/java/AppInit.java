@@ -1,60 +1,51 @@
 // Copyright (c) YugaByte, Inc.
 
-import java.lang.ReflectiveOperationException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.*;
 import io.ebean.Ebean;
-import com.google.common.collect.ImmutableMap;
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.AWSInitializer;
-
+import io.prometheus.client.hotspot.DefaultExports;
 import play.Application;
 import play.Configuration;
 import play.Environment;
 import play.Logger;
 
-import io.prometheus.client.hotspot.DefaultExports;
+import java.util.List;
+import java.util.Map;
 
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareVersion;
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.YugawareMetadata;
-
-
-/**
- * We will use this singleton to do actions specific to the app environment, like
- * db seed etc.
- */
+/** We will use this singleton to do actions specific to the app environment, like db seed etc. */
 @Singleton
 public class AppInit {
 
   @Inject
-  public AppInit(Environment environment, Application application,
-                 ConfigHelper configHelper, ReleaseManager releaseManager,
-                 AWSInitializer awsInitializer, CustomerTaskManager taskManager,
-                 YamlWrapper yaml, ExtraMigrationManager extraMigrationManager,
-                 TaskGarbageCollector taskGC, PlatformReplicationManager replicationManager
-  ) throws ReflectiveOperationException {
+  public AppInit(
+      Environment environment,
+      Application application,
+      ConfigHelper configHelper,
+      ReleaseManager releaseManager,
+      AWSInitializer awsInitializer,
+      CustomerTaskManager taskManager,
+      YamlWrapper yaml,
+      ExtraMigrationManager extraMigrationManager,
+      TaskGarbageCollector taskGC,
+      PlatformReplicationManager replicationManager)
+      throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
 
     if (!environment.isTest()) {
       // Check if we have provider data, if not, we need to seed the database
-      if (Customer.find.query().where().findCount() == 0 &&
-          appConfig.getBoolean("yb.seedData", false)) {
+      if (Customer.find.query().where().findCount() == 0
+          && appConfig.getBoolean("yb.seedData", false)) {
         Logger.debug("Seed the Yugaware DB");
 
-        List<?> all = yaml.load(
-            environment.resourceAsStream("db_seed.yml"),
-            application.classloader()
-        );
+        List<?> all =
+            yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
         Ebean.saveAll(all);
       }
 
@@ -70,26 +61,14 @@ public class AppInit {
         }
       }
 
-      // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
-      String version = yaml.load(environment.resourceAsStream("version.txt"),
-                                  application.classloader());
-      configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
-      Map <String, Object> ywMetadata = new HashMap<>();
-      // Assign a new Yugaware UUID if not already present in the DB i.e. first install
-      Object ywUUID = configHelper.getConfig(YugawareMetadata)
-                                  .getOrDefault("yugaware_uuid", UUID.randomUUID());
-      ywMetadata.put("yugaware_uuid", ywUUID);
-      ywMetadata.put("version", version);
-      configHelper.loadConfigToDB(YugawareMetadata, ywMetadata);
-
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
-          for (InstanceType instanceType : InstanceType.findByProvider(provider,
-            application.config())) {
-            if (instanceType.instanceTypeDetails != null &&
-              (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
+          for (InstanceType instanceType :
+              InstanceType.findByProvider(provider, application.config())) {
+            if (instanceType.instanceTypeDetails != null
+                && (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
               break;
             }
@@ -99,18 +78,17 @@ public class AppInit {
       }
 
       // Load metrics configurations.
-      Map<String, Object> configs = yaml.load(
-          environment.resourceAsStream("metrics.yml"),
-          application.classloader()
-      );
+      Map<String, Object> configs =
+          yaml.load(environment.resourceAsStream("metrics.yml"), application.classloader());
       MetricConfig.loadConfig(configs);
 
       // Enter all the configuration data. This is the first thing that should be
       // done as the other init steps may depend on this data.
       configHelper.loadConfigsToDB(application);
+      configHelper.loadSoftwareVersiontoDB(application);
 
       // Run and delete any extra migrations.
-      for (ExtraMigration m: ExtraMigration.getAll()) {
+      for (ExtraMigration m : ExtraMigration.getAll()) {
         m.run(extraMigrationManager);
       }
 
@@ -133,6 +111,6 @@ public class AppInit {
       CertificateHelper.createChecksums();
 
       Logger.info("AppInit completed");
-   }
+    }
   }
 }

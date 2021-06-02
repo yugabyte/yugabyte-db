@@ -6,13 +6,10 @@ import play.data.validation.Constraints;
 
 import java.util.List;
 
-
 public class MetricQueryParams {
-  @Constraints.Required()
-  private List<String> metrics;
+  @Constraints.Required() private List<String> metrics;
 
-  @Constraints.Required()
-  private Long start;
+  @Constraints.Required() private Long start;
 
   private Long end;
 
