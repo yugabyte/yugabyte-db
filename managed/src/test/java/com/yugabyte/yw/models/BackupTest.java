@@ -19,6 +19,7 @@ import play.libs.Json;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -249,6 +250,15 @@ public class BackupTest extends FakeDBApplication {
   }
 
   @Test
+  public void testAssociatedUniverses() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Backup b =
+        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
+    b.setTaskUUID(UUID.randomUUID());
+    Set<Universe> universes = Backup.getAssociatedUniverses(s3StorageConfig.configUUID);
+    assertEquals(1, universes.size());
+  }
+
   public void testGetAllCompletedBackupsWithExpiryForDelete() {
     UUID universeUUID = UUID.randomUUID();
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
