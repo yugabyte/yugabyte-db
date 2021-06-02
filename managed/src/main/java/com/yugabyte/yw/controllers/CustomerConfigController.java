@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -43,10 +44,7 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   public Result delete(UUID customerUUID, UUID configUUID) {
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
-    if (customerConfig == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
-    }
+    CustomerConfig customerConfig = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     if (!customerConfig.delete()) {
       return ApiResponse.error(
           INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
@@ -71,17 +69,15 @@ public class CustomerConfigController extends AuthenticatedController {
     if (errorJson.size() > 0) {
       return ApiResponse.error(BAD_REQUEST, errorJson);
     }
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
-    if (customerConfig == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
-    }
-    CustomerConfig config = CustomerConfig.get(configUUID);
+    CustomerConfig config = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     JsonNode data = Json.toJson(formData.get("data"));
     if (data != null && data.get("BACKUP_LOCATION") != null) {
       ((ObjectNode) data).put("BACKUP_LOCATION", config.data.get("BACKUP_LOCATION"));
     }
     JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
     config.data = Json.toJson(updatedData);
+    config.configName = formData.get("configName").textValue();
+    config.name = formData.get("name").textValue();
     config.update();
     auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success(config);
