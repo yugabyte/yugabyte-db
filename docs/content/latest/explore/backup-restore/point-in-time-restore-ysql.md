@@ -31,9 +31,9 @@ showAsideToc: true
 
 The point-in-time restore feature allows you to restore the state of your cluster's data from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
-Refer to [Features](../../../manage/backup-restore/point-in-time-restore-ysql#features), [Use cases](../../../manage/backup-restore/point-in-time-restore-ysql#use-cases), and [Limitations](../../../manage/backup-restore/point-in-time-restore-ysql#limitations) for details on this feature. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin#backup-and-snapshot-commands) section of the yb-admin documentation.
+Refer to [Features](../../../manage/backup-restore/point-in-time-restore/#features), [Use cases](../../../manage/backup-restore/point-in-time-restore/#use-cases), and [Limitations](../../../manage/backup-restore/point-in-time-restore/#limitations) for details on this feature. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-You can try out the PITR feature by creating a database and populating it, creating a snapshot, and restoring ([data only](../../../manage/backup-restore/point-in-time-restore-ysql#limitations)!) from that snapshot.
+You can try out the PITR feature by creating a database and populating it, creating a snapshot, and restoring ([data only](../../../manage/backup-restore/point-in-time-restore/#limitations)!) from that snapshot.
 
 {{< tip title="Examples are simplified" >}}
 
