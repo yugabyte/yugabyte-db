@@ -92,7 +92,7 @@ class StorageConfiguration extends Component {
     super(props);
 
     this.state = {
-      enableEdit: false,
+      editingTab: '',
       iamRoleEnabled: false
     };
   }
@@ -171,7 +171,7 @@ class StorageConfiguration extends Component {
     }
 
     if (values.type === 'update') {
-      this.setState({ enableEdit: false });
+      this.setState({ editingTab: false });
       return this.props
         .updateCustomerConfig({
           type: 'STORAGE',
@@ -190,7 +190,7 @@ class StorageConfiguration extends Component {
           }
         });
     } else {
-      this.setState({ enableEdit: false });
+      this.setState({ editingTab: false });
       return this.props
         .addCustomerConfig({
           type: 'STORAGE',
@@ -212,8 +212,8 @@ class StorageConfiguration extends Component {
 
   deleteStorageConfig = (configUUID) => {
     this.setState({
-      enableEdit: false,
-      iamRoleEnabled: !this.state.iamRoleEnabled
+      editingTab: false,
+      iamRoleEnabled: false
     });
   
     this.props.deleteCustomerConfig(configUUID).then(() => {
@@ -234,9 +234,9 @@ class StorageConfiguration extends Component {
    * This method will enable edit options for respective
    * backup config.
    */
-  onEditConfig = (config) => {
+  onEditConfig = (config, activeTab) => {
     this.setState({
-      enableEdit: true,
+      editingTab: activeTab,
       iamRoleEnabled: config?.IAM_INSTANCE_PROFILE || this.state.iamRoleEnabled
     });
   };
@@ -247,7 +247,7 @@ class StorageConfiguration extends Component {
   disableEditFields = () => {
     this.props.reset();
     this.setState({
-      enableEdit: false,
+      editingTab: false,
       iamRoleEnabled: !this.state.iamRoleEnabled
     });
   };
@@ -259,9 +259,9 @@ class StorageConfiguration extends Component {
    * @param {string} fieldKey Input Field Id.
    * @returns Boolean.
    */
-  disableInputFields = (fieldKey, enableEdit, activeTab) => {
+  disableInputFields = (fieldKey, activeTab, editingTab) => {
     const tab = activeTab.toUpperCase();
-    return !enableEdit || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false;
+    return editingTab !== activeTab || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false;
   };
 
   /**
@@ -342,7 +342,10 @@ class StorageConfiguration extends Component {
       customerConfigs,
       initialValues
     } = this.props;
-    const { enableEdit, iamRoleEnabled } = this.state;
+    const {
+      iamRoleEnabled,
+      editingTab
+    } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
 
@@ -367,8 +370,8 @@ class StorageConfiguration extends Component {
             deleteStorageConfig={this.deleteStorageConfig}
             iamRoleEnabled={iamRoleEnabled}
             iamInstanceToggle={this.iamInstanceToggle}
-            enableEdit={enableEdit}
-            onEditConfig={(config) => this.onEditConfig(config)}
+            editingTab={editingTab}
+            onEditConfig={this.onEditConfig}
           />
         </Tab>
       ];
@@ -401,7 +404,7 @@ class StorageConfiguration extends Component {
                     name={field.id}
                     placeHolder={field.placeHolder}
                     component={YBTextInputWithLabel}
-                    isReadOnly={this.disableInputFields(field.id, enableEdit, activeTab)}
+                    isReadOnly={this.disableInputFields(field.id, activeTab, editingTab)}
                   />
                 </Col>
               </Row>
@@ -430,7 +433,7 @@ class StorageConfiguration extends Component {
                   submitting ||
                   loading ||
                   isEmptyObject(config) ||
-                  (enableEdit && activeTab !== 'nfs')
+                  (editingTab === activeTab && activeTab !== 'nfs')
                 }
                 btnClass={'btn btn-default'}
                 onClick={
@@ -443,7 +446,7 @@ class StorageConfiguration extends Component {
                 <YBButton
                   btnText="Edit Configuration"
                   btnClass="btn btn-orange"
-                  onClick={this.onEditConfig}
+                  onClick={() => this.onEditConfig('', activeTab)}
                 />
               )}
               {isDefinedNotNull(config) && (
@@ -509,10 +512,10 @@ class StorageConfiguration extends Component {
                   />
                 ) : (
                   <>
-                    {enableEdit && activeTab !== 'nfs' && (
+                    {editingTab === activeTab && activeTab !== 'nfs' && (
                       <YBButton btnText="Update" btnClass={'btn btn-orange'} btnType="submit" />
                     )}
-                    {enableEdit && activeTab !== 'nfs' && (
+                    {editingTab === activeTab && activeTab !== 'nfs' && (
                       <YBButton
                         btnText="Cancel"
                         btnClass={'btn btn-default'}
