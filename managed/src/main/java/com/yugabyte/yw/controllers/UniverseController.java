@@ -325,12 +325,16 @@ public class UniverseController extends AuthenticatedController {
 
     if (taskParams.getCurrentClusterType().equals(ClusterType.PRIMARY)) {
       nodesInCluster =
-          taskParams.nodeDetailsSet.stream()
+          taskParams
+              .nodeDetailsSet
+              .stream()
               .filter(n -> n.isInPlacement(taskParams.getPrimaryCluster().uuid))
               .collect(Collectors.toSet());
     } else {
       nodesInCluster =
-          taskParams.nodeDetailsSet.stream()
+          taskParams
+              .nodeDetailsSet
+              .stream()
               .filter(n -> n.isInPlacement(taskParams.getReadOnlyClusters().get(0).uuid))
               .collect(Collectors.toSet());
     }
@@ -1705,7 +1709,8 @@ public class UniverseController extends AuthenticatedController {
     String sampleAppCommand;
     boolean isKubernetesProvider = cluster.userIntent.providerType.equals(CloudType.kubernetes);
     // Building --nodes param value of the command
-    nodeDetailsSet.stream()
+    nodeDetailsSet
+        .stream()
         .filter(
             nodeDetails ->
                 (nodeDetails.isTserver
