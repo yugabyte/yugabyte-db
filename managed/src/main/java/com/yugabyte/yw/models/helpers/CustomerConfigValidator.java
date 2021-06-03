@@ -3,7 +3,13 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.AmazonS3URI;
+import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.ListObjectsRequest;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3Client;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -113,28 +119,41 @@ public class CustomerConfigValidator {
     @Override
     public void doValidate(JsonNode data, ObjectNode errorJson) {
       if (this.name.equals("S3") && data.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
-        String bucketname = data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String s3UriPath = data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String s3Uri = s3UriPath;
         // Assuming bucket name will always start with s3:// otherwise that will be invalid
-        if (bucketname.length() < 5 || !bucketname.startsWith("s3://")) {
-          errorJson.set(fieldName, Json.newArray().add("Invalid bucket name: " + bucketname));
+        if (s3UriPath.length() < 5 || !s3UriPath.startsWith("s3://")) {
+          errorJson.set(fieldName, Json.newArray().add("Invalid s3UriPath format: " + s3UriPath));
         } else {
           try {
-            bucketname = bucketname.substring(5);
-            AmazonS3 s3client =
+            s3UriPath = s3UriPath.substring(5);
+            String[] bucketSplit = s3UriPath.split("/", 2);
+            String bucketName = null;
+            String prefix = null;
+            if (bucketSplit.length == 2) {
+              bucketName = bucketSplit[0];
+              prefix = bucketSplit[1];
+            } else if (bucketSplit.length == 1) {
+              bucketName = bucketSplit[0];
+              prefix = "";
+            } else {
+              bucketName = "";
+              prefix = "";
+            }
+            AmazonS3Client s3Client =
                 create(
                     data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
                     data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
-            List<String> buckets =
-                s3client
-                    .listBuckets()
-                    .stream()
-                    .map(bucket -> bucket.getName())
-                    .collect(Collectors.toList());
-            if (!buckets.contains(bucketname))
+            ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
+            if (result.getKeyCount() == 0) {
               errorJson.set(
-                  fieldName, Json.newArray().add("Bucket name " + bucketname + " doesn't exist"));
+                  fieldName, Json.newArray().add("S3 URI path " + s3Uri + " doesn't exist"));
+            }
           } catch (AmazonS3Exception s3Exception) {
-            errorJson.set(fieldName, Json.newArray().add(s3Exception.getErrorMessage()));
+            String errMessage = s3Exception.getErrorMessage();
+            if (errMessage.contains("Denied") || errMessage.contains("bucket"))
+              errMessage += " " + s3Uri;
+            errorJson.set(fieldName, Json.newArray().add(errMessage));
           }
         }
       }
@@ -298,11 +317,8 @@ public class CustomerConfigValidator {
   }
 
   // TODO: move this out to some common util file.
-  public static AmazonS3 create(String key, String secret) {
+  public static AmazonS3Client create(String key, String secret) {
     AWSCredentials credentials = new BasicAWSCredentials(key, secret);
-    return AmazonS3ClientBuilder.standard()
-        .withCredentials(new AWSStaticCredentialsProvider(credentials))
-        .withRegion(Regions.DEFAULT_REGION)
-        .build();
+    return new AmazonS3Client(credentials);
   }
 }

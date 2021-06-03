@@ -100,7 +100,7 @@ public class CustomerConfigValidatorTest {
     // Check invalid AWS Credentials -> disallowed
     "s3://test, The AWS Access Key Id you provided does not exist in our records.",
     // BACKUP_LOCATION - incorrect -> disallowed
-    "s://abc, Invalid bucket name: s://abc",
+    "s://abc, Invalid s3UriPath format: s://abc",
   })
   @Test
   public void testValidateDataContent_Storage_S3PreflightCheckValidator(
