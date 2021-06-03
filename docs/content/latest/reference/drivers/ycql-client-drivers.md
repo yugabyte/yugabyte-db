@@ -9,7 +9,6 @@ menu:
     parent: drivers
     weight: 2942
 aliases:
-  - /latest/reference/connectors/yugabytedb-jdbc-driver
 isTocNested: true
 showAsideToc: true
 ---
