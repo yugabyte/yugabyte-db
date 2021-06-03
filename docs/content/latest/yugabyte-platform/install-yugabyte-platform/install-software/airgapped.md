@@ -65,13 +65,13 @@ $ cd /opt/downloads
 Download the `replicated.tar.gz` file by executing the following command:
 
 ```sh
-$ wget https://s3.amazonaws.com/replicated-airgap-work/replicated.tar.gz
+$ wget --trust-server-names https://get.replicated.com/airgap
 ```
 
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-2.1.2.0-b10.airgap
+$ wget https://downloads.yugabyte.com/yugaware-2.4.4.0-b7.airgap
 ```
 
 Switch to the following directory:
