@@ -506,7 +506,10 @@ class PostgresBuilder(YbBuildToolBase):
                 # to regress test files not needed for build.
                 pathspec.extend([
                     ':(exclude)src/postgres/src/test/regress/*_schedule',
+                    ':(exclude)src/postgres/src/test/regress/data',
                     ':(exclude)src/postgres/src/test/regress/expected',
+                    ':(exclude)src/postgres/src/test/regress/input',
+                    ':(exclude)src/postgres/src/test/regress/output',
                     ':(exclude)src/postgres/src/test/regress/sql',
                 ])
             # Get the most recent commit that touched postgres files.
