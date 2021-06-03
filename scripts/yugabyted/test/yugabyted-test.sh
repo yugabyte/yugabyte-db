@@ -246,7 +246,7 @@ setup_test_env() {
   # else extract the providied tar directly.
   if [[ "${package}" == "https://"* ]]; then
     mkdir -p "${DOWNLOADED_TAR}"
-    wget "${package}" -P "${DOWNLOADED_TAR}"
+    wget -q "${package}" -P "${DOWNLOADED_TAR}"
     tar -xzf "${DOWNLOADED_TAR}/${tar_name}" --strip 1 -C "${EXTRACTED_YB_TAR}"
   else
     tar -xzf "${package}" --strip 1 -C "${EXTRACTED_YB_TAR}"
