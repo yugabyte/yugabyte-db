@@ -325,16 +325,12 @@ public class UniverseController extends AuthenticatedController {
 
     if (taskParams.getCurrentClusterType().equals(ClusterType.PRIMARY)) {
       nodesInCluster =
-          taskParams
-              .nodeDetailsSet
-              .stream()
+          taskParams.nodeDetailsSet.stream()
               .filter(n -> n.isInPlacement(taskParams.getPrimaryCluster().uuid))
               .collect(Collectors.toSet());
     } else {
       nodesInCluster =
-          taskParams
-              .nodeDetailsSet
-              .stream()
+          taskParams.nodeDetailsSet.stream()
               .filter(n -> n.isInPlacement(taskParams.getReadOnlyClusters().get(0).uuid))
               .collect(Collectors.toSet());
     }
@@ -353,7 +349,7 @@ public class UniverseController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "univ_def",
           value = "univ definition",
-          dataTypeClass = UniverseDefinitionTaskParams.class,
+          dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
           paramType = "body",
           required = true))
   public Result create(UUID customerUUID) {
@@ -687,7 +683,7 @@ public class UniverseController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "univ_def",
           value = "univ definition",
-          dataTypeClass = UniverseDefinitionTaskParams.class,
+          dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
           paramType = "body",
           required = true))
 
@@ -1077,7 +1073,7 @@ public class UniverseController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "univ_def",
           value = "univ definition",
-          dataTypeClass = UniverseDefinitionTaskParams.class,
+          dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
           paramType = "body",
           required = true))
   public Result clusterCreate(UUID customerUUID, UUID universeUUID) {
@@ -1286,7 +1282,7 @@ public class UniverseController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "upgrade_params",
           value = "upgrade params",
-          dataTypeClass = UpgradeParams.class,
+          dataType = "com.yugabyte.yw.forms.UpgradeParams",
           required = true,
           paramType = "body"))
   public Result upgrade(UUID customerUUID, UUID universeUUID) {
@@ -1709,8 +1705,7 @@ public class UniverseController extends AuthenticatedController {
     String sampleAppCommand;
     boolean isKubernetesProvider = cluster.userIntent.providerType.equals(CloudType.kubernetes);
     // Building --nodes param value of the command
-    nodeDetailsSet
-        .stream()
+    nodeDetailsSet.stream()
         .filter(
             nodeDetails ->
                 (nodeDetails.isTserver

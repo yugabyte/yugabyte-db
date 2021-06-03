@@ -139,7 +139,7 @@ public class CloudProviderController extends AuthenticatedController {
           name = "providerFormData",
           value = "provider form data",
           paramType = "body",
-          dataTypeClass = CloudProviderFormData.class,
+          dataType = "com.yugabyte.yw.forms.CloudProviderFormData",
           required = true))
   public Result create(UUID customerUUID) throws IOException {
     Form<CloudProviderFormData> formData =
@@ -431,7 +431,7 @@ public class CloudProviderController extends AuthenticatedController {
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "bootstrap params",
-          dataTypeClass = CloudBootstrap.Params.class,
+          dataType = "com.yugabyte.yw.commissioner.tasks.CloudBootstrap$Params",
           paramType = "body",
           required = true))
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
@@ -512,7 +512,7 @@ public class CloudProviderController extends AuthenticatedController {
       @ApiImplicitParam(
           value = "edit provider form data",
           name = "editProviderFormData",
-          dataTypeClass = Object.class,
+          dataType = "java.lang.Object",
           required = true,
           paramType = "body"))
   public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {
