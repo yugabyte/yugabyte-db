@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
 import { Field } from 'redux-form';
-import { isDefinedNotNull, isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 const required = (value) => (value ? undefined : 'This field is required.');
