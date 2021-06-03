@@ -174,7 +174,7 @@ isMultiAz: True
 
 AZ: us-east-1a
 
-masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
+masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
 
 storage:
   master:
@@ -205,7 +205,7 @@ isMultiAz: True
 
 AZ: us-east-1b
 
-masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
+masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
 
 storage:
   master:
@@ -236,7 +236,7 @@ isMultiAz: True
 
 AZ: us-east-1c
 
-masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
+masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
 
 storage:
   master:
