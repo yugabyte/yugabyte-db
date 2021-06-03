@@ -1141,7 +1141,12 @@ message DeleteTableResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 
+  // table_id for the requested table.
   optional bytes table_id = 2;
+  // Deleted table ids. Includes the requested table, and also
+  // any index tables that it may have.
+  repeated bytes deleted_table_ids = 4;
+
   // For index table, the indexed table of this index.
   optional TableIdentifierPB indexed_table = 3;
 }

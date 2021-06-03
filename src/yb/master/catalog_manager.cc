@@ -4147,7 +4147,6 @@ Status CatalogManager::DeleteTable(
 // IMPORTANT: If modifying, consider updating DeleteYsqlDBTables(), the bulk deletion API.
 Status CatalogManager::DeleteTableInternal(
     const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
-
   auto schedules_to_tables_map = VERIFY_RESULT(
       MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::TABLE));
 
@@ -4158,7 +4157,11 @@ Status CatalogManager::DeleteTableInternal(
 
   // Delete any CDC streams that are set up on this table.
   TRACE("Deleting CDC streams on table");
-  RETURN_NOT_OK(DeleteCDCStreamsForTable(resp->table_id()));
+  // table_id for the requested table will be added to the end of the response.
+  RSTATUS_DCHECK_GE(resp->deleted_table_ids_size(), 1, IllegalState,
+       "DeleteTableInMemory expected to add the index id to resp");
+  RETURN_NOT_OK(
+      DeleteCDCStreamsForTable(resp->deleted_table_ids(resp->deleted_table_ids_size() - 1)));
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
@@ -4237,7 +4240,8 @@ Status CatalogManager::DeleteTableInMemory(
     .write_lock = table->LockForWrite(),
   };
   auto& l = data.write_lock;
-  resp->set_table_id(table->id());
+  // table_id for the requested table will be added to the end of the response.
+  *resp->add_deleted_table_ids() = table->id();
 
   if (is_index_table == IsTable(l->pb)) {
     Status s = STATUS(NotFound, "The object does not exist");

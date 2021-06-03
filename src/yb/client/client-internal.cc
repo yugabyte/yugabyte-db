@@ -636,19 +636,33 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   }
 
   // Spin until the table is fully deleted, if requested.
-  if (wait && resp.has_table_id()) {
-    RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
-  }
-  if (wait && resp.has_indexed_table()) {
-    auto res = WaitUntilIndexPermissionsAtLeast(
-        client,
-        resp.indexed_table().table_id(),
-        resp.table_id(),
-        IndexPermissions::INDEX_PERM_NOT_USED,
-        deadline);
-    if (!res && !res.status().IsNotFound()) {
-      LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
-      return res.status();
+  VLOG(3) << "Got response " << yb::ToString(resp);
+  if (wait) {
+    // Wait for the deleted tables to be gone.
+    if (resp.deleted_table_ids_size() > 0) {
+      for (const auto& table_id : resp.deleted_table_ids()) {
+        RETURN_NOT_OK(WaitForDeleteTableToFinish(client, table_id, deadline));
+        VLOG(2) << "Waited for table to be deleted " << table_id;
+      }
+    } else if (resp.has_table_id()) {
+      // for backwards compatibility, in case the master is not yet using deleted_table_ids.
+      RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
+      VLOG(2) << "Waited for table to be deleted " << resp.table_id();
+    }
+
+    // In case this table is an index, wait for the indexed table to remove reference to index
+    // table.
+    if (resp.has_indexed_table()) {
+      auto res = WaitUntilIndexPermissionsAtLeast(
+          client,
+          resp.indexed_table().table_id(),
+          resp.table_id(),
+          IndexPermissions::INDEX_PERM_NOT_USED,
+          deadline);
+      if (!res && !res.status().IsNotFound()) {
+        LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
+        return res.status();
+      }
     }
   }
 

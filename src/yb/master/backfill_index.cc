@@ -1427,9 +1427,13 @@ void BackfillChunk::HandleResponse(int attempt) {
 }
 
 void BackfillChunk::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kAborted) {
+    VLOG(1) << " was aborted";
+    return;
+  }
+
   Status status;
   std::unordered_set<TableId> failed_indexes;
-
   if (resp_.has_error()) {
     status = StatusFromPB(resp_.error().status());
     if (resp_.failed_index_ids_size() > 0) {
