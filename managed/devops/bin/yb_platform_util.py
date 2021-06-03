@@ -1,3 +1,4 @@
+# #!/usr/bin/env python
 # Copyright (c) YugaByte, Inc.
 #
 # Copyright 2021 YugaByte, Inc. and Contributors
@@ -20,8 +21,11 @@ from argparse import RawDescriptionHelpFormatter
 
 python_version = sys.version_info[0]
 if python_version == 2:
-    from urllib2 import HTTPError
+    import urllib2
+    from urllib2 import HTTPError, urlopen
 else:
+    import urllib.request
+    from urllib.request import urlopen
     from urllib.error import HTTPError
 
 SUCCESS = "success"
@@ -81,19 +85,18 @@ def check_positive(value):
     return ivalue
 
 
+def get_input_from_user(message):
+    if python_version == 2:
+        return raw_input(message)
+    return input(message)
+
+
 class YBUniverse():
     def __init__(self):
-        self.parse_arguments()
+        self.__parse_arguments()
         self.base_url = os.getenv('YB_PLATFORM_URL')
         self.customer_uuid = None
         self.api_token = os.getenv('YB_PLATFORM_API_TOKEN')
-    
-
-    @staticmethod
-    def __get_input_from_user(message):
-        if python_version == 2:
-            return raw_input(message)
-        return input(message)
 
 
     def __call_api(self, url, data=None, is_delete=False):
@@ -106,18 +109,14 @@ class YBUniverse():
         :return: Response of the API call.
         """
         if python_version == 2:
-            import urllib2
-            from urllib2 import urlopen
             request = urllib2.Request(url)
             if is_delete:
                 request.get_method = lambda: 'DELETE'
         else:
-            import urllib.request
-            from urllib.request import urlopen
-            if not is_delete:
-                request = urllib.request.Request(url)
-            else:
+            if is_delete:
                 request = urllib.request.Request(url, method='DELETE')
+            else:
+                request = urllib.request.Request(url)
             
         request.add_header('X-AUTH-YW-API-TOKEN', self.api_token)
         request.add_header('Content-Type', 'application/json; charset=utf-8')
@@ -153,7 +152,7 @@ class YBUniverse():
         :return: Configured universe json.
         """
         configure_json = {}
-        clusters = universe_data['universeDetails']['clusters']
+        clusters = copy.deepcopy(universe_data['universeDetails']['clusters'])
         user_az_selected = universe_data['universeDetails']['userAZSelected']
 
         excluded_keys = [
@@ -516,7 +515,7 @@ class YBUniverse():
         """
         confirmation = self.args.yes and 'y'
         if not confirmation:
-            confirmation = self.__get_input_from_user("Continue with deleting universe(y/n)?: ")
+            confirmation = get_input_from_user("Continue with deleting universe(y/n)?: ")
         if confirmation.lower()[0] == 'y':
             if not self.args.force:
                 print('\nNote:- Universe deletion can fail due to errors, Use `--force` to ignore errors and force delete.\n')
@@ -562,7 +561,7 @@ class YBUniverse():
         self.__task_progress_bar(self.args.task)
     
 
-    def parse_arguments(self):
+    def __parse_arguments(self):
         """
         Function to dispaly help message, Add arguments to the python script.
 
