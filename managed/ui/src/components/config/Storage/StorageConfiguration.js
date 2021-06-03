@@ -18,7 +18,6 @@ import azureLogo from './images/azure_logo.svg';
 import gcsLogo from './images/gcs-logo.png';
 import nfsIcon from './images/nfs.svg';
 import { Formik } from 'formik';
-import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -349,6 +348,7 @@ class StorageConfiguration extends Component {
       if (activeTab === list.name.toLowerCase()) {
         return list;
       }
+      return null;
     });
 
     if (getPromiseState(customerConfigs).isLoading()) {
