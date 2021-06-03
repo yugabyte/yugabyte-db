@@ -66,10 +66,7 @@ def convert_unicode_json(data):
             return dict(map(convert_unicode_json, data.iteritems()))
         elif isinstance(data, collections.Iterable):
             return type(data)(map(convert_unicode_json, data))
-        else:
-            return data
-    else:
-        return data
+    return data
 
 
 def check_positive(value):
