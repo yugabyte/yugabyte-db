@@ -353,7 +353,7 @@ public class UniverseController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "univ_def",
           value = "univ definition",
-          dataTypeClass = UniverseDefinitionTaskParams.class,
+          dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
           paramType = "body",
           required = true))
   public Result create(UUID customerUUID) {
@@ -687,7 +687,7 @@ public class UniverseController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "univ_def",
           value = "univ definition",
-          dataTypeClass = UniverseDefinitionTaskParams.class,
+          dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
           paramType = "body",
           required = true))
 
@@ -1077,7 +1077,7 @@ public class UniverseController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "univ_def",
           value = "univ definition",
-          dataTypeClass = UniverseDefinitionTaskParams.class,
+          dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
           paramType = "body",
           required = true))
   public Result clusterCreate(UUID customerUUID, UUID universeUUID) {
@@ -1286,7 +1286,7 @@ public class UniverseController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "upgrade_params",
           value = "upgrade params",
-          dataTypeClass = UpgradeParams.class,
+          dataType = "com.yugabyte.yw.forms.UpgradeParams",
           required = true,
           paramType = "body"))
   public Result upgrade(UUID customerUUID, UUID universeUUID) {

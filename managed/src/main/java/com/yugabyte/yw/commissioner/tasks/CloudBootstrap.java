@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.models.Provider;
+import io.swagger.annotations.ApiModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +34,7 @@ import play.libs.Json;
 public class CloudBootstrap extends CloudTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudBootstrap.class);
 
+  @ApiModel("CloudBootstrapParams")
   public static class Params extends CloudTaskParams {
     // Class to encapsulate custom network bootstrap overrides per region.
     public static class PerRegionMetadata {

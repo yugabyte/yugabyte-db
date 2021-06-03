@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -92,15 +91,7 @@ public class CloudProviderController extends AuthenticatedController {
    */
   @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
-    List<Provider> providerList = Provider.getAll(customerUUID);
-    ArrayNode providers = Json.newArray();
-    providerList.forEach(
-        (provider) -> {
-          ObjectNode providerJson = (ObjectNode) Json.toJson(provider);
-          providerJson.set("config", provider.getMaskedConfig());
-          providers.add(providerJson);
-        });
-    return ApiResponse.success(providers);
+    return ApiResponse.success(Provider.getAll(customerUUID));
   }
 
   // This endpoint we are using only for deleting provider for integration test purpose. our
@@ -139,7 +130,7 @@ public class CloudProviderController extends AuthenticatedController {
           name = "providerFormData",
           value = "provider form data",
           paramType = "body",
-          dataTypeClass = CloudProviderFormData.class,
+          dataType = "com.yugabyte.yw.forms.CloudProviderFormData",
           required = true))
   public Result create(UUID customerUUID) throws IOException {
     Form<CloudProviderFormData> formData =
@@ -431,7 +422,7 @@ public class CloudProviderController extends AuthenticatedController {
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "bootstrap params",
-          dataTypeClass = CloudBootstrap.Params.class,
+          dataType = "com.yugabyte.yw.commissioner.tasks.CloudBootstrap$Params",
           paramType = "body",
           required = true))
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
@@ -512,7 +503,7 @@ public class CloudProviderController extends AuthenticatedController {
       @ApiImplicitParam(
           value = "edit provider form data",
           name = "editProviderFormData",
-          dataTypeClass = Object.class,
+          dataType = "java.lang.Object",
           required = true,
           paramType = "body"))
   public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {
