@@ -89,7 +89,6 @@ class KeyManagementConfiguration extends Component {
       setKMSConfig(kmsProvider.value, data).then(() => {
         fetchKMSConfigList();
         this.setState({ listView: true });
-        toast.success('Successfully added the configuration');
       });
     }
   };
