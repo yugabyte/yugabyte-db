@@ -3,12 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.AmazonS3URI;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,11 +26,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.regions.Regions;
 
 import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
 import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
