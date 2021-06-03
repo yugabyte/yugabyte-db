@@ -273,10 +273,7 @@ public class Backup extends Model {
   public static Set<Universe> getAssociatedUniverses(UUID configUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList =
-        find.query()
-            .where()
-            .in("state", BackupState.Completed, BackupState.InProgress)
-            .findList();
+        find.query().where().in("state", BackupState.Completed, BackupState.InProgress).findList();
     backupList =
         backupList
             .stream()
