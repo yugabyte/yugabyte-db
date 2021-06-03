@@ -3,7 +3,7 @@ title: Explore change data capture (CDC) on Linux
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Use a local YugabyteDB cluster (on Linux) to stream data changes to stdout using the CDC API.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag 
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/explore/change-data-capture-linux/
 menu:
@@ -35,12 +35,12 @@ showAsideToc: true
 
 [Change data capture (CDC)](../../../architecture/cdc-architecture) can be used to asynchronously stream data changes from a YugabyteDB cluster to external systems like message queues and OLAP warehouses. The data changes in YugabyteDB are detected, captured, and then output to the specified target.  In the steps below, you will use a local YugabyteDB cluster to stream data changes to `stdout` using the CDC API.
 
-This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
 ## 1. Create a universe
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yugabyted start
 ```
 
 ## 2. Add a database table
@@ -48,7 +48,7 @@ $ ./bin/yb-ctl create
 Start your local YugabyteDB cluster and run `ysqlsh` to connect to the service.
 
 ```sh
-$ ./bin/ysqlsh 
+$ ./bin/ysqlsh
 ```
 
 Add a table, named `products`, to the default `yugabyte` database.
@@ -80,7 +80,7 @@ $ wget https://downloads.yugabyte.com/yb-cdc-connector.jar
 Run the command below to to start logging an output stream of data changes from the `products` table to stdout.
 
 ```sh
-java -jar yb-cdc-connector.jar --table_name yugabyte.products 
+java -jar yb-cdc-connector.jar --table_name yugabyte.products
 ```
 
 The example above uses the following parameters:
@@ -94,23 +94,23 @@ In another terminal shell, write some values to the table and observe the values
 
 ```plpgsql
 INSERT INTO products (
-  id, 
-  category, 
-  created_at, 
-  ean, 
-  price, 
-  rating, 
-  title, 
-  vendor) 
+  id,
+  category,
+  created_at,
+  ean,
+  price,
+  rating,
+  title,
+  vendor)
 VALUES (
-  14, 
-  'Widget', 
-  '2017-12-31T14:41:56.870Z', 
-  8833419218504, 
-  25.09876359271891, 
-  4.0, 
-  'Awesome Concrete Shoes', 
-  'McClure-Lockman'); 
+  14,
+  'Widget',
+  '2017-12-31T14:41:56.870Z',
+  8833419218504,
+  25.09876359271891,
+  4.0,
+  'Awesome Concrete Shoes',
+  'McClure-Lockman');
 ```
 
 ```
@@ -172,3 +172,10 @@ changes {
 }
 ```
 
+## 6. Clean up (optional)
+
+Optionally, you can shut down the local cluster you created.
+
+```sh
+$ ./bin/yugabyted destroy
+```
