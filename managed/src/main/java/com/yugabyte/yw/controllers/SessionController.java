@@ -113,7 +113,7 @@ public class SessionController extends Controller {
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "loginFormData",
-          dataTypeClass = CustomerLoginFormData.class,
+          dataType = "com.yugabyte.yw.forms.CustomerLoginFormData",
           required = true,
           paramType = "body",
           value = "login form data"))

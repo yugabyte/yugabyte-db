@@ -68,7 +68,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
           name = "azFormData",
           value = "az form data",
           paramType = "body",
-          dataTypeClass = AvailabilityZoneFormData.class,
+          dataType = "com.yugabyte.yw.forms.AvailabilityZoneFormData",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Form<AvailabilityZoneFormData> formData =

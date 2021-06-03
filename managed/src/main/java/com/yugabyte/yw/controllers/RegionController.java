@@ -95,7 +95,7 @@ public class RegionController extends AuthenticatedController {
           name = "region",
           value = "region form data for new region to be created",
           paramType = "body",
-          dataTypeClass = RegionFormData.class,
+          dataType = "com.yugabyte.yw.forms.RegionFormData",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID) {
     Form<RegionFormData> formData = formFactory.form(RegionFormData.class).bindFromRequest();
