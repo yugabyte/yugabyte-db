@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -29,8 +30,13 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -42,6 +48,32 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
 
+  @Inject CloudAPI.Factory cloudAPIFactory;
+
+  private void validateKMSProviderConfigFormData(ObjectNode formData, String keyProvider) {
+    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())
+        && (formData.get("AWS_ACCESS_KEY_ID") != null
+            || formData.get("AWS_SECRET_ACCESS_KEY") != null)) {
+      CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
+      Map<String, String> config = new HashMap<String, String>();
+      config.put("AWS_ACCESS_KEY_ID", formData.get("AWS_ACCESS_KEY_ID").textValue());
+      config.put("AWS_SECRET_ACCESS_KEY", formData.get("AWS_SECRET_ACCESS_KEY").textValue());
+      if (cloudAPI != null
+          && !cloudAPI.isValidCreds(config, formData.get("AWS_REGION").textValue())) {
+        throw new YWServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
+      }
+    }
+    if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
+      final Set<String> apiUrl =
+          new HashSet<>(
+              Arrays.asList("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io"));
+      if (!(formData.get("base_url") != null
+          && apiUrl.contains(formData.get("base_url").textValue()))) {
+        throw new YWServiceException(BAD_REQUEST, "Invalid API URL.");
+      }
+    }
+  }
+
   public Result createKMSConfig(UUID customerUUID, String keyProvider) {
     LOG.info(
         String.format(
@@ -51,6 +83,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
     try {
       TaskType taskType = TaskType.CreateKMSConfig;
       ObjectNode formData = (ObjectNode) request().body().asJson();
+      // Validating the KMS Provider config details.
+      validateKMSProviderConfigFormData(formData, keyProvider);
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
       taskParams.providerConfig = formData;
