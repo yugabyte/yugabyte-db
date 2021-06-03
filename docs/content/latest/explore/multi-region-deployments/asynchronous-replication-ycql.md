@@ -49,7 +49,7 @@ $ ./bin/yugabyted start \
                   --listen=127.0.0.1
 ```
 
-This will start up a one-node local cluster using the IP address of `127.0.0.1:7100`. Upon starting, you should see a screen similar to the following.
+This will start up a one-node local cluster using the IP address of `127.0.0.1` and create `datacenter-east` as the base directory. Upon starting, you should see a screen similar to the following.
 
 ```output
 Starting yugabyted...
@@ -80,7 +80,7 @@ $ ./bin/yugabyted start \
                   --listen=127.0.0.2
 ```
 
-This will start up a one-node cluster using IP address of `127.0.0.2` and create `datacenter-west` as the data directory. Upon starting, you should see a screen like the following.
+This will start up a one-node cluster using IP address of `127.0.0.2` and create `datacenter-west` as the base directory. Upon starting, you should see a screen like the following.
 
 ```output
 Starting yugabyted...

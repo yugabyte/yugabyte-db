@@ -224,15 +224,18 @@ avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
-$ ./bin/yugabyted destroy --base_dir=node-1
+$ ./bin/yugabyted destroy \
+                  --base_dir=node-1
 ```
 
 ```sh
-$ ./bin/yugabyted destroy --base_dir=node-2
+$ ./bin/yugabyted destroy \
+                  --base_dir=node-2
 ```
 
 ```sh
-$ ./bin/yugabyted destroy --base_dir=node-3
+$ ./bin/yugabyted destroy \
+                  --base_dir=node-3
 ```
 
 ## What's next?
