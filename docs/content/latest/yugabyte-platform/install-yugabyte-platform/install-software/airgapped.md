@@ -71,7 +71,7 @@ $ wget --trust-server-names https://get.replicated.com/airgap
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-2.4.4.0-b7.airgap
+$ wget https://downloads.yugabyte.com/yugaware-2.7.1.1-b1.airgap
 ```
 
 Switch to the following directory:
