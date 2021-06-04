@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A YugabyteDB cluster consists of multiple nodes running the YB-TServer server process. Before trying to optimize individual statements, first determine whether the YugabyteDB cluster is running optimally: 
+A YugabyteDB cluster consists of multiple nodes running the YB-TServer server process. Before trying to optimize individual statements, first determine whether the YugabyteDB cluster is running optimally:
 
 * Verify that all nodes that are supposed to be running are indeed running.
 * Verify that the YB-TServer and, where applicable, YB-Master processes are running on the nodes.
