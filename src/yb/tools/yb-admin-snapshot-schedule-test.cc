@@ -33,22 +33,6 @@ namespace tools {
 
 namespace {
 
-Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name) {
-  auto it = value.FindMember(name);
-  if (it == value.MemberEnd()) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
-
-Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
-  auto it = value->FindMember(name);
-  if (it == value->MemberEnd()) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
-
 const std::string kClusterName = "yugacluster";
 
 constexpr auto kInterval = 6s;
@@ -183,23 +167,6 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         "ycql." + client::kTableName.namespace_name(), kRetention);
   }
 
-  Result<CassandraSession> CqlConnect(const std::string& db_name = std::string()) {
-    if (!cql_driver_) {
-      std::vector<std::string> hosts;
-      for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
-        hosts.push_back(cluster_->tablet_server(i)->bind_host());
-      }
-      LOG(INFO) << "CQL hosts: " << AsString(hosts);
-      cql_driver_ = std::make_unique<CppCassandraDriver>(
-          hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kTrue);
-    }
-    auto result = VERIFY_RESULT(cql_driver_->CreateSession());
-    if (!db_name.empty()) {
-      RETURN_NOT_OK(result.ExecuteQuery(Format("USE $0", client::kTableName.namespace_name())));
-    }
-    return result;
-  }
-
   template <class... Args>
   Result<std::string> CreateSnapshotSchedule(
       MonoDelta interval, MonoDelta retention, Args&&... args) {
@@ -250,10 +217,10 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
     std::string last_snapshot_time_str;
     for (const auto& snapshot : snapshots) {
       std::string snapshot_time = VERIFY_RESULT(
-          Get(snapshot, "snapshot_time_utc")).get().GetString();
+          Get(snapshot, "snapshot_time")).get().GetString();
       if (!last_snapshot_time_str.empty()) {
         std::string previous_snapshot_time = VERIFY_RESULT(
-            Get(snapshot, "previous_snapshot_time_utc")).get().GetString();
+            Get(snapshot, "previous_snapshot_time")).get().GetString();
         SCHECK_EQ(previous_snapshot_time, last_snapshot_time_str, IllegalState,
                   "Wrong previous_snapshot_hybrid_time");
       }

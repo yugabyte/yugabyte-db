@@ -37,6 +37,8 @@
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
 using std::string;
@@ -800,6 +802,32 @@ const QLTypePB& UDTypeInfo::field_types(int index) const {
 string UDTypeInfo::ToString() const {
   auto l = LockForRead();
   return Format("$0 [id=$1] {metadata=$2} ", name(), udtype_id_, l->pb);
+}
+
+DdlLogEntry::DdlLogEntry(
+    HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
+    const std::string& action) {
+  pb_.set_time(time.ToUint64());
+  pb_.set_table_type(table.table_type());
+  pb_.set_namespace_name(table.namespace_name());
+  pb_.set_namespace_id(table.namespace_id());
+  pb_.set_table_name(table.name());
+  pb_.set_table_id(table_id);
+  pb_.set_action(action);
+}
+
+const DdlLogEntryPB& DdlLogEntry::old_pb() const {
+  // Since DDL log entry are always added, we don't have previous PB for the same entry.
+  static const DdlLogEntryPB kEmpty;
+  return kEmpty;
+}
+
+const DdlLogEntryPB& DdlLogEntry::new_pb() const {
+  return pb_;
+}
+
+std::string DdlLogEntry::id() const {
+  return DocHybridTime(HybridTime(pb_.time()), kMaxWriteId).EncodedInDocDbFormat();
 }
 
 }  // namespace master

@@ -261,6 +261,7 @@ message SysRowEntry {
     CDC_STREAM = 10;
     UNIVERSE_REPLICATION = 11;
     SNAPSHOT_SCHEDULE = 12;
+    DDL_LOG_ENTRY = 13;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -2080,6 +2081,24 @@ message DeleteTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message DdlLogRequestPB {
+}
+
+message DdlLogEntryPB {
+  optional TableType table_type = 1;
+  optional string namespace_name = 2;
+  optional string namespace_id = 3;
+  optional string table_name = 4;
+  optional string table_id = 5;
+  optional string action = 6;
+  optional fixed64 time = 7;
+}
+
+message DdlLogResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated DdlLogEntryPB entries = 2;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -2219,4 +2238,6 @@ service MasterService {
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
   rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
+
+  rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 }

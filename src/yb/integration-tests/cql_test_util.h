@@ -241,6 +241,11 @@ class CassandraSession {
 
   CHECKED_STATUS ExecuteQuery(const std::string& query);
 
+  template <class... Args>
+  CHECKED_STATUS ExecuteQueryFormat(const std::string& query, Args&&... args) {
+    return ExecuteQuery(Format(query, std::forward<Args>(args)...));
+  }
+
   Result<CassandraResult> ExecuteWithResult(const std::string& query);
 
   Result<std::string> ExecuteAndRenderToString(const std::string& statement);
