@@ -1,2 +1,0 @@
--- Copyright (c) YugaByte, Inc.
-
