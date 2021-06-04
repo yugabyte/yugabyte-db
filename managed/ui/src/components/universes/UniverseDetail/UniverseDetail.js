@@ -622,6 +622,28 @@ class UniverseDetail extends Component {
                         />
                       )}
 
+                      <YBMenuItem
+                        disabled={updateInProgress}
+                        onClick={showToggleBackupModal}
+                        availability={getFeatureState(
+                          currentCustomer.data.features,
+                          'universes.backup'
+                        )}
+                      >
+                        <YBLabelWithIcon
+                          icon={
+                            currentUniverse.data.universeConfig.takeBackups === 'true'
+                              ? 'fa fa-pause'
+                              : 'fa fa-play'
+                          }
+                        >
+                          {currentUniverse.data.universeConfig &&
+                          currentUniverse.data.universeConfig.takeBackups === 'true'
+                            ? 'Disable Backup'
+                            : 'Enable Backup'}
+                        </YBLabelWithIcon>
+                      </YBMenuItem>
+
                       <MenuItem divider />
 
                       {/* TODO:
@@ -651,27 +673,6 @@ class UniverseDetail extends Component {
                       >
                         <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
                           Delete Universe
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
-
-                      <YBMenuItem
-                        onClick={showToggleBackupModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.backup'
-                        )}
-                      >
-                        <YBLabelWithIcon
-                          icon={
-                            currentUniverse.data.universeConfig.takeBackups === 'true'
-                              ? 'fa fa-pause'
-                              : 'fa fa-play'
-                          }
-                        >
-                          {currentUniverse.data.universeConfig &&
-                          currentUniverse.data.universeConfig.takeBackups === 'true'
-                            ? 'Disable Backup'
-                            : 'Enable Backup'}
                         </YBLabelWithIcon>
                       </YBMenuItem>
                     </>
