@@ -75,7 +75,8 @@ $ ./yb-docker-ctl create --rf 5
 Connect to `ycqlsh` on node `1`.
 
 ```sh
-$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh
+$ YB_TSERVER_N1_ADDR=$(docker container inspect -f '{{ $network := index .NetworkSettings.Networks "yb-net" }}{{ $network.IPAddress }}' yb-tserver-n1)
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N1_ADDR
 ```
 
 ```sh
@@ -137,7 +138,8 @@ ycqlsh> SELECT email, profile FROM users.profile;
 Let us now query the data from node `5`.
 
 ```sh
-$ docker exec -it yb-tserver-n5 /home/yugabyte/bin/ycqlsh
+$ YB_TSERVER_N5_ADDR=$(docker container inspect -f '{{ $network := index .NetworkSettings.Networks "yb-net" }}{{ $network.IPAddress }}' yb-tserver-n5)
+$ docker exec -it yb-tserver-n5 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N5_ADDR
 ```
 
 ```sql
@@ -176,7 +178,8 @@ $ ./yb-docker-ctl status
 Now connect to node 4.
 
 ```sh
-$ docker exec -it yb-tserver-n4 /home/yugabyte/bin/ycqlsh
+$ YB_TSERVER_N4_ADDR=$(docker container inspect -f '{{ $network := index .NetworkSettings.Networks "yb-net" }}{{ $network.IPAddress }}' yb-tserver-n4)
+$ docker exec -it yb-tserver-n4 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N4_ADDR
 ```
 
 Let us insert some data.
@@ -220,7 +223,8 @@ $ ./yb-docker-ctl status
 Now let us connect to node `2`.
 
 ```sh
-$ docker exec -it yb-tserver-n2 /home/yugabyte/bin/ycqlsh
+$ YB_TSERVER_N2_ADDR=$(docker container inspect -f '{{ $network := index .NetworkSettings.Networks "yb-net" }}{{ $network.IPAddress }}' yb-tserver-n2)
+$ docker exec -it yb-tserver-n2 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N2_ADDR
 ```
 
 Insert some data.
