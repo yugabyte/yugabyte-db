@@ -1152,5 +1152,18 @@ const Schema& SysCatalogTable::schema() {
   return schema_;
 }
 
+Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries) {
+  auto tablet = tablet_peer()->shared_tablet();
+  if (!tablet) {
+    return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
+  }
+
+  return EnumerateSysCatalog(tablet.get(), schema_, SysRowEntry::DDL_LOG_ENTRY,
+                             [entries](const Slice& id, const Slice& data) -> Status {
+    *entries->Add() = VERIFY_RESULT(pb_util::ParseFromSlice<DdlLogEntryPB>(data));
+    return Status::OK();
+  });
+}
+
 } // namespace master
 } // namespace yb
