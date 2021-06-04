@@ -19,6 +19,10 @@
 #include "yb/util/string_util.h"
 
 namespace yb {
+
+class CassandraSession;
+class CppCassandraDriver;
+
 namespace tools {
 
 class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
@@ -43,7 +47,15 @@ class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
   }
 
   Result<rapidjson::Document> ParseJson(const std::string& raw);
+
+  Result<CassandraSession> CqlConnect(const std::string& db_name = std::string());
+
+ private:
+  std::unique_ptr<CppCassandraDriver> cql_driver_;
 };
+
+Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name);
+Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name);
 
 }  // namespace tools
 }  // namespace yb

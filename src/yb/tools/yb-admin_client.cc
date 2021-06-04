@@ -529,8 +529,8 @@ Status ClusterAdminClient::Init() {
   leader_addr_ = yb_client_->GetMasterLeaderAddress();
   master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
 
-  rpc::ProxyCache proxy_cache(messenger_.get());
-  master_backup_proxy_.reset(new master::MasterBackupServiceProxy(&proxy_cache, leader_addr_));
+  master_backup_proxy_.reset(new master::MasterBackupServiceProxy(
+      proxy_cache_.get(), leader_addr_));
 
   initted_ = true;
   return Status::OK();
@@ -1773,6 +1773,36 @@ Status ClusterAdminClient::GetYsqlCatalogVersion() {
   return Status::OK();
 }
 
+Result<rapidjson::Document> ClusterAdminClient::DdlLog() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::DdlLogRequestPB req;
+  master::DdlLogResponsePB resp;
+
+  RETURN_NOT_OK(master_proxy_->DdlLog(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document result;
+  result.SetObject();
+  rapidjson::Value json_entries(rapidjson::kArrayType);
+  for (const auto& entry : resp.entries()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("table_type", TableType_Name(entry.table_type()), &json_entry,
+                   &result.GetAllocator());
+    AddStringField("namespace", entry.namespace_name(), &json_entry, &result.GetAllocator());
+    AddStringField("table", entry.table_name(), &json_entry, &result.GetAllocator());
+    AddStringField("action", entry.action(), &json_entry, &result.GetAllocator());
+    AddStringField("time", HybridTimeToString(HybridTime(entry.time())),
+                   &json_entry, &result.GetAllocator());
+    json_entries.PushBack(json_entry, result.GetAllocator());
+  }
+  result.AddMember("log", json_entries, result.GetAllocator());
+  return result;
+}
+
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
     bool blacklist_leader) {
   auto config = VERIFY_RESULT(GetMasterClusterConfig());
@@ -1882,6 +1912,17 @@ Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_
                                               const YQLDatabase default_if_no_prefix) {
   const auto parts = SplitByDot(full_namespace_name);
   return ResolveNamespaceName(parts.prefix, parts.value, default_if_no_prefix);
+}
+
+void AddStringField(
+    const char* name, const std::string& value, rapidjson::Value* out,
+    rapidjson::Value::AllocatorType* allocator) {
+  rapidjson::Value json_value(value.c_str(), *allocator);
+  out->AddMember(rapidjson::StringRef(name), json_value, *allocator);
+}
+
+string HybridTimeToString(HybridTime ht) {
+  return Timestamp(ht.GetPhysicalValueMicros()).ToHumanReadableTime();
 }
 
 }  // namespace tools

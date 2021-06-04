@@ -48,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
+#include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 
@@ -664,6 +665,54 @@ TEST_F(AdminCliTest, TestClearPlacementPolicy) {
   // Ensure that the placement config is absent.
   output = ASSERT_RESULT(CallAdmin("get_universe_config"));
   ASSERT_TRUE(output.find("replicationInfo") == std::string::npos);
+}
+
+TEST_F(AdminCliTest, DdlLog) {
+  const std::string kNamespaceName = "test_namespace";
+  const std::string kTableName = "test_table";
+  BuildAndStart({}, {});
+
+  auto session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE KEYSPACE IF NOT EXISTS $0", kNamespaceName));
+
+  ASSERT_OK(session.ExecuteQueryFormat("USE $0", kNamespaceName));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, text_column TEXT) "
+      "WITH transactions = { 'enabled' : true }", kTableName));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE INDEX test_idx ON $0 (text_column)", kTableName));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "ALTER TABLE $0 ADD int_column INT", kTableName));
+
+  ASSERT_OK(session.ExecuteQuery("DROP INDEX test_idx"));
+
+  ASSERT_OK(session.ExecuteQueryFormat("ALTER TABLE $0 DROP text_column", kTableName));
+
+  auto document = ASSERT_RESULT(CallJsonAdmin("ddl_log"));
+
+  auto log = ASSERT_RESULT(Get(document, "log")).get().GetArray();
+  ASSERT_EQ(log.Size(), 3);
+  std::vector<std::string> actions;
+  for (const auto& entry : log) {
+    LOG(INFO) << "Entry: " << common::PrettyWriteRapidJsonToString(entry);
+    TableType type;
+    bool parse_result = TableType_Parse(
+        ASSERT_RESULT(Get(entry, "table_type")).get().GetString(), &type);
+    ASSERT_TRUE(parse_result);
+    ASSERT_EQ(type, TableType::YQL_TABLE_TYPE);
+    auto namespace_name = ASSERT_RESULT(Get(entry, "namespace")).get().GetString();
+    ASSERT_EQ(namespace_name, kNamespaceName);
+    auto table_name = ASSERT_RESULT(Get(entry, "table")).get().GetString();
+    ASSERT_EQ(table_name, kTableName);
+    actions.emplace_back(ASSERT_RESULT(Get(entry, "action")).get().GetString());
+  }
+  ASSERT_EQ(actions[0], "Drop column text_column");
+  ASSERT_EQ(actions[1], "Drop index test_idx");
+  ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE NOT A PARTITION KEY]");
 }
 
 }  // namespace tools

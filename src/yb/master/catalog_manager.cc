@@ -452,9 +452,9 @@ namespace {
 // - During transition period, we have to consider both fields and the following macros help
 //   avoiding duplicate protobuf version check thru out our code.
 
-#define PROTO_GET_INDEXED_TABLE_ID(tabpb) \
-  (tabpb.has_index_info() ? tabpb.index_info().indexed_table_id() \
-                          : tabpb.indexed_table_id())
+const std::string& GetIndexedTableId(const SysTablesEntryPB& pb) {
+  return pb.has_index_info() ? pb.index_info().indexed_table_id() : pb.indexed_table_id();
+}
 
 #define PROTO_GET_IS_LOCAL(tabpb) \
   (tabpb.has_index_info() ? tabpb.index_info().is_local() \
@@ -481,7 +481,7 @@ bool IsTable(const SysTablesEntryPB& pb) {
 
 #if (0)
 // Once the deprecated fields are obsolete, the above macros should be defined as the following.
-#define PROTO_GET_INDEXED_TABLE_ID(tabpb) (tabpb.index_info().indexed_table_id())
+#define GetIndexedTableId(tabpb) (tabpb.index_info().indexed_table_id())
 #define PROTO_GET_IS_LOCAL(tabpb) (tabpb.index_info().is_local())
 #define PROTO_GET_IS_UNIQUE(tabpb) (tabpb.index_info().is_unique())
 #define PROTO_IS_INDEX(tabpb) (tabpb.has_index_info())
@@ -2254,6 +2254,11 @@ Status CatalogManager::DeleteTablet(
   return DeleteTablets({ req->tablet_id() });
 }
 
+Status CatalogManager::DdlLog(
+    const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc) {
+  return sys_catalog_->FetchDdlLog(resp->mutable_entries());
+}
+
 namespace {
 
 CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {
@@ -2467,7 +2472,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
 
     if (IsIndex(l->pb)) {
       const uint32_t indexed_table_oid =
-        VERIFY_RESULT(GetPgsqlTableOid(PROTO_GET_INDEXED_TABLE_ID(l->pb)));
+        VERIFY_RESULT(GetPgsqlTableOid(GetIndexedTableId(l->pb)));
       const TableId indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
 
       // Set index_info.
@@ -3334,7 +3339,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   // 4. If this is an index, we are not done until the index is in the indexed table's schema.  An
   // exception is YSQL system table indexes, which don't get added to their indexed tables' schemas.
   if (resp->done() && IsIndex(pb)) {
-    auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
+    auto& indexed_table_id = GetIndexedTableId(pb);
     // For user indexes (which add index info to indexed table's schema),
     // - if this index is created without backfill,
     //   - waiting for the index to be in the indexed table's schema is sufficient, and, by that
@@ -3481,13 +3486,14 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntry::CDC_STREAM:
         if (!CDCStreamExistsUnlocked(id)) return id;
         break;
-      case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
       case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
       case SysRowEntry::SYS_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SNAPSHOT_SCHEDULE:
+      case SysRowEntry::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
+      case SysRowEntry::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntry::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
     }
@@ -3837,7 +3843,7 @@ Status CatalogManager::BackfillIndex(
   scoped_refptr<TableInfo> indexed_table;
   {
     auto l = index_table->LockForRead();
-    TableId indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->pb);
+    TableId indexed_table_id = GetIndexedTableId(l->pb);
     resp->mutable_table_identifier()->set_table_id(indexed_table_id);
     indexed_table = GetTableInfo(indexed_table_id);
   }
@@ -4015,7 +4021,7 @@ Status CatalogManager::DeleteTable(
     TableId indexed_table_id;
     {
       auto l = table->LockForRead();
-      indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->pb);
+      indexed_table_id = GetIndexedTableId(l->pb);
     }
     scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
     const bool is_pg_table = indexed_table != nullptr &&
@@ -4180,8 +4186,22 @@ Status CatalogManager::DeleteTableInMemory(
                                  Substitute("Started deleting at $0", LocalTimeAsString()));
   }
 
+  auto now = master_->clock()->Now();
+  DdlLogEntry ddl_log_entry(now, table->id(), l->pb, "Drop");
+  if (is_index_table) {
+    const auto& indexed_table_id = GetIndexedTableId(l->pb);
+    auto indexed_table = FindTableById(indexed_table_id);
+    if (indexed_table.ok()) {
+      auto lock = (**indexed_table).LockForRead();
+      ddl_log_entry = DdlLogEntry(
+          now, indexed_table_id, lock->pb, Format("Drop index $0", l->name()));
+    }
+  }
+
   // Update sys-catalog with the removed table state.
-  Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term());
+  Status s = sys_catalog_->AddAndUpdateItems(
+      std::initializer_list<DdlLogEntry*>{&ddl_log_entry},
+      std::initializer_list<TableInfo*>{table.get()}, leader_ready_term());
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_crash_after_table_marked_deleting)) {
     return Status::OK();
@@ -4220,7 +4240,7 @@ Status CatalogManager::DeleteTableInMemory(
     }
   } else if (update_indexed_table) {
     s = MarkIndexInfoFromTableForDeletion(
-        PROTO_GET_INDEXED_TABLE_ID(l->pb), table->id(), /* multi_stage */ false, resp);
+        GetIndexedTableId(l->pb), table->id(), /* multi_stage */ false, resp);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
                                        s.ToString()));
@@ -4389,10 +4409,13 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 
 namespace {
 
-CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
+CHECKED_STATUS ApplyAlterSteps(server::Clock* clock,
+                               const TableId& table_id,
+                               const SysTablesEntryPB& current_pb,
                                const AlterTableRequestPB* req,
                                Schema* new_schema,
-                               ColumnId* next_col_id) {
+                               ColumnId* next_col_id,
+                               std::vector<DdlLogEntry>* ddl_log_entries) {
   const SchemaPB& current_schema_pb = current_pb.schema();
   Schema cur_schema;
   RETURN_NOT_OK(SchemaFromPB(current_schema_pb, &cur_schema));
@@ -4413,6 +4436,7 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
   }
 
   for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
+    auto time = clock->Now();
     switch (step.type()) {
       case AlterTableRequestPB::ADD_COLUMN: {
         if (!step.has_add_column()) {
@@ -4428,6 +4452,7 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
         ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
 
         RETURN_NOT_OK(builder.AddColumn(new_col, false));
+        ddl_log_entries->emplace_back(time, table_id, current_pb, Format("Add column $0", new_col));
         break;
       }
 
@@ -4441,6 +4466,8 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
         }
 
         RETURN_NOT_OK(builder.RemoveColumn(step.drop_column().name()));
+        ddl_log_entries->emplace_back(
+            time, table_id, current_pb, Format("Drop column $0", step.drop_column().name()));
         break;
       }
 
@@ -4450,8 +4477,12 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
         }
 
         RETURN_NOT_OK(builder.RenameColumn(
-        step.rename_column().old_name(),
-        step.rename_column().new_name()));
+            step.rename_column().old_name(),
+            step.rename_column().new_name()));
+        ddl_log_entries->emplace_back(
+            time, table_id, current_pb,
+            Format("Rename column $0 => $1", step.rename_column().old_name(),
+                   step.rename_column().new_name()));
         break;
       }
 
@@ -4480,6 +4511,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   LOG(INFO) << "Servicing AlterTable request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
+  std::vector<DdlLogEntry> ddl_log_entries;
+
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -4502,13 +4535,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     // Don't use Namespaces that aren't running.
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
       Status s = STATUS_SUBSTITUTE(TryAgain,
-          "Namespace not running (State=$0).  Cannot create $1.$2",
+          "Namespace not running (State=$0). Cannot create $1.$2",
           SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name() );
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
   }
   if (req->has_new_namespace() || req->has_new_table_name()) {
-
     if (new_namespace_id.empty()) {
       const Status s = STATUS(InvalidArgument, "No namespace used");
       return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
@@ -4530,7 +4562,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   ColumnId next_col_id = ColumnId(l->pb.next_column_id());
   if (req->alter_schema_steps_size() || req->has_alter_properties()) {
     TRACE("Apply alter schema");
-    Status s = ApplyAlterSteps(l->pb, req, &new_schema, &next_col_id);
+    Status s = ApplyAlterSteps(
+        master_->clock(), table->id(), l->pb, req, &new_schema, &next_col_id, &ddl_log_entries);
     if (!s.ok()) {
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
@@ -4642,7 +4675,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Update sys-catalog with the new table schema.
   TRACE("Updating metadata on disk");
-  Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term());
+  std::vector<const DdlLogEntry*> ddl_log_entry_pointers;
+  ddl_log_entry_pointers.reserve(ddl_log_entries.size());
+  for (const auto& entry : ddl_log_entries) {
+    ddl_log_entry_pointers.push_back(&entry);
+  }
+  Status s = sys_catalog_->AddAndUpdateItems(
+      ddl_log_entry_pointers, std::initializer_list<TableInfo*>{table.get()}, leader_ready_term());
   if (!s.ok()) {
     s = s.CloneAndPrepend(
         Substitute("An error occurred while updating sys-catalog tables entry: $0",
@@ -4795,7 +4834,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->set_version(l->pb.fully_applied_schema_version());
     resp->mutable_indexes()->CopyFrom(l->pb.fully_applied_indexes());
     if (l->pb.has_fully_applied_index_info()) {
-      resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->pb));
+      resp->set_obsolete_indexed_table_id(GetIndexedTableId(l->pb));
       *resp->mutable_index_info() = l->pb.fully_applied_index_info();
     }
     VLOG(1) << "Returning"
@@ -4811,7 +4850,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->set_version(l->pb.version());
     resp->mutable_indexes()->CopyFrom(l->pb.indexes());
     if (l->pb.has_index_info()) {
-      resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->pb));
+      resp->set_obsolete_indexed_table_id(GetIndexedTableId(l->pb));
       *resp->mutable_index_info() = l->pb.index_info();
     }
     VLOG(3) << "Returning"

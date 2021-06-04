@@ -38,25 +38,26 @@ using strings::Substitute;
 
 namespace {
 
-Result<HybridTime> ParseHybridTime(const string& timestamp) {
+Result<HybridTime> ParseHybridTime(string input) {
   // Acceptable system time formats:
   //  1. HybridTime Timestamp (in Microseconds)
   //  2. -Interval
   //  3. Human readable string
-  auto ts = boost::trim_copy(timestamp);
+  boost::trim(input);
 
   HybridTime ht;
   // The HybridTime is given in milliseconds and will contain 16 chars.
   static const std::regex int_regex("[0-9]{16}");
-  if (std::regex_match(ts, int_regex)) {
-    return HybridTime::FromMicros(std::stoul(ts));
+  if (std::regex_match(input, int_regex)) {
+    return HybridTime::FromMicros(std::stoul(input));
   }
-  if (!ts.empty() && ts[0] == '-') {
+  if (!input.empty() && input[0] == '-') {
     return HybridTime::FromMicros(
         VERIFY_RESULT(WallClock()->Now()).time_point -
-        VERIFY_RESULT(DateTime::IntervalFromString(ts.substr(1))).ToMicroseconds());
+        VERIFY_RESULT(DateTime::IntervalFromString(input.substr(1))).ToMicroseconds());
   }
-  return HybridTime::FromMicros(VERIFY_RESULT(DateTime::TimestampFromString(ts)).ToInt64());;
+  auto ts = VERIFY_RESULT(DateTime::TimestampFromString(input, DateTime::HumanReadableInputFormat));
+  return HybridTime::FromMicros(ts.ToInt64());
 }
 
 const string kMinus = "minus";
@@ -72,20 +73,6 @@ Result<T> GetOptionalArg(const Args& args, size_t idx) {
                          idx + 1, args.size());
   }
   return VERIFY_RESULT(T::FromString(args[idx]));
-}
-
-CHECKED_STATUS CheckArgumentsCount(int count, int min, int max) {
-  if (count < min) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Too few arguments $0, should be in range [$1, $2]", count, min, max);
-  }
-
-  if (count > max) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Too many arguments $0, should be in range [$1, $2]", count, min, max);
-  }
-
-  return Status::OK();
 }
 
 } // namespace

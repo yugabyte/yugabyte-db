@@ -39,13 +39,14 @@ class DateTime {
   struct InputFormat {
     std::vector<std::regex> regexes;
     int input_precision;
+    // When use_utc is true, the UTC is used during conversion. Otherwise local TZ is used.
     bool use_utc;
   };
 
   struct OutputFormat {
     const std::locale output_locale;
-
-    explicit OutputFormat(const std::locale& output_locale) : output_locale(output_locale) {}
+    // See comment in InputFormat.
+    bool use_utc;
   };
 
   // CQL timestamp formats.
