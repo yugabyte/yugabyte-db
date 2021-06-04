@@ -375,6 +375,28 @@ Result<size_t> DocKey::EncodedSize(Slice slice, DocKeyPart part, AllowSpecial al
   return decoder.left_input().cdata() - initial_begin;
 }
 
+Result<std::pair<size_t, bool>> DocKey::EncodedSizeAndHashPresent(Slice slice, DocKeyPart part) {
+  class HashPresenceAwareDummyCallback : public DummyCallback {
+   public:
+    explicit HashPresenceAwareDummyCallback(bool* hash_present) : hash_present_(hash_present) {}
+
+    void SetHash(const bool hash_present, const DocKeyHash hash = 0) const {
+      *hash_present_ = hash_present;
+    }
+
+   private:
+    bool* hash_present_;
+  };
+
+  auto initial_begin = slice.cdata();
+  DocKeyDecoder decoder(slice);
+  bool hash_present = false;
+  HashPresenceAwareDummyCallback callback(&hash_present);
+  RETURN_NOT_OK(DoDecode(&decoder, part, AllowSpecial::kFalse, callback));
+  // TODO: left_input() should be called remaining_input().
+  return std::make_pair(decoder.left_input().cdata() - initial_begin, hash_present);
+}
+
 Result<std::pair<size_t, size_t>> DocKey::EncodedHashPartAndDocKeySizes(
     Slice slice,
     AllowSpecial allow_special) {
@@ -1071,6 +1093,30 @@ class DocKeyComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
   DocKeyComponentsExtractor() = default;
 };
 
+class HashedDocKeyUpToHashComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
+ public:
+  HashedDocKeyUpToHashComponentsExtractor(const HashedDocKeyUpToHashComponentsExtractor&) = delete;
+  HashedDocKeyUpToHashComponentsExtractor& operator=(
+      const HashedDocKeyUpToHashComponentsExtractor&) = delete;
+
+  static HashedDocKeyUpToHashComponentsExtractor& GetInstance() {
+    static HashedDocKeyUpToHashComponentsExtractor instance;
+    return instance;
+  }
+
+  // For encoded DocKey with hash code present extracts prefix up to hashed components,
+  // for non-DocKey or DocKey without hash code (for range-partitioned tables) returns empty key,
+  // so they will always match the filter.
+  Slice Transform(Slice key) const override {
+    auto size_result = DocKey::EncodedSizeAndHashPresent(key, DocKeyPart::kUpToHash);
+    return (size_result.ok() && size_result->second) ? Slice(key.data(), size_result->first)
+                                                     : Slice();
+  }
+
+ private:
+  HashedDocKeyUpToHashComponentsExtractor() = default;
+};
+
 } // namespace
 
 void DocDbAwareFilterPolicyBase::CreateFilter(
@@ -1105,8 +1151,9 @@ DocDbAwareHashedComponentsFilterPolicy::GetKeyTransformer() const {
 const rocksdb::FilterPolicy::KeyTransformer*
 DocDbAwareV2FilterPolicy::GetKeyTransformer() const {
   // We want for DocDbAwareV2FilterPolicy to disable bloom filtering during read path for
-  // range-partitioned tablets (see https://github.com/yugabyte/yugabyte-db/issues/6435).
-  return &DocKeyComponentsExtractor<DocKeyPart::kUpToHash>::GetInstance();
+  // range-partitioned tablets (see https://github.com/yugabyte/yugabyte-db/issues/6435,
+  // https://github.com/yugabyte/yugabyte-db/issues/8731).
+  return &HashedDocKeyUpToHashComponentsExtractor::GetInstance();
 }
 
 const rocksdb::FilterPolicy::KeyTransformer*

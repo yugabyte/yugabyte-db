@@ -61,6 +61,7 @@ DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 // Deprecated because it's misspelled.  But if set, this flag takes precedence over
 // remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
 DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
+DECLARE_bool(use_docdb_aware_bloom_filter);
 
 using namespace std::literals;
 
@@ -71,6 +72,10 @@ static int MasterMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
+  // Hotfix for https://github.com/yugabyte/yugabyte-db/issues/8731.
+  // Before enabling bloom filters for the master tablet we need to check whether master code use
+  // bloom filters properly at all, including if filter key is set correctly during scans.
+  FLAGS_use_docdb_aware_bloom_filter = false;
 
   string host_name;
   if (GetHostname(&host_name).ok()) {
