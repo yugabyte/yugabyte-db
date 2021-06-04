@@ -50,9 +50,9 @@ showAsideToc: true
 
 ## Prerequisites
 
-1. One of the following operating systems
+1. One of the following operating systems:
 
-    * <i class="icon-centos"></i> CentOS 7
+    * <i class="icon-centos"></i> CentOS 7 or later
 
     * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
 
@@ -62,7 +62,7 @@ showAsideToc: true
     $ python --version
     ```
 
-    ```
+    ```output
     Python 3.7.3
     ```
 
@@ -96,13 +96,13 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.5.3.1-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.7.1.1-linux.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.5.3.1-linux.tar.gz && cd yugabyte-2.5.3.1/
+    $ tar xvfz yugabyte-2.7.1.1-linux.tar.gz && cd yugabyte-2.7.1.1/
     ```
 
 ## Configure YugabyteDB

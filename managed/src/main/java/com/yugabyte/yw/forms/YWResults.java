@@ -12,7 +12,6 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 import play.mvc.Result;
 

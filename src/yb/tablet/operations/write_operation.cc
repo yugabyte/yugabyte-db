@@ -38,7 +38,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/gutil/stl_util.h"
