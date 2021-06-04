@@ -88,6 +88,7 @@ The following access methods are supported:
 
 - btree
 - brin
+- hash (requires PostgreSQL 10 or above)
 - bloom (requires the bloom extension to be installed)
 
 Create a hypothetical index

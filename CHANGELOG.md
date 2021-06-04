@@ -1,6 +1,13 @@
 Changelog
 =========
 
+2021-06-04 version 1.3.0:
+-------------------------
+
+  **New features**:
+
+  - Add support for hypothetical hash indexes (pg10+)
+
 2021-02-26 version 1.2.0:
 -------------------------
 
