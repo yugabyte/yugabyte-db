@@ -16,14 +16,45 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.AlertConfigFormData;
+import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserFormData;
+import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.ToggleTlsParams;
+import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.YWError;
 import com.yugabyte.yw.forms.YWResults.YWSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -51,7 +82,13 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
@@ -59,7 +96,10 @@ import java.util.stream.Collectors;
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
 import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFormDataToTaskParams;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.*;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.empty;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
 
@@ -668,12 +708,131 @@ public class UniverseController extends AuthenticatedController {
             // return file to client
             response().setHeader("Content-Disposition", "attachment; filename=" + tarFileName);
             return ok(is).as("application/x-compressed");
-
           } catch (FileNotFoundException e) {
             throw new YWServiceException(INTERNAL_SERVER_ERROR, response.message);
           }
         },
         ec.current());
+  }
+
+  /**
+   * API that toggles TLS state of the universe. Can enable/disable node to node and client to node
+   * encryption. Supports rolling and non-rolling upgrade of the universe.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  public Result toggleTls(UUID customerUuid, UUID universeUuid) {
+    Customer customer = Customer.getOrBadRequest(customerUuid);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    LOG.info(
+        "Toggle TLS for universe {} [ {} ] customer {}.",
+        universe.name,
+        universeUuid,
+        customerUuid);
+
+    ObjectNode formData = (ObjectNode) request().body().asJson();
+    ToggleTlsParams requestParams = ToggleTlsParams.bindFromFormData(formData);
+
+    YWError error = requestParams.verifyParams(universeDetails);
+    if (error != null) {
+      throw new YWServiceException(BAD_REQUEST, error.error + " - for universe: " + universeUuid);
+    }
+
+    if (!universeDetails.isUniverseEditable()) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Universe UUID " + universeUuid + " cannot be edited.");
+    }
+
+    if (universe.nodesInTransit()) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Cannot perform a toggle TLS operation on universe "
+              + universeUuid
+              + " as it has nodes in one of "
+              + NodeDetails.IN_TRANSIT_STATES
+              + " states.");
+    }
+
+    if (!CertificateInfo.isCertificateValid(requestParams.rootCA)) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The certificate %s needs info. Update the cert and retry.",
+              CertificateInfo.get(requestParams.rootCA).label));
+    }
+
+    if (requestParams.rootCA != null
+        && CertificateInfo.get(requestParams.rootCA).certType
+            == CertificateInfo.Type.CustomCertHostPath
+        && !userIntent.providerType.equals(CloudType.onprem)) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Custom certificates are only supported for on-prem providers.");
+    }
+
+    TaskType taskType = TaskType.UpgradeUniverse;
+    UpgradeParams taskParams = new UpgradeParams();
+    taskParams.taskType = UpgradeUniverse.UpgradeTaskType.ToggleTls;
+    taskParams.upgradeOption = requestParams.upgradeOption;
+    taskParams.universeUUID = universeUuid;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.enableNodeToNodeEncrypt = requestParams.enableNodeToNodeEncrypt;
+    taskParams.enableClientToNodeEncrypt = requestParams.enableClientToNodeEncrypt;
+    taskParams.allowInsecure =
+        !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
+
+    // Create root certificate if not exist
+    taskParams.rootCA = universeDetails.rootCA;
+    if (taskParams.rootCA == null) {
+      taskParams.rootCA =
+          requestParams.rootCA != null
+              ? requestParams.rootCA
+              : CertificateHelper.createRootCA(
+                  universeDetails.nodePrefix, customerUuid, appConfig.getString("yb.storage.path"));
+    }
+
+    // Create client certificate if not exists
+    if (!userIntent.enableClientToNodeEncrypt && requestParams.enableClientToNodeEncrypt) {
+      CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+      if (cert.certType == CertificateInfo.Type.SelfSigned) {
+        CertificateHelper.createClientCertificate(
+            taskParams.rootCA,
+            String.format(
+                CertificateHelper.CERT_PATH,
+                appConfig.getString("yb.storage.path"),
+                customerUuid.toString(),
+                taskParams.rootCA.toString()),
+            CertificateHelper.DEFAULT_CLIENT,
+            null,
+            null);
+      }
+    }
+
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info(
+        "Submitted toggle tls for {} : {}, task uuid = {}.",
+        universe.universeUUID,
+        universe.name,
+        taskUUID);
+
+    CustomerTask.create(
+        customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ToggleTls,
+        universe.name);
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.universeUUID,
+        universe.name);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData), taskUUID);
+    return ApiResponse.success(createResp(universe, taskUUID));
   }
 
   /**
