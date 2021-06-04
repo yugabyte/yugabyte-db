@@ -38,7 +38,6 @@ menu:
     </a>
   </div>
 
-
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
    <a class="section-link icon-offset" href="spring-data-yugabytedb/">
      <div class="head">
