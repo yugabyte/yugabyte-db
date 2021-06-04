@@ -10,14 +10,25 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -39,22 +50,43 @@ import play.libs.Json;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.*;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.ToggleTls;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
@@ -462,6 +494,84 @@ public class NodeManagerTest extends FakeDBApplication {
           if (configureParams.gflagsToRemove != null && !configureParams.gflagsToRemove.isEmpty()) {
             expectedCommand.add("--gflags_to_remove");
             expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
+          }
+        } else if (configureParams.type == ToggleTls) {
+          String nodeToNodeString = String.valueOf(configureParams.enableNodeToNodeEncrypt);
+          String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
+          String allowInsecureString = String.valueOf(configureParams.allowInsecure);
+
+          String certsNodeDir =
+              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome()
+                  + "/yugabyte-tls-config";
+
+          String subType = configureParams.getProperty("taskSubType");
+          if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+            CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
+
+            expectedCommand.add("--adding_certs");
+            expectedCommand.add("--certs_node_dir");
+            expectedCommand.add(certsNodeDir);
+
+            if (cert.certType == CertificateInfo.Type.SelfSigned) {
+              expectedCommand.add("--rootCA_cert");
+              expectedCommand.add(cert.certificate);
+              expectedCommand.add("--rootCA_key");
+              expectedCommand.add(cert.privateKey);
+              if (configureParams.enableClientToNodeEncrypt) {
+                expectedCommand.add("--client_cert");
+                expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+                expectedCommand.add("--client_key");
+                expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+              }
+            } else {
+              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+              expectedCommand.add("--use_custom_certs");
+              expectedCommand.add("--root_cert_path");
+              expectedCommand.add(customCertInfo.rootCertPath);
+              expectedCommand.add("--node_cert_path");
+              expectedCommand.add(customCertInfo.nodeCertPath);
+              expectedCommand.add("--node_key_path");
+              expectedCommand.add(customCertInfo.nodeKeyPath);
+              if (customCertInfo.clientCertPath != null) {
+                expectedCommand.add("--client_cert_path");
+                expectedCommand.add(customCertInfo.clientCertPath);
+                expectedCommand.add("--client_key_path");
+                expectedCommand.add(customCertInfo.clientKeyPath);
+              }
+            }
+          } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+            gflags = new HashMap<>();
+            if (configureParams.nodeToNodeChange > 0) {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", "true");
+              gflags.put("certs_dir", certsNodeDir);
+            } else if (configureParams.nodeToNodeChange < 0) {
+              gflags.put("allow_insecure_connections", "true");
+            } else {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", allowInsecureString);
+              gflags.put("certs_dir", certsNodeDir);
+            }
+
+            expectedCommand.add("--replace_gflags");
+            expectedCommand.add("--gflags");
+            expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+          } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+            gflags = new HashMap<>();
+            if (configureParams.nodeToNodeChange > 0) {
+              gflags.put("allow_insecure_connections", allowInsecureString);
+            } else if (configureParams.nodeToNodeChange < 0) {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", allowInsecureString);
+              gflags.put("certs_dir", certsNodeDir);
+            }
+
+            expectedCommand.add("--replace_gflags");
+            expectedCommand.add("--gflags");
+            expectedCommand.add(Json.stringify(Json.toJson(gflags)));
           }
         } else {
           expectedCommand.add("--extra_gflags");
@@ -1632,5 +1742,211 @@ public class NodeManagerTest extends FakeDBApplication {
         isMasterInShellMode,
         StringUtils.isEmpty(
             obj.get(isMaster ? "master_addresses" : "tserver_master_addrs").asText()));
+  }
+
+  @Test
+  public void testToggleTlsWithoutProcessType() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType: null")));
+      }
+    }
+  }
+
+  @Test
+  public void testToggleTlsWithInvalidProcessType() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+
+      for (UniverseDefinitionTaskBase.ServerType type :
+          UniverseDefinitionTaskBase.ServerType.values()) {
+        try {
+          // Master and TServer are valid process types
+          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+            continue;
+          }
+          params.setProperty("processType", type.toString());
+          nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+          fail();
+        } catch (RuntimeException re) {
+          assertThat(
+              re.getMessage(), allOf(notNullValue(), is("Invalid processType: " + type.name())));
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testToggleTlsWithoutTaskType() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(
+            re.getMessage(), allOf(notNullValue(), is("Invalid taskSubType property: null")));
+      }
+    }
+  }
+
+  @Test
+  public void testToggleTlsCopyCertsWithInvalidRootCa() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.enableNodeToNodeEncrypt = true;
+      params.enableClientToNodeEncrypt = true;
+      params.rootCA = UUID.randomUUID();
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(), containsString("No valid rootCA")));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"true, true", "true, false", "false, true", "false, false"})
+  @TestCaseName("testToggleTlsCopyCertsWhenNodeToNode:{0}_ClientToNode:{1}")
+  public void testToggleTlsCopyCertsWithParams(
+      boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt)
+      throws IOException, NoSuchAlgorithmException {
+    for (TestData data : testData) {
+      if (data.cloudType == Common.CloudType.gcp) {
+        data.privateKey = null;
+      }
+
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.getOrBadRequest(universeUuid)
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+      params.rootCA = createUniverseWithCert(data, params);
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        if (!enableNodeToNodeEncrypt && !enableClientToNodeEncrypt) {
+          fail();
+        }
+        List<String> expectedCommand = data.baseCommand;
+        expectedCommand.addAll(
+            nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+        verify(shellProcessHandler, times(1))
+            .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(), containsString("No changes needed")));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"0", "-1", "1"})
+  @TestCaseName("testToggleTlsRound1GFlagsUpdateWhenNodeToNodeChange:{0}")
+  public void testToggleTlsRound1GFlagsUpdate(int nodeToNodeChange) {
+    for (TestData data : testData) {
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.getOrBadRequest(universeUuid)
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+      params.setProperty(
+          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name());
+      params.nodeToNodeChange = nodeToNodeChange;
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      List<String> expectedCommand = data.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  @Parameters({"0", "-1", "1"})
+  @TestCaseName("testToggleTlsRound2GFlagsUpdateWhenNodeToNodeChange:{0}")
+  public void testToggleTlsRound2GFlagsUpdate(int nodeToNodeChange) {
+    for (TestData data : testData) {
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.getOrBadRequest(universeUuid)
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+      params.setProperty(
+          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name());
+      params.nodeToNodeChange = nodeToNodeChange;
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      List<String> expectedCommand = data.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+    }
   }
 }

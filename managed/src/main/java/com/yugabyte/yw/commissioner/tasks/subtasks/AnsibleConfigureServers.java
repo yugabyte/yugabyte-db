@@ -44,15 +44,20 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMaster = false;
     public boolean enableYSQL = false;
     public boolean enableYEDIS = false;
-    public boolean enableNodeToNodeEncrypt = false;
-    public boolean enableClientToNodeEncrypt = false;
-    public boolean allowInsecure = true;
     public Map<String, String> gflags = new HashMap<>();
     public Set<String> gflagsToRemove = new HashSet<>();
     public boolean updateMasterAddrsOnly = false;
     public CollectionLevel callhomeLevel;
     // Development params.
     public String itestS3PackagePath = "";
+    // ToggleTls params.
+    public boolean enableNodeToNodeEncrypt = false;
+    public boolean enableClientToNodeEncrypt = false;
+    public boolean allowInsecure = true;
+    // 0 => No change in node-to-node encryption
+    // > 0 => node-to-node encryption is enabled
+    // < 0 => node-to-node encryption is disabled
+    public int nodeToNodeChange = 0;
   }
 
   @Override

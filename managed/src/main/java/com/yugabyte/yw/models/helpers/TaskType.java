@@ -186,7 +186,9 @@ public enum TaskType {
 
   UnivSetCertificate("subtasks.UnivSetCertificate"),
 
-  CreateAlertDefinitions("subtasks.CreateAlertDefinitions");
+  CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
+
+  UniverseSetTlsParams("subtasks.UniverseSetTlsParams");
 
   private String relativeClassPath;
 

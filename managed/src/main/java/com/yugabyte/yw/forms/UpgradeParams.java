@@ -23,6 +23,10 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   // If the root certificate needs to be rotated.
   public boolean rotateRoot = false;
 
+  // Parameters for toggle tls operation
+  public boolean enableNodeToNodeEncrypt = false;
+  public boolean enableClientToNodeEncrypt = false;
+
   @Deprecated
   // This is deprecated use cluster.userIntent.masterGFlags
   public Map<String, String> masterGFlags = new HashMap<String, String>();

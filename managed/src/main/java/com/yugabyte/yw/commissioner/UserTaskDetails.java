@@ -155,7 +155,10 @@ public class UserTaskDetails {
     StartingMasterProcess,
 
     // Rotate Node Certs.
-    RotatingCert;
+    RotatingCert,
+
+    // Add certificates and toggle TLS gflags
+    ToggleTls;
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -360,6 +363,10 @@ public class UserTaskDetails {
       case ResumeUniverse:
         title = "Resume Universe";
         description = "Resume the universe.";
+        break;
+      case ToggleTls:
+        title = "Toggle TLS";
+        description = "Add certificates and toggle TLS gflags";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

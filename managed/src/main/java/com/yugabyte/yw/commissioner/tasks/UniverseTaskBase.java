@@ -1168,7 +1168,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // Subtask to update gflags in memory.
-  public void createSetFlagInMemoryTasks(
+  public SubTaskGroup createSetFlagInMemoryTasks(
       Collection<NodeDetails> nodes,
       ServerType serverType,
       boolean force,
@@ -1199,8 +1199,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     // Add the task list to the task queue.
     subTaskGroupQueue.add(subTaskGroup);
-    // Configure the user facing subtask for this task list.
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    return subTaskGroup;
   }
 
   // Check if the node present in taskParams has a backing instance alive on the IaaS.

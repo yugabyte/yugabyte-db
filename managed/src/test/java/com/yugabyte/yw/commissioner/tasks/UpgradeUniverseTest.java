@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -21,12 +22,15 @@ import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.MockitoAnnotations;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
@@ -48,7 +52,7 @@ import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class UpgradeUniverseTest extends CommissionerBaseTest {
   @InjectMocks Commissioner commissioner;
 
@@ -108,6 +112,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    MockitoAnnotations.initMocks(this);
     upgradeUniverse.setUserTaskUUID(UUID.randomUUID());
     region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     az1 = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
@@ -162,7 +167,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                     new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
                 return mockConfigResponse;
               });
-    } catch (Exception e) {
+    } catch (Exception ignored) {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
@@ -171,7 +176,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
-    } catch (Exception ex) {
+      when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
+          .thenReturn(true);
+    } catch (Exception ignored) {
     }
     dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
@@ -210,6 +217,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateAndPersistGFlags,
           TaskType.UpdateSoftwareVersion,
           TaskType.UnivSetCertificate,
+          TaskType.UniverseSetTlsParams,
           TaskType.UniverseUpdateSucceeded);
 
   List<TaskType> GFLAGS_UPGRADE_TASK_SEQUENCE =
@@ -285,6 +293,33 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.SetNodeState);
+
+  List<TaskType> TOGGLE_TLS_ROLLING_UPGRADE_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.SetNodeState);
+
+  List<TaskType> TOGGLE_TLS_NON_ROLLING_UPGRADE_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetNodeState,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.SetNodeState,
+          TaskType.WaitForServer);
+
+  List<TaskType> TOGGLE_TLS_NON_RESTART_UPGRADE_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetNodeState,
+          TaskType.SetFlagInMemory,
           TaskType.SetNodeState);
 
   private int assertRollingRestartSequence(
@@ -552,6 +587,85 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     return position;
   }
 
+  private int assertToggleTlsSequence(
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      ServerType serverType,
+      int startPosition,
+      UpgradeParams.UpgradeOption option) {
+    int position = startPosition;
+    if (option == UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+      List<TaskType> taskSequence = TOGGLE_TLS_ROLLING_UPGRADE_TASK_SEQUENCE;
+      List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
+
+      for (int nodeIdx : nodeOrder) {
+        String nodeName = String.format("host-n%d", nodeIdx);
+        for (TaskType type : taskSequence) {
+          List<TaskInfo> tasks = subTasksByPosition.get(position);
+          TaskType taskType = tasks.get(0).getTaskType();
+          assertEquals(1, tasks.size());
+          assertEquals(type, taskType);
+          if (!NON_NODE_TASKS.contains(taskType)) {
+            Map<String, Object> assertValues =
+                new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
+            if (taskType.equals(TaskType.AnsibleConfigureServers)) {
+              assertValues.putAll(ImmutableMap.of("processType", serverType.toString()));
+            }
+            assertNodeSubTask(tasks, assertValues);
+          }
+          position++;
+        }
+      }
+    } else if (option == UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE) {
+      for (TaskType type : TOGGLE_TLS_NON_ROLLING_UPGRADE_TASK_SEQUENCE) {
+        List<TaskInfo> tasks = subTasksByPosition.get(position);
+        TaskType taskType = assertTaskType(tasks, type);
+
+        if (NON_NODE_TASKS.contains(taskType)) {
+          assertEquals(1, tasks.size());
+        } else {
+          Map<String, Object> assertValues =
+              new HashMap<>(
+                  ImmutableMap.of(
+                      "nodeNames",
+                      (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
+                      "nodeCount",
+                      3));
+          if (taskType.equals(TaskType.AnsibleConfigureServers)) {
+            assertValues.putAll(ImmutableMap.of("processType", serverType.toString()));
+          }
+          assertEquals(3, tasks.size());
+          assertNodeSubTask(tasks, assertValues);
+        }
+        position++;
+      }
+    } else {
+      for (TaskType type : TOGGLE_TLS_NON_RESTART_UPGRADE_TASK_SEQUENCE) {
+        List<TaskInfo> tasks = subTasksByPosition.get(position);
+        TaskType taskType = assertTaskType(tasks, type);
+
+        if (NON_NODE_TASKS.contains(taskType)) {
+          assertEquals(1, tasks.size());
+        } else {
+          Map<String, Object> assertValues =
+              new HashMap<>(
+                  ImmutableMap.of(
+                      "nodeNames",
+                      (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
+                      "nodeCount",
+                      3));
+          if (taskType.equals(TaskType.AnsibleConfigureServers)) {
+            assertValues.putAll(ImmutableMap.of("processType", serverType.toString()));
+          }
+          assertEquals(3, tasks.size());
+          assertNodeSubTask(tasks, assertValues);
+        }
+        position++;
+      }
+    }
+
+    return position;
+  }
+
   public enum UpgradeType {
     ROLLING_UPGRADE,
     ROLLING_UPGRADE_MASTER_ONLY,
@@ -644,8 +758,29 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     return position;
   }
 
-  private void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
+  private int assertToggleTlsCommonTasks(
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      int startPosition,
+      UpgradeParams.UpgradeOption upgradeOption,
+      boolean isMetadataUpdateStep) {
+    int position = startPosition;
+    List<TaskType> commonNodeTasks = new ArrayList<>();
+    if (upgradeOption == UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+      commonNodeTasks.add(TaskType.LoadBalancerStateChange);
+    }
+    if (isMetadataUpdateStep) {
+      commonNodeTasks.addAll(ImmutableList.of(TaskType.UniverseSetTlsParams));
+    }
 
+    for (TaskType commonNodeTask : commonNodeTasks) {
+      assertTaskType(subTasksByPosition.get(position), commonNodeTask);
+      position++;
+    }
+
+    return position;
+  }
+
+  private void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
         subTasks
             .stream()
@@ -1325,6 +1460,296 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
+  }
+
+  private int getNodeToNodeChangeForToggleTls(boolean enableNodeToNodeEncrypt) {
+    return defaultUniverse
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .enableNodeToNodeEncrypt
+            != enableNodeToNodeEncrypt
+        ? (enableNodeToNodeEncrypt ? 1 : -1)
+        : 0;
+  }
+
+  private void prepareUniverseForToggleTls(boolean nodeToNode, boolean clientToNode, UUID rootCA)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo.create(
+        rootCA,
+        defaultCustomer.uuid,
+        "test1",
+        new Date(),
+        new Date(),
+        "privateKey",
+        TestHelper.TMP_PATH + "/ca.crt",
+        CertificateInfo.Type.SelfSigned);
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            universe -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
+              UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+              userIntent.enableNodeToNodeEncrypt = nodeToNode;
+              userIntent.enableClientToNodeEncrypt = clientToNode;
+              universeDetails.allowInsecure = true;
+              if (nodeToNode || clientToNode) {
+                universeDetails.allowInsecure = false;
+                universeDetails.rootCA = rootCA;
+              }
+              universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              universe.setUniverseDetails(universeDetails);
+            },
+            false);
+  }
+
+  private UpgradeUniverse.Params getTaskParamsForToggleTls(
+      boolean nodeToNode,
+      boolean clientToNode,
+      UUID rootCA,
+      UpgradeParams.UpgradeOption upgradeOption) {
+    UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
+    taskParams.upgradeOption = upgradeOption;
+    taskParams.enableNodeToNodeEncrypt = nodeToNode;
+    taskParams.enableClientToNodeEncrypt = clientToNode;
+    taskParams.rootCA = rootCA;
+    return taskParams;
+  }
+
+  private Pair<UpgradeParams.UpgradeOption, UpgradeParams.UpgradeOption>
+      getUpgradeOptionsForToggleTls(int nodeToNodeChange, boolean isRolling) {
+    if (isRolling) {
+      return new Pair<>(
+          nodeToNodeChange < 0
+              ? UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE
+              : UpgradeParams.UpgradeOption.ROLLING_UPGRADE,
+          nodeToNodeChange > 0
+              ? UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE
+              : UpgradeParams.UpgradeOption.ROLLING_UPGRADE);
+    } else {
+      return new Pair<>(
+          nodeToNodeChange < 0
+              ? UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE
+              : UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE,
+          nodeToNodeChange > 0
+              ? UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE
+              : UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE);
+    }
+  }
+
+  private Pair<Integer, Integer> getExpectedValuesForToggleTls(UpgradeUniverse.Params taskParams) {
+    int nodeToNodeChange = getNodeToNodeChangeForToggleTls(taskParams.enableNodeToNodeEncrypt);
+    int expectedPosition = 1;
+    int expectedNumberOfInvocations = 0;
+
+    if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
+      expectedPosition += 1;
+      expectedNumberOfInvocations += 3;
+    }
+
+    if (taskParams.upgradeOption == UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+      if (nodeToNodeChange != 0) {
+        expectedPosition += 58;
+        expectedNumberOfInvocations += 24;
+      } else {
+        expectedPosition += 50;
+        expectedNumberOfInvocations += 18;
+      }
+    } else {
+      if (nodeToNodeChange != 0) {
+        expectedPosition += 20;
+        expectedNumberOfInvocations += 24;
+      } else {
+        expectedPosition += 12;
+        expectedNumberOfInvocations += 18;
+      }
+    }
+
+    return new Pair<>(expectedPosition, expectedNumberOfInvocations);
+  }
+
+  @Test
+  public void testToggleTlsUpgradeInvalidUpgradeOption() {
+    UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
+    taskParams.enableNodeToNodeEncrypt = true;
+    taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    if (taskInfo == null) {
+      fail();
+    }
+
+    defaultUniverse.refresh();
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(0, taskInfo.getSubTasks().size());
+  }
+
+  @Test
+  public void testToggleTlsUpgradeWithoutChangeInParams() {
+    UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    if (taskInfo == null) {
+      fail();
+    }
+
+    defaultUniverse.refresh();
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(0, taskInfo.getSubTasks().size());
+  }
+
+  @Test
+  public void testToggleTlsUpgradeWithoutRootCa() {
+    UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
+    taskParams.enableNodeToNodeEncrypt = true;
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    if (taskInfo == null) {
+      fail();
+    }
+
+    defaultUniverse.refresh();
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(0, taskInfo.getSubTasks().size());
+  }
+
+  @Test
+  @Parameters({
+    "true, true, false, true",
+    "true, true, false, false",
+    "true, false, false, true",
+    "true, false, false, false",
+    "false, true, true, true",
+    "false, true, true, false",
+    "false, false, true, true",
+    "false, false, true, false",
+    "true, true, true, false",
+    "true, false, true, true",
+    "false, true, false, false",
+    "false, false, false, true"
+  })
+  @TestCaseName(
+      "testToggleTlsNonRollingUpgradeWhen"
+          + "CurrNodeToNode:{0}_CurrClientToNode:{1}_NodeToNode:{2}_ClientToNode:{3}")
+  public void testToggleTlsNonRollingUpgrade(
+      boolean currentNodeToNode,
+      boolean currentClientToNode,
+      boolean nodeToNode,
+      boolean clientToNode)
+      throws IOException, NoSuchAlgorithmException {
+    UUID rootCA = UUID.randomUUID();
+    prepareUniverseForToggleTls(currentNodeToNode, currentClientToNode, rootCA);
+    UpgradeUniverse.Params taskParams =
+        getTaskParamsForToggleTls(
+            nodeToNode, clientToNode, rootCA, UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE);
+
+    int nodeToNodeChange = getNodeToNodeChangeForToggleTls(nodeToNode);
+    Pair<UpgradeParams.UpgradeOption, UpgradeParams.UpgradeOption> upgrade =
+        getUpgradeOptionsForToggleTls(nodeToNodeChange, false);
+    Pair<Integer, Integer> expectedValues = getExpectedValuesForToggleTls(taskParams);
+
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    if (taskInfo == null) {
+      fail();
+    }
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    int position = 0;
+    if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
+      // Cert update tasks will be non rolling
+      List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
+      assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
+      assertEquals(3, certUpdateTasks.size());
+    }
+    // First round gflag update tasks
+    position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.first);
+    position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.first);
+    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.first, true);
+    if (nodeToNodeChange != 0) {
+      // Second round gflag update tasks
+      position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.second);
+      position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.second);
+    }
+
+    assertEquals((int) expectedValues.first, position);
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
+  }
+
+  @Test
+  @Parameters({
+    "true, true, false, true",
+    "true, true, false, false",
+    "true, false, false, true",
+    "true, false, false, false",
+    "false, true, true, true",
+    "false, true, true, false",
+    "false, false, true, true",
+    "false, false, true, false",
+    "true, true, true, false",
+    "true, false, true, true",
+    "false, true, false, false",
+    "false, false, false, true"
+  })
+  @TestCaseName(
+      "testToggleTlsRollingUpgradeWhen"
+          + "CurrNodeToNode:{0}_CurrClientToNode:{1}_NodeToNode:{2}_ClientToNode:{3}")
+  public void testToggleTlsRollingUpgrade(
+      boolean currentNodeToNode,
+      boolean currentClientToNode,
+      boolean nodeToNode,
+      boolean clientToNode)
+      throws IOException, NoSuchAlgorithmException {
+    UUID rootCA = UUID.randomUUID();
+    prepareUniverseForToggleTls(currentNodeToNode, currentClientToNode, rootCA);
+    UpgradeUniverse.Params taskParams =
+        getTaskParamsForToggleTls(
+            nodeToNode, clientToNode, rootCA, UpgradeParams.UpgradeOption.ROLLING_UPGRADE);
+
+    int nodeToNodeChange = getNodeToNodeChangeForToggleTls(nodeToNode);
+    Pair<UpgradeParams.UpgradeOption, UpgradeParams.UpgradeOption> upgrade =
+        getUpgradeOptionsForToggleTls(nodeToNodeChange, true);
+    Pair<Integer, Integer> expectedValues = getExpectedValuesForToggleTls(taskParams);
+
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    if (taskInfo == null) {
+      fail();
+    }
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    int position = 0;
+    if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
+      // Cert update tasks will be non rolling
+      List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
+      assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
+      assertEquals(3, certUpdateTasks.size());
+    }
+    // First round gflag update tasks
+    position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.first);
+    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.first, false);
+    position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.first);
+    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.first, true);
+    if (nodeToNodeChange != 0) {
+      // Second round gflag update tasks
+      position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.second);
+      position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.second, false);
+      position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.second);
+      position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.second, false);
+    }
+
+    assertEquals((int) expectedValues.first, position);
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
   }
 
   private List<Integer> getRollingUpgradeNodeOrder(ServerType serverType) {

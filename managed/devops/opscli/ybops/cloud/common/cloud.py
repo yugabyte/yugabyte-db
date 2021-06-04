@@ -233,6 +233,7 @@ class AbstractCloud(AbstractCommandParser):
         remote_shell.run_command('cp {} {}'.format(node_key_path,
                                                    os.path.join(certs_node_dir, key_file)))
         remote_shell.run_command('chmod 400 {}/*'.format(certs_node_dir))
+
         if "client_cert_path" in extra_vars:
             client_cert_path = extra_vars["client_cert_path"]
             client_key_path = extra_vars["client_key_path"]

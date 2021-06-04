@@ -16,11 +16,22 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -32,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 
@@ -491,6 +503,108 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--client_key_path");
             subcommand.add(customCertInfo.clientKeyPath);
           }
+        }
+        break;
+      case ToggleTls:
+        String processType = taskParam.getProperty("processType");
+        String subType = taskParam.getProperty("taskSubType");
+
+        if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+          throw new RuntimeException("Invalid processType: " + processType);
+        } else {
+          subcommand.add("--yb_process_type");
+          subcommand.add(processType.toLowerCase());
+        }
+
+        String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
+        String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
+        String allowInsecureString = String.valueOf(taskParam.allowInsecure);
+
+        String certsNodeDir =
+            Provider.getOrBadRequest(
+                        UUID.fromString(
+                            universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                    .getYbHome()
+                + "/yugabyte-tls-config";
+
+        if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+          if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+            CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
+            if (cert == null) {
+              throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
+            }
+
+            subcommand.add("--adding_certs");
+            subcommand.add("--certs_node_dir");
+            subcommand.add(certsNodeDir);
+
+            if (cert.certType == CertificateInfo.Type.SelfSigned) {
+              subcommand.add("--rootCA_cert");
+              subcommand.add(cert.certificate);
+              subcommand.add("--rootCA_key");
+              subcommand.add(cert.privateKey);
+              if (taskParam.enableClientToNodeEncrypt) {
+                subcommand.add("--client_cert");
+                subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+                subcommand.add("--client_key");
+                subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+              }
+            } else {
+              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+              subcommand.add("--use_custom_certs");
+              subcommand.add("--root_cert_path");
+              subcommand.add(customCertInfo.rootCertPath);
+              subcommand.add("--node_cert_path");
+              subcommand.add(customCertInfo.nodeCertPath);
+              subcommand.add("--node_key_path");
+              subcommand.add(customCertInfo.nodeKeyPath);
+              if (customCertInfo.clientCertPath != null) {
+                subcommand.add("--client_cert_path");
+                subcommand.add(customCertInfo.clientCertPath);
+                subcommand.add("--client_key_path");
+                subcommand.add(customCertInfo.clientKeyPath);
+              }
+            }
+          } else {
+            throw new RuntimeException("No changes needed for both root cert and client cert.");
+          }
+        } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+          Map<String, String> gflags = new HashMap<>();
+          if (taskParam.nodeToNodeChange > 0) {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", "true");
+            gflags.put("certs_dir", certsNodeDir);
+          } else if (taskParam.nodeToNodeChange < 0) {
+            gflags.put("allow_insecure_connections", "true");
+          } else {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", allowInsecureString);
+            gflags.put("certs_dir", certsNodeDir);
+          }
+
+          subcommand.add("--replace_gflags");
+          subcommand.add("--gflags");
+          subcommand.add(Json.stringify(Json.toJson(gflags)));
+        } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+          Map<String, String> gflags = new HashMap<>();
+          if (taskParam.nodeToNodeChange > 0) {
+            gflags.put("allow_insecure_connections", allowInsecureString);
+          } else if (taskParam.nodeToNodeChange < 0) {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", allowInsecureString);
+            gflags.put("certs_dir", certsNodeDir);
+          } else {
+            LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+          }
+
+          subcommand.add("--replace_gflags");
+          subcommand.add("--gflags");
+          subcommand.add(Json.stringify(Json.toJson(gflags)));
+        } else {
+          throw new RuntimeException("Invalid taskSubType property: " + subType);
         }
         break;
     }

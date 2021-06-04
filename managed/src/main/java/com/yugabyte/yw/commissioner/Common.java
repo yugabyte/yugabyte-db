@@ -48,7 +48,7 @@ public class Common {
     }
 
     public boolean isVM() {
-      return !CloudType.kubernetes.value.equals(this.value);
+      return this != CloudType.kubernetes;
     }
 
     public boolean isRequiresDeviceInfo() {

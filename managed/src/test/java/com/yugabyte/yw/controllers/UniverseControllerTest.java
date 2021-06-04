@@ -13,16 +13,47 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.RunInShellFormData;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.io.FileUtils;
@@ -52,23 +83,49 @@ import play.test.WithApplication;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.common.FakeApiHelper.*;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
+import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.common.PlacementInfoUtil.*;
+import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
+import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
+import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static junit.framework.TestCase.assertFalse;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
@@ -2700,6 +2757,190 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Resume)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  private UUID prepareUniverseForToggleTls(
+      boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt, UUID rootCA) {
+    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(universeUUID, ApiUtils.mockUniverseUpdater());
+    // Update current TLS params
+    Universe.saveDetails(
+        universeUUID,
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.providerType = CloudType.aws;
+          userIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
+          userIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+          universeDetails.rootCA = rootCA;
+          universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+          universe.setUniverseDetails(universeDetails);
+        });
+    return universeUUID;
+  }
+
+  private ObjectNode prepareRequestBodyForToggleTls(
+      boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt, UUID rootCA) {
+    return Json.newObject()
+        .put("enableNodeToNodeEncrypt", enableNodeToNodeEncrypt)
+        .put("enableClientToNodeEncrypt", enableClientToNodeEncrypt)
+        .put("rootCA", rootCA != null ? rootCA.toString() : "");
+  }
+
+  @Test
+  public void testUniverseToggleTlsWithEmptyParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()))
+            .getResult();
+    assertBadRequest(result, "This field is required");
+
+    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseToggleTlsWithInvalidUpgradeOption() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
+    bodyJson.put("upgradeOption", "ROLLING");
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+    assertBadRequest(result, "Invalid upgrade option");
+
+    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseToggleTlsWithNoChangeInParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, false, null);
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+    assertBadRequest(result, "No changes in Tls parameters");
+
+    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseToggleTlsWithInvalidRootCa() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, false, UUID.randomUUID());
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+    assertBadRequest(result, "No valid rootCA");
+
+    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseToggleTlsWithRootCaUpdate() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID certUUID1 = CertificateHelper.createRootCA("test cert 1", customer.uuid, "/tmp/certs");
+    UUID certUUID2 = CertificateHelper.createRootCA("test cert 2", customer.uuid, "/tmp/certs");
+    UUID universeUUID = prepareUniverseForToggleTls(true, true, certUUID1);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, true, certUUID2);
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+    assertBadRequest(result, "Cannot update root certificate");
+
+    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseToggleTlsWithNodesInTransit() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
+    setInTransitNode(universeUUID);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+    assertBadRequest(result, "as it has nodes in one of");
+
+    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseToggleTlsWithValidParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+
+    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
+
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    assertNotNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
     assertAuditEntry(1, customer.uuid);
   }
 

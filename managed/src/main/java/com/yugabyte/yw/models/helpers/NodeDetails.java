@@ -72,7 +72,9 @@ public class NodeDetails {
     // After a stopped/removed node is returned back to the IaaS.
     Decommissioned(ADD, DELETE),
     // Set when the cert is being updated.
-    UpdateCert();
+    UpdateCert(),
+    // Set when TLS params (node-to-node and client-to-node) is being toggled
+    ToggleTls();
 
     private final NodeActionType[] allowedActions;
 
@@ -182,7 +184,8 @@ public class NodeDetails {
         || state == NodeState.ToBeRemoved
         || state == NodeState.Removing
         || state == NodeState.Stopping
-        || state == NodeState.UpdateCert);
+        || state == NodeState.UpdateCert
+        || state == NodeState.ToggleTls);
   }
 
   @JsonIgnore
