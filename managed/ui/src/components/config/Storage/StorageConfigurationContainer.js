@@ -37,11 +37,11 @@ const mapDispatchToProps = (dispatch) => {
             response.payload?.response?.data?.error || response.payload.message;
           Object.keys(errorMessageObject).forEach((errorKey) => {
             toast.error(
-              <ol>
+              <ul>
                 {errorMessageObject[errorKey].map((error) => (
                   <li>{error}</li>
                 ))}
-              </ol>
+              </ul>
             );
           });
         } else {
