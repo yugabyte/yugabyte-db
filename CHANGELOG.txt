@@ -5,7 +5,7 @@ NEW FEATURES
 
 BUG FIXES
 =========
--- Fixed security issue that could allow arbitrary code execution using SECURITY DEFINER functions. Set explicit search_path to avoid this. Thanks to Github user @tapioaiven of Aiven Ltd for reporting the issue.
+-- CVE-2021-33204 - Fixed security issue that could allow arbitrary code execution using SECURITY DEFINER functions. Set explicit search_path to avoid this. Thanks to Github user @tapioaiven of Aiven Ltd for reporting the issue. https://nvd.nist.gov/vuln/detail/CVE-2021-33204
 
 -- Fixed several bugs in sub-partitioning when using a mixture of epoch and regular integer partitioning in the same partition set (Github Issue #357).
 
