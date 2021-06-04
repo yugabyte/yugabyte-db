@@ -1,22 +1,21 @@
 ---
-title: Deploy to two data centers with asynchronous replication
+title: Deploy to two universes with asynchronous replication
 headerTitle: Asynchronous Replication
 linkTitle: Asynchronous Replication
-description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between data centers
+description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 menu:
   latest:
     parent: multi-dc
     identifier: async-replication
     weight: 633
-aliases:
 type: page
 isTocNested: true
 showAsideToc: true
 ---
 
-You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between data centers.
+You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).
 
-For information on two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments).
+For information on two data-center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments).
 
 ## Setting Up Universes
 
@@ -67,7 +66,7 @@ The preceding command contains three table IDs: the first two are YSQL for the b
 
 Also, be sure to specify all master addresses for producer and consumer universes in the command.
 
-If you need to set up bidirectional replication, see instructions in provided in [Setting Up Bidirectional Replication](#setting-up-bidirectional-replication). Otherwise, proceed to [Loading Data into the Producer Universe](#loading-data-into-the-producer-universe).
+If you need to set up bidirectional replication, see instructions provided in [Setting Up Bidirectional Replication](#setting-up-bidirectional-replication). Otherwise, proceed to [Loading Data into the Producer Universe](#loading-data-into-the-producer-universe).
 
 ## Setting Up Bidirectional Replication
 
@@ -103,7 +102,7 @@ When completed, proceed to [Verifying Replication](#verifying-replication).
 
 ## Verifying Replication
 
-You can verify whether or not replication has been successful.
+You can verify replication by stopping the workload and then using the `COUNT(*)` function on the yugabyte-consumer to yugabyte-producer match.
 
 ### Unidirectional Replication
 
@@ -117,7 +116,7 @@ For bidirectional replication, repeat the procedure described in [Unidirectional
 2. Use the workload generator to start loading data into the yugabyte-consumer universe.
 3. Verify Replication from yugabyte-consumer to yugabyte-producer.
 
-To avoid primary key conflict errors, keep the key ranges for the two universes separate.
+To avoid primary key conflict errors, keep the key ranges for the two universes separate. This is done automatically by the applications included in the `yb-sample-apps.jar`.
 
 ### Replication Lag
 
@@ -127,7 +126,7 @@ Replication lag is computed at the tablet level as follows:
 
 *hybrid_clock_time* is the hybrid clock timestamp on the producer's tablet-server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the producer.
 
-An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates the replication lag for you. The script requires the [`jq`](https://stedolan.github.io/jq/) package.
+An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates the replication lag. The script requires the [`jq`](https://stedolan.github.io/jq/) package.
 
 The following example generates a replication lag summary for all tables on a cluster. You can also request an individual table.
 
@@ -135,4 +134,4 @@ The following example generates a replication lag summary for all tables on a cl
 ./determine_repl_latency.sh -m 10.150.255.114,10.150.255.115,10.150.255.113
 ```
 
-To obtain a summary of all command options, call `determine_repl_latency.sh -h` .
+To obtain a summary of all command options, execute `determine_repl_latency.sh -h` .
