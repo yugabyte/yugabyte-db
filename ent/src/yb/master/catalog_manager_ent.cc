@@ -728,7 +728,6 @@ Status CatalogManager::ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapsh
       case SysRowEntry::TABLET: // Preprocess original tablets.
         RETURN_NOT_OK(PreprocessTabletEntry(entry, tables_data));
         break;
-      case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
       case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::UDTYPE: FALLTHROUGH_INTENDED;
@@ -737,7 +736,9 @@ Status CatalogManager::ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapsh
       case SysRowEntry::CDC_STREAM: FALLTHROUGH_INTENDED;
       case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
       case SysRowEntry::SNAPSHOT:  FALLTHROUGH_INTENDED;
-      case SysRowEntry::SNAPSHOT_SCHEDULE:
+      case SysRowEntry::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
+      case SysRowEntry::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntry::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntry::Type, entry.type());
     }
   }
