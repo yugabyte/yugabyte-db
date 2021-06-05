@@ -100,7 +100,6 @@ Status WriteOperation::Prepare() {
 
 Status WriteOperation::DoAborted(const Status& status) {
   TRACE("FINISH: aborting operation");
-  state()->Release();
   return status;
 }
 
