@@ -9,6 +9,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -415,6 +416,7 @@ public class UniverseControllerTest extends WithApplication {
             .put("accessKeyCode", accessKeyCode);
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
@@ -466,6 +468,7 @@ public class UniverseControllerTest extends WithApplication {
             .put("enableYSQL", "true");
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
@@ -518,6 +521,7 @@ public class UniverseControllerTest extends WithApplication {
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     ObjectNode bodyJson = Json.newObject().put("nodePrefix", "demo-node");
@@ -567,6 +571,7 @@ public class UniverseControllerTest extends WithApplication {
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
@@ -607,6 +612,7 @@ public class UniverseControllerTest extends WithApplication {
             .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.kubernetes));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
@@ -1995,6 +2001,7 @@ public class UniverseControllerTest extends WithApplication {
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     ObjectNode cloudInfo = Json.newObject();
@@ -2067,6 +2074,7 @@ public class UniverseControllerTest extends WithApplication {
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     NodeDetails nodeDetails1 = new NodeDetails();
@@ -2136,6 +2144,7 @@ public class UniverseControllerTest extends WithApplication {
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     ObjectNode cloudInfo = Json.newObject();
@@ -2442,7 +2451,7 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = createUniverse(customer.getCustomerId());
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
-    setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
+    setupDiskUpdateTest(100, "c4.xlarge", StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
@@ -2463,7 +2472,7 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = createUniverse(customer.getCustomerId());
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
-    setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.Scratch, u);
+    setupDiskUpdateTest(100, "c4.xlarge", StorageType.Scratch, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
@@ -2484,7 +2493,7 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = createUniverse(customer.getCustomerId());
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
-    setupDiskUpdateTest(100, "i3.xlarge", PublicCloudConstants.StorageType.GP2, u);
+    setupDiskUpdateTest(100, "i3.xlarge", StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
@@ -2509,7 +2518,7 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = createUniverse(customer.getCustomerId());
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
-    setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
+    setupDiskUpdateTest(100, "c4.xlarge", StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
@@ -2554,6 +2563,7 @@ public class UniverseControllerTest extends WithApplication {
     userIntentJson.put("accessKeyCode", accessKeyCode);
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", Json.newArray());
 
@@ -2732,5 +2742,407 @@ public class UniverseControllerTest extends WithApplication {
             .getResult();
     assertBadRequest(result, "Cannot find universe " + randomUUID);
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  @Parameters(method = "parametersToDeviceInfoValidation")
+  public void testUniverseCreateDeviceInfoValidation(
+      CloudType cloudType,
+      String instanceType,
+      StorageType storageType,
+      Integer numVolumes,
+      Integer volumeSize,
+      Integer diskIops,
+      Integer throughput,
+      String mountPoints,
+      String errorMessage) {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(
+            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p;
+    switch (cloudType) {
+      case aws:
+        p = ModelFactory.awsProvider(customer);
+        break;
+      case gcp:
+        p = ModelFactory.gcpProvider(customer);
+        break;
+      case azu:
+        p = ModelFactory.azuProvider(customer);
+        break;
+      case kubernetes:
+        p = ModelFactory.kubernetesProvider(customer);
+        break;
+      case onprem:
+        p = ModelFactory.onpremProvider(customer);
+        break;
+      case other:
+        p = ModelFactory.newProvider(customer, CloudType.other);
+        break;
+      default:
+        throw new UnsupportedOperationException();
+    }
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "SingleUserUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString())
+            .put("accessKeyCode", accessKeyCode);
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ObjectNode deviceInfo =
+        createDeviceInfo(storageType, numVolumes, volumeSize, diskIops, throughput, mountPoints);
+    if (deviceInfo.fields().hasNext()) {
+      userIntentJson.set("deviceInfo", deviceInfo);
+    }
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    if (errorMessage == null) {
+      Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+      assertOk(result);
+    } else {
+      Result result =
+          assertThrows(
+                  YWServiceException.class,
+                  () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+              .getResult();
+      assertBadRequest(result, errorMessage);
+    }
+  }
+
+  @SuppressWarnings("unused")
+  private Object[] parametersToDeviceInfoValidation() {
+    return new Object[][] {
+      // Success cases
+      {CloudType.aws, "c3.xlarge", StorageType.GP2, 1, 100, null, null, null, null},
+      {CloudType.aws, "c3.xlarge", StorageType.IO1, 1, 100, 1000, null, null, null},
+      {CloudType.aws, "c3.xlarge", StorageType.GP3, 1, 100, 1000, 125, null, null},
+      {CloudType.aws, "i3.2xlarge", null, 1, 100, 1000, 125, null, null},
+      {CloudType.aws, "c5d.2xlarge", null, 1, 100, 1000, 125, null, null},
+      {CloudType.gcp, "c3.xlarge", StorageType.Persistent, 1, 100, null, null, null, null},
+      {CloudType.gcp, "c3.xlarge", StorageType.Scratch, 1, 100, null, null, null, null},
+      {CloudType.azu, "c3.xlarge", StorageType.StandardSSD_LRS, 1, 100, null, null, null, null},
+      {CloudType.azu, "c3.xlarge", StorageType.Premium_LRS, 1, 100, null, null, null, null},
+      {CloudType.azu, "c3.xlarge", StorageType.UltraSSD_LRS, 1, 100, null, null, null, null},
+      {CloudType.kubernetes, "c3.xlarge", null, 1, 100, null, null, null, null},
+      {CloudType.onprem, "c3.xlarge", null, 1, 100, null, null, "/var", null},
+      {CloudType.other, "c3.xlarge", null, null, null, null, null, null, null},
+
+      //  Failure cases
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "deviceInfo can't be empty for universe on aws provider"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        null,
+        1,
+        100,
+        null,
+        null,
+        null,
+        "storageType can't be empty for universe on aws provider"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.GP2,
+        null,
+        100,
+        null,
+        null,
+        null,
+        "Number of volumes field is mandatory"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.GP2,
+        1,
+        null,
+        null,
+        null,
+        null,
+        "Volume size field is mandatory"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.Persistent,
+        1,
+        100,
+        null,
+        null,
+        null,
+        "Cloud type aws is not compatible with storage type Persistent"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.IO1,
+        1,
+        100,
+        null,
+        null,
+        null,
+        "Disk IOPS is mandatory for IO1 storage"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.GP3,
+        1,
+        100,
+        null,
+        125,
+        null,
+        "Disk IOPS is mandatory for GP3 storage"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.GP3,
+        1,
+        100,
+        1000,
+        null,
+        null,
+        "Disk throughput is mandatory for GP3 storage"
+      },
+      {
+        CloudType.aws,
+        "i3.2xlarge",
+        StorageType.GP2,
+        1,
+        100,
+        null,
+        null,
+        null,
+        "AWS instance with ephemeral storage can't have storageType set"
+      },
+      {
+        CloudType.aws,
+        "c5d.2xlarge",
+        StorageType.GP2,
+        1,
+        100,
+        null,
+        null,
+        null,
+        "AWS instance with ephemeral storage can't have storageType set"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.GP2,
+        1,
+        -100,
+        null,
+        null,
+        null,
+        "Volume size should be positive"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.GP2,
+        -1,
+        100,
+        null,
+        null,
+        null,
+        "Number of volumes should be positive"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.GP3,
+        1,
+        100,
+        -1,
+        125,
+        null,
+        "Disk IOPS should be positive"
+      },
+      {
+        CloudType.aws,
+        "c3.xlarge",
+        StorageType.GP3,
+        1,
+        100,
+        1000,
+        -1,
+        null,
+        "Disk throughput should be positive"
+      },
+      {
+        CloudType.gcp,
+        "c3.xlarge",
+        StorageType.Persistent,
+        null,
+        100,
+        null,
+        null,
+        null,
+        "Number of volumes field is mandatory"
+      },
+      {
+        CloudType.gcp,
+        "c3.xlarge",
+        StorageType.Scratch,
+        1,
+        null,
+        null,
+        null,
+        null,
+        "Volume size field is mandatory"
+      },
+      {
+        CloudType.azu,
+        "c3.xlarge",
+        StorageType.StandardSSD_LRS,
+        null,
+        100,
+        null,
+        null,
+        null,
+        "Number of volumes field is mandatory"
+      },
+      {
+        CloudType.azu,
+        "c3.xlarge",
+        StorageType.Premium_LRS,
+        1,
+        null,
+        null,
+        null,
+        null,
+        "Volume size field is mandatory"
+      },
+      {
+        CloudType.kubernetes,
+        "c3.xlarge",
+        null,
+        null,
+        100,
+        null,
+        null,
+        null,
+        "Number of volumes field is mandatory"
+      },
+      {
+        CloudType.kubernetes,
+        "c3.xlarge",
+        null,
+        1,
+        null,
+        null,
+        null,
+        null,
+        "Volume size field is mandatory"
+      },
+      {
+        CloudType.onprem,
+        "c3.xlarge",
+        null,
+        null,
+        100,
+        null,
+        null,
+        "/var",
+        "Number of volumes field is mandatory"
+      },
+      {
+        CloudType.onprem,
+        "c3.xlarge",
+        null,
+        1,
+        null,
+        null,
+        null,
+        "/var",
+        "Volume size field is mandatory"
+      },
+      {
+        CloudType.onprem,
+        "c3.xlarge",
+        null,
+        1,
+        100,
+        null,
+        null,
+        null,
+        "Mount points are mandatory for onprem cluster"
+      },
+    };
+  }
+
+  private ObjectNode createValidDeviceInfo(CloudType cloudType) {
+    switch (cloudType) {
+      case aws:
+        return createDeviceInfo(StorageType.GP2, 1, 100, null, null, null);
+      case gcp:
+        return createDeviceInfo(StorageType.Persistent, 1, 100, null, null, null);
+      case azu:
+        return createDeviceInfo(StorageType.Premium_LRS, 1, 100, null, null, null);
+      case kubernetes:
+        return createDeviceInfo(null, 1, 100, null, null, null);
+      default:
+        throw new UnsupportedOperationException();
+    }
+  }
+
+  private ObjectNode createDeviceInfo(
+      StorageType storageType,
+      Integer numVolumes,
+      Integer volumeSize,
+      Integer diskIops,
+      Integer throughput,
+      String mountPoints) {
+    ObjectNode deviceInfo = Json.newObject();
+    if (storageType != null) {
+      deviceInfo.put("storageType", storageType.name());
+    }
+    if (volumeSize != null) {
+      deviceInfo.put("volumeSize", volumeSize);
+    }
+    if (numVolumes != null) {
+      deviceInfo.put("numVolumes", numVolumes);
+    }
+    if (diskIops != null) {
+      deviceInfo.put("diskIops", diskIops);
+    }
+    if (throughput != null) {
+      deviceInfo.put("throughput", throughput);
+    }
+    if (mountPoints != null) {
+      deviceInfo.put("mountPoints", mountPoints);
+    }
+    return deviceInfo;
   }
 }

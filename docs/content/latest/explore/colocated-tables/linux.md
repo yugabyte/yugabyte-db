@@ -37,12 +37,14 @@ Colocating tables puts all of their data into a single tablet, called the _coloc
 This can dramatically increase the number of relations (tables, indexes, etc.) that can
 be supported per node while keeping the number of tablets per node low. Note that all the data in the colocation tablet is still replicated across three nodes (or whatever the replication factor is).
 
-This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
 ## 1. Create a universe
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yugabyted start \
+                  --master_flags "ysql_num_shards_per_tserver=2" \
+                  --tserver_flags "ysql_num_shards_per_tserver=2"
 ```
 
 ## 2. Create a colocated database
@@ -131,6 +133,14 @@ If you go to tables view in [master UI](http://localhost:7000/tables), you'll se
 
 You can use standard [YSQL DML statements](../../../api/ysql) to read and write data in colocated tables. YSQL's query planner and executor
 will handle routing the data to the correct tablet.
+
+## 6. Clean up (optional)
+
+Optionally, you can shut down the local cluster created in Step 1.
+
+```sh
+$ ./bin/yugabyted destroy
+```
 
 ## What's next?
 

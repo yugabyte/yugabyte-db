@@ -79,6 +79,10 @@ public class ModelFactory {
     return Provider.create(customer.uuid, Common.CloudType.gcp, "Google");
   }
 
+  public static Provider azuProvider(Customer customer) {
+    return Provider.create(customer.uuid, Common.CloudType.azu, "Azure");
+  }
+
   public static Provider onpremProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.onprem, "OnPrem");
   }
@@ -176,25 +180,26 @@ public class ModelFactory {
   public static CustomerConfig createS3StorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", "
-                + "\"ACCESS_SECRET\": \"A-SECRET\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"S3\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
+                + " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createNfsStorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"NFS\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"/foo/bar\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"NFS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createGcsStorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"GCS\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"gs://foo\", \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"GCS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\","
+                + " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 

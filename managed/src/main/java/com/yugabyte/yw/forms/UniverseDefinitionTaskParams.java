@@ -9,19 +9,25 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
 
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -139,6 +145,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   public static class Cluster {
+
+    private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
+        ImmutableSet.of("i3.", "c5d.");
+
     public UUID uuid = UUID.randomUUID();
 
     public void setUuid(UUID uuid) {
@@ -211,6 +221,68 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return true;
       }
 
+      return false;
+    }
+
+    public void validate() {
+      checkDeviceInfo();
+      checkStorageType();
+    }
+
+    private void checkDeviceInfo() {
+      CloudType cloudType = userIntent.providerType;
+      DeviceInfo deviceInfo = userIntent.deviceInfo;
+      if (cloudType.isRequiresDeviceInfo()) {
+        if (deviceInfo == null) {
+          throw new YWServiceException(
+              BAD_REQUEST, "deviceInfo can't be empty for universe on " + cloudType + " provider");
+        }
+        if (cloudType == CloudType.onprem && StringUtils.isEmpty(deviceInfo.mountPoints)) {
+          throw new YWServiceException(
+              BAD_REQUEST, "Mount points are mandatory for onprem cluster");
+        }
+        deviceInfo.validate();
+      }
+    }
+
+    private void checkStorageType() {
+      if (userIntent.deviceInfo == null) {
+        return;
+      }
+      DeviceInfo deviceInfo = userIntent.deviceInfo;
+      CloudType cloudType = userIntent.providerType;
+      if (cloudType == CloudType.aws && isAwsClusterWithEphemeralStorage()) {
+        // Ephemeral storage AWS instances should not have storage type
+        if (deviceInfo.storageType != null) {
+          throw new YWServiceException(
+              BAD_REQUEST, "AWS instance with ephemeral storage can't have" + " storageType set");
+        }
+      } else {
+        if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {
+          throw new YWServiceException(
+              BAD_REQUEST, "storageType can't be empty for universe on " + cloudType + " provider");
+        }
+      }
+      PublicCloudConstants.StorageType storageType = deviceInfo.storageType;
+      if (storageType != null) {
+        if (storageType.getCloudType() != cloudType) {
+          throw new YWServiceException(
+              BAD_REQUEST,
+              "Cloud type "
+                  + cloudType.name()
+                  + " is not compatible with storage type "
+                  + storageType.name());
+        }
+      }
+    }
+
+    @JsonIgnore
+    public boolean isAwsClusterWithEphemeralStorage() {
+      for (String prefix : AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY) {
+        if (userIntent.instanceType.startsWith(prefix)) {
+          return true;
+        }
+      }
       return false;
     }
   }

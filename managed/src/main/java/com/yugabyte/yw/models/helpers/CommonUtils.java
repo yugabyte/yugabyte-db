@@ -5,14 +5,15 @@ package com.yugabyte.yw.models.helpers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
-
-import org.apache.commons.lang3.StringUtils;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
@@ -65,6 +66,11 @@ public class CommonUtils {
         config, CommonUtils::isSensitiveField, (key, value) -> getMaskedValue(key, value));
   }
 
+  public static Map<String, String> maskConfigNew(Map<String, String> config) {
+    return processDataNew(
+        config, CommonUtils::isSensitiveField, (key, value) -> getMaskedValue(key, value));
+  }
+
   private static String getMaskedValue(String key, String value) {
     return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
         ? MASKED_FIELD_VALUE
@@ -103,6 +109,24 @@ public class CommonUtils {
         ((ObjectNode) result)
             .put(entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue()));
       }
+    }
+    return result;
+  }
+
+  private static Map<String, String> processDataNew(
+      Map<String, String> data,
+      Predicate<String> selector,
+      BiFunction<String, String, String> getter) {
+    HashMap<String, String> result = new HashMap<>();
+    if (data != null) {
+      data.forEach(
+          (k, v) -> {
+            if (selector.test(k)) {
+              result.put(k, getter.apply(k, v));
+            } else {
+              result.put(k, v);
+            }
+          });
     }
     return result;
   }

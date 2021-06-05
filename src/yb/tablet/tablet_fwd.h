@@ -41,6 +41,7 @@ typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
 class Operation;
 class OperationFilter;
+class OperationState;
 class SnapshotCoordinator;
 class SnapshotOperationState;
 class SplitOperationState;

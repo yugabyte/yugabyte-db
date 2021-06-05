@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-import React from 'react';
+
 import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import { StorageConfiguration } from '../../config';
@@ -10,17 +10,16 @@ import {
   fetchCustomerConfigsResponse,
   deleteCustomerConfig,
   deleteCustomerConfigResponse,
-  setInitialConfigValues,
-  updateCustomerConfig,
-  updateCustomerConfigResponse
+  editCustomerConfig,
+  editCustomerConfigResponse,
+  setInitialValues
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
-import { toast } from 'react-toastify';
 
 const mapStateToProps = (state) => {
   return {
     addConfig: state.customer.addConfig,
-    updateConfig: state.customer.updateConfig,
+    editConfig: state.customer.editConfig,
     customerConfigs: state.customer.configs,
     visibleModal: state.modal.visibleModal,
     deleteConfig: state.customer.deleteConfig,
@@ -32,32 +31,17 @@ const mapDispatchToProps = (dispatch) => {
   return {
     addCustomerConfig: (config) => {
       return dispatch(addCustomerConfig(config)).then((response) => {
-        if (response.error) {
-          const errorMessageObject =
-            response.payload?.response?.data?.error || response.payload.message;
-          Object.keys(errorMessageObject).forEach((errorKey) => {
-            toast.error(
-              <ol>
-                {errorMessageObject[errorKey].map((error) => (
-                  <li>{error}</li>
-                ))}
-              </ol>
-            );
-          });
-        } else {
-          toast.success('Successfully added the backup configuration.');
-        }
         return dispatch(addCustomerConfigResponse(response.payload));
       });
     },
 
-    setInitialConfigValues: (initialValues) => {
-      return dispatch(setInitialConfigValues(initialValues));
+    setInitialValues: (initialValues) => {
+      return dispatch(setInitialValues(initialValues));
     },
 
-    updateCustomerConfig: (config) => {
-      return dispatch(updateCustomerConfig(config)).then((res) => {
-        dispatch(updateCustomerConfigResponse(res.payload));
+    editCustomerConfig: (config) => {
+      return dispatch(editCustomerConfig(config)).then((response) => {
+        return dispatch(editCustomerConfigResponse(response.payload));
       });
     },
 

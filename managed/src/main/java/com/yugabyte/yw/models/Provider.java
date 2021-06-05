@@ -3,10 +3,10 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.YWServiceException;
@@ -22,7 +22,7 @@ import javax.persistence.*;
 import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
@@ -85,13 +85,9 @@ public class Provider extends Model {
     this.save();
   }
 
-  @JsonIgnore
-  public JsonNode getMaskedConfig() {
-    if (this.config == null) {
-      return Json.newObject();
-    } else {
-      return maskConfig(this.config);
-    }
+  @JsonProperty("config")
+  public Map<String, String> getMaskedConfig() {
+    return maskConfigNew(this.getConfig());
   }
 
   @JsonIgnore
