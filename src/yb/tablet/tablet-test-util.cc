@@ -70,7 +70,7 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
   ChangeMetadataOperationState operation_state(nullptr, nullptr, &req);
   ASSERT_OK(tablet()->CreatePreparedChangeMetadata(&operation_state, &schema));
   ASSERT_OK(tablet()->AlterSchema(&operation_state));
-  operation_state.Finish();
+  operation_state.Release();
 }
 
 Status IterateToStringList(
