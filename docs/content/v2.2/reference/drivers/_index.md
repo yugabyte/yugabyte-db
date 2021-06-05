@@ -27,18 +27,6 @@ menu:
     </a>
   </div>
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yugabytedb-jdbc-driver/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">YugabyteDB JDBC driver</div>
-      </div>
-      <div class="body">
-        Build applications using the cluster-aware YugabyteDB JDBC driver.
-      </div>
-    </a>
-  </div>
-
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ycql-client-drivers/">
       <div class="head">
@@ -50,7 +38,6 @@ menu:
       </div>
     </a>
   </div>
-
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
    <a class="section-link icon-offset" href="spring-data-yugabytedb/">

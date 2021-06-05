@@ -14,11 +14,7 @@ showAsideToc: true
 
 ## Do YugabyteDB clusters need an external load balancer?
 
-For YSQL, an external load balancer is recommended, but note the following:
-
-- If you use the [YugabyteDB JDBC driver (beta)](../../reference/drivers/yugabytedb-jdbc-driver) with an application regularly opens and closes connections to clients, then the YugabyteDB JDBC driver effectively provides basic load balancing by randomly using connections to your nodes.
-- If you use the [Spring Data Yugabyte driver (beta)](../../reference/drivers/spring-data-yugabytedb) with your Spring application, then the underlying YugabyteDB JDBC driver provides basic load balancing.
-- If you have an application that is not in the same Kubernetes cluster, then you should use an external load balancing system.
+For YSQL, an external load balancer is recommended.
 
 For YCQL, YugabyteDB provides automatic load balancing.
 
