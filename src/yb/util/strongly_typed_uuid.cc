@@ -19,13 +19,17 @@ namespace {
 
 // Makes transaction id from its binary representation.
 // If check_exact_size is true, checks that slice contains only TransactionId.
-Result<boost::uuids::uuid> DoDecodeUuid(const Slice &slice, const bool check_exact_size) {
+Result<boost::uuids::uuid> DoDecodeUuid(
+    const Slice &slice, const bool check_exact_size, const char* name) {
   if (check_exact_size ? slice.size() != boost::uuids::uuid::static_size()
                        : slice.size() < boost::uuids::uuid::static_size()) {
+    if (!name) {
+      name = "UUID";
+    }
     return STATUS_FORMAT(
-        Corruption, "Invalid length of binary data with transaction id '$0': $1 (expected $2$3)",
+        Corruption, "Invalid length of binary data with $4 '$0': $1 (expected $2$3)",
         slice.ToDebugHexString(), slice.size(), check_exact_size ? "" : "at least ",
-        boost::uuids::uuid::static_size());
+        boost::uuids::uuid::static_size(), name);
   }
   boost::uuids::uuid id;
   memcpy(id.data, slice.data(), boost::uuids::uuid::static_size());
@@ -34,8 +38,8 @@ Result<boost::uuids::uuid> DoDecodeUuid(const Slice &slice, const bool check_exa
 
 } // namespace
 
-Result<boost::uuids::uuid> FullyDecodeUuid(const Slice& slice) {
-  return DoDecodeUuid(slice, /* check_exact_size= */ true);
+Result<boost::uuids::uuid> FullyDecodeUuid(const Slice& slice, const char* name) {
+  return DoDecodeUuid(slice, /* check_exact_size= */ true, name);
 }
 
 boost::uuids::uuid TryFullyDecodeUuid(const Slice& slice) {
@@ -47,8 +51,8 @@ boost::uuids::uuid TryFullyDecodeUuid(const Slice& slice) {
   return id;
 }
 
-Result<boost::uuids::uuid> DecodeUuid(Slice* slice) {
-  auto id = VERIFY_RESULT(DoDecodeUuid(*slice, /* check_exact_size= */ false));
+Result<boost::uuids::uuid> DecodeUuid(Slice* slice, const char* name) {
+  auto id = VERIFY_RESULT(DoDecodeUuid(*slice, /* check_exact_size= */ false, name));
   slice->remove_prefix(boost::uuids::uuid::static_size());
   return id;
 }

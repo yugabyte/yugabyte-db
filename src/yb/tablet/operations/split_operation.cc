@@ -60,7 +60,7 @@ Status SplitOperationState::RejectionStatus(
     const TabletId& child1, const TabletId& child2) {
   auto status = STATUS_EC_FORMAT(
       IllegalState, consensus::ConsensusError(consensus::ConsensusErrorPB::TABLET_SPLIT),
-      "Tablet split has been $0, operation $1 $2 should be retried to new tablets.",
+      "Tablet split has been $0, operation $1 $2 should be retried to new tablets",
       split_op_id.empty() ? "applied" : Format("added to Raft log ($0)", split_op_id),
       OperationType_Name(op_type), rejected_op_id);
   return status.CloneAndAddErrorCode(SplitChildTabletIdsData({child1, child2}));

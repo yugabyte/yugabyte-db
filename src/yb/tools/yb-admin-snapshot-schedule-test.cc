@@ -25,6 +25,7 @@
 #include "yb/util/date_time.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -73,7 +74,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     std::string restoration_id = VERIFY_RESULT(Get(out, "restoration_id")).get().GetString();
     LOG(INFO) << "Restoration id: " << restoration_id;
 
-    return WaitRestorationDone(restoration_id, 20s);
+    return WaitRestorationDone(restoration_id, 40s);
   }
 
   CHECKED_STATUS WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
@@ -109,7 +110,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return Status::OK();
   }
 
-  std::vector<std::string> ExtraTSFlags() {
+  virtual std::vector<std::string> ExtraTSFlags() {
     return {};
   }
 
@@ -451,6 +452,151 @@ TEST_F(YbAdminSnapshotScheduleTest, AlterTable) {
     // But it should not succeed because of last column type.
     ASSERT_NOK(conn.ExecuteQuery(Format(
         "INSERT INTO test_table (key, value, value2) VALUES ($0, 'D', 'Y')", key)));
+  }
+}
+
+class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
+ public:
+  virtual std::vector<std::string> ExtraTSFlags() {
+    return { "--consistent_restore=true", "--TEST_tablet_delay_restore_ms=400" };
+  }
+};
+
+CHECKED_STATUS WaitWrites(int num, std::atomic<int>* current) {
+  auto stop = current->load() + num;
+  return WaitFor([current, stop] { return current->load() >= stop; },
+                 20s, Format("Wait $0 ($1) writes", stop, num));
+}
+
+YB_DEFINE_ENUM(KeyState, (kNone)(kMissing)(kBeforeMissing)(kAfterMissing));
+
+// Check that restoration is consistent across tablets.
+// Concurrently write keys and store event stream, i.e when we started or finished to write key.
+// After restore we fetch all keys and see what keys were removed during restore.
+// So for each such key we could find what keys were written strictly before it,
+// i.e. before restore. Or strictly after, i.e. after restore.
+// Then we check that key is not marked as before and after restore simultaneously.
+TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestore, YbAdminSnapshotConsistentRestoreTest) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"));
+
+  struct EventData {
+    int key;
+    bool finished;
+  };
+
+  std::atomic<int> written{0};
+  TestThreadHolder thread_holder;
+
+  std::vector<EventData> events;
+
+  thread_holder.AddThreadFunctor([&conn, &written, &events, &stop = thread_holder.stop_flag()] {
+    auto prepared = ASSERT_RESULT(conn.Prepare("INSERT INTO test_table (k1) VALUES (?)"));
+    std::vector<std::pair<int, CassandraFuture>> futures;
+    int key = 0;
+    constexpr int kBlock = 10;
+    while (!stop.load() || !futures.empty()) {
+      auto filter = [&events, &written](auto& key_and_future) {
+        if (!key_and_future.second.Ready()) {
+          return false;
+        }
+        auto write_status = key_and_future.second.Wait();
+        if (write_status.ok()) {
+          events.push_back(EventData{.key = key_and_future.first, .finished = true});
+          ++written;
+        } else {
+          LOG(WARNING) << "Write failed: " << write_status;
+        }
+        return true;
+      };
+      ASSERT_NO_FATALS(EraseIf(filter, &futures));
+      if (futures.size() < kBlock && !stop.load()) {
+        auto write_key = ++key;
+        auto stmt = prepared.Bind();
+        stmt.Bind(0, write_key);
+        futures.emplace_back(write_key, conn.ExecuteGetFuture(stmt));
+        events.push_back(EventData{.key = write_key, .finished = false});
+      }
+      std::this_thread::sleep_for(10ms);
+    }
+  });
+
+  {
+    auto se = ScopeExit([&thread_holder] {
+      thread_holder.Stop();
+    });
+    ASSERT_OK(WaitWrites(50, &written));
+
+    Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+    ASSERT_OK(WaitWrites(10, &written));
+
+    ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+    ASSERT_OK(WaitWrites(10, &written));
+  }
+
+  struct KeyData {
+    KeyState state;
+    int start = -1;
+    int finish = -1;
+    int set_by = -1;
+  };
+
+  std::vector<KeyData> keys;
+
+  for (;;) {
+    keys.clear();
+    auto result = conn.ExecuteWithResult("SELECT * FROM test_table");
+    if (!result.ok()) {
+      LOG(WARNING) << "Select failed: " << result.status();
+      continue;
+    }
+
+    auto iter = result->CreateIterator();
+    while (iter.Next()) {
+      auto row = iter.Row();
+      int key = row.Value(0).As<int32_t>();
+      keys.resize(std::max<size_t>(keys.size(), key + 1), {.state = KeyState::kMissing});
+      keys[key].state = KeyState::kNone;
+    }
+    break;
+  }
+
+  for (size_t i = 0; i != events.size(); ++i) {
+    auto& event = events[i];
+    auto& key_data = keys[event.key];
+    if (key_data.state == KeyState::kMissing) {
+      (event.finished ? key_data.finish : key_data.start) = i;
+    }
+  }
+
+  for (int key = 1; key != keys.size(); ++key) {
+    if (keys[key].state != KeyState::kMissing || keys[key].finish == -1) {
+      continue;
+    }
+    for (auto set_state : {KeyState::kBeforeMissing, KeyState::kAfterMissing}) {
+      int begin = set_state == KeyState::kBeforeMissing ? 0 : keys[key].finish + 1;
+      int end = set_state == KeyState::kBeforeMissing ? keys[key].start : events.size();
+      for (int i = begin; i != end; ++i) {
+        auto& event = events[i];
+        if (keys[event.key].state == KeyState::kMissing ||
+            (event.finished != (set_state == KeyState::kBeforeMissing))) {
+          continue;
+        }
+        if (keys[event.key].state == KeyState::kNone) {
+          keys[event.key].state = set_state;
+          keys[event.key].set_by = key;
+        } else if (keys[event.key].state != set_state) {
+          FAIL() << "Key " << event.key << " already marked as " << keys[event.key].state
+                 << ", while trying to set: " << set_state << " with " << key << ", prev set: "
+                 << keys[event.key].set_by;
+        }
+      }
+    }
   }
 }
 

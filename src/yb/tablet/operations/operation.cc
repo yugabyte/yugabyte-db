@@ -73,6 +73,7 @@ void Operation::Aborted(const Status& status) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << status;
   auto state = this->state();
   state->Aborted();
+  state->Release();
   state->CompleteWithStatus(DoAborted(status));
 }
 

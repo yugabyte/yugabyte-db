@@ -72,6 +72,8 @@ using std::vector;
 #include "yb/gutil/port.h"
 #include "yb/gutil/algorithm.h"
 
+namespace yb {
+
 // Sort and remove duplicates of an STL vector or deque.
 template<class T>
 void STLSortAndRemoveDuplicates(T *v) {
@@ -998,5 +1000,24 @@ void EraseIf(const Predicate& predicate, Collection* collection) {
   collection->erase(std::remove_if(collection->begin(), collection->end(), predicate),
                     collection->end());
 }
+
+template <class Value, class Collection>
+bool Erase(const Value& value, Collection* collection) {
+  auto it = std::find(collection->begin(), collection->end(), value);
+  if (it == collection->end()) {
+    return false;
+  }
+
+  collection->erase(it);
+  return true;
+}
+
+} // namespace yb
+
+// For backward compatibility
+using yb::STLAppendToString;
+using yb::STLAssignToString;
+using yb::STLStringResizeUninitialized;
+using yb::string_as_array;
 
 #endif  // YB_GUTIL_STL_UTIL_H

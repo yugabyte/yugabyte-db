@@ -46,7 +46,7 @@ class SplitOperationState : public OperationState, public OperationFilter {
 
   std::string ToString() const override;
 
-  static bool ShouldAllowOpAfterSplitTablet(const consensus::OperationType op_type);
+  static bool ShouldAllowOpAfterSplitTablet(consensus::OperationType op_type);
 
   static CHECKED_STATUS RejectionStatus(
       OpId split_op_id, OpId rejected_op_id, consensus::OperationType op_type,

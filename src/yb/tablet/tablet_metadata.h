@@ -486,6 +486,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
 
+  bool has_active_restoration() const;
+
+  void RegisterRestoration(const TxnSnapshotRestorationId& restoration_id);
+  void UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id);
+
  private:
   typedef simple_spinlock MutexType;
 
@@ -573,6 +578,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   OpId split_op_id_ GUARDED_BY(data_mutex_);
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
+
+  std::vector<TxnSnapshotRestorationId> active_restorations_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

@@ -1558,7 +1558,11 @@ Status RaftConsensus::StartReplicaOperationUnlocked(
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
   ConsensusRound* round_ptr = round.get();
   RETURN_NOT_OK(state_->context()->StartReplicaOperation(round, propagated_safe_time));
-  return state_->AddPendingOperation(round_ptr, OperationMode::kFollower);
+  auto result = state_->AddPendingOperation(round_ptr, OperationMode::kFollower);
+  if (!result.ok()) {
+    round_ptr->NotifyReplicationFinished(result, OpId::kUnknownTerm, /* applied_op_ids */ nullptr);
+  }
+  return result;
 }
 
 std::string RaftConsensus::LeaderRequest::OpsRangeString() const {

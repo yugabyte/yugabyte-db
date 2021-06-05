@@ -205,7 +205,9 @@ Status TabletSnapshots::CleanupSnapshotDir(const std::string& dir) {
 
 Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   const std::string snapshot_dir = VERIFY_RESULT(tx_state->GetSnapshotDir());
-  auto restore_at = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time());
+  const auto& request = *tx_state->request();
+  auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
+  auto restoration_id = TryFullyDecodeTxnSnapshotRestorationId(request.restoration_id());
 
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(snapshot_dir, restore_at);
 
@@ -219,17 +221,19 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   frontier.set_op_id(tx_state->op_id());
   frontier.set_hybrid_time(tx_state->hybrid_time());
   RestoreMetadata restore_metadata;
-  if (tx_state->request()->has_schema()) {
+  if (request.has_schema()) {
     restore_metadata.schema.emplace();
-    const auto& request = *tx_state->request();
     RETURN_NOT_OK(SchemaFromPB(request.schema(), restore_metadata.schema.get_ptr()));
     restore_metadata.index_map.emplace(request.indexes());
     restore_metadata.schema_version = request.schema_version();
     restore_metadata.hide = request.hide();
   }
-  const Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
+  Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
+  if (s.ok() && restoration_id) {
+    s = tablet().RestoreStarted(restoration_id);
+  }
   return s;
 }
 
@@ -420,6 +424,11 @@ Status TabletSnapshots::CreateDirectories(const string& rocksdb_dir, FsManager* 
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(top_snapshots_dir),
                         Format("Unable to create snapshots directory $0", top_snapshots_dir));
   return Status::OK();
+}
+
+Status TabletSnapshots::RestoreFinished(SnapshotOperationState* tx_state) {
+  return tablet().RestoreFinished(VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(
+      tx_state->request()->restoration_id())));
 }
 
 } // namespace tablet

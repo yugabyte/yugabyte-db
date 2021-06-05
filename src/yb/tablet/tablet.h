@@ -673,6 +673,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilter(OperationFilter* filter);
 
   void SplitDone();
+  CHECKED_STATUS RestoreStarted(const TxnSnapshotRestorationId& restoration_id);
+  CHECKED_STATUS RestoreFinished(const TxnSnapshotRestorationId& restoration_id);
 
  private:
   friend class Iterator;
@@ -740,6 +742,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   CHECKED_STATUS OpenDbAndCheckIntegrity(const std::string& db_dir);
+
+  // Add or remove restoring operation filter if necessary.
+  void SyncRestoringOperationFilter();
 
   const Schema key_schema_;
 
@@ -926,9 +931,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   boost::intrusive::list<OperationFilter> operation_filters_;
 
-  class CompletedSplitOperationFilter;
-  std::unique_ptr<CompletedSplitOperationFilter> completed_split_operation_filter_;
+  std::unique_ptr<OperationFilter> completed_split_operation_filter_;
   std::unique_ptr<log::LogAnchor> completed_split_log_anchor_;
+
+  std::unique_ptr<OperationFilter> restoring_operation_filter_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

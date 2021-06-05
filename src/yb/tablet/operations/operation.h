@@ -343,7 +343,7 @@ class ExclusiveSchemaOperationState :
       : OperationStateBase<Request, ExclusiveSchemaOperationStateBase>(
             std::forward<Args>(args)...) {}
 
-  void Finish() {
+  void Release() override {
     ExclusiveSchemaOperationStateBase::ReleasePermitToken();
 
     // Make the request NULL since after this operation commits

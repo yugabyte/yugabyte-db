@@ -23,6 +23,7 @@
 
 #include "yb/docdb/doc_key.h"
 
+#include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/restoration_state.h"
@@ -612,12 +613,17 @@ class MasterSnapshotCoordinator::Impl {
     auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
 
     if (operation.state == SysSnapshotEntryPB::DELETING) {
-      context_.SendDeleteTabletSnapshotRequest(
-          tablet_info, snapshot_id_str, callback);
-    } else if (operation.state == SysSnapshotEntryPB::CREATING) {
-      context_.SendCreateTabletSnapshotRequest(
-          tablet_info, snapshot_id_str, operation.schedule_id, operation.snapshot_hybrid_time,
+      auto task = context_.CreateAsyncTabletSnapshotOp(
+          tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET,
           callback);
+      context_.ScheduleTabletSnapshotOp(task);
+    } else if (operation.state == SysSnapshotEntryPB::CREATING) {
+      auto task = context_.CreateAsyncTabletSnapshotOp(
+          tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET,
+          callback);
+      task->SetSnapshotScheduleId(operation.schedule_id);
+      task->SetSnapshotHybridTime(operation.snapshot_hybrid_time);
+      context_.ScheduleTabletSnapshotOp(task);
     } else {
       LOG(DFATAL) << "Unsupported snapshot operation: " << operation.ToString();
     }
@@ -888,6 +894,23 @@ class MasterSnapshotCoordinator::Impl {
     SubmitWrite(std::move(write_batch), leader_term, &context_);
   };
 
+  void FinishRestoration(RestorationState* restoration, int64_t leader_term) REQUIRES(mutex_) {
+    if (!restoration->AllTabletsDone()) {
+      return;
+    }
+
+    auto temp_ids = restoration->tablet_ids();
+    std::vector<TabletId> tablet_ids(temp_ids.begin(), temp_ids.end());
+    auto tablets = context_.GetTabletInfos(tablet_ids);
+    for (const auto& tablet : tablets) {
+      auto task = context_.CreateAsyncTabletSnapshotOp(
+          tablet, std::string(), tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED,
+          /* callback= */ nullptr);
+      task->SetRestorationId(restoration->restoration_id());
+      context_.ScheduleTabletSnapshotOp(task);
+    }
+  }
+
   void UpdateSchedule(const SnapshotState& snapshot) REQUIRES(mutex_) {
     auto it = schedules_.find(snapshot.schedule_id());
     if (it == schedules_.end()) {
@@ -977,10 +1000,19 @@ class MasterSnapshotCoordinator::Impl {
       for (const auto& tablet : tablet_infos) {
         // If this tablet did not participate in snapshot, i.e. was deleted.
         // We just change hybrid hybrid time limit and clear hide state.
-        context_.SendRestoreTabletSnapshotRequest(
+        auto task = context_.CreateAsyncTabletSnapshotOp(
             tablet, snapshot_tablets.count(tablet->id()) ? snapshot_id_str : std::string(),
-            restore_at, send_metadata,
-            MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id()));
+            tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
+            MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id(),
+                             std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
+        task->SetSnapshotHybridTime(restore_at);
+        if (restoration_id) {
+          task->SetRestorationId(restoration_id);
+        }
+        if (send_metadata) {
+          task->SetMetadata(tablet->table()->LockForRead()->pb);
+        }
+        context_.ScheduleTabletSnapshotOp(task);
       }
     }
 

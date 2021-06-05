@@ -621,7 +621,9 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
     }
   }
 
-  RETURN_NOT_OK(context_->CheckOperationAllowed(round->id(), op_type));
+  if (mode == OperationMode::kLeader) {
+    RETURN_NOT_OK(context_->CheckOperationAllowed(round->id(), op_type));
+  }
 
   // Mark pending configuration.
   if (PREDICT_FALSE(op_type == CHANGE_CONFIG_OP)) {

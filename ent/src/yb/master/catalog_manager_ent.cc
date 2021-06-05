@@ -383,9 +383,10 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
     LOG(INFO) << "Sending CreateTabletSnapshot to tablet: " << tablet->ToString();
 
     // Send Create Tablet Snapshot request to each tablet leader.
-    SendCreateTabletSnapshotRequest(
-        tablet, snapshot_id, SnapshotScheduleId::Nil(), HybridTime::kInvalid,
+    auto call = CreateAsyncTabletSnapshotOp(
+        tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET,
         TabletSnapshotOperationCallback());
+    ScheduleTabletSnapshotOp(call);
   }
 
   resp->set_snapshot_id(snapshot_id);
@@ -609,9 +610,10 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 
         LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
         // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        SendRestoreTabletSnapshotRequest(
-            tablet, snapshot_id, HybridTime(), SendMetadata::kFalse,
+        auto task = CreateAsyncTabletSnapshotOp(
+            tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
             TabletSnapshotOperationCallback());
+        ScheduleTabletSnapshotOp(task);
       }
       break;
     }
@@ -687,7 +689,10 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snaps
 
         LOG(INFO) << "Sending DeleteTabletSnapshot to tablet: " << tablet->ToString();
         // Send DeleteSnapshot requests to all TServers (one tablet - one request).
-        SendDeleteTabletSnapshotRequest(tablet, snapshot_id, TabletSnapshotOperationCallback());
+        auto task = CreateAsyncTabletSnapshotOp(
+            tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET,
+            TabletSnapshotOperationCallback());
+        ScheduleTabletSnapshotOp(task);
       }
     }
   }
@@ -1417,49 +1422,19 @@ TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
   return result;
 }
 
-void CatalogManager::SendCreateTabletSnapshotRequest(
-    const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-    const SnapshotScheduleId& schedule_id, HybridTime snapshot_hybrid_time,
+AsyncTabletSnapshotOpPtr CatalogManager::CreateAsyncTabletSnapshotOp(
+    const TabletInfoPtr& tablet, const std::string& snapshot_id,
+    tserver::TabletSnapshotOpRequestPB::Operation operation,
     TabletSnapshotOperationCallback callback) {
-  auto call = std::make_shared<AsyncTabletSnapshotOp>(
-      master_, AsyncTaskPool(), tablet, snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
-  call->SetSnapshotScheduleId(schedule_id);
-  call->SetSnapshotHybridTime(snapshot_hybrid_time);
-  call->SetCallback(std::move(callback));
-  tablet->table()->AddTask(call);
-  WARN_NOT_OK(ScheduleTask(call), "Failed to send create snapshot request");
+  auto result = std::make_shared<AsyncTabletSnapshotOp>(
+      master_, AsyncTaskPool(), tablet, snapshot_id, operation);
+  result->SetCallback(std::move(callback));
+  tablet->table()->AddTask(result);
+  return result;
 }
 
-void CatalogManager::SendRestoreTabletSnapshotRequest(
-    const scoped_refptr<TabletInfo>& tablet,
-    const string& snapshot_id,
-    HybridTime restore_at,
-    SendMetadata send_metadata,
-    TabletSnapshotOperationCallback callback) {
-  auto call = std::make_shared<AsyncTabletSnapshotOp>(
-      master_, AsyncTaskPool(), tablet, snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
-  if (restore_at) {
-    call->SetSnapshotHybridTime(restore_at);
-  }
-  if (send_metadata) {
-    call->SetMetadata(tablet->table()->LockForRead()->pb);
-  }
-  call->SetCallback(std::move(callback));
-  tablet->table()->AddTask(call);
-  WARN_NOT_OK(ScheduleTask(call), "Failed to send restore snapshot request");
-}
-
-void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                                     const string& snapshot_id,
-                                                     TabletSnapshotOperationCallback callback) {
-  auto call = std::make_shared<AsyncTabletSnapshotOp>(
-      master_, AsyncTaskPool(), tablet, snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET);
-  call->SetCallback(std::move(callback));
-  tablet->table()->AddTask(call);
-  WARN_NOT_OK(ScheduleTask(call), "Failed to send delete snapshot request");
+void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& task) {
+  WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
 }
 
 Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) {
