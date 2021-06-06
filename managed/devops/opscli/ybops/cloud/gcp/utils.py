@@ -108,7 +108,7 @@ class GcpMetadata():
         try:
             url = "{}/{}".format(GcpMetadata.METADATA_URL_BASE, endpoint)
             req = requests.get(url, headers=GcpMetadata.CUSTOM_HEADERS, timeout=2)
-            return req.content if req.status_code == requests.codes.ok else None
+            return req.content.decode('utf-8') if req.status_code == requests.codes.ok else None
         except requests.exceptions.ConnectionError as e:
             return None
 
@@ -121,7 +121,7 @@ class GcpMetadata():
         network_data = GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
         try:
             # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
-            return network_data.split('/')[1]
+            return str(network_data).split('/')[1]
         except (IndexError, AttributeError):
             return None
 

@@ -18,7 +18,6 @@ import sys
 import time
 
 from dateutil.parser import parse
-from texttable import Texttable
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
