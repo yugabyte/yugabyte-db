@@ -24,18 +24,31 @@ DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
-DECLARE_int64(tablet_split_size_threshold_bytes);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(max_queued_split_candidates);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_tablet_count_per_node);
+DECLARE_int64(tablet_split_high_phase_tablet_count_per_node);
+DECLARE_int64(tablet_split_final_phase_size_threshold_bytes);
 
 DECLARE_double(TEST_simulate_lookup_partition_list_mismatch_probability);
+DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
 
 namespace yb {
 
 class CqlTabletSplitTest : public CqlTestBase {
   void SetUp() override {
     FLAGS_yb_num_shards_per_tserver = 1;
-    FLAGS_tablet_split_size_threshold_bytes = 30_KB;
-    FLAGS_db_write_buffer_size = FLAGS_tablet_split_size_threshold_bytes / 4;
+    FLAGS_enable_automatic_tablet_splitting = true;
+    FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
+    FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
+    FLAGS_max_queued_split_candidates = 10;
+    FLAGS_tablet_split_low_phase_tablet_count_per_node = 0;
+    FLAGS_tablet_split_high_phase_tablet_count_per_node = 0;
+    FLAGS_tablet_split_final_phase_size_threshold_bytes = 30_KB;
+    FLAGS_db_write_buffer_size = FLAGS_tablet_split_final_phase_size_threshold_bytes / 4;
     FLAGS_db_block_size_bytes = 2_KB;
     FLAGS_db_filter_block_size_bytes = 2_KB;
     FLAGS_db_index_block_size_bytes = 2_KB;
@@ -240,7 +253,7 @@ TEST_F(CqlTabletSplitTest, SecondaryIndex) {
   // Disable splitting and wait for pending splits to finish before shutdown.
   // TODO(tsplit): remove this workaround after https://github.com/yugabyte/yugabyte-db/issues/8222
   // is fixed.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_split_tablet_candidate_processing) = true;
   std::this_thread::sleep_for(FLAGS_heartbeat_interval_ms * 1ms);
   const auto splits_completion_deadline = MonoTime::Now() + 15s * kTimeMultiplier;
   for (auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
