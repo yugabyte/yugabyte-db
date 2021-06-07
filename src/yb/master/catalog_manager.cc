@@ -148,6 +148,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
@@ -172,6 +173,7 @@
 #include "yb/util/shared_lock.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
 
 DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
              "Timeout used for the Master->TS async rpc calls.");
@@ -375,8 +377,26 @@ DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
 TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
 
 DEFINE_int64(tablet_split_size_threshold_bytes, 0,
-             "Threshold on tablet size after which tablet should be split. Automated splitting is "
-             "disabled if this value is set to 0");
+             "DEPRECATED -- Threshold on tablet size after which tablet should be split. Automated "
+             "splitting is disabled if this value is set to 0.");
+TAG_FLAG(tablet_split_size_threshold_bytes, hidden);
+
+DEFINE_int64(tablet_split_low_phase_tablet_count_per_node, 1,
+             "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
+             "as defined by tablet_split_low_phase_size_threshold_bytes.");
+DEFINE_int64(tablet_split_high_phase_tablet_count_per_node, 32,
+             "The per-node tablet count until which a table is splitting at the phase 2 threshold, "
+             "as defined by tablet_split_high_phase_size_threshold_bytes.");
+
+DEFINE_int64(tablet_split_low_phase_size_threshold_bytes, 1_GB,
+             "The tablet size threshold at which to split tablets in phase 1. "
+             "See tablet_split_low_phase_tablet_count_per_node.");
+DEFINE_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
+             "The tablet size threshold at which to split tablets in phase 2. "
+             "See tablet_split_high_phase_tablet_count_per_node.");
+DEFINE_int64(tablet_split_final_phase_size_threshold_bytes, 32_GB,
+             "The tablet size threshold at which to split tablets after both phases have been "
+             "surpassed.");
 
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
@@ -387,6 +407,15 @@ DEFINE_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailo
              "gives sufficient time for heartbeats so that we don't report"
              " a premature incorrect completion.");
 TAG_FLAG(blacklist_progress_initial_delay_secs, runtime);
+
+DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
+                 "When set to true, consider any tablet a valid candidate for splitting. "
+                 "Specifically this flag ensures that ValidateSplitCandidate always returns OK and "
+                 "all tablets are considered valid candidates for splitting.");
+
+DEFINE_test_flag(bool, select_all_tablets_for_split, false,
+                 "When set to true, select all validated processed tablets for split. Specifically "
+                 "this flag ensures that ShouldSplitValidTablet always returns true.");
 
 namespace yb {
 namespace master {
@@ -2079,6 +2108,9 @@ Status CatalogManager::TEST_SplitTablet(
 }
 
 Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) const {
+  if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
+    return Status::OK();
+  }
   if (tablet_info.table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported,
@@ -2120,10 +2152,34 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) con
   return Status::OK();
 }
 
-bool CatalogManager::ShouldSplitValidCandidate(const TabletReplicaDriveInfo& drive_info) const {
-  return FLAGS_tablet_split_size_threshold_bytes > 0
-      && !drive_info.may_have_orphaned_post_split_data
-      && drive_info.sst_files_size > FLAGS_tablet_split_size_threshold_bytes;
+bool CatalogManager::ShouldSplitValidCandidate(
+    const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
+  if (PREDICT_FALSE(FLAGS_TEST_select_all_tablets_for_split)) {
+    return true;
+  }
+  if (drive_info.may_have_orphaned_post_split_data) {
+    return false;
+  }
+  int64 size = drive_info.sst_files_size;
+  DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
+  if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+    return false;
+  }
+  TSDescriptorVector ts_descs;
+  {
+    BlacklistSet blacklist = BlacklistSetFromPB();
+    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
+  }
+  auto num_servers = ts_descs.size();
+  int64 num_tablets_per_server = tablet_info.table()->NumTablets() / num_servers;
+
+  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_tablet_count_per_node) {
+    return size > FLAGS_tablet_split_low_phase_size_threshold_bytes;
+  }
+  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_tablet_count_per_node) {
+    return size > FLAGS_tablet_split_high_phase_size_threshold_bytes;
+  }
+  return size > FLAGS_tablet_split_final_phase_size_threshold_bytes;
 }
 
 Status CatalogManager::DoSplitTablet(
@@ -2137,6 +2193,19 @@ Status CatalogManager::DoSplitTablet(
   // This process adds new subtablets in the CREATING state, which if encountered by backfill code
   // will block the backfill process.
   RETURN_NOT_OK(ValidateSplitCandidate(*source_tablet_info));
+
+  auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
+  if (!ShouldSplitValidCandidate(*source_tablet_info, drive_info)) {
+    // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
+    // time, a valid split candidate, but by the time the candidate was actually processed here, the
+    // cluster may have changed, putting us in a new split threshold phase, and it may no longer be
+    // a valid candidate. This is not an unexpected error, but we should bail out of splitting this
+    // tablet regardless.
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Tablet split candidate $0 is no longer a valid split candidate.",
+        source_tablet_info->tablet_id());
+  }
 
   LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
@@ -9501,7 +9570,7 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
-BlacklistSet CatalogManager::BlacklistSetFromPB() {
+BlacklistSet CatalogManager::BlacklistSetFromPB() const {
   auto l = cluster_config_->LockForRead();
 
   const auto& blacklist_pb = l->pb.server_blacklist();
