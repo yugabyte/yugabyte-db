@@ -94,21 +94,6 @@ using master::SysSnapshotEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
-namespace {
-
-void AddStringField(
-    const char* name, const std::string& value, rapidjson::Value* out,
-    rapidjson::Value::AllocatorType* allocator) {
-  rapidjson::Value json_value(value.c_str(), *allocator);
-  out->AddMember(rapidjson::StringRef(name), json_value, *allocator);
-}
-
-string HybridTimeToString(HybridTime ht) {
-  return Timestamp(ht.GetPhysicalValueMicros()).ToFormattedString();
-}
-
-} // namespace
-
 Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, bool show_deleted) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -381,14 +366,14 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
       AddStringField("id", VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())).ToString(),
                      &json_snapshot, &result.GetAllocator());
       auto snapshot_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
-      AddStringField("snapshot_time_utc",
+      AddStringField("snapshot_time",
                      HybridTimeToString(snapshot_ht),
                      &json_snapshot, &result.GetAllocator());
       auto previous_snapshot_ht = HybridTime::FromPB(
           snapshot.entry().previous_snapshot_hybrid_time());
       if (previous_snapshot_ht) {
         AddStringField(
-            "previous_snapshot_time_utc",
+            "previous_snapshot_time",
             HybridTimeToString(previous_snapshot_ht),
             &json_snapshot, &result.GetAllocator());
       }

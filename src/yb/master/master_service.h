@@ -325,6 +325,8 @@ class MasterServiceImpl : public MasterServiceIf,
   void DeleteTablet(
       const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
+  void DdlLog(const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext rpc) override;
+
  private:
 };
 
