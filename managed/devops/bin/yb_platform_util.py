@@ -43,9 +43,10 @@ def exception_handling(func):
                 content = e.read().decode('utf-8')
                 json.loads(content)
                 sys.stderr.write(content)
-            except ValueError:
+            except ValueError as e:
                 message = 'Invalid YB_PLATFORM_URL URL or params.'
                 sys.stderr.write(message)
+                sys.stderr.write(str(e))
         except ValueError as e:
             sys.stderr.write(str(e))
         except Exception as e:
@@ -229,7 +230,7 @@ class YBUniverse():
         return universe_json['taskUUID']
 
 
-    def __modify_universe_config(self, file_name, universe_name=''):
+    def __modify_universe_config(self, data, universe_name=''):
         """
         Modify the universe json with new name.
 
@@ -237,9 +238,6 @@ class YBUniverse():
         :param universe_name: New universe name.
         :return: Modified universe config data.
         """
-        data = {}
-        with open(file_name) as f:
-            data = convert_unicode_json(json.loads(f.read()))
 
         clusters = data.get('clusters')
         for each_cluster in clusters:
@@ -429,7 +427,11 @@ class YBUniverse():
         input_file = os.path.join(script_path , self.args.file)
         universe_name = self.args.universe_name
 
-        configure_json, universe_name = self.__modify_universe_config(input_file, universe_name)
+        data = {}
+        with open(input_file) as f:
+            data = convert_unicode_json(json.loads(f.read()))
+
+        configure_json, universe_name = self.__modify_universe_config(data, universe_name)
 
         self.__validate_universe_name(universe_name)
 
