@@ -2,7 +2,7 @@
 title: Build a Java application using Apache Spark and YugabyteDB
 headerTitle: Apache Spark
 linkTitle: Apache Spark
-description: Build and run a Java-based sample word-count application using Apache Spark and YugabyteDB.
+description: Build a Java-based application using Apache Spark and YugabyteDB.
 menu:
   latest:
     identifier: apache-spark-2-java
@@ -13,7 +13,6 @@ isTocNested: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="{{< relref "./scala.md" >}}" class="nav-link">
       <i class="icon-scala" aria-hidden="true"></i>
@@ -37,105 +36,130 @@ isTocNested: true
 
 </ul>
 
-## Before you begin
+## Setting Up a Project with Maven
 
-### Maven
-
-To build your Java application using the YugabyteDB Spark Connector for YCQL, add the following snippet to your `pom.xml` for Scala 2.11:
+To build a Java application using the YugabyteDB Spark Connector for YCQL, add the following to your `pom.xml` file for Scala 2.12:
 
 ```xml
 <dependency>
   <groupId>com.yugabyte.spark</groupId>
-  <artifactId>spark-cassandra-connector_2.11</artifactId>
-  <version>2.4-yb-3</version>
+  <artifactId>spark-cassandra-connector_2.12</artifactId>
+  <version>3.0-yb-8</version>
 </dependency>
 ```
 
-## Run a sample application
+For more information, see [Maven artifact](https://search.maven.org/artifact/com.yugabyte.spark/spark-cassandra-connector_2.12).
 
-### Run the Spark word-count sample application
+## Using Apache Spark with YCQL
 
-You can run our Spark-based sample application with:
+Suppose you work with a YCQL table created as follows: 
 
-```sh
-$ java -jar yb-sample-apps.jar --workload CassandraSparkWordCount --nodes 127.0.0.1:9042
+```sql
+CREATE TABLE test.person (
+  id int PRIMARY KEY,
+  name text,
+  address text,
+  phone jsonb
+);
 ```
 
-It reads data from a table with sentences — by default, it generates an input table `ybdemo_keyspace.lines`, computes the frequencies of the words, and writes the result to the output table `ybdemo_keyspace.wordcounts`.
+This table is populated with the following rows:
 
-### Examine the source code
+```
+id  | name  | address                | phone  
+----+-------+------------------------+-----------------------------
+1   | John  | Hammersmith London, UK | {"code":"+44","phone":1000}
+2   | Nick  | Acton London, UK       | {"code":"+43","phone":1200}
+3   | Smith | 11 Acton London, UK    | {"code":"+44","phone":1400}
+```
 
-To look at the source code, you can check:
-
-- the source file in our GitHub source repo [here](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraSparkWordCount.java)
-- untar the jar `java/yb-sample-apps-sources.jar` in the download bundle
-
-Most of the logic is in the `run()` method of the `CassandraSparkWordCount` class (in the file `src/main/java/com/yugabyte/sample/apps/CassandraSparkWordCount.java`). Some of the key portions of the sample program are explained in the sections below.
-
-## Main sections of an Apache Spark program on Yugabyte
-
-### Initialize the Spark context
-
-The SparkConf object is configured as follows:
+The following Java code shows how to initialize a Spark session:
 
 ```java
-// Setup the local spark master, with the desired parallelism.
-SparkConf conf = new SparkConf().setAppName("yb.wordcount")
-                                .setMaster("local[1]")       // num Spark threads
-                                .set("spark.cassandra.connection.host", hostname);
-
-// Create the Java Spark context object.
-JavaSparkContext sc = new JavaSparkContext(conf);
-
-// Create the Cassandra connector to Spark.
-CassandraConnector connector = CassandraConnector.apply(conf);
-
-// Create a Cassandra session, and initialize the keyspace.
-Session session = connector.openSession();
+// Setup the local spark master
+SparkConf conf = new SparkConf().setAppName("yb.spark-jsonb")
+  .setMaster("local[1]")
+  .set("spark.cassandra.connection.localDC", "datacenter1")
+  .set("spark.cassandra.connection.host", addresses.get(0).getHostName())
+  .set("spark.sql.catalog.ybcatalog",
+       "com.datastax.spark.connector.datasource.CassandraCatalog");
+SparkSession spark = SparkSession.builder().config(conf).getOrCreate();
 ```
 
-### Set the input source
+The preceding code sets the local data centre, the Cassandra contact point, and an identifier for the YCQL catalog of keyspaces and tables to be used for later reference.
 
-To set the input data for Spark, you can do one of the following.
-
-- Reading from a table with a column `line` as the input
+Any table in the YCQL catalog (declared as a CassandraCatalog) is read as a YCQL table. The following Java code shows how to read from such table:
 
 ```java
-// Read rows from table and convert them to an RDD.
-JavaRDD<String> rows = javaFunctions(sc).cassandraTable(keyspace, inputTable)
-                                        .select("line")
-                                        .map(row -> row.getString("line"));
+Dataset<Row> rows = spark.sql("SELECT id, address, phone FROM" +
+                              "ybcatalog.test.person");
 ```
 
-- Reading from a file as the input:
+Similarly, the appropriately-declared catalog enables the use of the appropriate Spark connector. The following Java code shows how to write to a YCQL table:
 
 ```java
-// Read the input file and convert it to an RDD.
-JavaRDD<String> rows = sc.textFile(inputFile);
+rows.writeTo("ybcatalog.test.personcopy");
 ```
 
-### Perform the word count processing
+### How to Use JSONB
 
-The word count is performed using the following code snippet.
+You can use `jsonb` data type for your columns. `jsonb` values are processed using the [Spark JSON functions](https://spark.apache.org/docs/3.0.0/sql-ref-functions-builtin.html#json-functions).
+
+The following example shows how to select the phone code using the `get_json_object` function to select the sub-object at the specific path:
 
 ```java
-// Perform the word count.
-JavaPairRDD<String, Integer> counts = rows.flatMap(line -> Arrays.asList(line.split(" ")).iterator())
-                                          .mapToPair(word -> new Tuple2<String, Integer>(word, 1))
-                                          .reduceByKey((x, y) ->  x + y);
+Dataset<Row> rows = 
+  spark.sql("SELECT get_json_object(phone, '$.code') as code, 
+  get_json_object(phone, '$.phone') as phone 
+    FROM mycatalog.test.person");
 ```
 
-### Set the output table
-
-The output is written to the `outTable` table.
+The following example shows how to apply a filter based on a `jsonb` sub-object:
 
 ```java
-// Create the output table.
-session.execute("CREATE TABLE IF NOT EXISTS " + outTable +
-                " (word VARCHAR PRIMARY KEY, count INT);");
-
-// Save the output to the YCQL table.
-javaFunctions(counts).writerBuilder(keyspace, outputTable, mapTupleToRow(String.class, Integer.class))
-                     .withColumnSelector(someColumns("word", "count"))
-                     .saveToCassandra();
+Dataset<Row> rows = 
+  spark.sql("SELECT * FROM mycatalog.test.person 
+            WHERE get_json_object(phone, '$.phone') = 1000");
 ```
+
+You can also use the `.filter()` function provided by Spark to add filtering conditions.
+
+Note that the preceding operators are currently evaluated by Spark and not propagated to YCQL queries (as " -> "  `jsonb` operators). This is tracked by https://github.com/yugabyte/yugabyte-db/issues/6738
+
+When the `get_json_object` function is used in the projection clause, only the target sub-object is requested and returned by YugabyteDB, as demonstrated in the following example where only the sub-object at `key[1].m[2].b` is returned:
+
+```java
+String query = "SELECT id, address, 
+                get_json_object(phone, '$.key[1].m[2].b') 
+                as key FROM mycatalog.test.person";
+Dataset<Row> rows = spark.sql(query);
+```
+
+To confirm the pruning, you can use logging at the database-level (such as audit logging) or inspect the execution plan of Spark using the `EXPLAIN` statement. The following example creates the execution plan as a String, then logs it and checks that it contains the expected sub-object in YCQL syntax (such as `phone->'key'->1->'m'->2->'b'`):
+
+```java
+// Get the execution plan as text rows
+Dataset<Row> explain_rows = spark.sql("EXPLAIN " + query);
+
+// Convert the EXPLAIN rows into a String object
+StringBuilder explain_sb = new StringBuilder();
+Iterator<Row> iterator = explain_rows.toLocalIterator();
+  while (iterator.hasNext()) {
+    Row row = iterator.next();
+    explain_sb.append(row.getString(0));
+}
+String explain_text = explain_sb.toString();
+// Log the execution plan
+logger.info("plan is " + explain_text);
+
+// Check that the expected sub-object is requested in the plan
+assertTrue(explain_text.contains(
+  "id,address,phone->'phone',phone->'key'->1->'m'->2->'b'"));
+```
+
+For additional examples, see the following:
+
+- [Spark 3 tests](https://github.com/yugabyte/yugabyte-db/tree/master/java/yb-cql-4x/src/test/java/org/yb/loadtest) 
+- [Spark 3 sample apps](https://github.com/yugabyte/yugabyte-db/tree/master/java/yb-cql-4x/src/main/java/com/yugabyte/sample/apps)
+- [TestSpark3Jsonb.java](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-cql-4x/src/test/java/org/yb/loadtest/TestSpark3Jsonb.java)
+
