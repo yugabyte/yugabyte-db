@@ -27,7 +27,7 @@ CREATE INDEX index_name ON table_name(column_list);
 
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index.
 
-You can also create a functional-based index, in which case you would replace *column_list* with an expression. For more information, see [Using Indexes on Expressions](#using-indexes-on-expressions).
+You can also create a functional-based index, in which case you would replace any element of *column_list* with an expression. For more information, see [Using Indexes on Expressions](#using-indexes-on-expressions).
 
 The only type of index that is currently supported by YSQL is called LSM (log-structured merge-tree). This index is based on YugabyteDB's DocDB storage and is similar in functionality to PostgreSQL's B-tree. When you create an index, you do not need to specify the type because YSQL always maps it to LSM; if you do specify the type, such as `btree`, in your `CREATE INDEX` statement, you will receive a notification about replacement of the `btree` method with `lsm`. 
 
@@ -106,7 +106,7 @@ YSQL inherits all the functionality of the PostgeSQL `pg_indexes` view that allo
 
 For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
 
-## Using the UNIQUE Index
+## Using a UNIQUE Index
 
 If you need values in some of the columns to be unique, you can specify a B-tree index as `UNIQUE`. 
 
