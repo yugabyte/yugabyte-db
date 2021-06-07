@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models;
 
+import java.util.Map;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -24,7 +26,7 @@ public class YugawareProperty extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(YugawareProperty.class);
 
   // The name of the property.
-  @Id private String name;
+  @Id public String name;
 
   // The types of entries in this table.
   private enum PropertyEntryType {
@@ -44,9 +46,10 @@ public class YugawareProperty extends Model {
   // The property config.
   @Constraints.Required
   @Column(columnDefinition = "TEXT")
-  private JsonNode value;
+  @DbJson
+  private Map<String, Object> value;
 
-  public JsonNode getValue() {
+  public Map<String, Object> getValue() {
     return value;
   }
 
@@ -58,7 +61,7 @@ public class YugawareProperty extends Model {
       new Finder<String, YugawareProperty>(YugawareProperty.class) {};
 
   private YugawareProperty(
-      String name, PropertyEntryType type, JsonNode value, String description) {
+      String name, PropertyEntryType type, Map<String, Object> value, String description) {
     this.name = name;
     this.type = type;
     this.value = value;
@@ -78,7 +81,7 @@ public class YugawareProperty extends Model {
    * @param value is the property value as JsonNode
    * @param description is a description of the property
    */
-  public static void addConfigProperty(String name, JsonNode value, String description) {
+  public static void addConfigProperty(String name, Map<String, Object> value, String description) {
     YugawareProperty entry = find.byId(name);
     if (entry == null) {
       entry = new YugawareProperty(name, PropertyEntryType.Config, value, description);

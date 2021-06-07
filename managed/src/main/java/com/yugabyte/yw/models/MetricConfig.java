@@ -35,9 +35,9 @@ public class MetricConfig extends Model {
   @Transient public String metric;
   @Transient public String function;
   @Transient public String range;
-  @Transient public JsonNode filters;
+  @Transient public Map<String, String> filters;
   @Transient public String group_by;
-  @Transient public JsonNode layout;
+  @Transient public Layout layout;
   @Transient public String operator;
 
   @Id
@@ -70,14 +70,14 @@ public class MetricConfig extends Model {
 
   public Map<String, String> getFilters() {
     if (this.getConfig().filters != null) {
-      return Json.fromJson(this.getConfig().filters, Map.class);
+      return this.getConfig().filters;
     }
     return new HashMap<>();
   }
 
   public Layout getLayout() {
     if (this.getConfig().layout != null) {
-      return Json.fromJson(this.getConfig().layout, Layout.class);
+      return this.getConfig().layout;
     }
     return new Layout();
   }

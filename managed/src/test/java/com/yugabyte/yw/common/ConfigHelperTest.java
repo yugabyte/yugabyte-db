@@ -122,7 +122,7 @@ public class ConfigHelperTest extends FakeDBApplication {
     map.put("foo", "bar");
     ConfigHelper.ConfigType testConfig = ConfigHelper.ConfigType.AWSInstanceTypeMetadata;
     YugawareProperty.addConfigProperty(
-        testConfig.toString(), Json.toJson(map), testConfig.getDescription());
+        testConfig.toString(), map, testConfig.getDescription());
 
     Map<String, Object> data = configHelper.getConfig(testConfig);
     assertThat(data.get("foo"), allOf(notNullValue(), equalTo("bar")));
@@ -148,17 +148,23 @@ public class ConfigHelperTest extends FakeDBApplication {
     ConfigHelper.ConfigType awsRegionType = ConfigHelper.ConfigType.AWSRegionMetadata;
     YugawareProperty.addConfigProperty(
         awsRegionType.toString(),
-        Json.parse("{\"region\": \"aws-data\"}"),
+        new HashMap<String, Object>() {{
+          put("region", "aws-data");
+        }},
         awsRegionType.getDescription());
     ConfigHelper.ConfigType gcpRegionType = ConfigHelper.ConfigType.GCPRegionMetadata;
     YugawareProperty.addConfigProperty(
         gcpRegionType.toString(),
-        Json.parse("{\"region\": \"gcp-data\"}"),
+        new HashMap<String, Object>() {{
+          put("region", "gcp-data");
+        }},
         gcpRegionType.getDescription());
     ConfigHelper.ConfigType dockerRegionType = ConfigHelper.ConfigType.DockerRegionMetadata;
     YugawareProperty.addConfigProperty(
         dockerRegionType.toString(),
-        Json.parse("{\"region\": \"docker-data\"}"),
+        new HashMap<String, Object>() {{
+          put("region", "docker-data");
+        }},
         dockerRegionType.getDescription());
 
     assertThat(

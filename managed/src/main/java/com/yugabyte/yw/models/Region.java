@@ -88,50 +88,50 @@ public class Region extends Model {
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public JsonNode details;
+  public Map<String, String> details;
 
   public void setSecurityGroupId(String securityGroupId) {
     if (details == null) {
-      details = Json.newObject();
+      details = new HashMap<String, String>();
     }
-    ((ObjectNode) details).put(SECURITY_GROUP_KEY, securityGroupId);
+    details.put(SECURITY_GROUP_KEY, securityGroupId);
     save();
   }
 
   public String getSecurityGroupId() {
     if (details != null) {
-      JsonNode sgNode = details.get(SECURITY_GROUP_KEY);
-      return sgNode == null || sgNode.isNull() ? null : sgNode.asText();
+      String sgNode = details.get(SECURITY_GROUP_KEY);
+      return sgNode == null || sgNode.isEmpty() ? null : sgNode;
     }
     return null;
   }
 
   public void setVnetName(String vnetName) {
     if (details == null) {
-      details = Json.newObject();
+      details = new HashMap<String, String>();
     }
-    ((ObjectNode) details).put(VNET_KEY, vnetName);
+    details.put(VNET_KEY, vnetName);
     save();
   }
 
   public String getVnetName() {
     if (details != null) {
-      JsonNode vnetNode = details.get(VNET_KEY);
-      return vnetNode == null || vnetNode.isNull() ? null : vnetNode.asText();
+      String vnetNode = details.get(VNET_KEY);
+      return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
     }
     return null;
   }
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public JsonNode config;
+  public Map<String, String> config;
 
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
     for (String key : configMap.keySet()) {
       currConfig.put(key, configMap.get(key));
     }
-    this.config = Json.toJson(currConfig);
+    this.config = currConfig;
     this.save();
   }
 
@@ -145,7 +145,7 @@ public class Region extends Model {
     if (this.config == null) {
       return new HashMap<>();
     } else {
-      return Json.fromJson(this.config, Map.class);
+      return this.config;
     }
   }
 

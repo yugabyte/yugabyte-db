@@ -4,18 +4,14 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.YWServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 import play.data.validation.Constraints;
 
 import javax.persistence.Column;
@@ -26,12 +22,7 @@ import javax.persistence.Id;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.*;
 
 import static play.mvc.Http.Status.*;
 
@@ -92,11 +83,11 @@ public class CertificateInfo extends Model {
 
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
-  public JsonNode customCertInfo;
+  public CertificateParams.CustomCertInfo customCertInfo;
 
   public CertificateParams.CustomCertInfo getCustomCertInfo() {
     if (this.customCertInfo != null) {
-      return Json.fromJson(this.customCertInfo, CertificateParams.CustomCertInfo.class);
+      return this.customCertInfo;
     }
     return null;
   }
@@ -104,7 +95,7 @@ public class CertificateInfo extends Model {
   public void setCustomCertInfo(
       CertificateParams.CustomCertInfo certInfo, UUID certUUID, UUID cudtomerUUID) {
     this.checkEditable(certUUID, customerUUID);
-    this.customCertInfo = Json.toJson(certInfo);
+    this.customCertInfo = certInfo;
     this.save();
   }
 
@@ -151,7 +142,7 @@ public class CertificateInfo extends Model {
     cert.expiryDate = expiryDate;
     cert.certificate = certificate;
     cert.certType = Type.CustomCertHostPath;
-    cert.customCertInfo = Json.toJson(customCertInfo);
+    cert.customCertInfo = customCertInfo;
     cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
     return cert;

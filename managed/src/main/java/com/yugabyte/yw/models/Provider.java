@@ -4,7 +4,6 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -16,7 +15,6 @@ import io.ebean.annotation.DbJson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
-import play.libs.Json;
 
 import javax.persistence.*;
 import java.util.*;
@@ -62,7 +60,7 @@ public class Provider extends Model {
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
-  private JsonNode config;
+  private Map<String, String> config;
 
   @OneToMany(cascade = CascadeType.ALL)
   @JsonBackReference(value = "regions")
@@ -81,7 +79,7 @@ public class Provider extends Model {
     for (String key : configMap.keySet()) {
       currConfig.put(key, configMap.get(key));
     }
-    this.config = Json.toJson(currConfig);
+    this.config = currConfig;
     this.save();
   }
 
@@ -95,7 +93,7 @@ public class Provider extends Model {
     if (this.config == null) {
       return new HashMap<>();
     } else {
-      return Json.fromJson(this.config, Map.class);
+      return this.config;
     }
   }
 

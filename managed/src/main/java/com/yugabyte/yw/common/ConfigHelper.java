@@ -69,9 +69,9 @@ public class ConfigHelper {
   public Map<String, Object> getConfig(ConfigType type) {
     YugawareProperty p = YugawareProperty.get(type.toString());
     if (p == null) return Collections.emptyMap();
-    JsonNode node = p.getValue();
+    Map<String, Object> node = p.getValue();
     if (node == null) return Collections.emptyMap();
-    return Json.fromJson(node, Map.class);
+    return node;
   }
 
   public Map<String, Object> getRegionMetadata(Common.CloudType type) {
@@ -121,6 +121,6 @@ public class ConfigHelper {
   }
 
   public void loadConfigToDB(ConfigType type, Map<String, Object> config) {
-    YugawareProperty.addConfigProperty(type.toString(), Json.toJson(config), type.getDescription());
+    YugawareProperty.addConfigProperty(type.toString(), config, type.getDescription());
   }
 }
