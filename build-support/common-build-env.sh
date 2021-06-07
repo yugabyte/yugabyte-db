@@ -597,7 +597,7 @@ set_cmake_build_type_and_compiler_type() {
   elif [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if [[ $build_type =~ ^(asan|tsan)$ ]]; then
       # Use Clang by default for ASAN/TSAN builds.
-      YB_COMPILER_TYPE=clang
+      YB_COMPILER_TYPE=clang7
     else
       # The default on Linux.
       YB_COMPILER_TYPE=gcc
