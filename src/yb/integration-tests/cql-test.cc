@@ -192,4 +192,29 @@ TEST_F(CqlTest, Timeout) {
   }
 }
 
+TEST_F(CqlTest, RecreateTableWithInserts) {
+  const auto kNumKeys = 4;
+  const auto kNumIters = 2;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  for (int i = 0; i != kNumIters; ++i) {
+    SCOPED_TRACE(Format("Iteration: $0", i));
+    ASSERT_OK(session.ExecuteQuery(
+        "CREATE TABLE t (k INT PRIMARY KEY, v INT) WITH transactions = { 'enabled' : true }"));
+    std::string expr = "BEGIN TRANSACTION ";
+    for (int key = 0; key != kNumKeys; ++key) {
+      expr += "INSERT INTO t (k, v) VALUES (?, ?); ";
+    }
+    expr += "END TRANSACTION;";
+    auto prepared = ASSERT_RESULT(session.Prepare(expr));
+    auto stmt = prepared.Bind();
+    size_t idx = 0;
+    for (int key = 0; key != kNumKeys; ++key) {
+      stmt.Bind(idx++, RandomUniformInt<int32_t>(-1000, 1000));
+      stmt.Bind(idx++, -key);
+    }
+    ASSERT_OK(session.Execute(stmt));
+    ASSERT_OK(session.ExecuteQuery("DROP TABLE t"));
+  }
+}
+
 } // namespace yb
