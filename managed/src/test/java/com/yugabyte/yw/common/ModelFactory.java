@@ -91,6 +91,10 @@ public class ModelFactory {
     return Provider.create(customer.uuid, cloud, cloud.toString());
   }
 
+  public static Provider newProvider(Customer customer, Common.CloudType cloud, String name) {
+    return Provider.create(customer.uuid, cloud, name);
+  }
+
   public static Provider newProvider(
       Customer customer, Common.CloudType cloud, Map<String, String> config) {
     return Provider.create(customer.uuid, cloud, cloud.toString(), config);
@@ -156,8 +160,9 @@ public class ModelFactory {
 
     List<Provider> providerList = Provider.get(c.uuid, cloudType);
     Provider p = providerList.isEmpty() ? newProvider(c, cloudType) : providerList.get(0);
-    
-    UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
+
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
     userIntent.provider = p.uuid.toString();
     userIntent.providerType = cloudType;

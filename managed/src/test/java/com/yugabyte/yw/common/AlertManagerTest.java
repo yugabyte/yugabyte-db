@@ -150,11 +150,22 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendEmail_OwnAlertsReseted() {
     SmtpData smtpData = configureSmtp();
-    Alert.create(defaultCustomer.uuid, smtpData.configUUID, Alert.TargetType.CustomerConfigType,
-        AlertManager.ALERT_MANAGER_ERROR_CODE, "Warning", ALERT_TEST_MESSAGE);
+    Alert.create(
+        defaultCustomer.uuid,
+        smtpData.configUUID,
+        Alert.TargetType.CustomerConfigType,
+        AlertManager.ALERT_MANAGER_ERROR_CODE,
+        "Warning",
+        ALERT_TEST_MESSAGE);
 
-    Alert alert = Alert.create(defaultCustomer.uuid, UUID.randomUUID(),
-        Alert.TargetType.UniverseType, "errorCode", "Warning", ALERT_TEST_MESSAGE);
+    Alert alert =
+        Alert.create(
+            defaultCustomer.uuid,
+            UUID.randomUUID(),
+            Alert.TargetType.UniverseType,
+            "errorCode",
+            "Warning",
+            ALERT_TEST_MESSAGE);
     alert.sendEmail = true;
 
     List<Alert> alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
@@ -171,16 +182,23 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendEmail_OwnAlertGenerated() throws MessagingException {
     SmtpData smtpData = configureSmtp();
-    Alert alert = Alert.create(defaultCustomer.uuid, UUID.randomUUID(),
-        Alert.TargetType.UniverseType, "errorCode", "Warning", ALERT_TEST_MESSAGE);
+    Alert alert =
+        Alert.create(
+            defaultCustomer.uuid,
+            UUID.randomUUID(),
+            Alert.TargetType.UniverseType,
+            "errorCode",
+            "Warning",
+            ALERT_TEST_MESSAGE);
     alert.sendEmail = true;
 
     List<Alert> alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
     assertEquals(0, alerts.size());
 
     // EmailHelper.sendEmail should fail.
-    doThrow(new MessagingException("test")).when(emailHelper).sendEmail(eq(defaultCustomer),
-        anyString(), anyString(), eq(smtpData), any());
+    doThrow(new MessagingException("test"))
+        .when(emailHelper)
+        .sendEmail(eq(defaultCustomer), anyString(), anyString(), eq(smtpData), any());
 
     am.sendEmail(alert, TEST_STATE);
 

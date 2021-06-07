@@ -129,16 +129,21 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteValidCustomerConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
-    Alert.create(defaultCustomer.uuid, configUUID, Alert.TargetType.CustomerConfigType,
-        "Error code", "", "");
+    Alert.create(
+        defaultCustomer.uuid,
+        configUUID,
+        Alert.TargetType.CustomerConfigType,
+        "Error code",
+        "",
+        "");
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
-    assertEquals(0,
-        Alert.getActiveCustomerAlertsByTargetUuid(defaultCustomer.uuid, configUUID).size());
+    assertEquals(
+        0, Alert.getActiveCustomerAlertsByTargetUuid(defaultCustomer.uuid, configUUID).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 

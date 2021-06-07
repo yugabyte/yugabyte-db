@@ -392,8 +392,8 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
     userIntent.masterGFlags = null;
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
-      .get(0).uuid.toString();
+    userIntent.provider =
+        Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
 
     // SaveDetails in order to generate universeDetailsJson with null gflags
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
@@ -606,8 +606,8 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
-      .get(0).uuid.toString();
+    userIntent.provider =
+        Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     userIntent.numNodes = 3;
     u =
         Universe.saveDetails(
@@ -722,8 +722,8 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
     userIntent.regionList = new ArrayList<>();
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
-    .get(0).uuid.toString();
+    userIntent.provider =
+        Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     userIntent.numNodes = numNodes;
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, setMasters));
     return u;

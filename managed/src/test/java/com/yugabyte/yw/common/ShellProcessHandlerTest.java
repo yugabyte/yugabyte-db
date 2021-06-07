@@ -57,7 +57,7 @@ public class ShellProcessHandlerTest {
   @Test
   public void testPartialLineOutput() throws IOException {
     List<String> command = new ArrayList<String>();
-    String partialLineCmd = "echo -n foo  && sleep 30 && echo bar";
+    String partialLineCmd = "printf foo && sleep 1 && printf bar";
     String fileName = createTestShellScript(partialLineCmd);
     command.add(fileName);
     ShellResponse response = shellProcessHandler.run(command, new HashMap<>());

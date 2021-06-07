@@ -25,8 +25,7 @@ public class CustomerConfigController extends AuthenticatedController {
 
   @Inject private CustomerConfigValidator configValidator;
 
-  @Inject
-  private AlertManager alertManager;
+  @Inject private AlertManager alertManager;
 
   public Result create(UUID customerUUID) {
     ObjectNode formData = (ObjectNode) request().body().asJson();

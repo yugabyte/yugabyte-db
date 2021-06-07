@@ -182,9 +182,10 @@ public class Alert extends Model {
         .findList();
   }
 
-  public static List<Alert> getActiveCustomerAlertsByTargetUuid(UUID customerUUID,
-      UUID targetUUID) {
-    return find.query().where()
+  public static List<Alert> getActiveCustomerAlertsByTargetUuid(
+      UUID customerUUID, UUID targetUUID) {
+    return find.query()
+        .where()
         .eq("customer_uuid", customerUUID)
         .in("state", State.CREATED, State.ACTIVE)
         .eq("target_uuid", targetUUID)

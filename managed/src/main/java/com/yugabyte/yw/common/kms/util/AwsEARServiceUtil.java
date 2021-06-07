@@ -79,11 +79,12 @@ public class AwsEARServiceUtil {
 
   private static AWSCredentials getCredentials(ObjectNode authConfig) {
 
-    if (!StringUtils.isBlank(authConfig.path("AWS_ACCESS_KEY_ID").asText()) &&
-        !StringUtils.isBlank(authConfig.path("AWS_SECRET_ACCESS_KEY").asText())) {
+    if (!StringUtils.isBlank(authConfig.path("AWS_ACCESS_KEY_ID").asText())
+        && !StringUtils.isBlank(authConfig.path("AWS_SECRET_ACCESS_KEY").asText())) {
 
-        return new BasicAWSCredentials(authConfig.get("AWS_ACCESS_KEY_ID").asText(),
-            authConfig.get("AWS_SECRET_ACCESS_KEY").asText());
+      return new BasicAWSCredentials(
+          authConfig.get("AWS_ACCESS_KEY_ID").asText(),
+          authConfig.get("AWS_SECRET_ACCESS_KEY").asText());
     }
     return null;
   }
@@ -95,12 +96,12 @@ public class AwsEARServiceUtil {
 
     if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
 
-        return AWSKMSClientBuilder.defaultClient();
+      return AWSKMSClientBuilder.defaultClient();
     }
     return AWSKMSClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-            .withRegion(authConfig.get("AWS_REGION").asText())
-            .build();
+        .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
+        .withRegion(authConfig.get("AWS_REGION").asText())
+        .build();
   }
 
   public static AmazonIdentityManagement getIAMClient(UUID configUUID) {
@@ -110,12 +111,12 @@ public class AwsEARServiceUtil {
 
     if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
 
-        return AmazonIdentityManagementClientBuilder.defaultClient();
+      return AmazonIdentityManagementClientBuilder.defaultClient();
     }
     return AmazonIdentityManagementClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-            .withRegion(authConfig.get("AWS_REGION").asText())
-            .build();
+        .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
+        .withRegion(authConfig.get("AWS_REGION").asText())
+        .build();
   }
 
   public static AWSSecurityTokenService getSTSClient(UUID configUUID) {
@@ -124,12 +125,12 @@ public class AwsEARServiceUtil {
     AWSCredentials awsCredentials = getCredentials(authConfig);
     if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
 
-        return AWSSecurityTokenServiceClientBuilder.defaultClient();
+      return AWSSecurityTokenServiceClientBuilder.defaultClient();
     }
     return AWSSecurityTokenServiceClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-            .withRegion(authConfig.get("AWS_REGION").asText())
-            .build();
+        .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
+        .withRegion(authConfig.get("AWS_REGION").asText())
+        .build();
   }
 
   public static ObjectNode getPolicyBase() {

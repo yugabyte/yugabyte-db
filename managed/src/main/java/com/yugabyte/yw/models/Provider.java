@@ -23,6 +23,7 @@ import java.util.*;
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name", "code"}))
 @Entity
 public class Provider extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Provider.class);
@@ -184,10 +185,30 @@ public class Provider extends Model {
    * @param code
    * @return
    */
-
   public static List<Provider> get(UUID customerUUID, Common.CloudType code) {
-    return find.query().where().eq("customer_uuid", customerUUID)
-            .eq("code", code.toString()).findList();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("code", code.toString())
+        .findList();
+  }
+
+  /**
+   * Get Provider by name, cloud for a given customer uuid. If there is multiple providers with the
+   * same name, cloud will raise a exception.
+   *
+   * @param customerUUID
+   * @param name
+   * @param code
+   * @return
+   */
+  public static Provider get(UUID customerUUID, String name, Common.CloudType code) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("name", name)
+        .eq("code", code.toString())
+        .findOne();
   }
 
   public static Provider get(UUID providerUuid) {

@@ -265,8 +265,11 @@ public class ImportController extends AuthenticatedController {
       } else {
         // Understand about this better.
         results.with("checks").put("is_provider_present", "FAILURE");
-        results.put("error", String.format("Providers for the customer: %s and type: %s"
-         + " are not present", customer.uuid, importForm.providerType));
+        results.put(
+            "error",
+            String.format(
+                "Providers for the customer: %s and type: %s" + " are not present",
+                customer.uuid, importForm.providerType));
         return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
       }
 
@@ -377,8 +380,11 @@ public class ImportController extends AuthenticatedController {
     } else {
       // Understand about this better.
       results.with("checks").put("is_provider_present", "FAILURE");
-      results.put("error", String.format("Providers for the customer: %s and type: %s"
-        + " are not present", customer.uuid, importForm.providerType));
+      results.put(
+          "error",
+          String.format(
+              "Providers for the customer: %s and type: %s" + " are not present",
+              customer.uuid, importForm.providerType));
       return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
     }
 

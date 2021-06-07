@@ -67,8 +67,7 @@ public class EmailHelperTest extends FakeDBApplication {
 
   private static final int DEFAULT_SMTP_TIMEOUT = 2000;
 
-  @Rule
-  public MockitoRule rule = MockitoJUnit.rule();
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @Mock private RuntimeConfigFactory configFactory;
 
@@ -292,7 +291,8 @@ public class EmailHelperTest extends FakeDBApplication {
     smtpData.smtpUsername = null;
     Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
 
-    assertEquals(String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
+    assertEquals(
+        String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
         props.get("mail.smtp.connectiontimeout"));
     assertEquals(String.valueOf(DEFAULT_SMTP_TIMEOUT + 1), props.get("mail.smtp.timeout"));
   }
@@ -309,7 +309,8 @@ public class EmailHelperTest extends FakeDBApplication {
     smtpData.smtpUsername = null;
     Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
 
-    assertEquals(String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
+    assertEquals(
+        String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
         props.get("mail.smtps.connectiontimeout"));
     assertEquals(String.valueOf(DEFAULT_SMTP_TIMEOUT + 1), props.get("mail.smtps.timeout"));
   }

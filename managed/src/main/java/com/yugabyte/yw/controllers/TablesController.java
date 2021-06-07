@@ -475,9 +475,12 @@ public class TablesController extends AuthenticatedController {
 
       Provider provider = null;
       try {
-        provider = Provider.get(customerUUID,
-          UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
-      } catch(IllegalArgumentException ex) {
+        provider =
+            Provider.get(
+                customerUUID,
+                UUID.fromString(
+                    universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+      } catch (IllegalArgumentException ex) {
         String errMsg = "Could not find AWS provider for customer UUID: " + customerUUID;
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);

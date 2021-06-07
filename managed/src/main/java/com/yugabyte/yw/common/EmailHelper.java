@@ -44,8 +44,7 @@ public class EmailHelper {
 
   public static final UUID DEFAULT_CONFIG_UUID = new UUID(0, 0);
 
-  @Inject
-  private RuntimeConfigFactory configFactory;
+  @Inject private RuntimeConfigFactory configFactory;
 
   /**
    * Sends email with subject and content to recipients from destinations. STMP parameters are in
@@ -149,9 +148,10 @@ public class EmailHelper {
       }
 
       // Adding timeout settings.
-      String connectionTimeout = String
-          .valueOf(runtimeConfig.getInt("yb.health.smtp_connection_timeout_ms"));
-      props.put(smtpData.useSSL ? "mail.smtps.connectiontimeout" : "mail.smtp.connectiontimeout",
+      String connectionTimeout =
+          String.valueOf(runtimeConfig.getInt("yb.health.smtp_connection_timeout_ms"));
+      props.put(
+          smtpData.useSSL ? "mail.smtps.connectiontimeout" : "mail.smtp.connectiontimeout",
           connectionTimeout);
 
       String timeout = String.valueOf(runtimeConfig.getInt("yb.health.smtp_timeout_ms"));

@@ -426,11 +426,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
-    verify(mockMetricQueryHelper)
-      .query(
-        metricKeys.capture(),
-        queryParams.capture(),
-        anyMap());
+    verify(mockMetricQueryHelper).query(metricKeys.capture(), queryParams.capture(), anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertValue(filters, "namespace", "demo-az-1|demo-az-2|test-ns-1");
@@ -461,11 +457,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
-    verify(mockMetricQueryHelper)
-      .query(
-        metricKeys.capture(),
-        queryParams.capture(),
-        anyMap());
+    verify(mockMetricQueryHelper).query(metricKeys.capture(), queryParams.capture(), anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertValue(filters, "namespace", "demo");
@@ -497,11 +489,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
-    verify(mockMetricQueryHelper)
-      .query(
-        metricKeys.capture(),
-        queryParams.capture(),
-        anyMap());
+    verify(mockMetricQueryHelper).query(metricKeys.capture(), queryParams.capture(), anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertValue(filters, "namespace", "demo");
@@ -561,11 +549,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-      .query(
-        metricKeys.capture(),
-        queryParams.capture(),
-        anyMap());
+    verify(mockMetricQueryHelper).query(metricKeys.capture(), queryParams.capture(), anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String tableName = filters.get("table_name").asText();
@@ -600,11 +584,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-      .query(
-        metricKeys.capture(),
-        queryParams.capture(),
-        anyMap());
+    verify(mockMetricQueryHelper).query(metricKeys.capture(), queryParams.capture(), anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertThat(filters.get("table_name"), nullValue());
@@ -663,11 +643,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-      .query(
-        metricKeys.capture(),
-        queryParams.capture(),
-        anyMap());
+    verify(mockMetricQueryHelper).query(metricKeys.capture(), queryParams.capture(), anyMap());
 
     assertThat(metricKeys.getValue(), is(notNullValue()));
     assertThat(queryParams.getValue(), is(notNullValue()));
@@ -707,11 +683,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-      .query(
-        metricKeys.capture(),
-        queryParams.capture(),
-        anyMap());
+    verify(mockMetricQueryHelper).query(metricKeys.capture(), queryParams.capture(), anyMap());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodePrefix = filters.get("node_prefix").asText();
@@ -741,11 +713,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
     FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
-    verify(mockMetricQueryHelper)
-      .query(
-        metricKeys.capture(),
-        queryParams.capture(),
-        any());
+    verify(mockMetricQueryHelper).query(metricKeys.capture(), queryParams.capture(), any());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodeName = filters.get("exported_instance").asText();
@@ -798,11 +766,16 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.put("smtpData", (String) null);
 
     CustomerConfig smtpConfig = CustomerConfig.createSmtpConfig(customer.uuid, Json.newObject());
-    Alert.create(customer.uuid, smtpConfig.configUUID, Alert.TargetType.CustomerConfigType,
-        "Error code", "", "");
+    Alert.create(
+        customer.uuid,
+        smtpConfig.configUUID,
+        Alert.TargetType.CustomerConfigType,
+        "Error code",
+        "",
+        "");
 
-    Result result = route(
-        fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
+    Result result =
+        route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
 
     assertNull(CustomerConfig.getSmtpConfig(customer.uuid));

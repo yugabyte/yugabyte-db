@@ -55,6 +55,7 @@ import javax.persistence.PersistenceException;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class CloudProviderController extends AuthenticatedController {
   private final Config config;
@@ -164,6 +165,13 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     Common.CloudType providerCode = formData.get().code;
+
+    Provider existentProvider = Provider.get(customerUUID, formData.get().name, providerCode);
+    if (existentProvider != null) {
+      return ApiResponse.error(
+          BAD_REQUEST,
+          String.format("Provider with the name %s already exists", formData.get().name));
+    }
 
     // Since the Map<String, String> doesn't get parsed, so for now we would just
     // parse it from the requestBody

@@ -44,17 +44,13 @@ public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
 
-  @Inject
-  private ValidatingFormFactory formFactory;
+  @Inject private ValidatingFormFactory formFactory;
 
-  @Inject
-  private MetricQueryHelper metricQueryHelper;
+  @Inject private MetricQueryHelper metricQueryHelper;
 
-  @Inject
-  private CloudQueryHelper cloudQueryHelper;
+  @Inject private CloudQueryHelper cloudQueryHelper;
 
-  @Inject
-  private AlertManager alertManager;
+  @Inject private AlertManager alertManager;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
