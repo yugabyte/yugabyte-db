@@ -26,24 +26,25 @@ Before trying to optimize individual statements, first make sure the YugabyteDB 
 To view the nodes and servers that make up your cluster, use the `yb-admin` command to request the master and tablet servers, as follows:
 
 ```sql
-yugabyte=# yb-admin -init_master_addrs=$(hostname):7100 list_all_masters
+$ ./bin/yb-admin -init_master_addrs=$(hostname):7100 list_all_masters
 ```
 
 ```output
-Master UUID                         RPC Host/Port           State       Role
-a637b88dfc0c4476862ca79872d763d7    172.158.22.229:7100     ALIVE       LEADER
-968eb4a7a2e24c3ab95929d3a888ed05    172.158.39.23:7100      ALIVE       FOLL..
-44e13e096955412a88c6ffd65a1e241c    172.158.50.212:7100     ALIVE       FOLL..
+Master UUID                        RPC Host/Port           State       Role
+a637b88dfc0c4476862ca79872d763d7   172.158.22.229:7100     ALIVE       LEADER
+968eb4a7a2e24c3ab95929d3a888ed05   172.158.39.23:7100      ALIVE       FOLLOWER
+44e13e096955412a88c6ffd65a1e241c   172.158.50.212:7100     ALIVE       FOLLOWER
 ```
 
 ```sql
-yugabyte=# yb-admin -init_master_addrs=$(hostname):7100 list_all_tablet_servers
+$ ./bin/yb-admin -init_master_addrs=$(hostname):7100 list_all_tablet_servers
 ```
 
 ```output
-Tablet Server UUID               RPC Host/Port Heartbeat delay Status   Reads/s  
-d80150e0eeda4477a231968440dd89a9 172.158.50.212:9100 0.20s           ALIVE   .. 
-721661fd5d2044179e03707a862aa578 172.158.22.229:9100 0.39s           ALIVE   .. 54e17c914c0f4679aa7b07a9c7a8ddf5 172.158.39.23:9100 0.48s           ALIVE    ..
+Tablet Server UUID               RPC Host/Port       Heartbeat delay Status   Reads/s  
+d80150e0eeda4477a231968440dd89a9 172.158.50.212:9100 0.20s           ALIVE    .. 
+721661fd5d2044179e03707a862aa578 172.158.22.229:9100 0.39s           ALIVE    .. 
+54e17c914c0f4679aa7b07a9c7a8ddf5 172.158.39.23:9100  0.48s           ALIVE    ..
 ```
 
 Next, make sure enough disk space is available, elementary components such as CPU, disk, and the network do not report errors, and the operating system does not report any malfunction.
@@ -52,7 +53,7 @@ Once you know the entire cluster is running correctly, you can move to statement
 
 ## Tuning in YSQL / Postgres
 
-Each node running the YB-TServer process also runs an instance of the Postgres API (running as the YugabyteDB YSQL API). (This is often referred to as 'stateless Postgres', because each instance of Postgres runs independently.)
+Each node running the YB-TServer process also runs an instance of Postgres (running as the YugabyteDB YSQL API). (This is often referred to as 'stateless Postgres', because each instance of Postgres runs independently.)
 
 To investigate a specific apparently slow running query, you first need to determine which node the query is running on. 
 
@@ -78,7 +79,7 @@ YugabyteDB uses PostgreSQL’s cost-based optimizer, which estimates the costs o
 
 {{< note title="Note" >}}
 
-Currently, YugabyteDB does not perform size-specific costing, and assumes every plan generates a thousand rows and has a cost of a thousand. 
+Currently, YugabyteDB does not perform size-specific costing, and assumes every plan generates a thousand rows, which translates to a cost of a thousand. 
 
 {{< /note >}}
 
@@ -86,7 +87,7 @@ To view the execution plan, use the `EXPLAIN` statement. You can use `EXPLAIN` i
 
 * The default `EXPLAIN` mode shows the plan that the planner created and the predicted cost.
 
-* `EXPLAIN ANALYZE` mode performs the query, measures the time and actual work done, and adds these statistics to the execution plan as 'actual'.
+* `EXPLAIN ANALYZE` mode executes the query, measures the time and actual work done, and adds these statistics to the execution plan as 'actual'.
 
 Both the predicted and actual statistics have their uses: 
 
@@ -104,15 +105,9 @@ Complex execution plans can be difficult to read or understand. Use online tools
 
 ### Find slow queries using pg_stat_statements
 
-Use the `pg_stat_statements` extension to get statistics on the execution of queries. Using `pg_stat_statements`, you can quickly track down problematic queries by a variety of criteria, including:
+Use the `pg_stat_statements` extension to get statistics on past queries. Using `pg_stat_statements`, you can investigate queries by userid and dbid, calls, rows, and min, max, mean, standard deviation and total time.
 
-* I/O intensity
-* time consumption
-* response time
-* memory consumption
-* temporary space consumption
-
-The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before you can query the `pg_stat_statements` view.
+The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled for a database before you can query the `pg_stat_statements` view.
 
 ```sql
 CREATE EXTENSION if not exists pg_stat_statements;
@@ -124,15 +119,23 @@ For more information, refer to [Get query statistics using `pg_stat_statements`]
 
 ### View live queries using pg_stat_activity
 
-Use the `pg_stat_activity` view to get information on currently running tasks. Using `pg_stat_activity` you can troubleshoot problems by identifying long-running idle in transaction sessions or very long running queries.
+Use the `pg_stat_activity` view to get information on currently running tasks. Using `pg_stat_activity` you can identify inactive, active, and long time active sessions, and get process information and the current query.
 
 To get the output of `pg_stat_activity` in JSON format, visit `https://<yb-tserver-ip>:13000/rpcz` in your web browser, where `<yb-tserver-ip>` is the IP address of any YB-TServer node in your cluster.
 
 For more information, refer to [Viewing live queries with `pg_stat_activity`](../pg-stat-activity).
 
+### Understand what your queries are doing with EXPLAIN
+
+Like PostgreSQL, YugabyteDB provides the `EXPLAIN` statement to show the query execution plan generated by YSQL for a given SQL statement. Using `EXPLAIN`, you can discover where in the query plan the query is spending most of its time.
+
+Using the information from `EXPLAIN`, you can then decide on the best approach for improving query performance. This could include strategies such as adding an index and changing index sort order.
+
+For more information, refer to [Analyzing queries with EXPLAIN](../explain-analyze).
+
 ### Turn on slow query logging
 
-Set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
+You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
 
 ```sh
 $ ./bin/yb-tserver --ysql_log_min_duration_statement 1000
@@ -151,27 +154,23 @@ Example log output:
     ORDER BY 2, 3;
 ```
 
-Results are written to the YB-TServer log. For information on the YB-TServer log, refer to [YB-TServer logs](../../../troubleshoot/nodes/check-logs/#yb-tserver-logs).
+{{< note title="Note" >}}
+
+Depending on the database and the work being performed, long-running queries don't necessarily need to be optimized.
+
+Also, ensure that the threshold is high enough so that you don't flood the Postgres server log.
+
+{{< /note >}}
+
+Results are written to the current PostgreSQL logfile. For information on the YB-TServer logs, refer to [YB-TServer logs](../../../troubleshoot/nodes/check-logs/#yb-tserver-logs).
 
 For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../../reference/configuration/yb-tserver/#ysql-flags).
 
-### Understand what your queries are doing with EXPLAIN
-
-Like PostgreSQL, YugabyteDB provides the `EXPLAIN` statement to show the query execution plan generated by YSQL for a given SQL statement. Using `EXPLAIN`, you can discover where in the query plan the query is spending most of its time.
-
-Using the information from `EXPLAIN`, you can then decide on the best approach for improving query performance. This could include strategies such as:
-
-* Adding an index
-* Changing the primary index
-* Changing index sort order
-
-For more information, refer to [Analyzing queries with EXPLAIN](../explain-analyze).
-
 ### Optimize YSQL queries using pg_hint_plan
 
-YugabyteDB leverages the PostgreSQL `pg_hint_plan` extension to control query execution plans with hinting phrases using comments.
+YugabyteDB uses the PostgreSQL `pg_hint_plan` extension to control query execution plans with hints.
 
-`pg_hint_plan` makes it possible to tweak execution plans using "hints", which are simple descriptions in the form of SQL comments.
+`pg_hint_plan` makes it possible to influence the query planner using so-called "hints", which are C-style comments using a special syntax.
 
 {{< note title="Note" >}}
 
