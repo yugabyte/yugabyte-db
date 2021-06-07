@@ -8,17 +8,25 @@
      "(^src/postgres/.*$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/v1.routes$)",
+     "(^managed/src/main/public/swagger-ui/)",
      "(^managed/src/main/resources/swagger.json$)",
      "(^managed/build.sbt$)",
      "(^managed/src/main/resources/aws_pricing/.*$)"
   ],
   "linters": {
+    "script-and-regex.script": {
+      "type": "script-and-regex",
+      "include": "(^managed/.*\\.java$)",
+      "script-and-regex.script":
+      "cd managed; sbt javafmtCheckAll; echo ",
+      "script-and-regex.regex":
+        "/^.*(?P<error>javafmtCheck).*(?P<message>Unformatted.*javafmt)\\:\\ (?P<file>.*)$/m"
+    },
     "text": {
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
         "(^managed/ui/)",
-        "(^managed/src/main/public/swagger-ui/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",
