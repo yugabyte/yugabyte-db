@@ -85,7 +85,7 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
 
 ```sh
 {
-    "Version": "2020-01-17",
+    "Version": "2020-10-17",
     "Statement": [
         {
             "Sid": "VisualEditor0",
