@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.SlowQueriesParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
@@ -37,13 +38,15 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
   private String hostName;
   private int port;
   private String query;
+  private Universe universe;
 
   private final String DEFAULT_DB_USER = "yugabyte";
   private final String DEFAULT_DB_PASSWORD = "yugabyte";
 
-  public SlowQueryExecutor(String hostName, int port, String query) {
+  public SlowQueryExecutor(String hostName, int port, Universe universe, String query) {
     this.hostName = hostName;
     this.port = port;
+    this.universe = universe;
     this.query = query;
     this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
   }
@@ -70,9 +73,18 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
   @Override
   public JsonNode call() {
     ObjectNode response = Json.newObject();
-    String connectString = String.format("jdbc:postgresql://%s:%d/%s", hostName, port, "postgres");
-    try (Connection conn =
-        DriverManager.getConnection(connectString, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD)) {
+    String connectString =  String.format("jdbc:postgresql://%s:%d/%s",
+      hostName, port, "postgres");
+    Properties connInfo = new Properties();
+    connInfo.put("user", DEFAULT_DB_USER);
+    connInfo.put("password", DEFAULT_DB_PASSWORD);
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+      universe.getUniverseDetails().getPrimaryCluster();
+    if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
+      connInfo.put("ssl", "true");
+      connInfo.put("sslmode", "require");
+    }
+    try (Connection conn = DriverManager.getConnection(connectString, connInfo)) {
       if (conn == null) {
         response.put("error", "Unable to connect to DB");
       } else {
