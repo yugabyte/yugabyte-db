@@ -2216,9 +2216,15 @@ set_prebuilt_thirdparty_url() {
       # For compiler types like gcc9 or clang11, append the compiler type to the file path.
       thirdparty_url_file+="_${YB_COMPILER_TYPE}"
     fi
-    if [[ $YB_COMPILER_TYPE == "clang" && ( $build_type == "asan" || $build_type == "tsan" ) ]]
-    then
-      thirdparty_url_file+="_sanitizers"
+    # In the 2.4 branch we don't yet allow running either Clang 7 or Clang 11 builds without
+    # the Linuxbrew toolchain, so for these build types we simply use the old build of thirdparty
+    # that still has gperftools 2.8.0 with buggy tcmalloc (but we don't use tcmalloc in ASAN/TSAN,
+    # and it is unlikely that we will hit the tcmalloc bug in clang debug/release tests). Long-term
+    # we do need to upgrade these build types to a non-Linuxbrew toolchain, though.
+    if [[ $YB_COMPILER_TYPE == "clang" ||
+          $build_type == "asan" ||
+          $build_type == "tsan" ]]; then
+      thirdparty_url_file+="_legacy_clang7_linuxbrew"
     fi
     thirdparty_url_file+=.txt
     if [[ -f $thirdparty_url_file ]]; then

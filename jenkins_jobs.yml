@@ -1,0 +1,34 @@
+# This file determines the jobs that we run in this branch on Jenkins.
+jobs:
+  - os: centos7
+    compiler: gcc5
+    build_type: debug
+  - os: centos7
+    compiler: gcc5
+    build_type: release
+  - os: macos
+    compiler: clang
+    build_type: debug
+  - os: macos
+    compiler: clang
+    build_type: release
+  - os: ubuntu18.04
+    # The default for our Ubuntu 18.04 builds is really GCC 7 but we specify just "gcc" here
+    # because the scripts in the 2.4 branch don't understand the "gcc7" build type yet.
+    compiler: gcc
+    build_type: debug
+  # These build types would still use the legacy Linuxbrew-based thirdparty build. In other branches
+  # we have moved to the "clang7" compiler type. (The Clang version used by the below "clang"
+  # compiler type is also 7, but the legacy Linuxbrew-based Clang 7 toolchain is used.)
+  - os: centos7
+    compiler: clang
+    build_type: debug
+  - os: centos7
+    compiler: clang
+    build_type: release
+  - os: centos7
+    compiler: clang
+    build_type: asan
+  - os: centos7
+    compiler: clang
+    build_type: tsan
