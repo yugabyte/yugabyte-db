@@ -300,7 +300,7 @@ public class Backup extends Model {
                             .asText()
                             .equals(configUUID.toString())
                         && universeUUIDs.add(
-                            UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
+                            UUID.fromString(s.getTaskParams().get("universeUUID").asText())))
             .collect(Collectors.toList());
     Set<Universe> universes = new HashSet<>();
     for (UUID universeUUID : universeUUIDs) {
