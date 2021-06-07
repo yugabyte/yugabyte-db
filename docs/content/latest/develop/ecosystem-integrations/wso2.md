@@ -79,7 +79,7 @@ You need to download the [Postgres JDBC driver](https://jdbc.postgresql.org/down
 
 WSO2 default carbon kernel code violates REPEATABLE READ semantics. Since YugabyteDB has stricter transaction semantics and does not allow unrepeatable read anomaly, you need to do the following in order to be able to use a patch of the critical JAR for YugabyteDB compatibility:
 
-- Download the patched [JAR](https://github.com/m-iancu/carbon-kernel/releases/download/4.6.x-yb-1/org.wso2.carbon.registry.core_4.6.2.SNAPSHOT.jar) from [GitHub](https://github.com/m-iancu/carbon-kernel/releases/tag/4.6.x-yb-1) by executingn the following command:
+- Download the patched [JAR](https://github.com/m-iancu/carbon-kernel/releases/download/4.6.x-yb-1/org.wso2.carbon.registry.core_4.6.2.SNAPSHOT.jar) from [GitHub](https://github.com/m-iancu/carbon-kernel/releases/tag/4.6.x-yb-1) by executing the following command:
 
   ```shell
   wget https://github.com/m-iancu/carbon-kernel/releases/download/4.6.x-yb-1/org.wso2.carbon.registry.core_4.6.2.SNAPSHOT.jar
