@@ -106,7 +106,7 @@ For more information and examples, see the following:
 A foreign key represents one or more columns in a table referencing the following: 
 
 - A primary key in another table.
-- A [unique index](../indexes-1#using-the-unique-index) or colums restricted with a [unique constraint](#unique-constraint) in another table.
+- A [unique index](../indexes-1#using-the-unique-index) or columns restricted with a [unique constraint](#unique-constraint) in another table.
 
 Tables can have multiple foreign keys.
 
@@ -154,37 +154,6 @@ CREATE TABLE contacts(
 ```
 
 In the preceding example, the parent table is `employees` and the child table is `contacts`. Each employee has any number of contacts, and each contact belongs to no more than one employee. The `employee_no` column in the `contacts` table is the foreign key column that references the primary key column with the same name in the `employees` table. The `fk_customer` foreign key constraint in the `contacts` table defines the `employee_no` as the foreign key. Since `fk_customer` is not associated with any action, `NO ACTION` is applied by default.
-
-
-
-```sql
-CREATE TABLE employees112(
-  employee_no integer UNIQUE,
-  name text NOT NULL,
-  department text
-);
-
-CREATE TABLE contacts112(
-  contact_id integer GENERATED ALWAYS AS IDENTITY,
-  employee_no integer,
-  contact_name text NOT NULL,
-  phone integer,
-  email text,
-  PRIMARY KEY(contact_id),
-  CONSTRAINT fk_employee
-    FOREIGN KEY(employee_no) 
-      REFERENCES employees112(employee_no)
-);
-```
-
-
-
-```sql
-CREATE UNIQUE INDEX index_employees_no
-  ON employees111(employee_no);
-```
-
-
 
 The following example shows how to create the same `contacts` table with a `CASCADE` action `ON DELETE`:
 
