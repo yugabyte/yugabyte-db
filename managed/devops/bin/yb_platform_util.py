@@ -46,6 +46,8 @@ def exception_handling(func):
             except ValueError:
                 message = 'Invalid YB_PLATFORM_URL URL or params.'
                 sys.stderr.write(message)
+        except ValueError as e:
+            sys.stderr.write(str(e))
         except Exception as e:
             sys.stderr.write(str(e))
     return inner_function
@@ -263,7 +265,7 @@ class YBUniverse():
 
     def __get_universe_list(self):
         """
-        Delete the universe by providing UUID.
+        Get list of universe name and UUID.
 
         :return: List of universe name and UUID
         """
@@ -288,7 +290,8 @@ class YBUniverse():
         universe = self.__get_universe_by_name(universe_name)
         if universe:
             configure_json = self.__create_universe_config(universe)
-            file_path = '{0}/{1}.json'.format(script_path, universe_name)
+            file_name = '{0}.json'.format(universe_name)
+            file_path = os.path.join(script_path, file_name)
             with open(file_path, 'w') as file_obj:
                 json.dump(configure_json, file_obj)
             
@@ -308,7 +311,8 @@ class YBUniverse():
         if universe:
             configure_json = self.__create_universe_config(universe)
             name = universe.get("name")
-            file_path = '{0}/{1}.json'.format(script_path, name)
+            file_name = '{0}.json'.format(name)
+            file_path = os.path.join(script_path, file_name)
             with open(file_path, 'w') as file_obj:
                 json.dump(configure_json, file_obj)
             print('Detail of universe have been saved to {0}'.format(str(file_path)))
@@ -335,33 +339,34 @@ class YBUniverse():
             sys.stdout.write("#"*(progress))
             sys.stdout.write('\n')
             sys.stdout.flush()
-            if progress == 100:
+            if progress >= 100:
                 exit()
             time.sleep(self.args.interval)
+
             
 
     def __get_task_details(self, task_id):
         """
-        Get details of the ongoing task.
+        Get Progress of task.
 
         :param task_id: Task UUID.
         :return: None
         """
         task_url = '{0}/api/v1/customers/{1}/tasks/{2}'.format(self.base_url, self.customer_uuid, task_id)
         task_json = self.__call_api(task_url)
-        if task_json.get('status') == 'Running':
+        status = task_json.get('status')
+        if status == 'Running':
             percentage = int(task_json.get('percent'))
             # If status is running and percentage 100 means task is not started yet.
             return 0 if percentage==100 else int(task_json.get('percent'))
-        elif task_json.get('status') == 'Success':
+        elif status == 'Success':
             return 100
-        elif task_json.get('status') == 'Failure':
+        elif status == 'Failure':
             content = {
                 'message': '{0} failed'.format(task_json.get("title")),
                 'details': task_json.get('details')
             }
-            sys.stderr.write(json.dumps(content))
-            exit(1)
+            raise ValueError(content)
 
 
     def __get_universe_uuid_by_name(self, universe_name):
@@ -376,11 +381,10 @@ class YBUniverse():
             return universe.get('universeUUID')
         else:
             message = 'Universe with {0} not found'.format(universe_name)
-            sys.stderr.write(message)
-            exit(1)
+            raise ValueError(message)
 
 
-    def __delete_universe_by_id(self, universe_uuid):
+    def __delete_universe_by_uuid(self, universe_uuid):
         """
         Delete the universe by providing UUID.
 
@@ -401,16 +405,16 @@ class YBUniverse():
 
     def __validate_universe_name(self, universe_name):
         """
-        Get the universe details and store it in a json file after formatting the json.
+        Validate universe name is unique and allow create universe.
 
         :param universe_name: Name of the universe to take a json data from.
         :return: None
         """
         # TODO need to update API URL once PR:- https://github.com/yugabyte/yugabyte-db/pull/8367 get merged.
-        universe_delete_url = '{0}/api/v1/customers/{1}/universes/find/{2}'.format(
+        find_universe_url = '{0}/api/v1/customers/{1}/universes/find/{2}'.format(
             self.base_url, self.customer_uuid, universe_name)
 
-        self.__call_api(universe_delete_url)
+        self.__call_api(find_universe_url)
         
 
     def create_universe(self):
@@ -422,7 +426,7 @@ class YBUniverse():
         if not self.args.file:
             sys.stderr.write("Input json file required. Use '-f|--file <file_path>' to pass json input file.")
             exit(1)
-        input_file = script_path + '/' + self.args.file
+        input_file = os.path.join(script_path , self.args.file)
         universe_name = self.args.universe_name
 
         configure_json, universe_name = self.__modify_universe_config(input_file, universe_name)
@@ -441,7 +445,7 @@ class YBUniverse():
             if not self.args.no_wait:
                 self.__task_progress_bar(task_id)
         else:
-            sys.stderr.write('Unable to Create Universe for Customer {0}'.format(customer_uuid))
+            sys.stderr.write('Unable to Create Universe for Customer {0}'.format(self.customer_uuid))
 
 
     def get_single_customer_uuid(self):
@@ -458,13 +462,12 @@ class YBUniverse():
             if (len(data) == 1):
                 self.customer_uuid = str(data[0])
             else:
-                sys.stderr.write('Muliple customer UUID present, Please provide customer UUID')
-                exit(1)
+                raise ValueError('Muliple customer UUID present, Please provide customer UUID')
 
 
     def get_regions_data(self):
         """
-        Delete the universe by providing UUID.
+        Get all region names and UUID with zones.
 
         :return: All available regions
         """
@@ -489,7 +492,7 @@ class YBUniverse():
 
     def get_provider_data(self):
         """
-        Delete the universe by providing UUID.
+        Get all providers names and UUID.
 
         :return: All available providers
         """
@@ -506,7 +509,7 @@ class YBUniverse():
 
     def delete_universe(self):
         """
-        Function to do delete action.
+        Function to do delete universe action.
 
         :return: None
         """
@@ -526,7 +529,7 @@ class YBUniverse():
         
             if self.args.universe_name:
                 universe_uuid = self.__get_universe_uuid_by_name(self.args.universe_name)
-            self.__delete_universe_by_id(universe_uuid)
+            self.__delete_universe_by_uuid(universe_uuid)
         else:
             print("Aborted Delete universe")
             exit()
@@ -548,7 +551,7 @@ class YBUniverse():
 
     def task_status(self):
         """
-        Function to update task status.
+        Function to task status action.
 
         :return: None
         """
@@ -565,8 +568,8 @@ class YBUniverse():
         :return: None
         """
         parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=textwrap.dedent('''
+        formatter_class = argparse.RawDescriptionHelpFormatter,
+        description = textwrap.dedent('''
         Script to perform universe actions.
         --------------------------------
             1. Get existing universe list. 
@@ -630,7 +633,7 @@ class YBUniverse():
         parser.add_argument('-c', '--customer_uuid', help='Mandatory if multiple customer uuids present.')
         parser.add_argument('-n', '--universe_name', help='Universe name')
         parser.add_argument('-u', '--universe_uuid', help='Universe UUID')
-        parser.add_argument('-f', '--file', help='Json input file for creating universe', metavar='INPUT_FILE_PATH')
+        parser.add_argument('-f', '--file', help='Json input file for creating universe. Relative path.', metavar='INPUT_FILE_PATH')
         parser.add_argument('-t', '--task', help='Task UUID to get task status', metavar='TASK_ID')
         parser.add_argument('-y', '--yes', action='store_true', help='Input yes for all confirmation prompts')
         parser.add_argument('--interval', type=check_positive, default=20, 
