@@ -44,7 +44,7 @@ To build a Java application using the YugabyteDB Spark Connector for YCQL, add t
 <dependency>
   <groupId>com.yugabyte.spark</groupId>
   <artifactId>spark-cassandra-connector_2.12</artifactId>
-  <version>3.0-yb-1</version>
+  <version>3.0-yb-8</version>
 </dependency>
 ```
 
@@ -80,7 +80,7 @@ The following Java code shows how to initialize a Spark session:
 SparkConf conf = new SparkConf().setAppName("yb.spark-jsonb")
   .setMaster("local[1]")
   .set("spark.cassandra.connection.localDC", "datacenter1")
-  .set("spark.cassandra.connection.host", addresses.**get**(0).getHostName())
+  .set("spark.cassandra.connection.host", addresses.get(0).getHostName())
   .set("spark.sql.catalog.ybcatalog",
        "com.datastax.spark.connector.datasource.CassandraCatalog");
 SparkSession spark = SparkSession.builder().config(conf).getOrCreate();
