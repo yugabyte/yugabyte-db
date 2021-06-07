@@ -47,6 +47,7 @@
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace master {
@@ -226,6 +227,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
   std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
+  Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
@@ -274,6 +276,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   ~TabletInfo();
   TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
+  CHECKED_STATUS GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;

@@ -17,6 +17,9 @@
 
 #include <gflags/gflags.h>
 
+#include "yb/gutil/port.h"
+#include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/unique_lock.h"
 
@@ -26,6 +29,12 @@ DEFINE_int32(max_queued_split_candidates, 5,
              "The max number of pending tablet split candidates we will hold onto. We potentially "
              "iterate through every candidate in the queue for each tablet we process in a tablet "
              "report so this size should be kept relatively small to avoid any issues.");
+
+DEFINE_bool(enable_automatic_tablet_splitting, false,
+            "If false, disables automatic tablet splitting driven from the yb-master side.");
+
+DEFINE_test_flag(bool, disable_split_tablet_candidate_processing, false,
+                 "When true, do not process split tablet candidates.");
 
 constexpr int32 kHardLimitCandidateQueueSize = 100;
 
@@ -64,6 +73,10 @@ Status TabletSplitManager::ScheduleSplitIfNeeded(
     const TabletInfo& tablet_info,
     const TabletServerId& drive_info_ts_uuid,
     const TabletReplicaDriveInfo& drive_info) {
+  if (!FLAGS_enable_automatic_tablet_splitting) {
+    return Status::OK();
+  }
+
   UniqueLock<decltype(mutex_)> lock(mutex_);
   if (candidates_.size() >= GetCandidateQueueLimit()) {
     return Status::OK();
@@ -76,13 +89,16 @@ Status TabletSplitManager::ScheduleSplitIfNeeded(
       VERIFY_RESULT(tablet_info.GetLeader())->permanent_uuid() == drive_info_ts_uuid);
   if (is_tablet_leader_drive_info
       && filter_->ValidateSplitCandidate(tablet_info).ok()
-      && filter_->ShouldSplitValidCandidate(drive_info)) {
+      && filter_->ShouldSplitValidCandidate(tablet_info, drive_info)) {
     candidates_.push_back(tablet_id);
   }
   return Status::OK();
 }
 
 void TabletSplitManager::ProcessQueuedSplitItems() {
+  if (PREDICT_FALSE(FLAGS_TEST_disable_split_tablet_candidate_processing)) {
+    return;
+  }
   UniqueLock<decltype(mutex_)> lock(mutex_);
   if (!candidates_.empty()) {
     auto tablet_id = candidates_.front();

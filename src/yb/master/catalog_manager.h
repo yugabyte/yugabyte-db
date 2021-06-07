@@ -806,7 +806,8 @@ class CatalogManager :
 
   CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) const override;
 
-  bool ShouldSplitValidCandidate(const TabletReplicaDriveInfo& drive_info) const override;
+  bool ShouldSplitValidCandidate(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1529,7 +1530,7 @@ class CatalogManager :
 
   ServerRegistrationPB server_registration_;
 
-  BlacklistSet BlacklistSetFromPB();
+  BlacklistSet BlacklistSetFromPB() const;
 
   TabletSplitManager tablet_split_manager_;
 

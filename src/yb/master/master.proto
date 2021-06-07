@@ -884,11 +884,11 @@ message TSHeartbeatResponsePB {
 
   optional int32 cluster_config_version = 13;
 
-  optional int64 tablet_split_size_threshold_bytes = 14;
-
   optional int32 tablet_report_limit = 16;
 
   optional TSSnapshotSchedulesInfoPB snapshot_schedules = 17;
+
+  optional int64 DEPRECATED_tablet_split_size_threshold_bytes = 14;
 }
 
 message TSInformationPB {
