@@ -113,7 +113,7 @@ test_set_cmake_build_type_and_compiler_type() {
     fatal "Unexpected value for the mock OSTYPE: '$os_type'"
   fi
   local compiler_type_preference=$3
-  if [[ ! "$compiler_type_preference" =~ ^(gcc[0-9]*|clang|auto|N/A)$ ]]; then
+  if [[ ! "$compiler_type_preference" =~ ^(gcc[0-9]*|clang[0-9]*|auto|N/A)$ ]]; then
     fatal "Invalid value for compiler_type_preference: '$compiler_type_preference'"
   fi
 
@@ -153,13 +153,13 @@ test_set_cmake_build_type_and_compiler_type() {
 test_set_cmake_build_type_and_compiler_type asan       darwin    auto       fastdebug  clang  0
 test_set_cmake_build_type_and_compiler_type asan       darwin    clang      fastdebug  clang  0
 test_set_cmake_build_type_and_compiler_type asan       darwin    gcc        N/A        N/A    1
-test_set_cmake_build_type_and_compiler_type asan       linux-gnu auto       fastdebug  clang  0
-test_set_cmake_build_type_and_compiler_type asan       linux-gnu clang      fastdebug  clang  0
+test_set_cmake_build_type_and_compiler_type asan       linux-gnu auto       fastdebug  clang7 0
+test_set_cmake_build_type_and_compiler_type asan       linux-gnu clang7     fastdebug  clang7 0
 test_set_cmake_build_type_and_compiler_type asan       linux-gnu gcc        N/A        N/A    1
 test_set_cmake_build_type_and_compiler_type asan       linux-gnu gcc8       fastdebug  gcc8   0
 test_set_cmake_build_type_and_compiler_type asan       linux-gnu gcc9       fastdebug  gcc9   0
-test_set_cmake_build_type_and_compiler_type tsan       linux-gnu auto       fastdebug  clang  0
-test_set_cmake_build_type_and_compiler_type tsan       linux-gnu clang      fastdebug  clang  0
+test_set_cmake_build_type_and_compiler_type tsan       linux-gnu auto       fastdebug  clang7 0
+test_set_cmake_build_type_and_compiler_type tsan       linux-gnu clang7     fastdebug  clang7 0
 test_set_cmake_build_type_and_compiler_type tsan       linux-gnu gcc        N/A        N/A    1
 test_set_cmake_build_type_and_compiler_type tsan       linux-gnu gcc8       fastdebug  gcc8   0
 test_set_cmake_build_type_and_compiler_type tsan       linux-gnu gcc9       fastdebug  gcc9   0
