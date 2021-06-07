@@ -120,18 +120,8 @@ public class CustomerConfigValidator {
           try {
             s3UriPath = s3UriPath.substring(5);
             String[] bucketSplit = s3UriPath.split("/", 2);
-            String bucketName = null;
-            String prefix = null;
-            if (bucketSplit.length == 2) {
-              bucketName = bucketSplit[0];
-              prefix = bucketSplit[1];
-            } else if (bucketSplit.length == 1) {
-              bucketName = bucketSplit[0];
-              prefix = "";
-            } else {
-              bucketName = "";
-              prefix = "";
-            }
+            String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
+            String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
             AmazonS3Client s3Client =
                 create(
                     data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
