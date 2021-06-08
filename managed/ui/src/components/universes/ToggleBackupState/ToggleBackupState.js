@@ -31,8 +31,8 @@ export const ToggleBackupState = (props) => {
       formName="toggleBackupModalForm"
       onHide={onHide}
       showCancelButton={true}
-      cancelLabel={'Cancel'}
-      submitLabel={'Yes'}
+      cancelLabel="Cancel"
+      submitLabel="Yes"
       className="universe-action-modal"
       onFormSubmit={submitBackupState}
     >
