@@ -73,8 +73,8 @@ public class AccessManagerTest extends FakeDBApplication {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     when(appConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
-    command = ArgumentCaptor.forClass(ArrayList.class);
-    cloudCredentials = ArgumentCaptor.forClass(HashMap.class);
+    command = ArgumentCaptor.forClass(List.class);
+    cloudCredentials = ArgumentCaptor.forClass(Map.class);
   }
 
   @After
