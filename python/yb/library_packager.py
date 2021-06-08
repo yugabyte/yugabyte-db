@@ -39,9 +39,8 @@ import sys
 
 from functools import total_ordering
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from yb.command_util import run_program, mkdir_p, copy_deep  # nopep8
-from yb.linuxbrew import get_linuxbrew_dir  # nopep8
+from yb.command_util import run_program, mkdir_p, copy_deep
+from yb.linuxbrew import get_linuxbrew_dir
 from yb.common_util import (
         get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by, safe_path_join,
         shlex_join)
@@ -187,7 +186,7 @@ def run_patchelf(*args):
     patchelf_cmd_line = [patchelf_path] + list(args)
     logging.debug(f"Running patchelf: {shlex_join(patchelf_cmd_line)}")
     patchelf_result = run_program(patchelf_cmd_line, error_ok=True)
-    if patchelf_result.returncode != 0 and not any (msg in patchelf_result.stderr for msg in [
+    if patchelf_result.returncode != 0 and not any(msg in patchelf_result.stderr for msg in [
             'cannot find section .interp',
             'cannot find section .dynamic',
             PATCHELF_NOT_AN_ELF_EXECUTABLE,
@@ -264,7 +263,6 @@ class LibraryPackager:
                 '--set-rpath',
                 ':'.join(LibraryPackager.get_relative_rpath_items(
                     dest_root_dir, os.path.dirname(file_abs_path))))
-
 
     def install_dyn_linked_binary(self, src_path, dest_dir):
         logging.debug(f"Installing dynamically-linked executable {src_path} to {dest_dir}")
@@ -537,7 +535,6 @@ class LibraryPackager:
             for file_name in files:
                 file_path = os.path.join(root, file_name)
                 LibraryPackager.set_rpath(build_target, file_path)
-
 
 
 def set_build_root(build_root):
