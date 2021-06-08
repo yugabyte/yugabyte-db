@@ -441,13 +441,10 @@ class YBUniverse():
         universe_config_json['currentClusterType'] = 'PRIMARY'
         # Call universe config api to get the update config data.
         universe_config_json = self.__post_universe_config(universe_config_json)
-        if universe_config_json:
-            task_id = self.__create_universe_from_config(universe_config_json)
-            print('Universe create requested successfully. Use {0} as task id to get status of universe.'.format(task_id))
-            if not self.args.no_wait:
-                self.__task_progress_bar(task_id)
-        else:
-            sys.stderr.write('Unable to Create Universe for Customer {0}'.format(self.customer_uuid))
+        task_id = self.__create_universe_from_config(universe_config_json)
+        print('Universe create requested successfully. Use {0} as task id to get status of universe.'.format(task_id))
+        if not self.args.no_wait:
+            self.__task_progress_bar(task_id)
 
 
     def get_single_customer_uuid(self):
