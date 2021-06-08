@@ -229,10 +229,18 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testCreateRegionWithMetadataValidVPCInfo() {
     YugawareProperty.addConfigProperty(
         ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
-        new HashMap<String, Object>() {{
-          put("foo-region", new HashMap<String, Object>() {{put("name","Foo Region");
-        put("ybImage","yb image");}});
-        }},
+        new HashMap<String, Object>() {
+          {
+            put(
+                "foo-region",
+                new HashMap<String, Object>() {
+                  {
+                    put("name", "Foo Region");
+                    put("ybImage", "yb image");
+                  }
+                });
+          }
+        },
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
@@ -259,10 +267,18 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testCreateRegionWithMetadataInvalidVPCInfo() {
     YugawareProperty.addConfigProperty(
         ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
-        new HashMap<String, Object>() {{
-          put("foo-region", new HashMap<String, Object>() {{put("name","Foo Region");
-        put("ybImage","yb image");}});
-        }},
+        new HashMap<String, Object>() {
+          {
+            put(
+                "foo-region",
+                new HashMap<String, Object>() {
+                  {
+                    put("name", "Foo Region");
+                    put("ybImage", "yb image");
+                  }
+                });
+          }
+        },
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");

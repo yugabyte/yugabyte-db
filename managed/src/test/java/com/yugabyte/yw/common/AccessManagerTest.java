@@ -55,8 +55,8 @@ public class AccessManagerTest extends FakeDBApplication {
   private Provider defaultProvider;
   private Region defaultRegion;
   private Customer defaultCustomer;
-  ArgumentCaptor<ArrayList> command;
-  ArgumentCaptor<HashMap> cloudCredentials;
+  ArgumentCaptor<List<String>> command;
+  ArgumentCaptor<Map<String, String>> cloudCredentials;
 
   static final String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
   static final String TMP_KEYS_PATH = TMP_STORAGE_PATH + "/keys";
@@ -200,7 +200,7 @@ public class AccessManagerTest extends FakeDBApplication {
             + TMP_KEYS_PATH
             + "/private.key");
 
-    List<ArrayList> executedCommands = command.getAllValues();
+    List<List<String>> executedCommands = command.getAllValues();
     for (int idx = 0; idx < executedCommands.size(); idx++) {
       String executedCommand = String.join(" ", executedCommands.get(idx));
       assertThat(expectedCommands.get(idx), allOf(notNullValue(), equalTo(executedCommand)));
@@ -238,7 +238,7 @@ public class AccessManagerTest extends FakeDBApplication {
             + TMP_KEYS_PATH
             + "/private.key");
 
-    List<ArrayList> executedCommands = command.getAllValues();
+    List<List<String>> executedCommands = command.getAllValues();
 
     for (int idx = 0; idx < executedCommands.size(); idx++) {
       String executedCommand = String.join(" ", executedCommands.get(idx));

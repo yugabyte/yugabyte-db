@@ -23,8 +23,7 @@ public class YugawarePropertyTest extends FakeDBApplication {
 
   @Test
   public void testAddNewProperty() {
-    YugawareProperty.addConfigProperty(
-        "Foo", ImmutableMap.of("foo", "bar"), "Sample data");
+    YugawareProperty.addConfigProperty("Foo", ImmutableMap.of("foo", "bar"), "Sample data");
     assertEquals(2, YugawareProperty.find.query().findCount());
   }
 

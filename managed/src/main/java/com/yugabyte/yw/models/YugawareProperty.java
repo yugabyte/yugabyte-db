@@ -26,7 +26,7 @@ public class YugawareProperty extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(YugawareProperty.class);
 
   // The name of the property.
-  @Id public String name;
+  @Id private String name;
 
   // The types of entries in this table.
   private enum PropertyEntryType {
