@@ -9,7 +9,7 @@ import scala.sys.process.Process
 // ------------------------------------------------------------------------------------------------
 
 // This is used to decide whether to clean/build the py2 or py3 venvs.
-lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"))
+lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"), true)
 
 // Use this to enable debug logging in this script.
 lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
@@ -22,9 +22,12 @@ def normalizeEnvVarValue(value: String): String = {
   if (value == null) null else value.trim()
 }
 
-def strToBool(s: String): Boolean = {
-  val normalizedStr = normalizeEnvVarValue(s)
-  normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
+def strToBool(s: String, default: Boolean = false): Boolean = {
+  if (s == null) default
+  else {
+    val normalizedStr = normalizeEnvVarValue(s)
+    normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
+  }
 }
 
 def ybLog(s: String): Unit = {

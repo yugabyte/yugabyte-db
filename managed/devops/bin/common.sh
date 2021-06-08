@@ -82,12 +82,8 @@ set_python_executable() {
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
 readonly PYTHON3_EXECUTABLES=('python3' 'python3.6' 'python3.7' 'python3.8')
 PYTHON_EXECUTABLE=""
-DEFAULT_USE_PY3_VALUE="0"
-if python -c 'import sys; sys.exit(0) if sys.version_info[0] != 2 else sys.exit(1)'; then
-  DEFAULT_USE_PY3_VALUE="1"
-fi
 
-readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-$DEFAULT_USE_PY3_VALUE}
+readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-1}
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 != "0" &&
       $YB_MANAGED_DEVOPS_USE_PYTHON3 != "1" ]]; then
   fatal "Invalid value of YB_MANAGED_DEVOPS_USE_PYTHON3: $YB_MANAGED_DEVOPS_USE_PYTHON3," \
@@ -328,20 +324,24 @@ activate_virtualenv() {
 create_pymodules_package() {
   rm -rf "$YB_PYTHON_MODULES_DIR"
   mkdir -p "$YB_PYTHON_MODULES_DIR"
+  extra_install_flags=""
+  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
+    extra_install_flags="setuptools<45"
+  fi
   # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
   # system-specific libraries.
   log "Downloading package scripts"
-  run_pip install "setuptools<45" -r "$FROZEN_REQUIREMENTS_FILE" --prefix="$YB_PYTHON_MODULES_DIR" \
-    --ignore-installed
-  run_pip install "setuptools<45" "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
-    --prefix="$YB_PYTHON_MODULES_DIR"
+  run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
+    --prefix="$YB_PYTHON_MODULES_DIR" --ignore-installed
+  run_pip install $extra_install_flags "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
+    --prefix="$YB_PYTHON_MODULES_DIR" --ignore-installed
   rm -rf "$YB_PYTHON_MODULES_DIR"/lib*
   # Download remaining libraries.
   log "Downloading package libraries"
-  run_pip install "setuptools<45" -r "$FROZEN_REQUIREMENTS_FILE" --target="$YB_PYTHON_MODULES_DIR" \
-    --ignore-installed
-  run_pip install "setuptools<45" "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
-    --target="$YB_PYTHON_MODULES_DIR"
+  run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
+    --target="$YB_PYTHON_MODULES_DIR" --ignore-installed
+  run_pip install $extra_install_flags "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
+    --target="$YB_PYTHON_MODULES_DIR" --ignore-installed
   # Change shebangs to be path-independent.
   current_py_exec=$(which $PYTHON_EXECUTABLE)
   LC_ALL=C find "$YB_PYTHON_MODULES_DIR"/bin ! -name '*.pyc' -type f -exec sed -i.yb_tmp \

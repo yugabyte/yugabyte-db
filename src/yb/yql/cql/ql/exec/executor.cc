@@ -1339,6 +1339,50 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
     return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
+  if (req->column_values_size() == 0) {
+    // We can reach here only in case of an UPDATE that consists of only setting
+    // jsonb col's attributes to 'null' along with ignore_null_jsonb_attributes=true
+    VLOG(1) << "Avoid updating indexes since 0 cols are written";
+    if (tnode->returns_status()) {
+      // Return row with [applied] = false with appropriate [message].
+      std::shared_ptr<std::vector<ColumnSchema>> columns =
+        std::make_shared<std::vector<ColumnSchema>>();
+      const auto& schema = table->schema();
+      columns->reserve(schema.num_columns() + 2);
+      columns->emplace_back("[applied]", DataType::BOOL);
+      columns->emplace_back("[message]", DataType::STRING);
+      columns->insert(columns->end(), schema.columns().begin(), schema.columns().end());
+
+      QLRowBlock result_row_block(Schema(*columns, 0));
+      QLRow& row = result_row_block.Extend();
+      row.mutable_column(0)->set_bool_value(false);
+      row.mutable_column(1)->set_string_value(
+        "No update performed as all JSON cols are set to 'null'");
+      // Leave the rest of the columns null in this case.
+
+      faststring row_data;
+      result_row_block.Serialize(YQL_CLIENT_CQL, &row_data);
+
+      result_ = std::make_shared<RowsResult>(table->name(), columns, row_data.ToString());
+    } else if (tnode->if_clause() != nullptr) {
+      // Return row with [applied] = false.
+      std::shared_ptr<std::vector<ColumnSchema>> columns =
+        std::make_shared<std::vector<ColumnSchema>>();
+      columns->emplace_back("[applied]", DataType::BOOL);
+
+      QLRowBlock result_row_block(Schema(*columns, 0));
+      QLRow& row = result_row_block.Extend();
+      row.mutable_column(0)->set_bool_value(false);
+
+      faststring row_data;
+      result_row_block.Serialize(YQL_CLIENT_CQL, &row_data);
+
+      result_ = std::make_shared<RowsResult>(table->name(), columns, row_data.ToString());
+    }
+
+    return Status::OK();
+  }
+
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
