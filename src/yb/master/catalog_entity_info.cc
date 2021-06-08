@@ -464,13 +464,13 @@ bool TableInfo::IsCreateInProgress() const {
 }
 
 Status TableInfo::SetIsBackfilling() {
+  const auto table_lock = LockForRead();
   std::lock_guard<decltype(lock_)> l(lock_);
   if (is_backfilling_) {
     return STATUS(AlreadyPresent, "Backfill already in progress", id(),
                   MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS));
   }
 
-  const auto table_lock = LockForRead();
   for (const auto& tablet_it : tablet_map_) {
     const auto& tablet = tablet_it.second;
     if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
