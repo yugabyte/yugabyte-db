@@ -31,17 +31,18 @@
 //
 package org.yb.client;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNotEquals;
-import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertTrue;
-
-import java.util.*;
-
+import com.google.common.net.HostAndPort;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
@@ -49,19 +50,15 @@ import org.yb.Common.HostPortPB;
 import org.yb.Common.TableType;
 import org.yb.Schema;
 import org.yb.Type;
-import org.yb.util.Pair;
-import org.yb.master.Master;
-import org.yb.minicluster.MiniYBCluster;
-import org.yb.tserver.Tserver.TabletServerErrorPB;
-
-import com.google.common.net.HostAndPort;
-
-import com.google.protobuf.ByteString;
-
 import org.yb.YBTestRunner;
-
-import org.junit.runner.RunWith;
+import org.yb.tserver.Tserver.TabletServerErrorPB;
+import org.yb.util.Pair;
 import org.yb.util.Timeouts;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertNotEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
 
 @RunWith(value=YBTestRunner.class)
 public class TestYBClient extends BaseYBClientTest {
@@ -463,7 +460,7 @@ public class TestYBClient extends BaseYBClientTest {
     List<ColumnSchema> columns = new ArrayList<>(hashKeySchema.getColumns());
     Schema newSchema = new Schema(columns);
     CreateTableOptions tableOptions = new CreateTableOptions().setNumTablets(8);
-    YBTable table = syncClient.createTable(DEFAULT_KEYSPACE_NAME, "AffinitizedLeaders", newSchema, tableOptions);
+    syncClient.createTable(DEFAULT_KEYSPACE_NAME, "AffinitizedLeaders", newSchema, tableOptions);
 
     assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
 
@@ -577,7 +574,7 @@ public class TestYBClient extends BaseYBClientTest {
 
     // Check that YEDIS tables are created and retrieved properly.
     String redisTableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
-    YBTable table = syncClient.createRedisTable(redisTableName);
+    syncClient.createRedisTable(redisTableName);
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
     assertTrue(syncClient.getTablesList().getTablesList().contains(redisTableName));
 
