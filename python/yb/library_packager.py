@@ -418,7 +418,10 @@ class LibraryPackager:
                 logging.info(
                     "Not packaging any of the above dependencies from a system-wide directory.")
                 continue
-            if category == 'postgres':
+            if category == 'postgres' and not using_linuxbrew():
+                # Only avoid copying postgres libraries into the lib/yb directory in non-Linuxbrew
+                # mode. In Linuxbrew mode, post_install.sh has complex logic for changing rpaths
+                # and that is not updated to allow us to find libraries in postgres/lib.
                 logging.info(
                     "Not installing any of the above YSQL libraries because they will be "
                     "installed as part of copying the entire postgres directory.")
@@ -537,6 +540,8 @@ class LibraryPackager:
         be one intermediate packaging directory, and we should only have one pass to set rpath
         on all executables and dynamic libraries.
         """
+        if using_linuxbrew():
+            return
         for root, dirs, files in os.walk(os.path.join(build_target, 'postgres')):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
