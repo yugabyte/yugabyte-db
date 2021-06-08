@@ -244,7 +244,7 @@ class LibraryPackager:
         return [
             os.path.abspath(os.path.join(dest_root_dir, 'lib', library_category))
             for library_category in LIBRARY_CATEGORIES_NO_LINUXBREW
-        ]
+        ] + [os.path.abspath(os.path.join(dest_root_dir, 'postgres', 'lib'))]
 
     @staticmethod
     def get_relative_rpath_items(dest_root_dir: str, dest_abs_dir: str) -> List[str]:
@@ -415,7 +415,13 @@ class LibraryPackager:
                 logging.info("    {} -> {}".format(
                     dep.name + ' ' * (max_name_len - len(dep.name)), dep.target))
             if category == 'system':
-                logging.info("Not packaging any dependencies from a system-wide directory")
+                logging.info(
+                    "Not packaging any of the above dependencies from a system-wide directory.")
+                continue
+            if category == 'postgres':
+                logging.info(
+                    "Not installing any of the above YSQL libraries because they will be "
+                    "installed as part of copying the entire postgres directory.")
                 continue
 
             if category == 'linuxbrew':
