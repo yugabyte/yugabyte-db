@@ -89,6 +89,9 @@ YB_STRONGLY_TYPED_BOOL(PreElected);
 
 YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 
+std::unique_ptr<ConsensusRoundCallback> MakeNonTrackedRoundCallback(
+    ConsensusRound* round, const StdStatusCallback& callback);
+
 class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                       public Consensus,
                       public PeerMessageQueueObserver,
@@ -261,17 +264,16 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   int64_t TEST_LeaderTerm() const;
 
- protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
   // may be Aborted or some other error status.
   // If 'status' is OK, write a Commit message to the local WAL based on the
   // type of message it is.
   // The 'client_cb' will be invoked at the end of this execution.
-  virtual void NonTxRoundReplicationFinished(ConsensusRound* round,
-                                             const StdStatusCallback& client_cb,
-                                             const Status& status);
+  virtual void NonTrackedRoundReplicationFinished(
+      ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
 
+ protected:
   // As a leader, append a new ConsensusRound to the queue.
   // Only virtual and protected for mocking purposes.
   virtual CHECKED_STATUS AppendNewRoundToQueueUnlocked(const ConsensusRoundPtr& round);

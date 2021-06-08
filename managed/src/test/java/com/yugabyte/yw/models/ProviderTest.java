@@ -5,16 +5,14 @@ package com.yugabyte.yw.models;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.yugabyte.yw.common.FakeDBApplication;
-
 import java.util.Map;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.*;
@@ -71,7 +69,7 @@ public class ProviderTest extends FakeDBApplication {
             "Amazon",
             ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
-    assertValue(provider.getMaskedConfig(), "AWS_ACCESS_KEY_ID", "Ba********ar");
+    assertEquals("Ba********ar", provider.getMaskedConfig().get("AWS_ACCESS_KEY_ID"));
     assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_KEY_ID"));
   }
 
@@ -84,7 +82,7 @@ public class ProviderTest extends FakeDBApplication {
             "Amazon",
             ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
-    assertValue(provider.getMaskedConfig(), "AWS_ACCESS_ID", "BarBarBarBar");
+    assertEquals("BarBarBarBar", provider.getMaskedConfig().get("AWS_ACCESS_ID"));
     assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_ID"));
   }
 

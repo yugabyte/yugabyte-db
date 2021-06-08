@@ -144,3 +144,11 @@ CREATE TYPE unknown_comptype AS (
 	u unknown    -- fail
 );
 ERROR:  column "u" has pseudo-type unknown
+CREATE TABLE IF NOT EXISTS test_tsvector(
+	t text,
+	a tsvector
+);
+CREATE TABLE IF NOT EXISTS test_tsvector(
+	t text
+);
+NOTICE:  relation "test_tsvector" already exists, skipping

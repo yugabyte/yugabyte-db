@@ -16,6 +16,7 @@
 
 #include "yb/common/index.h"
 #include "yb/common/common.pb.h"
+#include "yb/util/status.h"
 
 using std::vector;
 using std::unordered_map;
@@ -77,7 +78,9 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       indexed_range_column_ids_(ColumnIdsFromPB(pb.indexed_range_column_ids())),
       index_permissions_(pb.index_permissions()),
       backfill_error_message_(pb.backfill_error_message()),
-      use_mangled_column_name_(pb.use_mangled_column_name()) {
+      use_mangled_column_name_(pb.use_mangled_column_name()),
+      where_predicate_spec_(pb.has_where_predicate_spec() ?
+        std::make_shared<IndexInfoPB::WherePredicateSpecPB>(pb.where_predicate_spec()) : nullptr) {
   for (const IndexInfo::IndexColumn &index_col : columns_) {
     // Mark column as covered if the index column is the column itself.
     // Do not mark a column as covered when indexing by an expression of that column.
@@ -198,6 +201,11 @@ bool IndexInfo::CheckColumnDependency(ColumnId column_id) const {
       return true;
     }
   }
+
+  for (auto indexed_col_id : where_predicate_spec_->column_ids()) {
+    if (indexed_col_id == column_id) return true;
+  }
+
   return false;
 }
 

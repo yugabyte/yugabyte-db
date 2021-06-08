@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
@@ -22,6 +23,7 @@ import javax.persistence.*;
 import java.util.*;
 
 import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class TaskInfo extends Model {
@@ -179,9 +181,18 @@ public class TaskInfo extends Model {
 
   public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};
 
+  @Deprecated
   public static TaskInfo get(UUID taskUUID) {
     // Return the instance details object.
     return find.byId(taskUUID);
+  }
+
+  public static TaskInfo getOrBadRequest(UUID taskUUID) {
+    TaskInfo taskInfo = get(taskUUID);
+    if (taskInfo == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Task Info UUID: " + taskUUID);
+    }
+    return taskInfo;
   }
 
   // Returns  partial object

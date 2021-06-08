@@ -283,14 +283,12 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 	}
 
-	/* Delete row from foreign key cache */
-	YBCPgDeleteFromForeignKeyReferenceCache(relid, tuple->t_ybctid);
-
 	/* Execute the insert */
 	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */);
 
-	/* Clean up */
-	insert_stmt = NULL;
+	/* Add row into foreign key cache */
+	if (!is_single_row_txn)
+		YBCPgAddIntoForeignKeyReferenceCache(relid, tuple->t_ybctid);
 
 	return HeapTupleGetOid(tuple);
 }

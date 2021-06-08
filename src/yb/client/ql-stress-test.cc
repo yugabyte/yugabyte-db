@@ -378,7 +378,6 @@ void QLStressTest::TestRetryWrites(bool restarts) {
     });
   }
 
-  std::thread restart_thread;
   if (restarts) {
     thread_holder.AddThread(RestartsThread(cluster_.get(), 5s, &thread_holder.stop_flag()));
   }

@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -22,6 +23,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class CustomerTask extends Model {
@@ -90,6 +93,9 @@ public class CustomerTask extends Model {
     @EnumValue("UpdateCert")
     UpdateCert,
 
+    @EnumValue("ToggleTls")
+    ToggleTls,
+
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
 
@@ -141,6 +147,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case UpdateCert:
           return completed ? "Updated Cert " : "Updating Cert ";
+        case ToggleTls:
+          return completed ? "Toggled Tls " : "Toggling Tls ";
         case UpgradeGflags:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case BulkImportData:
@@ -306,6 +314,7 @@ public class CustomerTask extends Model {
     return CustomerTask.find.query().where().idEq(id).findOne();
   }
 
+  @Deprecated
   public static CustomerTask get(UUID customerUUID, UUID taskUUID) {
     return CustomerTask.find
         .query()
@@ -313,6 +322,14 @@ public class CustomerTask extends Model {
         .eq("customer_uuid", customerUUID)
         .eq("task_uuid", taskUUID)
         .findOne();
+  }
+
+  public static CustomerTask getOrBadRequest(UUID customerUUID, UUID taskUUID) {
+    CustomerTask customerTask = get(customerUUID, taskUUID);
+    if (customerTask == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
+    }
+    return customerTask;
   }
 
   public String getFriendlyDescription() {

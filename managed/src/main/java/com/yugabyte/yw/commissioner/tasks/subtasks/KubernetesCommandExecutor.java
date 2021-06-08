@@ -11,8 +11,8 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -22,41 +22,30 @@ import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.Environment;
-import play.api.Play;
 import play.libs.Json;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 
 public class KubernetesCommandExecutor extends UniverseTaskBase {
+
   public enum CommandType {
     CREATE_NAMESPACE,
     APPLY_SECRET,
@@ -98,26 +87,24 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
-  @Inject KubernetesManager kubernetesManager;
+  private final KubernetesManager kubernetesManager;
 
-  @Inject Application application;
+  private final Application application;
 
-  @Inject private play.Environment environment;
+  private final play.Environment environment;
+
+  @Inject
+  public KubernetesCommandExecutor(
+      KubernetesManager kubernetesManager, Application application, Environment environment) {
+    this.kubernetesManager = kubernetesManager;
+    this.application = application;
+    this.environment = environment;
+  }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
 
   // Added constant to compute CPU burst limit
   static final double burstVal = 1.2;
-
-  static final String defaultStorageClass = "standard";
-
-  @Override
-  public void initialize(ITaskParams params) {
-    this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
-    this.application = Play.current().injector().instanceOf(Application.class);
-    this.environment = Play.current().injector().instanceOf(Environment.class);
-    super.initialize(params);
-  }
 
   public static class Params extends UniverseTaskParams {
     public UUID providerUUID;

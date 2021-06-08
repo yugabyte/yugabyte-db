@@ -172,7 +172,6 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   int32_t schema_version_;
   int64_t leader_term_;
 
-  std::string requested_index_names_;
   std::atomic_bool done_{false};
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
@@ -181,6 +180,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   mutable simple_spinlock mutex_;
   HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMin};
   const std::unordered_set<TableId> requested_index_ids_;
+  const std::string requested_index_names_;
+
   const scoped_refptr<NamespaceInfo> ns_info_;
 };
 
@@ -331,17 +332,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
 class BackfillChunk : public RetryingTSRpcTask {
  public:
   BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
-                const std::string& start_key)
-      : RetryingTSRpcTask(backfill_tablet->master(),
-                          backfill_tablet->threadpool(),
-                          gscoped_ptr<TSPicker>(new PickLeaderReplica(
-                              backfill_tablet->tablet())),
-                          backfill_tablet->tablet()->table().get()),
-        indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
-        backfill_tablet_(backfill_tablet),
-        start_key_(start_key) {
-    deadline_ = MonoTime::Max(); // Never time out.
-  }
+                const std::string& start_key);
 
   void Launch();
 
@@ -350,8 +341,8 @@ class BackfillChunk : public RetryingTSRpcTask {
   std::string type_name() const override { return "Backfill Index Table"; }
 
   std::string description() const override {
-    return yb::Format("Backfilling index_ids $0 for tablet $1 from key '$2'",
-                      indexes_being_backfilled_, tablet_id(),
+    return yb::Format("Backfilling indexes $0 for tablet $1 from key '$2'",
+                      requested_index_names_, tablet_id(),
                       b2a_hex(start_key_));
   }
 
@@ -381,6 +372,7 @@ class BackfillChunk : public RetryingTSRpcTask {
   tserver::BackfillIndexResponsePB resp_;
   std::shared_ptr<BackfillTablet> backfill_tablet_;
   std::string start_key_;
+  const std::string requested_index_names_;
 };
 
 }  // namespace master

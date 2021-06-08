@@ -470,6 +470,19 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
         index_info->add_indexed_range_column_ids(col_desc.id());
       }
     }
+
+    if (index_node->where_clause()) {
+      // TODO (Piyush): Add a ToString method for PTExpr and log the where clause.
+      IndexInfoPB::WherePredicateSpecPB *where_predicate_spec =
+        index_info->mutable_where_predicate_spec();
+
+      RETURN_NOT_OK(PTExprToPB(index_node->where_clause(),
+        where_predicate_spec->mutable_where_expr()));
+
+      for (auto column_id : *(index_node->where_clause_column_refs())) {
+        where_predicate_spec->add_column_ids(column_id);
+      }
+    }
   }
 
   for (const auto& column : tnode->hash_columns()) {
@@ -1326,6 +1339,50 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
     return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
+  if (req->column_values_size() == 0) {
+    // We can reach here only in case of an UPDATE that consists of only setting
+    // jsonb col's attributes to 'null' along with ignore_null_jsonb_attributes=true
+    VLOG(1) << "Avoid updating indexes since 0 cols are written";
+    if (tnode->returns_status()) {
+      // Return row with [applied] = false with appropriate [message].
+      std::shared_ptr<std::vector<ColumnSchema>> columns =
+        std::make_shared<std::vector<ColumnSchema>>();
+      const auto& schema = table->schema();
+      columns->reserve(schema.num_columns() + 2);
+      columns->emplace_back("[applied]", DataType::BOOL);
+      columns->emplace_back("[message]", DataType::STRING);
+      columns->insert(columns->end(), schema.columns().begin(), schema.columns().end());
+
+      QLRowBlock result_row_block(Schema(*columns, 0));
+      QLRow& row = result_row_block.Extend();
+      row.mutable_column(0)->set_bool_value(false);
+      row.mutable_column(1)->set_string_value(
+        "No update performed as all JSON cols are set to 'null'");
+      // Leave the rest of the columns null in this case.
+
+      faststring row_data;
+      result_row_block.Serialize(YQL_CLIENT_CQL, &row_data);
+
+      result_ = std::make_shared<RowsResult>(table->name(), columns, row_data.ToString());
+    } else if (tnode->if_clause() != nullptr) {
+      // Return row with [applied] = false.
+      std::shared_ptr<std::vector<ColumnSchema>> columns =
+        std::make_shared<std::vector<ColumnSchema>>();
+      columns->emplace_back("[applied]", DataType::BOOL);
+
+      QLRowBlock result_row_block(Schema(*columns, 0));
+      QLRow& row = result_row_block.Extend();
+      row.mutable_column(0)->set_bool_value(false);
+
+      faststring row_data;
+      result_row_block.Serialize(YQL_CLIENT_CQL, &row_data);
+
+      result_ = std::make_shared<RowsResult>(table->name(), columns, row_data.ToString());
+    }
+
+    return Status::OK();
+  }
+
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
@@ -1400,6 +1457,7 @@ Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
+  const MonoTime start_time = MonoTime::Now();
   const Status s = ql_env_->UseKeyspace(tnode->name());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
@@ -1407,6 +1465,11 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
   }
 
   result_ = std::make_shared<SetKeyspaceResult>(tnode->name());
+
+  if (ql_metrics_ != nullptr) {
+    const auto delta_usec = (MonoTime::Now() - start_time).ToMicroseconds();
+    ql_metrics_->ql_use_->Increment(delta_usec);
+  }
   return Status::OK();
 }
 
@@ -2405,6 +2468,7 @@ void Executor::StatementExecuted(const Status& s) {
             case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTDeleteStmt: FALLTHROUGH_INTENDED;
+            case TreeNodeOpcode::kPTUseKeyspace: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTListNode:   FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTStartTransaction: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTCommit:
@@ -2412,6 +2476,7 @@ void Executor::StatementExecuted(const Status& s) {
               // been completed in FlushAsyncDone(). Exclude PTListNode also as we are interested
               // in the metrics of its constituent DMLs only. Transaction metrics have been
               // updated in CommitDone().
+              // The metrics for USE have been updated in ExecPTNode().
               break;
             default: {
               const MonoTime now = MonoTime::Now();

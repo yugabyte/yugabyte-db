@@ -396,6 +396,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (AreLeadersOnPreferredOnly)
     (SplitTablet)
     (DeleteTablet)
+    (DdlLog)
 )
 
 

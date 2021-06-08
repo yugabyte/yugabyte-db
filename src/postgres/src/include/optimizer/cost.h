@@ -23,6 +23,14 @@
 /* If you change these, update backend/utils/misc/postgresql.sample.conf */
 #define DEFAULT_SEQ_PAGE_COST  1.0
 #define DEFAULT_RANDOM_PAGE_COST  4.0
+
+#define YB_DEFAULT_INTERCLOUD_COST 10.0
+#define	YB_DEFAULT_INTERREGION_COST 10.0
+#define	YB_DEFAULT_INTERZONE_COST 9.5
+#define YB_DEFAULT_LOCAL_COST 9.4
+
+#define YB_DEFAULT_PER_TUPLE_COST 10.0
+
 #define DEFAULT_CPU_TUPLE_COST	0.01
 #define DEFAULT_CPU_INDEX_TUPLE_COST 0.005
 #define DEFAULT_CPU_OPERATOR_COST  0.0025
@@ -47,6 +55,12 @@ typedef enum
 /* parameter variables and flags */
 extern PGDLLIMPORT double seq_page_cost;
 extern PGDLLIMPORT double random_page_cost;
+
+extern PGDLLIMPORT double yb_intercloud_cost;
+extern PGDLLIMPORT double yb_interregion_cost;
+extern PGDLLIMPORT double yb_interzone_cost;
+extern PGDLLIMPORT double yb_local_cost;
+
 extern PGDLLIMPORT double cpu_tuple_cost;
 extern PGDLLIMPORT double cpu_index_tuple_cost;
 extern PGDLLIMPORT double cpu_operator_cost;
@@ -73,6 +87,7 @@ extern PGDLLIMPORT bool enable_parallel_append;
 extern PGDLLIMPORT bool enable_parallel_hash;
 extern PGDLLIMPORT bool enable_partition_pruning;
 extern PGDLLIMPORT int constraint_exclusion;
+extern PGDLLIMPORT bool yb_enable_geolocation_costing;
 
 extern double clamp_row_est(double nrows);
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,

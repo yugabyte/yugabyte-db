@@ -44,6 +44,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/peer_manager.h"
@@ -265,7 +266,35 @@ bool IsChangeConfigOperation(OperationType op_type) {
   return op_type == CHANGE_CONFIG_OP;
 }
 
+class NonTrackedRoundCallback : public ConsensusRoundCallback {
+ public:
+  explicit NonTrackedRoundCallback(ConsensusRound* round, const StdStatusCallback& callback)
+      : round_(round), callback_(callback) {
+  }
+
+  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
+    auto& replicate_msg = *round_->replicate_msg();
+    op_id.ToPB(replicate_msg.mutable_id());
+    committed_op_id.ToPB(replicate_msg.mutable_committed_op_id());
+  }
+
+  void ReplicationFinished(
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids) override {
+    down_cast<RaftConsensus*>(round_->consensus())->NonTrackedRoundReplicationFinished(
+        round_, callback_, status);
+  }
+
+ private:
+  ConsensusRound* round_;
+  StdStatusCallback callback_;
+};
+
 } // namespace
+
+std::unique_ptr<ConsensusRoundCallback> MakeNonTrackedRoundCallback(
+    ConsensusRound* round, const StdStatusCallback& callback) {
+  return std::make_unique<NonTrackedRoundCallback>(round, callback);
+}
 
 struct RaftConsensus::LeaderRequest {
   std::string leader_uuid;
@@ -1034,11 +1063,17 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   // because this method is not executed on the TabletPeer's prepare thread.
   replicate->set_hybrid_time(clock_->Now().ToUint64());
 
-  scoped_refptr<ConsensusRound> round(new ConsensusRound(this, replicate));
-  round->SetConsensusReplicatedCallback(std::bind(&RaftConsensus::NonTxRoundReplicationFinished,
-                                             this,
-                                             round.get(),
-                                             &DoNothingStatusCB, std::placeholders::_1));
+  auto round = make_scoped_refptr<ConsensusRound>(this, replicate);
+  round->SetCallback(MakeNonTrackedRoundCallback(round.get(),
+      [this, term = state_->GetCurrentTermUnlocked()](const Status& status) {
+    // Set 'Leader is ready to serve' flag only for committed NoOp operation
+    // and only if the term is up-to-date.
+    // It is guaranteed that successful notification is called only while holding replicate state
+    // mutex.
+    if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
+      state_->SetLeaderNoOpCommittedUnlocked(true);
+    }
+  }));
   RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
@@ -1105,11 +1140,8 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
         << "Failed with status " << status << ", treating all " << rounds.size()
         << " operations as failed with that status";
     // Treat all the operations in the batch as failed.
-    for (size_t i = processed_rounds; i != rounds.size(); ++i) {
-      auto* const append_cb = rounds[i]->append_callback();
-      if (append_cb) {
-        append_cb->ReplicationFinished(status, OpId::kUnknownTerm, /* applied_op_ids= */ nullptr);
-      }
+    for (size_t i = rounds.size(); i != processed_rounds;) {
+      rounds[--i]->callback()->ReplicationFailed(status);
     }
   }
   return status;
@@ -1147,7 +1179,8 @@ Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* pr
       //
       // (3) is all rounds starting with index *processed_rounds and above.
       // For (1) we reset bound term, so could use it to distinguish between (1) and (2).
-      for (size_t i = 0; i != *processed_rounds; ++i) {
+      for (size_t i = *processed_rounds; i != 0;) {
+        --i;
         if (rounds[i]->bound_term() == OpId::kUnknownTerm) {
           // Already rejected by retryable requests.
           continue;
@@ -1226,14 +1259,7 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-    auto* const append_cb = round->append_callback();
-    if (append_cb) {
-      append_cb->HandleConsensusAppend(op_id, committed_op_id);
-    } else {
-      // No op operation
-      op_id.ToPB(round->replicate_msg()->mutable_id());
-      committed_op_id.ToPB(round->replicate_msg()->mutable_committed_op_id());
-    }
+    round->callback()->AddedToLeader(op_id, committed_op_id);
 
     Status s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
@@ -1532,7 +1558,11 @@ Status RaftConsensus::StartReplicaOperationUnlocked(
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
   ConsensusRound* round_ptr = round.get();
   RETURN_NOT_OK(state_->context()->StartReplicaOperation(round, propagated_safe_time));
-  return state_->AddPendingOperation(round_ptr, OperationMode::kFollower);
+  auto result = state_->AddPendingOperation(round_ptr, OperationMode::kFollower);
+  if (!result.ok()) {
+    round_ptr->NotifyReplicationFinished(result, OpId::kUnknownTerm, /* applied_op_ids */ nullptr);
+  }
+  return result;
 }
 
 std::string RaftConsensus::LeaderRequest::OpsRangeString() const {
@@ -2644,11 +2674,7 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
                 context,
                 &DoNothingStatusCB,
                 std::placeholders::_1);
-  round->SetConsensusReplicatedCallback(std::bind(&RaftConsensus::NonTxRoundReplicationFinished,
-                                                  this,
-                                                  round.get(),
-                                                  std::move(client_cb),
-                                                  std::placeholders::_1));
+  round->SetCallback(MakeNonTrackedRoundCallback(round.get(), std::move(client_cb)));
   return state_->AddPendingOperation(round, OperationMode::kFollower);
 }
 
@@ -2861,11 +2887,6 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
                                                     const RaftConfigPB& new_config,
                                                     ChangeConfigType type,
                                                     StdStatusCallback client_cb) {
-  scoped_refptr<ConsensusRound> round(new ConsensusRound(this, replicate_ref));
-  round->SetConsensusReplicatedCallback(std::bind(&RaftConsensus::NonTxRoundReplicationFinished,
-                                                  this,
-                                                  round.get(),
-                                                  std::move(client_cb), std::placeholders::_1));
   LOG(INFO) << "Setting replicate pending config " << new_config.ShortDebugString()
             << ", type = " << ChangeConfigType_Name(type);
 
@@ -2880,6 +2901,9 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
 
   // Set as pending.
   RefreshConsensusQueueAndPeersUnlocked();
+
+  auto round = make_scoped_refptr<ConsensusRound>(this, replicate_ref);
+  round->SetCallback(MakeNonTrackedRoundCallback(round.get(), std::move(client_cb)));
   auto status = AppendNewRoundToQueueUnlocked(round);
   if (!status.ok()) {
     // We could just cancel pending config, because there is could be only one pending config.
@@ -3160,26 +3184,23 @@ void RaftConsensus::MarkDirtyOnSuccess(std::shared_ptr<StateChangeContext> conte
   client_cb(status);
 }
 
-void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
-                                                  const StdStatusCallback& client_cb,
-                                                  const Status& status) {
+void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
+                                                       const StdStatusCallback& client_cb,
+                                                       const Status& status) {
   DCHECK(state_->IsLocked());
   OperationType op_type = round->replicate_msg()->op_type();
-  string op_type_str = OperationType_Name(op_type);
+  string op_str = Format("$0 [$1]", OperationType_Name(op_type), round->id());
   if (!IsConsensusOnlyOperation(op_type)) {
-    LOG(ERROR) << "Unexpected op type: " << op_type_str;
+    LOG_WITH_PREFIX(ERROR) << "Unexpected op type: " << op_str;
     return;
   }
   if (!status.ok()) {
     // TODO: Do something with the status on failure?
-    LOG_WITH_PREFIX(INFO) << op_type_str << " replication failed: " << status;
+    LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status << "\n" << GetStackTrace();
 
     // Clear out the pending state (ENG-590).
     if (IsChangeConfigOperation(op_type)) {
-      Status s = state_->ClearPendingConfigUnlocked();
-      if (!s.ok()) {
-        LOG(WARNING) << "Could not clear pending state : " << s.ToString();
-      }
+      WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending state");
     }
   } else if (IsChangeConfigOperation(op_type)) {
     // Notify the TabletPeer owner object.
@@ -3187,12 +3208,6 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
   }
 
   client_cb(status);
-
-  // Set 'Leader is ready to serve' flag only for commited NoOp operation
-  // and only if the term is up-to-date.
-  if (op_type == NO_OP && round->id().term == state_->GetCurrentTermUnlocked()) {
-    state_->SetLeaderNoOpCommittedUnlocked(true);
-  }
 }
 
 void RaftConsensus::EnableFailureDetector(MonoDelta delta) {

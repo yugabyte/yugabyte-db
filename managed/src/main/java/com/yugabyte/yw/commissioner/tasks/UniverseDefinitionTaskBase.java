@@ -154,9 +154,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             }
             taskParams()
                 .getReadOnlyClusters()
-                .stream()
                 .forEach(
                     (async) -> {
+                      // Update read replica cluster TLS params to be same as primary cluster
+                      async.userIntent.enableNodeToNodeEncrypt =
+                          universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
+                      async.userIntent.enableClientToNodeEncrypt =
+                          universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
                       universeDetails.upsertCluster(
                           async.userIntent, async.placementInfo, async.uuid);
                     });
@@ -872,22 +876,24 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Update the master addresses in memory.
     createSetFlagInMemoryTasks(
-        tserverNodes,
-        ServerType.TSERVER,
-        true /* force flag update */,
-        null /* no gflag to update */,
-        true /* updateMasterAddr */);
+            tserverNodes,
+            ServerType.TSERVER,
+            true /* force flag update */,
+            null /* no gflag to update */,
+            true /* updateMasterAddr */)
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     // Change the master addresses in the conf file for the all masters to reflect
     // the changes.
     createConfigureServerTasks(
             masterNodes, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     createSetFlagInMemoryTasks(
-        masterNodes,
-        ServerType.MASTER,
-        true /* force flag update */,
-        null /* no gflag to update */,
-        true /* updateMasterAddr */);
+            masterNodes,
+            ServerType.MASTER,
+            true /* force flag update */,
+            null /* no gflag to update */,
+            true /* updateMasterAddr */)
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 
   /** Reserves onprem nodes for an existing universe and performs preflight checks on them. */

@@ -1,40 +1,34 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
-import io.ebean.*;
-import io.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
-
+import io.ebean.Query;
+import io.ebean.*;
+import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import static io.ebean.Ebean.beginTransaction;
-import static io.ebean.Ebean.commitTransaction;
-import static io.ebean.Ebean.endTransaction;
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import javax.persistence.*;
+import java.util.*;
+
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
+import static io.ebean.Ebean.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@ApiModel(
+    description =
+        "Region within a given provider. Typically this will map to a "
+            + "single cloud provider region")
 public class Region extends Model {
   private static final String SECURITY_GROUP_KEY = "sg_id";
   private static final String VNET_KEY = "vnet";
@@ -42,6 +36,7 @@ public class Region extends Model {
   @Id public UUID uuid;
 
   @Column(length = 25, nullable = false)
+  @ApiModelProperty(value = "Cloud provider region code", example = "us-west-2", required = true)
   public String code;
 
   @Column(length = 100, nullable = false)
@@ -140,19 +135,15 @@ public class Region extends Model {
     this.save();
   }
 
-  @JsonIgnore
-  public JsonNode getMaskedConfig() {
-    if (this.config == null) {
-      return Json.newObject();
-    } else {
-      return maskConfig(this.config);
-    }
+  @JsonProperty("config")
+  public Map<String, String> getMaskedConfig() {
+    return maskConfigNew(getConfig());
   }
 
   @JsonIgnore
   public Map<String, String> getConfig() {
     if (this.config == null) {
-      return new HashMap();
+      return new HashMap<>();
     } else {
       return Json.fromJson(this.config, Map.class);
     }
@@ -200,6 +191,8 @@ public class Region extends Model {
     return region;
   }
 
+  /** DEPRECATED: use {@link #getOrBadRequest(UUID, UUID, UUID)} */
+  @Deprecated()
   public static Region get(UUID regionUUID) {
     return find.query().fetch("provider").where().idEq(regionUUID).findOne();
   }
@@ -212,6 +205,15 @@ public class Region extends Model {
     return find.query().where().eq("provider_uuid", providerUUID).findList();
   }
 
+  public static Region getOrBadRequest(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    Region region = get(customerUUID, providerUUID, regionUUID);
+    if (region == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Provider/Region UUID");
+    }
+    return region;
+  }
+
+  /** DEPRECATED: use {@link #getOrBadRequest(UUID, UUID, UUID)} */
   @Deprecated
   public static Region get(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     String regionQuery =
@@ -228,15 +230,6 @@ public class Region extends Model {
     return query.findOne();
   }
 
-  public static Region getOrBadRequest(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    Region region = get(customerUUID, providerUUID, regionUUID);
-    if (region == null) {
-      throw new YWServiceException(
-          BAD_REQUEST,
-          "PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID);
-    }
-    return region;
-  }
 
   /**
    * Fetch Regions with the minimum zone count and having a valid yb server image.

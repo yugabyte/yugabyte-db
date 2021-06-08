@@ -10,16 +10,16 @@ import {
   fetchCustomerConfigsResponse,
   deleteCustomerConfig,
   deleteCustomerConfigResponse,
-  setInitialConfigValues,
-  updateCustomerConfig,
-  updateCustomerConfigResponse
+  editCustomerConfig,
+  editCustomerConfigResponse,
+  setInitialValues
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {
     addConfig: state.customer.addConfig,
-    updateConfig: state.customer.updateConfig,
+    editConfig: state.customer.editConfig,
     customerConfigs: state.customer.configs,
     visibleModal: state.modal.visibleModal,
     deleteConfig: state.customer.deleteConfig,
@@ -35,13 +35,13 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    setInitialConfigValues: (initialValues) => {
-      return dispatch(setInitialConfigValues(initialValues));
+    setInitialValues: (initialValues) => {
+      return dispatch(setInitialValues(initialValues));
     },
 
-    updateCustomerConfig: (config) => {
-      return dispatch(updateCustomerConfig(config)).then((res) => {
-        dispatch(updateCustomerConfigResponse(res.payload));
+    editCustomerConfig: (config) => {
+      return dispatch(editCustomerConfig(config)).then((response) => {
+        return dispatch(editCustomerConfigResponse(response.payload));
       });
     },
 
