@@ -11,9 +11,9 @@ const backupListProps = {
       configUUID: '1fbda868-d39d-4d76-9b15-a056d0c7bc28',
       customerUUID: 'f33e3c9b-75ab-4c30-80ad-cba85646ea39',
       data: {
-        AWS_ACCESS_KEY_ID: 'AKSAZH3NAAAADFFG',
+        AWS_ACCESS_KEY_ID: 'AKSXXXXXXXXXXDFFG',
         AWS_HOST_BASE: 's3.amazonaws.com',
-        AWS_SECRET_ACCESS_KEY: 'jIbAddfff+tvke11gW+9xcwa3H86+muM22UY',
+        AWS_SECRET_ACCESS_KEY: 'jIbAXXXXXXXXXXXuM22UY',
         BACKUP_LOCATION: 's3://yb-cloud-backup-dev'
       },
       inUse: false,
