@@ -51,10 +51,7 @@ public class UniverseResp {
     this(entity, taskUUID, null);
   }
 
-  public UniverseResp(
-      Universe entity,
-      UUID taskUUID,
-      UniverseResourceDetails resources) {
+  public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resources) {
     universeUUID = entity.universeUUID.toString();
     name = entity.name;
     creationDate = entity.creationDate.toString();
@@ -73,39 +70,34 @@ public class UniverseResp {
     return resources == null ? null : resources.pricePerHour;
   }
 
-  /**
-   * Returns the command to run the sample apps in the universe.
-   */
+  /** Returns the command to run the sample apps in the universe. */
   private String getManifest(Universe universe) {
     Set<NodeDetails> nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
     Integer yqlServerRpcPort = universe.getUniverseDetails().communicationPorts.yqlServerRpcPort;
     StringBuilder nodeBuilder = new StringBuilder();
-    UniverseDefinitionTaskParams.Cluster cluster = universe
-      .getUniverseDetails()
-      .getPrimaryCluster();
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
     String sampleAppCommand;
-    if(cluster.userIntent.providerType == null){
+    if (cluster.userIntent.providerType == null) {
       return null;
     }
-    boolean isKubernetesProvider = cluster
-      .userIntent
-      .providerType
-      .equals(Common.CloudType.kubernetes);
+    boolean isKubernetesProvider =
+        cluster.userIntent.providerType.equals(Common.CloudType.kubernetes);
     // Building --nodes param value of the command
     nodeDetailsSet
-      .stream()
-      .filter(
-        nodeDetails ->
-          (nodeDetails.isTserver
-            && nodeDetails.state != null
-            && nodeDetails.state.name().equals("Live")))
-      .forEach(
-        nodeDetails ->
-          nodeBuilder.append(
-            String.format(
-              nodeBuilder.length() == 0 ? "%s:%s" : ",%s:%s",
-              nodeDetails.cloudInfo.private_ip,
-              yqlServerRpcPort)));
+        .stream()
+        .filter(
+            nodeDetails ->
+                (nodeDetails.isTserver
+                    && nodeDetails.state != null
+                    && nodeDetails.state.name().equals("Live")))
+        .forEach(
+            nodeDetails ->
+                nodeBuilder.append(
+                    String.format(
+                        nodeBuilder.length() == 0 ? "%s:%s" : ",%s:%s",
+                        nodeDetails.cloudInfo.private_ip,
+                        yqlServerRpcPort)));
     // If node to client TLS is enabled.
     if (cluster.userIntent.enableClientToNodeEncrypt) {
       String randomFileName = UUID.randomUUID().toString();
@@ -113,54 +105,54 @@ public class UniverseResp {
         String certContent = CertificateHelper.getCertPEM(universe.getUniverseDetails().rootCA);
         Yaml yaml = new Yaml();
         String sampleAppCommandTxt =
-          yaml.dump(
-            yaml.load(
-              Play.application()
-                .resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
+            yaml.dump(
+                yaml.load(
+                    Play.application()
+                        .resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
         sampleAppCommandTxt =
-          sampleAppCommandTxt
-            .replace("<root_cert_content>", certContent)
-            .replace("<nodes>", nodeBuilder.toString());
+            sampleAppCommandTxt
+                .replace("<root_cert_content>", certContent)
+                .replace("<nodes>", nodeBuilder.toString());
 
         String secretCommandTxt =
-          yaml.dump(
-            yaml.load(
-              Play.application()
-                .resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
+            yaml.dump(
+                yaml.load(
+                    Play.application()
+                        .resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
         secretCommandTxt =
-          secretCommandTxt
-            .replace("<root_cert_content>", certContent)
-            .replace("<nodes>", nodeBuilder.toString());
+            secretCommandTxt
+                .replace("<root_cert_content>", certContent)
+                .replace("<nodes>", nodeBuilder.toString());
         sampleAppCommandTxt = secretCommandTxt + "\n---\n" + sampleAppCommandTxt;
         sampleAppCommand = "echo -n \"" + sampleAppCommandTxt + "\" | kubectl create -f -";
       } else {
         sampleAppCommand =
-          ("export FILE_NAME=/tmp/<file_name>.crt "
-            + "&& echo -n \"<root_cert_content>\" > $FILE_NAME " +
-            "&& docker run -d -v $FILE_NAME:/home/root.crt:ro yugabytedb/yb-sample-apps "
-            + "--workload CassandraKeyValue --nodes <nodes> --ssl_cert /home/root.crt")
-            .replace(
-              "<root_cert_content>",
-              universe.getUniverseDetails().rootCA != null
-                ? CertificateHelper.getCertPEMFileContents(
-                universe.getUniverseDetails().rootCA)
-                : "")
-            .replace("<nodes>", nodeBuilder.toString());
+            ("export FILE_NAME=/tmp/<file_name>.crt "
+                    + "&& echo -n \"<root_cert_content>\" > $FILE_NAME "
+                    + "&& docker run -d -v $FILE_NAME:/home/root.crt:ro yugabytedb/yb-sample-apps "
+                    + "--workload CassandraKeyValue --nodes <nodes> --ssl_cert /home/root.crt")
+                .replace(
+                    "<root_cert_content>",
+                    universe.getUniverseDetails().rootCA != null
+                        ? CertificateHelper.getCertPEMFileContents(
+                            universe.getUniverseDetails().rootCA)
+                        : "")
+                .replace("<nodes>", nodeBuilder.toString());
       }
       sampleAppCommand = sampleAppCommand.replace("<file_name>", randomFileName);
     } else {
       // If TLS is disabled.
       if (isKubernetesProvider) {
         String commandTemplateKubeCtl =
-          "kubectl run "
-            + "--image=yugabytedb/yb-sample-apps yb-sample-apps "
-            + "-- --workload CassandraKeyValue --nodes <nodes>";
+            "kubectl run "
+                + "--image=yugabytedb/yb-sample-apps yb-sample-apps "
+                + "-- --workload CassandraKeyValue --nodes <nodes>";
         sampleAppCommand = commandTemplateKubeCtl.replace("<nodes>", nodeBuilder.toString());
       } else {
         String commandTemplateDocker =
-          "docker run "
-            + "-d yugabytedb/yb-sample-apps "
-            + "--workload CassandraKeyValue --nodes <nodes>";
+            "docker run "
+                + "-d yugabytedb/yb-sample-apps "
+                + "--workload CassandraKeyValue --nodes <nodes>";
         sampleAppCommand = commandTemplateDocker.replace("<nodes>", nodeBuilder.toString());
       }
     }
