@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.helpers;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.SdkClientException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -133,9 +134,12 @@ public class CustomerConfigValidator {
             }
           } catch (AmazonS3Exception s3Exception) {
             String errMessage = s3Exception.getErrorMessage();
+            System.out.println();
             if (errMessage.contains("Denied") || errMessage.contains("bucket"))
               errMessage += " " + s3Uri;
             errorJson.set(fieldName, Json.newArray().add(errMessage));
+          } catch (SdkClientException e) {
+            errorJson.set(fieldName, Json.newArray().add(e.getMessage()));
           }
         }
       }

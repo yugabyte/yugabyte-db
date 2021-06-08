@@ -254,10 +254,10 @@ class AbstractCloud(AbstractCommandParser):
         root_cert_path = extra_vars["rootCA_cert"]
         root_key_path = extra_vars["rootCA_key"]
         certs_node_dir = extra_vars["certs_node_dir"]
-        with open(root_cert_path, 'r') as cert_in:
+        with open(root_cert_path, 'rb') as cert_in:
             certlines = cert_in.read()
         root_cert = x509.load_pem_x509_certificate(certlines, default_backend())
-        with open(root_key_path, 'r') as key_in:
+        with open(root_key_path, 'rb') as key_in:
             keylines = key_in.read()
         root_key = load_pem_private_key(keylines, None, default_backend())
         private_key = rsa.generate_private_key(

@@ -44,6 +44,8 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
+#include "yb/util/random_util.h"
+
 namespace yb {
 
 // See top-level comments in yb/gutil/atomicops.h for further
@@ -392,6 +394,14 @@ void AtomicFlagSleepMs(T* flag) {
   auto value = GetAtomicFlag(flag);
   if (value != 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(value));
+  }
+}
+
+template <class T>
+void AtomicFlagRandomSleepMs(T* flag) {
+  auto value = GetAtomicFlag(flag);
+  if (value != 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(RandomUniformInt<T>(0, value)));
   }
 }
 

@@ -325,25 +325,6 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
   const std::string log_prefix_;
 };
 
-class Tablet::CompletedSplitOperationFilter : public OperationFilter {
- public:
-  explicit CompletedSplitOperationFilter(std::reference_wrapper<const RaftGroupMetadata> metadata)
-      : metadata_(metadata) {}
-
-  CHECKED_STATUS CheckOperationAllowed(
-      const OpId& op_id, consensus::OperationType op_type) const override {
-    if (SplitOperationState::ShouldAllowOpAfterSplitTablet(op_type)) {
-      return Status::OK();
-    }
-
-    auto children = metadata_.split_child_tablet_ids();
-    return SplitOperationState::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
-  }
-
- private:
-  const RaftGroupMetadata& metadata_;
-};
-
 Tablet::Tablet(const TabletInitData& data)
     : key_schema_(data.metadata->schema()->CreateKeyProjection()),
       metadata_(data.metadata),
@@ -440,6 +421,7 @@ Tablet::Tablet(const TabletInitData& data)
   if (metadata_->tablet_data_state() == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     SplitDone();
   }
+  SyncRestoringOperationFilter();
 }
 
 Tablet::~Tablet() {
@@ -892,6 +874,10 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
 
   if (completed_split_operation_filter_) {
     UnregisterOperationFilter(completed_split_operation_filter_.get());
+  }
+
+  if (restoring_operation_filter_) {
+    UnregisterOperationFilter(restoring_operation_filter_.get());
   }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
@@ -3469,13 +3455,63 @@ void Tablet::SplitDone() {
     return;
   }
 
-  completed_split_operation_filter_ = std::make_unique<CompletedSplitOperationFilter>(*metadata_);
+  completed_split_operation_filter_ = MakeFunctorOperationFilter(
+      [this](const OpId& op_id, consensus::OperationType op_type) -> Status {
+    if (SplitOperationState::ShouldAllowOpAfterSplitTablet(op_type)) {
+      return Status::OK();
+    }
+
+    auto children = metadata_->split_child_tablet_ids();
+    return SplitOperationState::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
+  });
   operation_filters_.push_back(*completed_split_operation_filter_);
 
   completed_split_log_anchor_ = std::make_unique<log::LogAnchor>();
 
   log_anchor_registry_->Register(
       metadata_->split_op_id().index, "Splitted tablet", completed_split_log_anchor_.get());
+}
+
+void Tablet::SyncRestoringOperationFilter() {
+  if (metadata_->has_active_restoration()) {
+    if (restoring_operation_filter_) {
+      return;
+    }
+    restoring_operation_filter_ = MakeFunctorOperationFilter(
+        [](const OpId& op_id, consensus::OperationType op_type) -> Status {
+      if (SnapshotOperationState::ShouldAllowOpDuringRestore(op_type)) {
+        return Status::OK();
+      }
+
+      return SnapshotOperationState::RejectionStatus(op_id, op_type);
+    });
+    operation_filters_.push_back(*restoring_operation_filter_);
+  } else {
+    if (!restoring_operation_filter_) {
+      return;
+    }
+
+    UnregisterOperationFilter(restoring_operation_filter_.get());
+    restoring_operation_filter_ = nullptr;
+  }
+}
+
+Status Tablet::RestoreStarted(const TxnSnapshotRestorationId& restoration_id) {
+  metadata_->RegisterRestoration(restoration_id);
+  RETURN_NOT_OK(metadata_->Flush());
+
+  SyncRestoringOperationFilter();
+
+  return Status::OK();
+}
+
+Status Tablet::RestoreFinished(const TxnSnapshotRestorationId& restoration_id) {
+  metadata_->UnregisterRestoration(restoration_id);
+  RETURN_NOT_OK(metadata_->Flush());
+
+  SyncRestoringOperationFilter();
+
+  return Status::OK();
 }
 
 Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {

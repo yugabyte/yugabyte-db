@@ -116,10 +116,6 @@ Status ChangeMetadataOperation::Prepare() {
 Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY CHANGE-METADATA: Starting");
 
-  auto se = ScopeExit([this] {
-    state()->Finish();
-  });
-
   Tablet* tablet = state()->tablet();
   log::Log* log = state()->mutable_log();
   size_t num_operations = 0;
@@ -218,7 +214,6 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
 
 Status ChangeMetadataOperation::DoAborted(const Status& status) {
   TRACE("AlterSchemaCommitCallback: transaction aborted");
-  state()->Finish();
   return status;
 }
 
