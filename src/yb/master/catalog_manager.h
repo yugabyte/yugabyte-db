@@ -797,13 +797,17 @@ class CatalogManager :
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id);
 
+  Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+      const scoped_refptr<TableInfo>& table);
+
   void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
 
   void CheckTableDeleted(const TableInfoPtr& table);
 
   CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) const override;
 
-  bool ShouldSplitValidCandidate(const TabletReplicaDriveInfo& drive_info) const override;
+  bool ShouldSplitValidCandidate(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1526,7 +1530,7 @@ class CatalogManager :
 
   ServerRegistrationPB server_registration_;
 
-  BlacklistSet BlacklistSetFromPB();
+  BlacklistSet BlacklistSetFromPB() const;
 
   TabletSplitManager tablet_split_manager_;
 
