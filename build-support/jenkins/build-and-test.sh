@@ -676,6 +676,37 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       EXIT_STATUS=1
     fi
   fi
+
+  if grep -q "CentOS Linux 7" /etc/os-release; then
+    log "This is CentOS 7, doing a quick sanity-check of the release package using Docker."
+
+    # Do a quick sanity test on the release package. This verifies that we can at least start the
+    # cluster, which requires all RPATHs to be set correctly, either at the time the package is
+    # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
+    docker run -i \
+      -e YB_PACKAGE_PATH \
+      --mount type=bind,source=$PWD/build,target=/mnt/yb_build_dir centos:7 \
+      bash -c '
+        set -euo pipefail -x
+        package_name=${YB_PACKAGE_PATH##*/}
+        package_path=/mnt/yb_build_dir/$package_name
+        set +e
+        # This will be "yugabyte-a.b.c.d/" (with a trailing slash).
+        dir_name_inside_archive=$(tar tf "$package_path" | head -1)
+        set -e
+        # Remove the trailing slash.
+        dir_name_inside_archive=${dir_name_inside_archive%/}
+        cd /tmp
+        tar xzf "$package_path"
+        cd "$dir_name_inside_archive"
+        bin/post_install.sh
+        bin/yb-ctl create
+        bin/ysqlsh -c "create table t (k int primary key, v int); \
+                      insert into t values (1, 2); \
+                      select * from t;"'
+  else
+    log "Not doing a quick sanity-check of the release package. OS: $OSTYPE."
+  fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: $OSTYPE," \
       "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}."
