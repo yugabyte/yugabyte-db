@@ -10,30 +10,25 @@
 
 package com.yugabyte.yw.models;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
 import play.data.validation.Constraints;
 
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.persistence.*;
+import java.text.DecimalFormat;
+import java.util.*;
+import java.util.function.Consumer;
 
 @Entity
 public class AlertDefinition extends Model {
+
+  private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
+  private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
 
   public enum TargetType {
     @EnumValue("Universe")
@@ -64,24 +59,41 @@ public class AlertDefinition extends Model {
   @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
-  public UUID uuid;
+  private UUID uuid;
 
   @Enumerated(EnumType.STRING)
-  public TargetType targetType;
+  private TargetType targetType;
 
   @Constraints.Required
   @Column(columnDefinition = "Text", nullable = false)
-  public String name;
+  private String name;
 
   @Constraints.Required
   @Column(columnDefinition = "Text", nullable = false)
-  public String query;
-
-  @Constraints.Required public boolean isActive;
+  private String query;
 
   @Constraints.Required
   @Column(nullable = false)
-  public UUID customerUUID;
+  private int queryDurationSec = 15;
+
+  @Constraints.Required
+  @Column(nullable = false)
+  private double queryThreshold;
+
+  @Constraints.Required private boolean isActive = true;
+
+  @Constraints.Required
+  @Column(nullable = false)
+  private UUID customerUUID;
+
+  @Constraints.Required
+  @Column(nullable = false)
+  @JsonIgnore
+  private boolean configWritten = false;
+
+  @Version
+  @Column(nullable = false)
+  private int version;
 
   @OneToMany(mappedBy = "definition", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertDefinitionLabel> labels;
@@ -89,96 +101,118 @@ public class AlertDefinition extends Model {
   private static final Finder<UUID, AlertDefinition> find =
       new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
 
-  public static AlertDefinition create(
-      UUID customerUUID,
-      TargetType targetType,
-      String name,
-      String query,
-      boolean isActive,
-      List<AlertDefinitionLabel> labels) {
-    AlertDefinition definition = new AlertDefinition();
-    definition.uuid = UUID.randomUUID();
-    definition.targetType = targetType;
-    definition.name = name;
-    definition.customerUUID = customerUUID;
-    definition.query = query;
-    definition.isActive = isActive;
-    definition.setLabels(labels);
-    definition.save();
-
-    return definition;
+  public static int delete(AlertDefinitionFilter filter) {
+    return createQueryByFilter(filter).delete();
   }
 
-  public static AlertDefinition get(UUID alertDefinitionUUID) {
-    return find.query().fetch("labels").where().idEq(alertDefinitionUUID).findOne();
+  public static List<AlertDefinition> list(AlertDefinitionFilter filter) {
+    return createQueryByFilter(filter).findList();
   }
 
-  public static AlertDefinition getOrBadRequest(UUID alertDefinitionUUID) {
-    AlertDefinition alertDefinition = get(alertDefinitionUUID);
-    if (alertDefinition == null) {
-      throw new YWServiceException(
-          BAD_REQUEST, "Invalid Alert Definition UUID: " + alertDefinitionUUID);
+  public static List<UUID> listIds(AlertDefinitionFilter filter) {
+    return createQueryByFilter(filter).findIds();
+  }
+
+  public static void process(AlertDefinitionFilter filter, Consumer<AlertDefinition> consumer) {
+    createQueryByFilter(filter).findEach(consumer);
+  }
+
+  private static ExpressionList<AlertDefinition> createQueryByFilter(AlertDefinitionFilter filter) {
+    ExpressionList<AlertDefinition> query = find.query().fetch("labels").where();
+    if (filter.getUuid() != null) {
+      query.eq("uuid", filter.getUuid());
     }
-    return alertDefinition;
-  }
-
-  public static AlertDefinition get(UUID customerUUID, UUID universeUUID, String name) {
-    return find.query()
-        .fetch("labels")
-        .where()
-        .eq("customer_uuid", customerUUID)
-        .eq("labels.key.name", KnownAlertLabels.UNIVERSE_UUID.labelName())
-        .eq("labels.value", universeUUID.toString())
-        .eq("name", name)
-        .findOne();
-  }
-
-  public static AlertDefinition getOrBadRequest(UUID customerUUID, UUID universeUUID, String name) {
-    AlertDefinition alertDefinition = get(customerUUID, universeUUID, name);
-    if (alertDefinition == null) {
-      throw new YWServiceException(BAD_REQUEST, "Could not find Alert Definition");
+    if (filter.getCustomerUuid() != null) {
+      query.eq("customer_uuid", filter.getCustomerUuid());
     }
-    return alertDefinition;
+    if (filter.getName() != null) {
+      query.eq("name", filter.getName());
+    }
+    if (filter.getActive() != null) {
+      query.eq("is_active", filter.getActive());
+    }
+    if (filter.getConfigWritten() != null) {
+      query.eq("config_written", filter.getConfigWritten());
+    }
+    if (filter.getLabel() != null) {
+      query
+          .eq("labels.key.name", filter.getLabel().getName())
+          .eq("labels.value", filter.getLabel().getValue());
+    }
+    return query;
   }
 
-  public static List<AlertDefinition> get(UUID customerUUID, AlertDefinitionLabel label) {
-    return find.query()
-        .fetch("labels")
-        .where()
-        .eq("customer_uuid", customerUUID)
-        .eq("labels.key.name", label.getName())
-        .eq("labels.value", label.getValue())
-        .findList();
+  public UUID getUuid() {
+    return uuid;
   }
 
-  public static void delete(UUID customerUUID, AlertDefinitionLabel label) {
-    find.query()
-        .fetch("labels")
-        .where()
-        .eq("customer_uuid", customerUUID)
-        .eq("labels.key.name", label.getName())
-        .eq("labels.value", label.getValue())
-        .delete();
+  public void generateUUID() {
+    this.uuid = UUID.randomUUID();
+    this.labels.forEach(label -> label.setDefinition(this));
   }
 
-  public static AlertDefinition update(
-      UUID alertDefinitionUUID, String query, boolean isActive, List<AlertDefinitionLabel> labels) {
-    AlertDefinition alertDefinition = get(alertDefinitionUUID);
-    alertDefinition.query = query;
-    alertDefinition.isActive = isActive;
-    alertDefinition.setLabels(labels);
-    alertDefinition.save();
-
-    return alertDefinition;
+  public TargetType getTargetType() {
+    return targetType;
   }
 
-  public static Set<AlertDefinition> listActive(UUID customerUUID) {
-    return find.query()
-        .fetch("labels")
-        .where()
-        .eq("customer_uuid", customerUUID)
-        .eq("is_active", true)
-        .findSet();
+  public void setTargetType(TargetType targetType) {
+    this.targetType = targetType;
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public void setName(String name) {
+    this.name = name;
+  }
+
+  public String getQuery() {
+    return query;
+  }
+
+  public void setQuery(String query) {
+    this.query = query;
+  }
+
+  public int getQueryDurationSec() {
+    return queryDurationSec;
+  }
+
+  public void setQueryDurationSec(int queryDurationSec) {
+    this.queryDurationSec = queryDurationSec;
+  }
+
+  public double getQueryThreshold() {
+    return queryThreshold;
+  }
+
+  public void setQueryThreshold(double queryThreshold) {
+    this.queryThreshold = queryThreshold;
+  }
+
+  public boolean isActive() {
+    return isActive;
+  }
+
+  public void setActive(boolean active) {
+    isActive = active;
+  }
+
+  public UUID getCustomerUUID() {
+    return customerUUID;
+  }
+
+  public void setCustomerUUID(UUID customerUUID) {
+    this.customerUUID = customerUUID;
+  }
+
+  public boolean isConfigWritten() {
+    return configWritten;
+  }
+
+  public void setConfigWritten(boolean configWritten) {
+    this.configWritten = configWritten;
   }
 
   public List<AlertDefinitionLabel> getLabels() {
@@ -234,5 +268,53 @@ public class AlertDefinition extends Model {
 
   public UUID getTargetUUID() {
     return UUID.fromString(getLabelValue(targetType.getTargetUuidLabel()));
+  }
+
+  public String getQueryWithThreshold() {
+    return query.replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(queryThreshold));
+  }
+
+  public boolean configEquals(AlertDefinition other) {
+    if (Objects.equals(getName(), other.getName())
+        && Objects.equals(getQuery(), other.getQuery())
+        && Objects.equals(getQueryDurationSec(), other.getQueryDurationSec())
+        && Objects.equals(getQueryThreshold(), other.getQueryThreshold())
+        && Objects.equals(isActive(), other.isActive())
+        && Objects.equals(getEffectiveLabels(), other.getEffectiveLabels())) {
+      return true;
+    }
+    return false;
+  }
+
+  @Override
+  public String toString() {
+    return "AlertDefinition{"
+        + "uuid="
+        + uuid
+        + ", targetType="
+        + targetType
+        + ", name='"
+        + name
+        + '\''
+        + ", query='"
+        + query
+        + '\''
+        + ", queryDurationSec='"
+        + queryDurationSec
+        + '\''
+        + ", queryThreshold='"
+        + queryThreshold
+        + '\''
+        + ", isActive="
+        + isActive
+        + ", customerUUID="
+        + customerUUID
+        + ", configWritten="
+        + configWritten
+        + ", labels="
+        + labels
+        + ", version="
+        + version
+        + '}';
   }
 }

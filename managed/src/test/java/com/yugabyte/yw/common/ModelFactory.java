@@ -5,19 +5,13 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 
@@ -252,6 +246,20 @@ public class ModelFactory {
     data.reportOnlyErrors = reportOnlyErrors;
 
     return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
+  }
+
+  public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
+    AlertDefinition alertDefinition = new AlertDefinition();
+    alertDefinition.generateUUID();
+    alertDefinition.setCustomerUUID(customer.getUuid());
+    alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
+    alertDefinition.setName("alertDefinition");
+    alertDefinition.setQuery("query < {{ query_threshold }}");
+    alertDefinition.setQueryThreshold(1);
+    alertDefinition.setLabels(AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+
+    alertDefinition.save();
+    return alertDefinition;
   }
 
   /*

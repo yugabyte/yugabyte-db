@@ -6,7 +6,6 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import play.libs.Json;
@@ -29,6 +28,19 @@ import java.util.concurrent.ExecutionException;
 public class ApiHelper {
 
   @Inject WSClient wsClient;
+
+  public boolean postRequest(String url) {
+    try {
+      return wsClient
+          .url(url)
+          .execute("POST")
+          .thenApply(wsResponse -> wsResponse.getStatus() == 200)
+          .toCompletableFuture()
+          .get();
+    } catch (Exception e) {
+      return false;
+    }
+  }
 
   public JsonNode postRequest(String url, JsonNode data) {
     return postRequest(url, data, new HashMap<>());
