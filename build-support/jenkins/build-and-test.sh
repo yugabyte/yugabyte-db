@@ -627,8 +627,7 @@ fi
 
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
-      $build_type != "asan" &&
-      $YB_COMPILER_TYPE != *[0-9] ]]; then
+      $build_type != "asan" ]]; then
   heading "Creating a distribution package"
 
   package_path_file="$BUILD_ROOT/package_path.txt"
