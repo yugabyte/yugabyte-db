@@ -91,7 +91,7 @@ pg_stat_monitor extension contains a view called pg_stat_monitor, which contains
  message             | text                     | :heavy_check_mark:  | :x:
  plans               | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
  plan_total_time     | double precision         | :heavy_check_mark:  | :heavy_check_mark:
- plan_min_timei      | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ plan_min_time       | double precision         | :heavy_check_mark:  | :heavy_check_mark:
  plan_max_time       | double precision         | :heavy_check_mark:  | :heavy_check_mark: 
  plan_mean_time      | double precision         | :heavy_check_mark:  | :heavy_check_mark:
  plan_stddev_time    | double precision         | :heavy_check_mark:  | :heavy_check_mark: 
