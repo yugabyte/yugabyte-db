@@ -35,15 +35,17 @@ const mapDispatchToProps = (dispatch) => {
         if (response.error) {
           const errorMessageObject =
             response.payload?.response?.data?.error || response.payload.message;
-          Object.keys(errorMessageObject).forEach((errorKey) => {
-            toast.error(
-              <ul>
-                {errorMessageObject[errorKey].map((error) => (
-                  <li>{error}</li>
-                ))}
-              </ul>
-            );
-          });
+          errorMessageObject instanceof Object
+            ? Object.keys(errorMessageObject).forEach((errorKey) => {
+                toast.error(
+                  <ul>
+                    {errorMessageObject[errorKey].map((error) => (
+                      <li>{error}</li>
+                    ))}
+                  </ul>
+                );
+              })
+            : toast.error(errorMessageObject);
         } else {
           toast.success('Successfully added the backup configuration.');
         }
