@@ -57,9 +57,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     UUID providerUUID = UUID.randomUUID();
     UUID regionUUID = UUID.randomUUID();
     JsonNode json = doListAZAndVerifyResult(providerUUID, regionUUID, BAD_REQUEST, true);
-    assertEquals(
-        "PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID,
-        json.get("error").asText());
+    assertEquals("Invalid Provider/Region UUID", json.get("error").asText());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -90,9 +88,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     UUID providerUUID = UUID.randomUUID();
     UUID regionUUID = UUID.randomUUID();
     JsonNode json = doCreateAZAndVerifyResult(providerUUID, regionUUID, null, BAD_REQUEST, true);
-    assertEquals(
-        "PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID,
-        json.get("error").asText());
+    assertEquals("Invalid Provider/Region UUID", json.get("error").asText());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 

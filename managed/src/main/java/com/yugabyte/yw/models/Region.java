@@ -230,7 +230,6 @@ public class Region extends Model {
     return query.findOne();
   }
 
-
   /**
    * Fetch Regions with the minimum zone count and having a valid yb server image.
    *
