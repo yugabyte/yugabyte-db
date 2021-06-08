@@ -3,10 +3,10 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.YWServiceException;
@@ -22,9 +22,10 @@ import javax.persistence.*;
 import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name", "code"}))
 @Entity
 public class Provider extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Provider.class);
@@ -85,13 +86,9 @@ public class Provider extends Model {
     this.save();
   }
 
-  @JsonIgnore
-  public JsonNode getMaskedConfig() {
-    if (this.config == null) {
-      return Json.newObject();
-    } else {
-      return maskConfig(this.config);
-    }
+  @JsonProperty("config")
+  public Map<String, String> getMaskedConfig() {
+    return maskConfigNew(this.getConfig());
   }
 
   @JsonIgnore
@@ -200,6 +197,24 @@ public class Provider extends Model {
         .eq("customer_uuid", customerUUID)
         .eq("code", code.toString())
         .findList();
+  }
+
+  /**
+   * Get Provider by name, cloud for a given customer uuid. If there is multiple providers with the
+   * same name, cloud will raise a exception.
+   *
+   * @param customerUUID
+   * @param name
+   * @param code
+   * @return
+   */
+  public static Provider get(UUID customerUUID, String name, Common.CloudType code) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("name", name)
+        .eq("code", code.toString())
+        .findOne();
   }
 
   // Use get Or bad request

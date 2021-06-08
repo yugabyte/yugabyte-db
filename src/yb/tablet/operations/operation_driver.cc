@@ -106,11 +106,10 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
     if (consensus_) {  // sometimes NULL in tests
       // Unretained is required to avoid a refcount cycle.
       consensus::ReplicateMsgPtr replicate_msg = operation_->NewReplicateMsg();
-      mutable_state()->set_consensus_round(
-        consensus_->NewRound(std::move(replicate_msg),
-                             std::bind(&OperationDriver::ReplicationFinished, this, _1, _2, _3)));
-      mutable_state()->consensus_round()->BindToTerm(term);
-      mutable_state()->consensus_round()->SetAppendCallback(this);
+      auto round = make_scoped_refptr<ConsensusRound>(consensus_, std::move(replicate_msg));
+      round->BindToTerm(term);
+      round->SetCallback(this);
+      mutable_state()->set_consensus_round(std::move(round));
     }
   }
 
@@ -183,7 +182,7 @@ void OperationDriver::ExecuteAsync() {
   }
 }
 
-void OperationDriver::HandleConsensusAppend(const OpId& op_id, const OpId& committed_op_id) {
+void OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   ADOPT_TRACE(trace());
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
@@ -385,7 +384,9 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
 
   {
     auto status = operation_->Replicated(leader_term);
-    LOG_IF_WITH_PREFIX(FATAL, !status.ok()) << "Apply failed: " << status;
+    LOG_IF_WITH_PREFIX(FATAL, !status.ok())
+        << "Apply failed: " << status
+        << ", request: " << operation_->state()->request()->ShortDebugString();
     operation_tracker_->Release(this, applied_op_ids);
   }
 }

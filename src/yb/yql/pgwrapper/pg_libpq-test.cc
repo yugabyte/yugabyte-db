@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <signal.h>
+
+#include <fstream>
 #include <thread>
 
 #include "yb/util/barrier.h"
@@ -2090,6 +2093,142 @@ TEST_F(PgLibPqIndexTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableTimeo
     WARN_NOT_OK(ResultToStatus(ret), "");
     return ret.ok() && ret.get() == false;
   }, MonoDelta::FromSeconds(40), "Verify Index Table was removed by Transaction GC"));
+}
+
+class PgLibPqTestEnumType: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_do_not_add_enum_sort_order=true");
+  }
+};
+
+// Make sure that enum type backfill works.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(EnumType),
+          PgLibPqTestEnumType) {
+  const string kDatabaseName ="yugabyte";
+  const string kTableName ="enum_table";
+  const string kEnumTypeName ="enum_type";
+  auto conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+  ASSERT_OK(conn->ExecuteFormat(
+    "CREATE TYPE $0 as enum('b', 'e', 'f', 'c', 'a', 'd')", kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat(
+    "CREATE TABLE $0 (id $1)",
+    kTableName,
+    kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('a')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('b')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('c')", kTableName));
+
+  // Do table scan to verify contents the table with an ORDER BY clause. This
+  // ensures that old enum values which did not have sort order can be read back,
+  // sorted and displayed correctly.
+  const std::string query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  PGResultPtr res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<string> values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "c");
+  ASSERT_EQ(values[2], "a");
+
+  // Now alter the gflag so any new values will have sort order added.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+              "TEST_do_not_add_enum_sort_order", "false"));
+
+  // Disconnect from the database so we don't have a case where the
+  // postmaster dies while clients are still connected.
+  conn = nullptr;
+
+  // For each tablet server, kill the corresponding PostgreSQL process.
+  // A new PostgreSQL process will be respawned by the tablet server and
+  // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
+  // server.
+  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ExternalTabletServer* pg_ts = cluster_->tablet_server(i);
+    const string pg_pid_file = JoinPathSegments(pg_ts->GetDataDir(), "pg_data",
+                                                "postmaster.pid");
+
+    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
+    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
+    std::ifstream pg_pid_in;
+    pg_pid_in.open(pg_pid_file, std::ios_base::in);
+    ASSERT_FALSE(pg_pid_in.eof());
+    pid_t pg_pid = 0;
+    pg_pid_in >> pg_pid;
+    ASSERT_GT(pg_pid, 0);
+    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
+    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
+  }
+
+  // Reconnect to the database after the new PostgreSQL starts.
+  conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+
+  // Insert three more rows with --TEST_do_not_add_enum_sort_order=false.
+  // The new enum values will have sort order added.
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('d')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('e')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('f')", kTableName));
+
+  // Do table scan again to verify contents the table with an ORDER BY clause.
+  // This ensures that old enum values which did not have sort order, mixed
+  // with new enum values which have sort order, can be read back, sorted and
+  // displayed correctly.
+  ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 6);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+    ASSERT_RESULT(GetString(res.get(), 3, 0)),
+    ASSERT_RESULT(GetString(res.get(), 4, 0)),
+    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "e");
+  ASSERT_EQ(values[2], "f");
+  ASSERT_EQ(values[3], "c");
+  ASSERT_EQ(values[4], "a");
+  ASSERT_EQ(values[5], "d");
+
+  // Create an index on the enum table column.
+  ASSERT_OK(conn->ExecuteFormat("CREATE INDEX ON $0 (id ASC)", kTableName));
+
+  // Index only scan to verify contents of index table.
+  ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 6);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+    ASSERT_RESULT(GetString(res.get(), 3, 0)),
+    ASSERT_RESULT(GetString(res.get(), 4, 0)),
+    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "e");
+  ASSERT_EQ(values[2], "f");
+  ASSERT_EQ(values[3], "c");
+  ASSERT_EQ(values[4], "a");
+  ASSERT_EQ(values[5], "d");
+
+  // Test where clause.
+  const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
+  res = ASSERT_RESULT(conn->Fetch(query2));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  const string value = ASSERT_RESULT(GetString(res.get(), 0, 0));
+  ASSERT_EQ(value, "b");
 }
 
 namespace {

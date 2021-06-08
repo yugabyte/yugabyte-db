@@ -946,14 +946,19 @@ void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
   table_cache_.erase(yb_table_id);
 }
 
-void PgSession::StartOperationsBuffering() {
-  DCHECK(!buffering_enabled_);
-  DCHECK(buffered_keys_.empty());
+Status PgSession::StartOperationsBuffering() {
+  SCHECK(!buffering_enabled_, IllegalState, "Buffering has been already started");
+  if (PREDICT_FALSE(!buffered_keys_.empty())) {
+    LOG(DFATAL) << "Buffering hasn't been started yet but "
+                << buffered_keys_.size()
+                << " buffered operations found";
+  }
   buffering_enabled_ = true;
+  return Status::OK();
 }
 
 Status PgSession::StopOperationsBuffering() {
-  DCHECK(buffering_enabled_);
+  SCHECK(buffering_enabled_, IllegalState, "Buffering hasn't been started");
   buffering_enabled_ = false;
   return FlushBufferedOperations();
 }
@@ -1168,6 +1173,12 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
 void PgSession::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
   if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
     fk_reference_intent_.emplace(table_id, ybctid.ToBuffer());
+  }
+}
+
+void PgSession::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
+    fk_reference_cache_.emplace(table_id, ybctid.ToBuffer());
   }
 }
 

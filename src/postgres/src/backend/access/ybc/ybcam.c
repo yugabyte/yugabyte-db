@@ -226,6 +226,24 @@ static void ybcAddTargetColumn(YbScanDesc ybScan, AttrNumber attnum)
 	HandleYBStatus(YBCPgDmlAppendTarget(ybScan->handle, expr));
 }
 
+static void ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
+{
+	if (!ybScan->exec_params)
+		return;
+
+	switch (ybScan->exec_params->rowmark) {
+	case ROW_MARK_EXCLUSIVE:
+	case ROW_MARK_NOKEYEXCLUSIVE:
+	case ROW_MARK_SHARE:
+	case ROW_MARK_KEYSHARE:
+		YBCPgAddIntoForeignKeyReferenceCache(RelationGetRelid(ybScan->relation), ybctid);
+		break;
+	case ROW_MARK_REFERENCE:
+	case ROW_MARK_COPY:
+		break;
+	}
+}
+
 static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 {
 	HeapTuple tuple    = NULL;
@@ -263,6 +281,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 		if (syscols.ybctid != NULL)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+			ybcUpdateFKCache(ybScan, tuple->t_ybctid);
 		}
 		tuple->t_tableOid = RelationGetRelid(ybScan->relation);
 	}
@@ -322,6 +341,7 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 			if (syscols.ybctid != NULL)
 			{
 				tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
 			}
 		}
 		else
@@ -330,6 +350,7 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 			if (syscols.ybbasectid != NULL)
 			{
 				tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
+				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
 			}
 		}
 

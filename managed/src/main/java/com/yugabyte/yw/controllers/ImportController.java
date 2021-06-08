@@ -57,6 +57,9 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
+import io.swagger.annotations.*;
+
+@Api
 public class ImportController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ImportController.class);
 
@@ -80,6 +83,7 @@ public class ImportController extends AuthenticatedController {
 
   @Inject ConfigHelper configHelper;
 
+  @ApiOperation(value = "import", response = Object.class)
   public Result importUniverse(UUID customerUUID) {
     // Get the submitted form data.
     Form<ImportUniverseFormData> formData =

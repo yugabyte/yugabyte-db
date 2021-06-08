@@ -1646,6 +1646,40 @@ class ClusterControl:
         if not self.wait_for_cluster():
             raise RuntimeError("Timed out waiting for a YugaByte DB cluster!")
 
+    def wait_for_node(self, daemon_id):
+        """
+        This will wait for the tserver to become alive as reported by the yb-admin list_all_tablet_servers
+        command.
+        """
+        cmd_list_tservers = self.yb_admin_cmd_list("list_all_tablet_servers")
+
+        def call_check_for_ts(should_get_error):
+            if self.get_pid(daemon_id) is not None:
+                output = call_get_output_maybe_error(
+                        cmd_list_tservers,
+                        should_get_error
+                    ).decode('utf-8')
+                output_array = output.splitlines()
+                ts_hp = self.options.get_host_port(daemon_id, "rpc")
+                for ts_status in output_array:
+                    if ts_hp in ts_status:
+                        return "ALIVE" in ts_status
+                return False
+            else:
+                return False
+
+        logging.info("Waiting for tablet server registration.")
+        if not retry_call_with_timeout(call_check_for_ts, self.options.timeout_yb_admin_sec):
+            logging.error("Failed waiting for tserver")
+            return False
+
+        return True
+
+    def wait_for_node_or_raise(self, daemon_id):
+        print("Waiting for node to be ready.")
+        if not self.wait_for_node(daemon_id):
+            raise RuntimeError("Timed out waiting for tserver!")
+
     def print_status_box(self, title, body_kv_list):
         print("-" * 100)
         print("| {:<96} |".format(title))
@@ -1899,7 +1933,7 @@ class ClusterControl:
         daemon_id = DaemonId(self.options.node_type, self.args.node_id)
         self.set_master_addresses()
         self.start_daemon(daemon_id)
-        self.wait_for_cluster_or_raise()
+        self.wait_for_node_or_raise(daemon_id)
         self.show_node_status(daemon_id.index)
 
     def stop_node_cmd_impl(self):

@@ -49,6 +49,7 @@
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
@@ -71,8 +72,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_error.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -237,6 +238,9 @@ DEFINE_test_flag(bool, export_intentdb_metrics, false,
 DEFINE_test_flag(bool, pause_before_post_split_compation, false,
                  "Pause before triggering post split compaction.");
 
+DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
+                 "Prevents adding the UserFrontier to SST file in order to mimic older files.");
+
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -302,6 +306,32 @@ std::string MakeTabletLogPrefix(
   return Format("T $0$1: ", tablet_id, log_prefix_suffix);
 }
 
+docdb::ConsensusFrontiers* InitFrontiers(
+    const OpId op_id,
+    const HybridTime log_ht,
+    docdb::ConsensusFrontiers* frontiers) {
+  if (FLAGS_TEST_disable_adding_user_frontier_to_sst) {
+    return nullptr;
+  }
+  set_op_id(op_id, frontiers);
+  set_hybrid_time(log_ht, frontiers);
+  return frontiers;
+}
+
+template <class Data>
+docdb::ConsensusFrontiers* InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
+  return InitFrontiers(data.op_id, data.log_ht, frontiers);
+}
+
+rocksdb::UserFrontierPtr MemTableFrontierFromDb(
+    rocksdb::DB* db,
+    rocksdb::UpdateUserValueType type) {
+  if (FLAGS_TEST_disable_adding_user_frontier_to_sst) {
+    return nullptr;
+  }
+  return db->GetMutableMemTableFrontier(type);
+}
+
 } // namespace
 
 class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
@@ -323,25 +353,6 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
  private:
   Tablet& tablet_;
   const std::string log_prefix_;
-};
-
-class Tablet::CompletedSplitOperationFilter : public OperationFilter {
- public:
-  explicit CompletedSplitOperationFilter(std::reference_wrapper<const RaftGroupMetadata> metadata)
-      : metadata_(metadata) {}
-
-  CHECKED_STATUS CheckOperationAllowed(
-      const OpId& op_id, consensus::OperationType op_type) const override {
-    if (SplitOperationState::ShouldAllowOpAfterSplitTablet(op_type)) {
-      return Status::OK();
-    }
-
-    auto children = metadata_.split_child_tablet_ids();
-    return SplitOperationState::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
-  }
-
- private:
-  const RaftGroupMetadata& metadata_;
 };
 
 Tablet::Tablet(const TabletInitData& data)
@@ -440,6 +451,7 @@ Tablet::Tablet(const TabletInitData& data)
   if (metadata_->tablet_data_state() == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     SplitDone();
   }
+  SyncRestoringOperationFilter();
 }
 
 Tablet::~Tablet() {
@@ -746,8 +758,12 @@ void Tablet::DoCleanupIntentFiles() {
     for (const auto& file : files) {
       if (file.largest.seqno < min_largest_seq_no) {
         min_largest_seq_no = file.largest.seqno;
-        auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
-        best_file_max_ht = frontier.hybrid_time();
+        if (file.largest.user_frontier) {
+          auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
+          best_file_max_ht = frontier.hybrid_time();
+        } else {
+          best_file_max_ht = HybridTime::kMax;
+        }
         best_file = &file;
       }
     }
@@ -894,6 +910,10 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
     UnregisterOperationFilter(completed_split_operation_filter_.get());
   }
 
+  if (restoring_operation_filter_) {
+    UnregisterOperationFilter(restoring_operation_filter_.get());
+  }
+
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
   // Shutdown the RocksDB instance for this table, if present.
@@ -1007,16 +1027,15 @@ Status Tablet::ApplyOperationState(
     const OperationState& operation_state, int64_t batch_idx,
     const docdb::KeyValueWriteBatchPB& write_batch,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
-  docdb::ConsensusFrontiers frontiers;
-  set_op_id(operation_state.op_id(), &frontiers);
-
   auto hybrid_time = operation_state.WriteHybridTime();
 
+  docdb::ConsensusFrontiers frontiers;
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
-  set_hybrid_time(operation_state.hybrid_time(), &frontiers);
+  auto frontiers_ptr =
+      InitFrontiers(operation_state.op_id(), operation_state.hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, &frontiers, hybrid_time, already_applied_to_regular_db);
+      batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
@@ -1884,12 +1903,6 @@ Status Tablet::ImportData(const std::string& source_dir) {
   return regular_db_->Import(source_dir);
 }
 
-template <class Data>
-void InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
-  set_op_id(data.op_id, frontiers);
-  set_hybrid_time(data.log_ht, frontiers);
-}
-
 // We apply intents by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
@@ -1904,11 +1917,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
-  docdb::ConsensusFrontiers* frontiers_ptr = nullptr;
-  if (!data.op_id.empty()) {
-    InitFrontiers(data, &frontiers);
-    frontiers_ptr = &frontiers;
-  }
+  auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
   WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
   return new_apply_state;
 }
@@ -1930,8 +1939,8 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
       }
 
       docdb::ConsensusFrontiers frontiers;
-      InitFrontiers(data, &frontiers);
-      WriteToRocksDB(&frontiers, &intents_write_batch, StorageDbType::kIntents);
+      auto frontiers_ptr = InitFrontiers(data, &frontiers);
+      WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
 
       apply_state = std::move(new_apply_state);
       intents_write_batch.Clear();
@@ -1941,8 +1950,8 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
   }
 
   docdb::ConsensusFrontiers frontiers;
-  InitFrontiers(data, &frontiers);
-  WriteToRocksDB(&frontiers, &intents_write_batch, StorageDbType::kIntents);
+  auto frontiers_ptr = InitFrontiers(data, &frontiers);
+  WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
   return Status::OK();
 }
 
@@ -2256,7 +2265,23 @@ Status Tablet::BackfillIndexes(
         }
       }
     }
+    if (idx.where_predicate_spec()) {
+      for (const auto col_in_pred : idx.where_predicate_spec()->column_ids()) {
+        ColumnId col_id_in_pred(col_in_pred);
+        if (col_ids_set.find(col_id_in_pred) == col_ids_set.end()) {
+          col_ids_set.insert(col_id_in_pred);
+          auto res = schema()->column_by_id(col_id_in_pred);
+          if (res) {
+            columns.push_back(*res);
+          } else {
+            LOG(DFATAL) << "Unexpected: cannot find the column in the main table for " <<
+              col_id_in_pred;
+          }
+        }
+      }
+    }
   }
+
   Schema projection(columns, {}, schema()->num_key_columns());
   auto iter =
       VERIFY_RESULT(NewRowIterator(projection, boost::none, ReadHybridTime::SingleTime(read_time)));
@@ -2329,7 +2354,8 @@ Status Tablet::UpdateIndexInBatches(
         docdb::CreateAndSetupIndexInsertRequest(
             &expr_executor, /* index_has_write_permission */ true,
             kEmptyRow, row, &index, index_requests));
-    index_request->set_is_backfill(true);
+    if (index_request)
+      index_request->set_is_backfill(true);
   }
 
   // Update the index write op.
@@ -2656,7 +2682,7 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
   }
 
   auto intents_frontier = intents_db_
-      ? intents_db_->GetMutableMemTableFrontier(rocksdb::UpdateUserValueType::kLargest) : nullptr;
+      ? MemTableFrontierFromDb(intents_db_.get(), rocksdb::UpdateUserValueType::kLargest) : nullptr;
   if (intents_frontier) {
     auto index_delta =
         lastest_log_entry_op_id.index -
@@ -2712,7 +2738,7 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   HybridTime result = HybridTime::kMax;
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
-      auto mem_frontier = db->GetMutableMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+      auto mem_frontier = MemTableFrontierFromDb(db, rocksdb::UpdateUserValueType::kSmallest);
       if (mem_frontier) {
         const auto hybrid_time =
             static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();
@@ -3452,13 +3478,63 @@ void Tablet::SplitDone() {
     return;
   }
 
-  completed_split_operation_filter_ = std::make_unique<CompletedSplitOperationFilter>(*metadata_);
+  completed_split_operation_filter_ = MakeFunctorOperationFilter(
+      [this](const OpId& op_id, consensus::OperationType op_type) -> Status {
+    if (SplitOperationState::ShouldAllowOpAfterSplitTablet(op_type)) {
+      return Status::OK();
+    }
+
+    auto children = metadata_->split_child_tablet_ids();
+    return SplitOperationState::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
+  });
   operation_filters_.push_back(*completed_split_operation_filter_);
 
   completed_split_log_anchor_ = std::make_unique<log::LogAnchor>();
 
   log_anchor_registry_->Register(
       metadata_->split_op_id().index, "Splitted tablet", completed_split_log_anchor_.get());
+}
+
+void Tablet::SyncRestoringOperationFilter() {
+  if (metadata_->has_active_restoration()) {
+    if (restoring_operation_filter_) {
+      return;
+    }
+    restoring_operation_filter_ = MakeFunctorOperationFilter(
+        [](const OpId& op_id, consensus::OperationType op_type) -> Status {
+      if (SnapshotOperationState::ShouldAllowOpDuringRestore(op_type)) {
+        return Status::OK();
+      }
+
+      return SnapshotOperationState::RejectionStatus(op_id, op_type);
+    });
+    operation_filters_.push_back(*restoring_operation_filter_);
+  } else {
+    if (!restoring_operation_filter_) {
+      return;
+    }
+
+    UnregisterOperationFilter(restoring_operation_filter_.get());
+    restoring_operation_filter_ = nullptr;
+  }
+}
+
+Status Tablet::RestoreStarted(const TxnSnapshotRestorationId& restoration_id) {
+  metadata_->RegisterRestoration(restoration_id);
+  RETURN_NOT_OK(metadata_->Flush());
+
+  SyncRestoringOperationFilter();
+
+  return Status::OK();
+}
+
+Status Tablet::RestoreFinished(const TxnSnapshotRestorationId& restoration_id) {
+  metadata_->UnregisterRestoration(restoration_id);
+  RETURN_NOT_OK(metadata_->Flush());
+
+  SyncRestoringOperationFilter();
+
+  return Status::OK();
 }
 
 Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {

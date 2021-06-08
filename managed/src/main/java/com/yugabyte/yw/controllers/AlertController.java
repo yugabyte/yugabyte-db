@@ -18,8 +18,9 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
-import com.yugabyte.yw.common.config.ConfigSubstitutor;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.forms.AlertFormData;
@@ -27,6 +28,8 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -42,6 +45,8 @@ public class AlertController extends AuthenticatedController {
   @Inject ValidatingFormFactory formFactory;
 
   @Inject private SettableRuntimeConfigFactory configFactory;
+
+  @Inject private AlertDefinitionService alertDefinitionService;
 
   /** Lists alerts for given customer. */
   public Result list(UUID customerUUID) {
@@ -105,19 +110,6 @@ public class AlertController extends AuthenticatedController {
     return ok();
   }
 
-  /**
-   * Saves a value to customer's configuration with name 'paramName'. The saved double value is
-   * normalized (removed trailing '.0').
-   *
-   * @param universe
-   * @param paramName
-   * @param value
-   */
-  private void updateAlertDefinitionParameter(Universe universe, String paramName, double value) {
-    String valueStr = value == (int) value ? String.valueOf((int) value) : String.valueOf(value);
-    configFactory.forUniverse(universe).setValue(paramName, valueStr);
-  }
-
   public Result createDefinition(UUID customerUUID, UUID universeUUID) {
 
     Customer.getOrBadRequest(customerUUID);
@@ -127,27 +119,44 @@ public class AlertController extends AuthenticatedController {
 
     AlertDefinitionFormData data = formData.get();
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-    AlertDefinition definition =
-        AlertDefinition.create(
-            customerUUID,
-            AlertDefinition.TargetType.Universe,
-            data.name,
-            data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-            data.isActive,
-            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
 
-    return ok(Json.toJson(definition));
+    AlertDefinition definition = new AlertDefinition();
+    definition.setCustomerUUID(customerUUID);
+    definition.setTargetType(AlertDefinition.TargetType.Universe);
+    definition.setName(data.name);
+    definition.setQuery(data.template.buildTemplate(universe.getUniverseDetails().nodePrefix));
+    definition.setQueryThreshold(data.value);
+    definition.setActive(true);
+    definition.setLabels(AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+    AlertDefinition createdDefinition = alertDefinitionService.create(definition);
+
+    return ok(Json.toJson(createdDefinition));
   }
 
   public Result getAlertDefinition(UUID customerUUID, UUID universeUUID, String name) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinition definition = AlertDefinition.getOrBadRequest(customerUUID, universeUUID, name);
+    List<AlertDefinition> definitions =
+        alertDefinitionService.list(
+            new AlertDefinitionFilter()
+                .setCustomerUuid(customerUUID)
+                .setName(name)
+                .setLabel(KnownAlertLabels.UNIVERSE_UUID, universeUUID.toString()));
+    AlertDefinition definition =
+        definitions
+            .stream()
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new YWServiceException(
+                        BAD_REQUEST,
+                        name
+                            + " alert definition for customer "
+                            + customerUUID.toString()
+                            + " and universe "
+                            + universeUUID
+                            + " not found"));
 
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    definition.query =
-        new ConfigSubstitutor(configFactory.forUniverse(universe)).replace(definition.query);
     return ok(Json.toJson(definition));
   }
 
@@ -155,7 +164,7 @@ public class AlertController extends AuthenticatedController {
 
     Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinition definition = AlertDefinition.getOrBadRequest(alertDefinitionUUID);
+    AlertDefinition definition = alertDefinitionService.getOrBadRequest(alertDefinitionUUID);
 
     Form<AlertDefinitionFormData> formData =
         formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class);
@@ -163,23 +172,18 @@ public class AlertController extends AuthenticatedController {
     AlertDefinitionFormData data = formData.get();
 
     AlertDefinition updatedDefinition;
-    switch (definition.targetType) {
-        // TODO Need to store threshold and duration in definition itself - this way custom
-        // logic will not be needed for each definition target type
+    switch (definition.getTargetType()) {
       case Universe:
         Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
-        updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-        updatedDefinition =
-            AlertDefinition.update(
-                definition.uuid,
-                data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-                data.isActive,
-                AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+        definition.setQuery(data.template.buildTemplate(universe.getUniverseDetails().nodePrefix));
         break;
       default:
         throw new IllegalStateException(
-            "Unexpected definition type " + definition.targetType.name());
+            "Unexpected definition type " + definition.getTargetType().name());
     }
+    definition.setQueryThreshold(data.value);
+    definition.setActive(data.active);
+    updatedDefinition = alertDefinitionService.update(definition);
     return ok(Json.toJson(updatedDefinition));
   }
 }

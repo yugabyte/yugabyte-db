@@ -131,11 +131,6 @@ ybcGetForeignPaths(PlannerInfo *root,
 					&total_cost,
 					baserel->reltablespace /* tablespace of current path */);
 
-	/* add in cpu run factor for compatibility */
-	double cpu_run_cost = DEFAULT_CPU_TUPLE_COST * baserel->tuples / 2;
-
-	total_cost += cpu_run_cost;
-
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,
 	         (Path *) create_foreignscan_path(root,
@@ -395,7 +390,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 			const YBCPgTypeEntity *type_entity;
 
 			/* Get type entity for the operator from the aggref. */
-			type_entity = YBCPgFindTypeEntity(aggref->aggtranstype);
+			type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
 
 			/* Create operator. */
 			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, &op_handle));

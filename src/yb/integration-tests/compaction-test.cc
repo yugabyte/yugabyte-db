@@ -20,6 +20,7 @@
 #include "yb/master/master.h"
 
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -31,6 +32,7 @@ using namespace std::literals; // NOLINT
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 
 namespace yb {
 
@@ -191,6 +193,7 @@ class CompactionTest : public YBTest {
   }
 
   void TestCompactionAfterTruncate();
+  void TestCompactionWithoutFrontiers(const int num_without_frontiers);
 
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<client::YBClient> client_;
@@ -226,6 +229,35 @@ void CompactionTest::TestCompactionAfterTruncate() {
       60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay);
 }
 
+void CompactionTest::TestCompactionWithoutFrontiers(const int num_without_frontiers) {
+  // Write a number of files without frontiers
+  FLAGS_TEST_disable_adding_user_frontier_to_sst = true;
+  WriteAtLeastFilesPerDb(num_without_frontiers);
+  // If the number of files to write without frontiers is less than the number to
+  // trigger compaction, then write the rest with frontiers.
+  if (num_without_frontiers < FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) {
+    FLAGS_TEST_disable_adding_user_frontier_to_sst = false;
+    const int num_with_frontiers =
+        (FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) - num_without_frontiers;
+    WriteAtLeastFilesPerDb(num_with_frontiers);
+  }
+
+  auto dbs = GetAllRocksDbs(cluster_.get());
+  AssertLoggedWaitFor(
+      [&dbs] {
+        for (auto* db : dbs) {
+          if (db->GetLiveFilesMetaData().size() >
+              FLAGS_rocksdb_level0_file_num_compaction_trigger) {
+            return false;
+          }
+        }
+        return true;
+      },
+      60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay);
+  // reset FLAGS_TEST_disable_adding_user_frontier_to_sst
+  FLAGS_TEST_disable_adding_user_frontier_to_sst = false;
+}
+
 TEST_F(CompactionTest, CompactionAfterTruncate) {
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   TestCompactionAfterTruncate();
@@ -234,6 +266,18 @@ TEST_F(CompactionTest, CompactionAfterTruncate) {
 TEST_F(CompactionTest, CompactionAfterTruncateTransactional) {
   SetupWorkload(IsolationLevel::SNAPSHOT_ISOLATION);
   TestCompactionAfterTruncate();
+}
+
+TEST_F(CompactionTest, CompactionWithoutAnyUserFrontiers) {
+  SetupWorkload(IsolationLevel::SNAPSHOT_ISOLATION);
+  // Create enough SST files without user frontiers to trigger compaction.
+  TestCompactionWithoutFrontiers(FLAGS_rocksdb_level0_file_num_compaction_trigger + 1);
+}
+
+TEST_F(CompactionTest, CompactionWithSomeUserFrontiers) {
+  SetupWorkload(IsolationLevel::SNAPSHOT_ISOLATION);
+  // Create only one SST file without user frontiers.
+  TestCompactionWithoutFrontiers(1);
 }
 
 class CompactionTestWithTTL : public CompactionTest {

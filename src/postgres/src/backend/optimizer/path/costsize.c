@@ -572,21 +572,9 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	tuples_fetched = clamp_row_est(indexSelectivity * baserel->tuples);
 
 	/* fetch estimated page costs for tablespace containing table */
-	if (indexonly && IsYugaByteEnabled()) 
-	{
-		/* 
-		 * We already accounted for these costs when we made per-tuple cost 
-		 * adjustments based on tablespace.
-		 */
-		spc_random_page_cost = 0;
-		spc_seq_page_cost = 0;
-	}
-	else
-	{
-		get_tablespace_page_costs(baserel->reltablespace,
-							  &spc_random_page_cost,
-							  &spc_seq_page_cost);
-	}
+	get_tablespace_page_costs(baserel->reltablespace,
+							&spc_random_page_cost,
+							&spc_seq_page_cost);
 
 	/*----------
 	 * Estimate number of main-table pages fetched, and compute I/O cost.

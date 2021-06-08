@@ -202,7 +202,7 @@ void YBTableTestBase::CreateRedisTable(const YBTableName& table_name) {
                                                 table_name.namespace_type()));
   ASSERT_OK(NewTableCreator()->table_name(table_name)
                 .table_type(YBTableType::REDIS_TABLE_TYPE)
-                .num_tablets(CalcNumTablets(3))
+                .num_tablets(num_tablets())
                 .Create());
 }
 

@@ -466,6 +466,11 @@ void QLValue::Serialize(
   return Serialize(ql_type, client, pb_, buffer);
 }
 
+Status CheckForNull(const QLValue& val) {
+  return val.IsNull() ? STATUS(InvalidArgument, "null is not supported inside collections")
+                      : Status::OK();
+}
+
 Status QLValue::Deserialize(
     const std::shared_ptr<QLType>& ql_type, const QLClient& client, Slice* data) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
@@ -594,9 +599,11 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue key;
         RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
+        RETURN_NOT_OK(CheckForNull(key));
         *add_map_key() = std::move(*key.mutable_value());
         QLValue value;
         RETURN_NOT_OK(value.Deserialize(values_type, client, data));
+        RETURN_NOT_OK(CheckForNull(value));
         *add_map_value() = std::move(*value.mutable_value());
       }
       return Status::OK();
@@ -609,6 +616,7 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue elem;
         RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+        RETURN_NOT_OK(CheckForNull(elem));
         *add_set_elem() = std::move(*elem.mutable_value());
       }
       return Status::OK();
@@ -621,6 +629,7 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue elem;
         RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+        RETURN_NOT_OK(CheckForNull(elem));
         *add_list_elem() = std::move(*elem.mutable_value());
       }
       return Status::OK();
@@ -654,8 +663,10 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue key;
             RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
+            RETURN_NOT_OK(CheckForNull(key));
             QLValue value;
             RETURN_NOT_OK(value.Deserialize(values_type, client, data));
+            RETURN_NOT_OK(CheckForNull(key));
             map_values[key] = value;
           }
 
@@ -675,6 +686,7 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
             RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+            RETURN_NOT_OK(CheckForNull(elem));
             set_values.insert(std::move(elem));
           }
           for (auto &elem : set_values) {
@@ -689,6 +701,7 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
             RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+            RETURN_NOT_OK(CheckForNull(elem));
             *add_frozen_elem() = std::move(*elem.mutable_value());
           }
           return Status::OK();

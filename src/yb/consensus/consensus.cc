@@ -54,51 +54,12 @@ ConsensusBootstrapInfo::ConsensusBootstrapInfo()
     last_committed_id(MinimumOpId()) {
 }
 
-ConsensusRound::ConsensusRound(Consensus* consensus,
-                               ReplicateMsgPtr replicate_msg,
-                               ConsensusReplicatedCallback replicated_cb)
-    : consensus_(consensus),
-      replicate_msg_(std::move(replicate_msg)),
-      replicated_cb_(std::move(replicated_cb)) {}
-
-ConsensusRound::ConsensusRound(Consensus* consensus,
-                               ReplicateMsgPtr replicate_msg)
-    : consensus_(consensus),
-      replicate_msg_(std::move(replicate_msg)) {
-  DCHECK_NOTNULL(replicate_msg_.get());
-}
-
-void ConsensusRound::NotifyReplicationFinished(
-    const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
-  if (PREDICT_FALSE(replicated_cb_ == nullptr)) return;
-  replicated_cb_(status, leader_term, applied_op_ids);
-}
-
-Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
-  if (PREDICT_FALSE(bound_term_ != current_term)) {
-    if (bound_term_ == kUnboundTerm) {
-      return STATUS_FORMAT(
-          Aborted, "Attempt to submit operation with unbound term, current term: $0", current_term);
-    }
-    return STATUS_FORMAT(Aborted,
-                         "Operation submitted in term $0 cannot be replicated in term $1",
-                         bound_term_, current_term);
-  }
-  return Status::OK();
-}
-
 LeaderStatus Consensus::GetLeaderStatus(bool allow_stale) const {
   return GetLeaderState(allow_stale).status;
 }
 
 int64_t Consensus::LeaderTerm() const {
   return GetLeaderState().term;
-}
-
-scoped_refptr<ConsensusRound> Consensus::NewRound(
-    ReplicateMsgPtr replicate_msg,
-    const ConsensusReplicatedCallback& replicated_cb) {
-  return make_scoped_refptr(new ConsensusRound(this, std::move(replicate_msg), replicated_cb));
 }
 
 void Consensus::SetFaultHooks(const shared_ptr<ConsensusFaultHooks>& hooks) {

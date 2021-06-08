@@ -26,25 +26,6 @@ namespace yb {
 
 namespace consensus {
 
-// Used for a callback that sets a transaction's timestamp and starts the MVCC transaction for
-// YB tables. In YB tables, we assign timestamp at the time of appending an entry to the Raft
-// log, so that timestamps always keep increasing in the log, unless entries are being overwritten.
-class ConsensusAppendCallback {
- public:
-  // Invoked when appropriate operation was appended to consensus.
-  // op_id - assigned operation id.
-  // committed_op_id - committed operation id.
-  //
-  // Should initialize appropriate replicate message.
-  virtual void HandleConsensusAppend(const OpId& op_id, const OpId& committed_op_id) = 0;
-
-  // Invoked when appropriate operation failed to replicate.
-  virtual void ReplicationFinished(
-      const Status& status, int64_t leader_term, OpIds* applied_op_ids) = 0;
-
-  virtual ~ConsensusAppendCallback() {}
-};
-
 struct ConsensusOptions {
   std::string tablet_id;
 };

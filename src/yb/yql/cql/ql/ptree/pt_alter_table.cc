@@ -97,7 +97,7 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
         if (index.CheckColumnDependency(column_id)) {
           auto index_table = sem_context->GetTableDesc(index.table_id());
           return sem_context->Error(this,
-              Format("Can't drop indexed column. Remove '$0' index first and try again",
+              Format("Can't drop column used in an index. Remove '$0' index first and try again",
                   (index_table ? index_table->name().table_name() : "-unknown-")),
               ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
         }
