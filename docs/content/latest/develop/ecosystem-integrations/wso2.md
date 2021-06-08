@@ -27,7 +27,7 @@ In addition, perform the following:
 
 - Download and install [curl](https://curl.haxx.se/download.html).
 
-- Add the following entry to `/etc/hosts`:
+- Add the following entry to `/etc/hosts`, as per [WSO2 Quick Start Guide](https://docs.wso2.com/display/IS570/Quick+Start+Guide):
 
   ```
   127.0.0.1    localhost.com
