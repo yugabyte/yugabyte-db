@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
@@ -128,7 +129,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   private KubernetesCommandExecutor createExecutor(
       KubernetesCommandExecutor.CommandType commandType, boolean setNamespace) {
-    KubernetesCommandExecutor kubernetesCommandExecutor = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
@@ -144,7 +146,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   private KubernetesCommandExecutor createExecutor(
       KubernetesCommandExecutor.CommandType commandType, PlacementInfo placementInfo) {
-    KubernetesCommandExecutor kubernetesCommandExecutor = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
