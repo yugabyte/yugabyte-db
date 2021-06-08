@@ -144,7 +144,7 @@ class ListTableGrid extends Component {
     const actions_disabled =
       isDisabled(currentCustomer.data.features, 'universes.backup') ||
       currentUniverse.universeDetails.backupInProgress;
-    const create_disabled = !(currentUniverse?.universeConfig?.takeBackups === 'true');
+    const disableManualBackup = currentUniverse?.universeConfig?.takeBackups === 'true';
     const formatActionButtons = function (item, row, disabled) {
       if (!row.isIndexTable) {
         const actions = [
@@ -152,7 +152,7 @@ class ListTableGrid extends Component {
             key={`${row.tableName}-backup-btn`}
             currentRow={row}
             actionType="create-backup"
-            disabled={actions_disabled || create_disabled}
+            disabled={actions_disabled || !disableManualBackup}
             btnClass={'btn-orange'}
           />
         ];

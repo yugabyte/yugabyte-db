@@ -622,27 +622,29 @@ class UniverseDetail extends Component {
                         />
                       )}
 
-                      <YBMenuItem
-                        disabled={updateInProgress}
-                        onClick={showToggleBackupModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.backup'
-                        )}
-                      >
-                        <YBLabelWithIcon
-                          icon={
-                            currentUniverse.data.universeConfig.takeBackups === 'true'
-                              ? 'fa fa-pause'
-                              : 'fa fa-play'
-                          }
+                      {!universePaused && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={showToggleBackupModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.backup'
+                          )}
                         >
-                          {currentUniverse.data.universeConfig &&
-                          currentUniverse.data.universeConfig.takeBackups === 'true'
-                            ? 'Disable Backup'
-                            : 'Enable Backup'}
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                          <YBLabelWithIcon
+                            icon={
+                              currentUniverse.data.universeConfig.takeBackups === 'true'
+                                ? 'fa fa-pause'
+                                : 'fa fa-play'
+                            }
+                          >
+                            {currentUniverse.data.universeConfig &&
+                            currentUniverse.data.universeConfig.takeBackups === 'true'
+                              ? 'Disable Backup'
+                              : 'Enable Backup'}
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
 
                       <MenuItem divider />
 
