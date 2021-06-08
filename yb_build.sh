@@ -128,6 +128,8 @@ Options:
     and is checked against other parameters.
   --python-tests
     Run various Python tests (doctest, unit test) and exit.
+  --shellcheck
+    Check various Bash scripts in the codebase.
   --java-lint
     Run a simple shell-based "linter" on our Java code that verifies that we are importing the right
     methods for assertions and using the right test runners. We exit the script after this step.
@@ -248,7 +250,9 @@ set_java_test_name() {
 }
 
 set_vars_for_cxx_test() {
-  make_targets+=( "$cxx_test_name" )
+  if [[ -n $cxx_test_name ]]; then
+    make_targets+=( "$cxx_test_name" )
+  fi
 
   # This is necessary to avoid failures if we are just building one test.
   test_existence_check=false
@@ -649,6 +653,8 @@ resolve_java_dependencies=false
 
 run_cmake_unit_tests=false
 
+run_shellcheck=false
+
 export YB_DOWNLOAD_THIRDPARTY=${YB_DOWNLOAD_THIRDPARTY:-1}
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
@@ -910,6 +916,9 @@ while [[ $# -gt 0 ]]; do
     --python-tests)
       run_python_tests=true
     ;;
+    --shellcheck)
+      run_shellcheck=true
+    ;;
     --cotire)
       export YB_USE_COTIRE=1
       force_run_cmake=true
@@ -1131,6 +1140,10 @@ if "$run_python_tests"; then
   log "--python-tests specified, only running Python tests"
   run_python_tests
   exit
+fi
+
+if [[ $run_shellcheck == "true" ]]; then
+  run_shellcheck
 fi
 
 if [[ -n $java_test_name ]]; then
