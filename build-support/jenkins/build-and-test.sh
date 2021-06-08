@@ -685,7 +685,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
     docker run -i \
       -e YB_PACKAGE_PATH \
-      --mount type=bind,source=$PWD/build,target=/mnt/yb_build_dir centos:7 \
+      --mount type=bind,source=$BUILD_ROOT,target=/mnt/yb_build_dir centos:7 \
       bash -c '
         set -euo pipefail -x
         package_name=${YB_PACKAGE_PATH##*/}
