@@ -84,12 +84,8 @@ public class QueryHelper {
         Callable<JsonNode> callable;
 
         if (fetchSlowQueries) {
-          callable = new SlowQueryExecutor(
-            ip,
-            node.ysqlServerRpcPort,
-            universe,
-            SLOW_QUERY_STATS_SQL
-          );
+          callable =
+              new SlowQueryExecutor(ip, node.ysqlServerRpcPort, universe, SLOW_QUERY_STATS_SQL);
           Future<JsonNode> future = threadPool.submit(callable);
           futures.add(future);
         } else {

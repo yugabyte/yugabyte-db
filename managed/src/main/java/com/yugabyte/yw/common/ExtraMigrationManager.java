@@ -5,7 +5,10 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,6 +26,8 @@ public class ExtraMigrationManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(ExtraMigrationManager.class);
 
   @Inject TemplateManager templateManager;
+
+  @Inject AlertDefinitionService alertDefinitionService;
 
   @Override
   protected String getCommandType() {
@@ -61,20 +66,30 @@ public class ExtraMigrationManager extends DevopsBase {
         if (u.isPresent()) {
           Universe universe = u.get();
           for (AlertDefinitionTemplate template : AlertDefinitionTemplate.values()) {
+            boolean definitionMissing =
+                alertDefinitionService
+                    .list(
+                        new AlertDefinitionFilter()
+                            .setCustomerUuid(c.uuid)
+                            .setName(template.getName())
+                            .setLabel(KnownAlertLabels.UNIVERSE_UUID, universeUUID.toString()))
+                    .isEmpty();
             if (template.isCreateOnMigration()
-                && (AlertDefinition.get(c.uuid, universeUUID, template.getName()) == null)
+                && definitionMissing
                 && (universe.getUniverseDetails() != null)) {
               LOG.debug(
                   "Going to create alert definition for universe {} with name '{}'",
                   universeUUID,
                   template.getName());
-              AlertDefinition.create(
-                  c.uuid,
-                  AlertDefinition.TargetType.Universe,
-                  template.getName(),
-                  template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-                  true,
+              AlertDefinition alertDefinition = new AlertDefinition();
+              alertDefinition.setCustomerUUID(c.getUuid());
+              alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
+              alertDefinition.setName(template.getName());
+              alertDefinition.setQuery(
+                  template.buildTemplate(universe.getUniverseDetails().nodePrefix));
+              alertDefinition.setLabels(
                   AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+              alertDefinitionService.create(alertDefinition);
             }
           }
         } else {

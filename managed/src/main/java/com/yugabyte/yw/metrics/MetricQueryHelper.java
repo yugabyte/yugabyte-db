@@ -8,6 +8,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.YWServiceException;
+import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,11 @@ public class MetricQueryHelper {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryHelper.class);
   public static final Integer STEP_SIZE = 100;
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
+
+  public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
+  private static final String PROMETHEUS_METRICS_URL_PATH = "yb.metrics.url";
+  private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
+
   @Inject play.Configuration appConfig;
 
   @Inject ApiHelper apiHelper;
@@ -84,7 +90,7 @@ public class MetricQueryHelper {
       }
     }
 
-    String metricsUrl = appConfig.getString("yb.metrics.url");
+    String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
     boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
     if ((null == metricsUrl || metricsUrl.isEmpty()) && !useNativeMetrics) {
       LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
@@ -140,9 +146,9 @@ public class MetricQueryHelper {
    * <p>The return type is a set of labels for each metric and an array of time-stamped values
    */
   public ArrayList<MetricQueryResponse.Entry> queryDirect(String promQueryExpression) {
-    final String metricsUrl = appConfig.getString("yb.metrics.url");
-    if (metricsUrl == null || metricsUrl.isEmpty()) {
-      throw new RuntimeException("yb.metrics.url not set");
+    final String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
+    if (StringUtils.isEmpty(metricsUrl)) {
+      throw new RuntimeException(PROMETHEUS_METRICS_URL_PATH + " not set");
     }
     final String queryUrl = metricsUrl + "/query";
 
@@ -157,5 +163,17 @@ public class MetricQueryHelper {
     }
 
     return metricResponse.getValues();
+  }
+
+  public void postManagementCommand(String command) {
+    final String prometheusManagementUrl = appConfig.getString(PROMETHEUS_MANAGEMENT_URL_PATH);
+    if (StringUtils.isEmpty(prometheusManagementUrl)) {
+      throw new RuntimeException(PROMETHEUS_MANAGEMENT_URL_PATH + " not set");
+    }
+    final String queryUrl = prometheusManagementUrl + "/" + command;
+    if (!apiHelper.postRequest(queryUrl)) {
+      throw new RuntimeException(
+          "Failed to perform " + command + " on prometheus instance " + prometheusManagementUrl);
+    }
   }
 }

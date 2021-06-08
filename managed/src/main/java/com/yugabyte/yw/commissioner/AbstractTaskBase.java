@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.helpers.DataConverters;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.api.Play;
 import play.libs.Json;
 
 import java.util.Collections;
@@ -184,5 +185,15 @@ public abstract class AbstractTaskBase implements ITask {
         true,
         null,
         Collections.emptyList());
+  }
+
+  /**
+   * Creates task with appropriate dependency injection
+   *
+   * @param taskClass task class
+   * @return Task instance with injected dependencies
+   */
+  public static <T> T createTask(Class<T> taskClass) {
+    return Play.current().injector().instanceOf(taskClass);
   }
 }

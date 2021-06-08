@@ -11,31 +11,18 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import play.Application;
-import play.api.Play;
 import play.libs.Json;
-import org.yaml.snakeyaml.Yaml;
 
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -52,22 +39,18 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     }
   }
 
-  @Inject KubernetesManager kubernetesManager;
+  private final KubernetesManager kubernetesManager;
 
-  @Inject Application application;
+  @Inject
+  public KubernetesWaitForPod(KubernetesManager kubernetesManager) {
+    this.kubernetesManager = kubernetesManager;
+  }
 
   // Number of iterations to wait for the pod to come up.
   private static final int MAX_ITERS = 10;
 
   // Time to sleep on each iteration of the pod to come up.
   private static final int SLEEP_TIME = 10;
-
-  @Override
-  public void initialize(ITaskParams params) {
-    this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
-    this.application = Play.current().injector().instanceOf(Application.class);
-    super.initialize(params);
-  }
 
   public static class Params extends AbstractTaskParams {
     public UUID providerUUID;

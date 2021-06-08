@@ -60,7 +60,7 @@ public class AlertDefinitionLabel extends Model {
 
   public void setDefinition(AlertDefinition definition) {
     this.definition = definition;
-    key.setDefinitionUUID(definition.uuid);
+    key.setDefinitionUUID(definition.getUuid());
   }
 
   public String getName() {

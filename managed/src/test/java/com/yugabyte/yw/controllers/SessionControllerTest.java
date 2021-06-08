@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -48,6 +49,7 @@ public class SessionControllerTest {
   CallbackController mockCallbackController;
   PlayCacheSessionStore mockSessionStore;
   QueryAlerts mockQueryAlerts;
+  AlertConfigurationWriter mockAlertConfigurationWriter;
 
   Application app;
 
@@ -58,6 +60,7 @@ public class SessionControllerTest {
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockQueryAlerts = mock(QueryAlerts.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     app =
         new GuiceApplicationBuilder()
             .configure((Map) Helpers.inMemoryDatabase())
@@ -68,6 +71,8 @@ public class SessionControllerTest {
             .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
             .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+            .overrides(
+                bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();
     Helpers.start(app);
   }

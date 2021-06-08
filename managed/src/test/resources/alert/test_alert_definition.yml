@@ -1,0 +1,14 @@
+groups:
+  - name: yugaware
+    rules:
+      - alert: alertDefinition
+        expr: query < 1
+        for: 15s
+        labels:
+          definition_uuid: <definition_uuid>
+          definition_name: alertDefinition
+          customer_uuid: <customer_uuid>
+          universe_uuid: <universe_uuid>
+          universe_name: Test Universe
+        annotations:
+          summary: "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing"

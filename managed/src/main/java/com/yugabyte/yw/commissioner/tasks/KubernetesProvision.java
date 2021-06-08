@@ -16,7 +16,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.params.KubernetesClusterInitParams;
 
-import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,7 +50,7 @@ public class KubernetesProvision extends CloudTaskBase {
     params.config = taskParams().config;
     params.commandType = commandType;
     params.providerUUID = taskParams().providerUUID;
-    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);

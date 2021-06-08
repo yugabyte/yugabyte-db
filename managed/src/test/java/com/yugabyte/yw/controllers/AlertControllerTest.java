@@ -4,25 +4,21 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
-import com.yugabyte.yw.common.AssertHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.data.Form;
 import play.libs.Json;
@@ -32,20 +28,17 @@ import play.mvc.Result;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
@@ -54,7 +47,7 @@ import static play.test.Helpers.contentAsString;
 @RunWith(MockitoJUnitRunner.class)
 public class AlertControllerTest extends FakeDBApplication {
 
-  private static final String ALERT_NAME = "alert";
+  private static final String ALERT_NAME = "alertDefinition";
 
   private Customer customer;
 
@@ -64,13 +57,11 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private Universe universe;
 
-  @Mock private SettableRuntimeConfigFactory configFactory;
-
   @Mock private ValidatingFormFactory formFactory;
 
-  @InjectMocks private AlertController controller;
+  @Spy private AlertDefinitionService alertDefinitionService;
 
-  @Mock private RuntimeConfig<Universe> config;
+  @InjectMocks private AlertController controller;
 
   @Before
   public void setUp() {
@@ -79,7 +70,6 @@ public class AlertControllerTest extends FakeDBApplication {
     authToken = user.createAuthToken();
 
     universe = ModelFactory.createUniverse();
-    when(configFactory.forUniverse(universe)).thenReturn(config);
   }
 
   @Test
@@ -162,7 +152,7 @@ public class AlertControllerTest extends FakeDBApplication {
         String.format(
             "Expected second alert's createTime to be later than first." + "First: %s. Second: %s.",
             firstDate, secondDate);
-    assertTrue(errMsg, secondDate.after(firstDate));
+    assertThat(errMsg, secondDate.after(firstDate));
     assertAuditEntry(2, customer.uuid);
   }
 
@@ -173,7 +163,7 @@ public class AlertControllerTest extends FakeDBApplication {
     data.template = AlertDefinitionTemplate.CLOCK_SKEW;
     data.name = ALERT_NAME;
     data.value = 1;
-    data.isActive = true;
+    data.active = true;
 
     Form<AlertDefinitionFormData> form = mock(Form.class);
     when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
@@ -182,8 +172,18 @@ public class AlertControllerTest extends FakeDBApplication {
     Result result = controller.createDefinition(customer.uuid, universe.universeUUID);
     assertOk(result);
 
-    assertNotNull(AlertDefinition.get(customer.uuid, universe.universeUUID, data.name));
-    verify(config, times(1)).setValue(AlertDefinitionTemplate.CLOCK_SKEW.getParameterName(), "1");
+    List<AlertDefinition> definitions =
+        alertDefinitionService.list(
+            new AlertDefinitionFilter()
+                .setCustomerUuid(customer.uuid)
+                .setName(data.name)
+                .setLabel(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString()));
+    assertThat(definitions, hasSize(1));
+
+    AlertDefinition definition = definitions.get(0);
+    assertThat(definition.getName(), equalTo(ALERT_NAME));
+    assertThat(definition.isActive(), equalTo(true));
+    assertThat(definition.getQueryThreshold(), equalTo(1.0));
   }
 
   @Test
@@ -208,24 +208,15 @@ public class AlertControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetAlertDefinition_OkResult() {
-    when(config.getString("config.parameter")).thenReturn("test");
-
-    AlertDefinition definition =
-        AlertDefinition.create(
-            customer.uuid,
-            AlertDefinition.TargetType.Universe,
-            ALERT_NAME,
-            "query {{ config.parameter }}",
-            true,
-            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+    AlertDefinition definition = ModelFactory.createAlertDefinition(customer, universe);
     Result result = controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_NAME);
     assertOk(result);
 
     JsonNode definitionJson = Json.parse(contentAsString(result));
-    assertNotNull(definitionJson);
-    assertValue(definitionJson, "uuid", definition.uuid.toString());
+    assertThat(definitionJson, notNullValue());
+    assertValue(definitionJson, "uuid", definition.getUuid().toString());
     assertValue(definitionJson, "name", ALERT_NAME);
-    assertValue(definitionJson, "query", "query test");
+    assertValue(definitionJson, "query", "query < {{ query_threshold }}");
   }
 
   @Test
@@ -243,36 +234,38 @@ public class AlertControllerTest extends FakeDBApplication {
                 () ->
                     controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_NAME))
             .getResult();
-    AssertHelper.assertBadRequest(result, "Could not find Alert Definition");
+    AssertHelper.assertBadRequest(
+        result,
+        ALERT_NAME
+            + " alert definition for customer "
+            + customer.uuid
+            + " and universe "
+            + universe.universeUUID
+            + " not found");
   }
 
   @Test
   public void testUpdateAlertDefinition_OkResult() {
-    AlertDefinition definition =
-        AlertDefinition.create(
-            customer.uuid,
-            AlertDefinition.TargetType.Universe,
-            ALERT_NAME,
-            "query {{ config.parameter }}",
-            true,
-            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+    AlertDefinition definition = ModelFactory.createAlertDefinition(customer, universe);
 
     // For FormData we are setting only used fields. This could be changed later.
     AlertDefinitionFormData data = new AlertDefinitionFormData();
     data.template = AlertDefinitionTemplate.CLOCK_SKEW;
     data.value = 2;
-    data.isActive = false;
+    data.active = false;
 
     Form<AlertDefinitionFormData> form = mock(Form.class);
     when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
     when(form.get()).thenReturn(data);
 
-    Result result = controller.updateAlertDefinition(customer.uuid, definition.uuid);
+    Result result = controller.updateAlertDefinition(customer.uuid, definition.getUuid());
     assertOk(result);
 
-    definition = AlertDefinition.get(definition.uuid);
-    assertNotNull(definition);
-    verify(config, times(1)).setValue(AlertDefinitionTemplate.CLOCK_SKEW.getParameterName(), "2");
+    definition = alertDefinitionService.get(definition.getUuid());
+    assertThat(definition, notNullValue());
+
+    assertThat(definition.isActive(), equalTo(false));
+    assertThat(definition.getQueryThreshold(), equalTo(2.0));
   }
 
   @Test

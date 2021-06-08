@@ -83,6 +83,8 @@ components:
             permission: "0777"
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
+          - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_rules'
+            container_path: /opt/yugabyte/prometheus/rules
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
             container_path: /prometheus_configs
             permission: "0777"
@@ -105,6 +107,8 @@ components:
                   evaluation_interval: {{repl ConfigOption "prometheus_scrape_interval"}}
                   external_labels:
                       monitor: 'swamper'
+              rule_files:
+                - '/opt/yugabyte/prometheus/rules/yugaware.ad.*.yml'
               scrape_configs:
                 - job_name: 'prometheus'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
@@ -168,6 +172,8 @@ components:
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
+          - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_rules'
+            container_path: /opt/yugabyte/prometheus/rules
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/data'
             container_path: /opt/yugabyte/yugaware/data
           - host_path: '{{repl ConfigOption "storage_path"}}/releases'
@@ -250,6 +256,7 @@ components:
                 docker.network = bridge
                 seedData = false
                 swamper.targetPath = /opt/yugabyte/prometheus/targets
+                swamper.rulesPath = /opt/yugabyte/prometheus/rules
                 multiTenant = false
                 releases.path = "/opt/yugabyte/releases"
                 docker.release = "/opt/yugabyte/release"

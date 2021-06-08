@@ -27,12 +27,12 @@ public class AlertTemplateSubstitutor extends PlaceholderSubstitutor {
             String labelName = key.replace(LABELS_PREFIX, "");
             String labelValue = definition.getLabelValue(labelName);
             if (labelValue == null) {
-              LOG.warn("Label {} not found in definition {}", labelName, definition.uuid);
+              LOG.warn("Label {} not found in definition {}", labelName, definition.getUuid());
               return "";
             }
             return labelValue;
           }
-          LOG.warn("Unexpected placeholder {} in definition {}", key, definition.uuid);
+          LOG.warn("Unexpected placeholder {} in definition {}", key, definition.getUuid());
           return "";
         });
   }

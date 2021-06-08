@@ -8,7 +8,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
@@ -67,31 +67,29 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
+    AlertDefinitionService alertDefinitionService = new AlertDefinitionService();
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     queryAlerts =
-        new QueryAlerts(executionContext, actorSystem, alertManager, queryHelper, configFactory);
+        new QueryAlerts(
+            executionContext,
+            actorSystem,
+            alertManager,
+            queryHelper,
+            alertDefinitionService,
+            configFactory);
 
     customer = ModelFactory.testCustomer();
     universe = ModelFactory.createUniverse(customer.getCustomerId());
     when(configFactory.forUniverse(universe)).thenReturn(universeConfig);
 
-    definition =
-        AlertDefinition.create(
-            customer.uuid,
-            AlertDefinition.TargetType.Universe,
-            "alertDefinition",
-            "query {{ test.parameter }}",
-            true,
-            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+    definition = ModelFactory.createAlertDefinition(customer, universe);
   }
 
   @Test
   public void testProcessAlertDefinitions_ReplacesParameterInQueryAndCreatesAlert() {
     ArrayList<Entry> queryHelperResult = new ArrayList<>();
     queryHelperResult.add(mock(MetricQueryResponse.Entry.class));
-    when(queryHelper.queryDirect("query test")).thenReturn(queryHelperResult);
-    when(universeConfig.getString("test.parameter")).thenReturn("test");
-
+    when(queryHelper.queryDirect("query < 1")).thenReturn(queryHelperResult);
     assertEquals(0, Alert.list(customer.uuid).size());
     queryAlerts.processAlertDefinitions(customer.uuid);
     assertEquals(1, Alert.list(customer.uuid).size());
@@ -99,8 +97,7 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Test
   public void testProcessAlertDefinitions_ReturnsEmptyResult() {
-    when(queryHelper.queryDirect("query test")).thenReturn(new ArrayList<>());
-    when(universeConfig.getString("test.parameter")).thenReturn("test");
+    when(queryHelper.queryDirect("query < 1")).thenReturn(new ArrayList<>());
 
     assertEquals(0, Alert.list(customer.uuid).size());
     Set<Alert> result = queryAlerts.processAlertDefinitions(customer.uuid);
@@ -116,9 +113,7 @@ public class QueryAlertsTest extends FakeDBApplication {
       State alertState, int activeAlertsCount, boolean alertReused) {
     ArrayList<Entry> queryHelperResult = new ArrayList<>();
     queryHelperResult.add(mock(MetricQueryResponse.Entry.class));
-    when(queryHelper.queryDirect("query test")).thenReturn(queryHelperResult);
-    when(universeConfig.getString("test.parameter")).thenReturn("test");
-
+    when(queryHelper.queryDirect("query < 1")).thenReturn(queryHelperResult);
     Alert alert =
         Alert.create(
             customer.uuid,
@@ -128,14 +123,14 @@ public class QueryAlertsTest extends FakeDBApplication {
             "Warning",
             "Message",
             false,
-            definition.uuid,
+            definition.getUuid(),
             Collections.emptyList());
     alert.setState(alertState);
     alert.save();
 
     assertEquals(1, Alert.list(customer.uuid).size());
 
-    List<Alert> activeAlerts = Alert.getActiveCustomerAlerts(customer.uuid, definition.uuid);
+    List<Alert> activeAlerts = Alert.getActiveCustomerAlerts(customer.uuid, definition.getUuid());
     assertEquals(activeAlertsCount, activeAlerts.size());
     assertEquals(alertReused, activeAlerts.contains(alert));
 

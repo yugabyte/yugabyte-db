@@ -14,22 +14,30 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.inject.Inject;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 
 public class DestroyKubernetesUniverse extends DestroyUniverse {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyKubernetesUniverse.class);
+
+  @Inject
+  public DestroyKubernetesUniverse(
+      AlertDefinitionService alertDefinitionService, AlertManager alertManager) {
+    super(alertDefinitionService, alertManager);
+  }
 
   @Override
   public void run() {
@@ -179,7 +187,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       params.namespace = PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config);
     }
     params.universeUUID = taskParams().universeUUID;
-    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;
   }

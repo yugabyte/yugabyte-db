@@ -2,63 +2,35 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.google.common.net.HostAndPort;
-
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.QueryAlerts;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NetworkManager;
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.SwamperHelper;
-import com.yugabyte.yw.common.TableManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import org.junit.Before;
+import org.pac4j.play.CallbackController;
+import org.pac4j.play.store.PlayCacheSessionStore;
+import org.pac4j.play.store.PlaySessionStore;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.IsServerReadyResponse;
+import org.yb.client.YBClient;
+import org.yb.master.Master;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.Helpers;
 import play.test.WithApplication;
 
-import org.pac4j.play.CallbackController;
-import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
-
-import org.yb.client.AbstractModifyMasterClusterConfig;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.GetLoadMovePercentResponse;
-import org.yb.client.ListTabletServersResponse;
-import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
-import org.yb.master.Master;
-
 import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
 import static play.inject.Bindings.bind;
 
 public abstract class CommissionerBaseTest extends WithApplication {
@@ -81,6 +53,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected PlayCacheSessionStore mockSessionStore;
   protected ApiHelper mockApiHelper;
   protected QueryAlerts mockQueryAlerts;
+  protected AlertConfigurationWriter mockAlertConfigurationWriter;
 
   Customer defaultCustomer;
   Provider defaultProvider;
@@ -113,6 +86,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
     mockQueryAlerts = mock(QueryAlerts.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -134,6 +108,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }
 
