@@ -6,6 +6,7 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.aws.AWSCloudModule;
 import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
@@ -85,6 +86,7 @@ public class Module extends AbstractModule {
       bind(YamlWrapper.class).asEagerSingleton();
       bind(AlertManager.class).asEagerSingleton();
       bind(QueryAlerts.class).asEagerSingleton();
+      bind(AlertConfigurationWriter.class).asEagerSingleton();
       bind(PlatformReplicationManager.class).asEagerSingleton();
       bind(PlatformInstanceClientFactory.class).asEagerSingleton();
       bind(PlatformReplicationHelper.class).asEagerSingleton();

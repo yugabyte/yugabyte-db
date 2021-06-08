@@ -29,11 +29,6 @@ const validationSchema = Yup.object().shape({
   })
 });
 
-const parseThresholdFromQuery = (query) => {
-  const threshold = query.split('>').pop().trim();
-  return isNaN(threshold) ? DEFAULT_THRESHOLD : threshold;
-};
-
 export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
   const formik = useRef();
   const [isModalVisible, setModalVisible] = useState(false);
@@ -51,8 +46,8 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
         // update form value via workaround as initial form value inside <YBModalForm> is set when
         // it rendered for the first time and we don't have an API response at that time yet
         formik.current.setValues({
-          enableAlert: data.isActive,
-          lagThreshold: parseThresholdFromQuery(data.query)
+          enableAlert: data.active,
+          lagThreshold: data.queryThreshold
         });
       }
     }
@@ -74,7 +69,7 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
     const payload = {
       name: ALERT_NAME,
       template: ALERT_TEMPLATE,
-      isActive: values.enableAlert,
+      active: values.enableAlert,
       value: values.lagThreshold
     };
 

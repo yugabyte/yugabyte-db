@@ -3,41 +3,38 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
-import java.time.Duration;
-import java.util.*;
-import java.util.Map.Entry;
-
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
-import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.forms.*;
-import com.yugabyte.yw.models.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.typesafe.config.Config;
-import org.apache.commons.lang3.StringUtils;
-import org.yb.Common;
-import org.yb.client.YBClient;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
-
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
-
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.Common;
+import org.yb.client.ModifyClusterConfigIncrementVersion;
+import org.yb.client.YBClient;
 import play.api.Play;
 import play.libs.Json;
+
+import java.time.Duration;
+import java.util.*;
+import java.util.Map.Entry;
 
 public abstract class UniverseTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseTaskBase.class);
@@ -339,7 +336,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Create a task to create default alert definitions on a universe. */
   public SubTaskGroup createUnivCreateAlertDefinitionsTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
-    CreateAlertDefinitions task = new CreateAlertDefinitions();
+    CreateAlertDefinitions task = createTask(CreateAlertDefinitions.class);
     task.initialize(taskParams());
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -630,7 +627,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public void createSwamperTargetUpdateTask(boolean removeFile) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("SwamperTargetFileUpdate", executor);
     SwamperTargetsFileUpdate.Params params = new SwamperTargetsFileUpdate.Params();
-    SwamperTargetsFileUpdate task = new SwamperTargetsFileUpdate();
+    SwamperTargetsFileUpdate task = createTask(SwamperTargetsFileUpdate.class);
     params.universeUUID = taskParams().universeUUID;
     params.removeFile = removeFile;
     task.initialize(params);
