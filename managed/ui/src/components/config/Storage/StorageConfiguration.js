@@ -196,8 +196,8 @@ class StorageConfiguration extends Component {
 
             // Change to list view if form is successfully submitted.
             this.setState({
+              ...this.state,
               listView: {
-                ...this.state.listView,
                 [props.activeTab]: true
               }
             });
