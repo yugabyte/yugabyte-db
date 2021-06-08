@@ -2,8 +2,41 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.math.BigInteger;
+import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.PrivateKey;
+import java.security.Security;
+import java.security.SignatureException;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
@@ -26,44 +59,10 @@ import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.StringWriter;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.math.BigInteger;
-import java.security.InvalidKeyException;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.PrivateKey;
-import java.security.Security;
-import java.security.SignatureException;
-import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.Base64;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
 
 /** Helper class for Certificates */
 public class CertificateHelper {
@@ -78,11 +77,9 @@ public class CertificateHelper {
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
     try {
-      Security.addProvider(new BouncyCastleProvider());
-      KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
-      keypairGen.initialize(2048);
+      KeyPair keyPair = getKeyPairObject();
+
       UUID rootCA_UUID = UUID.randomUUID();
-      KeyPair keyPair = keypairGen.generateKeyPair();
       Calendar cal = Calendar.getInstance();
       Date certStart = cal.getTime();
       cal.add(Calendar.YEAR, 1);
@@ -118,21 +115,14 @@ public class CertificateHelper {
               customerUUID.toString(),
               rootCA_UUID.toString(),
               ROOT_CERT);
+      writeCertFileContentToCertPath(Collections.singletonList(x509), certPath);
       String keyPath =
           String.format(
               CERT_PATH + "/ca.key.pem",
               storagePath,
               customerUUID.toString(),
               rootCA_UUID.toString());
-      File certfile = new File(certPath);
-      certfile.getParentFile().mkdirs();
-      File keyfile = new File(keyPath);
-      JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certfile));
-      JcaPEMWriter keyWriter = new JcaPEMWriter(new FileWriter(keyfile));
-      certWriter.writeObject(x509);
-      certWriter.flush();
-      keyWriter.writeObject(keyPair.getPrivate());
-      keyWriter.flush();
+      writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
       CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
       LOG.info(
           "Generated self signed cert label {} uuid {} of type {} for customer {} at paths {}, {}",
@@ -167,11 +157,14 @@ public class CertificateHelper {
 
   public static JsonNode createClientCertificate(
       UUID rootCA, String storagePath, String username, Date certStart, Date certExpiry) {
+    LOG.info(
+        "Creating client certificate signed by root CA {} and user {} at path {}",
+        rootCA,
+        username,
+        storagePath);
     try {
-      // Add the security provider in case createRootCA was never called.
-      Security.addProvider(new BouncyCastleProvider());
-      KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
-      keypairGen.initialize(2048);
+      // Add the security provider in case createClientCertificate was never called.
+      KeyPair clientKeyPair = getKeyPairObject();
 
       Calendar cal = Calendar.getInstance();
       if (certStart == null) {
@@ -186,29 +179,22 @@ public class CertificateHelper {
       if (cert.privateKey == null) {
         throw new RuntimeException("Keyfile cannot be null!");
       }
-
-      FileInputStream is = new FileInputStream(new File(cert.certificate));
-      CertificateFactory fact = CertificateFactory.getInstance("X.509");
-      X509Certificate cer = (X509Certificate) fact.generateCertificate(is);
+      // The first entry will be the certificate that needs to sign the necessary certificate.
+      X509Certificate cer =
+          getX509CertificateCertObject(FileUtils.readFileToString(new File(cert.certificate)))
+              .get(0);
       X500Name subject = new JcaX509CertificateHolder(cer).getSubject();
-      PemReader pemReader = new PemReader(new FileReader(cert.privateKey));
-      PemObject pemObject = pemReader.readPemObject();
-      byte[] bytes = pemObject.getContent();
-      pemReader.close();
-      PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
-      KeyFactory kf = null;
       PrivateKey pk = null;
       try {
-        kf = KeyFactory.getInstance("RSA");
-        pk = kf.generatePrivate(spec);
-      } catch (InvalidKeySpecException e) {
-        LOG.error("Unable to create client CA for username {}: {}", username, e);
+        pk = getPrivateKey(FileUtils.readFileToString(new File(cert.privateKey)));
+      } catch (Exception e) {
+        LOG.error(
+            "Unable to create client CA for username {} using root CA {}", username, rootCA, e);
         throw new RuntimeException("Could not create client cert.");
       }
 
       X500Name clientCertSubject = new X500Name(String.format("CN=%s", username));
       BigInteger clientSerial = BigInteger.valueOf(System.currentTimeMillis());
-      KeyPair clientKeyPair = keypairGen.generateKeyPair();
       PKCS10CertificationRequestBuilder p10Builder =
           new JcaPKCS10CertificationRequestBuilder(clientCertSubject, clientKeyPair.getPublic());
       ContentSigner csrContentSigner = new JcaContentSignerBuilder("SHA256withRSA").build(pk);
@@ -284,7 +270,7 @@ public class CertificateHelper {
         | InvalidKeyException
         | NoSuchProviderException
         | SignatureException e) {
-      LOG.error("Unable to create client CA for username {}: {}", username, e);
+      LOG.error("Unable to create client CA for username {} using root CA {}", username, rootCA, e);
       throw new RuntimeException("Could not create client cert.");
     }
   }
@@ -300,13 +286,36 @@ public class CertificateHelper {
       CertificateInfo.Type certType,
       CertificateParams.CustomCertInfo customCertInfo)
       throws IOException {
-
     if (certContent == null) {
       throw new RuntimeException("Certfile can't be null");
     }
     UUID rootCA_UUID = UUID.randomUUID();
     String keyPath = null;
+    List<X509Certificate> x509Certificates = getX509CertificateCertObject(certContent);
+    // Verify the uploaded cert is a verified cert chain.
+    verifyCertValidity(x509Certificates);
     if (certType == CertificateInfo.Type.SelfSigned) {
+      // The first entry in the file should be the cert we want to use for generating server
+      // certs.
+      if (!verifySignature(x509Certificates.get(0), keyContent)) {
+        // If the first certificate is not the right one, maybe the user has entered the
+        // certificates in the wrong order. Check and update the customer with the right
+        // message.
+        x509Certificates.stream()
+            .forEach(
+                x509Certificate -> {
+                  if (verifySignature(x509Certificate, keyContent)) {
+                    X500Name x500Name =
+                        new X500Name(x509Certificate.getSubjectX500Principal().getName());
+                    RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
+                    throw new RuntimeException(
+                        "Certificate with CN = "
+                            + cn.getFirst().getValue()
+                            + "should be the first entry in the file.");
+                  }
+                });
+        throw new RuntimeException("Certificate and key don't match.");
+      }
       keyPath =
           String.format(
               "%s/certs/%s/%s/ca.key.pem",
@@ -317,14 +326,7 @@ public class CertificateHelper {
             "%s/certs/%s/%s/ca.%s",
             storagePath, customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
 
-    File certfile = new File(certPath);
-    // Create directory to store the keys.
-    certfile.getParentFile().mkdirs();
-    Files.write(certfile.toPath(), certContent.getBytes());
-    if (certType == CertificateInfo.Type.SelfSigned) {
-      File keyfile = new File(keyPath);
-      Files.write(keyfile.toPath(), keyContent.getBytes());
-    }
+    writeCertFileContentToCertPath(getX509CertificateCertObject(certContent), certPath);
     LOG.info(
         "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
         label,
@@ -335,6 +337,7 @@ public class CertificateHelper {
     CertificateInfo cert;
     try {
       if (certType == CertificateInfo.Type.SelfSigned) {
+        writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
         cert =
             CertificateInfo.create(
                 rootCA_UUID,
@@ -434,6 +437,114 @@ public class CertificateHelper {
         // Log error, but don't cause it to error out.
         LOG.error("Could not generate checksum for cert: {}", cert.certificate);
       }
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public static List<X509Certificate> getX509CertificateCertObject(String certContent) {
+    try {
+      InputStream in = null;
+      byte[] certEntryBytes = certContent.getBytes();
+      in = new ByteArrayInputStream(certEntryBytes);
+      CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+      return (List<X509Certificate>) (List<?>) certFactory.generateCertificates(in);
+    } catch (CertificateException e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Unable to get cert Object");
+    }
+  }
+
+  public static PrivateKey getPrivateKey(String keyContent) {
+    try (PemReader pemReader = new PemReader(new StringReader(new String(keyContent)))) {
+      PemObject pemObject = pemReader.readPemObject();
+      byte[] bytes = pemObject.getContent();
+      PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
+      KeyFactory kf = KeyFactory.getInstance("RSA");
+      return kf.generatePrivate(spec);
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Unable to get Private Key");
+    }
+  }
+
+  public static void writeKeyFileContentToKeyPath(PrivateKey keyContent, String keyPath) {
+    File keyFile = new File(keyPath);
+    try (JcaPEMWriter keyWriter = new JcaPEMWriter(new FileWriter(keyFile))) {
+      keyWriter.writeObject(keyContent);
+      keyWriter.flush();
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Save privateKey failed.");
+    }
+  }
+
+  public static void writeCertFileContentToCertPath(List<X509Certificate> certs, String certPath) {
+    File certfile = new File(certPath);
+    // Create directory to store the certFile.
+    certfile.getParentFile().mkdirs();
+    try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certfile))) {
+      for (X509Certificate cert : certs) {
+        certWriter.writeObject(cert);
+        certWriter.flush();
+      }
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Save certContent failed.");
+    }
+  }
+
+  public static KeyPair getKeyPairObject() {
+    KeyPairGenerator keypairGen = null;
+    try {
+      // Add the security provider in case it was never called.
+      Security.addProvider(new BouncyCastleProvider());
+      keypairGen = KeyPairGenerator.getInstance("RSA");
+      keypairGen.initialize(2048);
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+    }
+    return keypairGen.generateKeyPair();
+  }
+
+  private static boolean verifySignature(X509Certificate cert, String key) {
+    try {
+      // Add the security provider in case verifySignature was never called.
+      getKeyPairObject();
+      RSAPrivateKey privKey = (RSAPrivateKey) getPrivateKey(key);
+      RSAPublicKey publicKey = (RSAPublicKey) cert.getPublicKey();
+      return privKey.getModulus().toString().equals(publicKey.getModulus().toString());
+    } catch (Exception e) {
+      LOG.error("Cert or key is invalid." + e.getMessage());
+    }
+    return false;
+  }
+
+  // Verify that each certificate in the root chain has been signed by
+  // another cert present in the uploaded file.
+  private static void verifyCertValidity(List<X509Certificate> certs) {
+    certs.stream()
+        .forEach(
+            cert -> {
+              if (!certs.stream()
+                  .anyMatch(potentialRootCert -> verifyCertValidity(cert, potentialRootCert))) {
+                X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
+                RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
+                throw new RuntimeException(
+                    "Certificate with CN = "
+                        + cn.getFirst().getValue()
+                        + " has no associated root");
+              }
+            });
+  }
+
+  private static boolean verifyCertValidity(
+      X509Certificate cert, X509Certificate potentialRootCert) {
+    try {
+      cert.verify(potentialRootCert.getPublicKey());
+      return true;
+    } catch (Exception exp) {
+      LOG.error(exp.getMessage());
+      return false;
     }
   }
 }

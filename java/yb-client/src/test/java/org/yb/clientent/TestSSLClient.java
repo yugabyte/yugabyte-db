@@ -12,38 +12,23 @@
 //
 package org.yb.clientent;
 
-import org.yb.client.*;
-
-import java.util.*;
-
-import com.google.protobuf.ByteString;
-
-import org.junit.Test;
-import org.junit.BeforeClass;
-import org.junit.runner.RunWith;
-
-import org.yb.Schema;
-import org.yb.ColumnSchema;
-import org.yb.YBTestRunner;
-import org.yb.master.Master;
-import org.yb.minicluster.MiniYBCluster;
-
-import org.yb.util.Timeouts;
-
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
-
-import static org.yb.AssertionWrappers.assertTrue;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.client.AsyncYBClient;
+import org.yb.client.TestUtils;
+import org.yb.client.TestYBClient;
+import org.yb.client.YBClient;
+import org.yb.util.Timeouts;
 import static org.yb.AssertionWrappers.assertFalse;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSSLClient extends TestYBClient {
-  private static final String PLACEMENT_CLOUD = "testCloud";
-  private static final String PLACEMENT_REGION = "testRegion";
-  private static final String PLACEMENT_ZONE = "testZone";
-  private static final String LIVE_TS = "live";
-  private static final String READ_ONLY_TS = "readOnly";
-  private static final String READ_ONLY_NEW_TS = "readOnlyNew";
 
   private void setup() throws Exception {
     destroyMiniCluster();
@@ -85,6 +70,32 @@ public class TestSSLClient extends TestYBClient {
     myClient.close();
     myClient = null;
 
+  }
+
+  /**
+   * Test to check that client connection succeeds when provided a file with
+   * multiple root certs.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testClientMultiCertificate() throws Exception {
+    LOG.info("Starting testClientMultiCertificate");
+
+    setup();
+
+    YBClient myClient = null;
+    // The mutliCA cert has two different root certs, with the first entry in the file
+    // being the pseudo root, which is not the one the server certs have been signed
+    // with.
+    String multiCA = String.format("%s/%s", certsDir(), "multiCA.crt");
+
+    AsyncYBClient aClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
+                            .sslCertFile(multiCA)
+                            .build();
+    myClient = new YBClient(aClient);
+    myClient.waitForMasterLeader(Timeouts.adjustTimeoutSecForBuildType(10000));
+    myClient.close();
+    myClient = null;
   }
 
   /**
