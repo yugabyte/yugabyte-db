@@ -687,11 +687,11 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
     docker run -i \
       -e YB_PACKAGE_PATH \
-      --mount "type=bind,source=$BUILD_ROOT,target=/mnt/yb_build_dir" centos:7 \
+      --mount "type=bind,source=$YB_SRC_ROOT/build,target=/mnt/dir_with_package" centos:7 \
       bash -c '
         set -euo pipefail -x
         package_name=${YB_PACKAGE_PATH##*/}
-        package_path=/mnt/yb_build_dir/$package_name
+        package_path=/mnt/dir_with_package/$package_name
         set +e
         # This will be "yugabyte-a.b.c.d/" (with a trailing slash).
         dir_name_inside_archive=$(tar tf "$package_path" | head -1)
