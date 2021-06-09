@@ -52,7 +52,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     user = ModelFactory.testUser(customer);
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-    zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
 
     taskType = ArgumentCaptor.forClass(TaskType.class);
     taskParams = ArgumentCaptor.forClass(NodeTaskParams.class);
