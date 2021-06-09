@@ -93,6 +93,25 @@ using client::YBSession;
 using client::YBSessionPtr;
 using client::LocalTabletFilter;
 
+#if defined(__APPLE__) && !defined(NDEBUG)
+// We are experiencing more slowness in tests on macOS in debug mode.
+const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
+#else
+const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
+#endif
+
+DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
+             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
+
+std::shared_ptr<yb::client::YBSession> BuildSession(
+    yb::client::YBClient* client,
+    const scoped_refptr<ClockBase>& clock) {
+  auto session = std::make_shared<YBSession>(client, clock);
+  session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
+  return session;
+}
+
 PgTxnManager::PgTxnManager(
     AsyncClientInitialiser* async_client_init,
     scoped_refptr<ClockBase> clock,
@@ -156,9 +175,8 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 }
 
 void PgTxnManager::StartNewSession() {
-  session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
+  session_ = BuildSession(async_client_init_->client(), clock_);
   session_->SetReadPoint(client::Restart::kFalse);
-  session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 uint64_t PgTxnManager::GetPriority(const NeedsPessimisticLocking needs_pessimistic_locking) {
@@ -370,8 +388,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!ddl_txn_,
           IllegalState, "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
-  ddl_session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  ddl_session_ = BuildSession(async_client_init_->client(), clock_);
   ddl_txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
   ddl_session_->SetTransaction(ddl_txn_);
   RETURN_NOT_OK(ddl_txn_->Init(
