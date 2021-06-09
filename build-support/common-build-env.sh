@@ -659,8 +659,9 @@ set_mvn_parameters() {
     return
   fi
   if is_jenkins; then
-    if "$is_run_test_script" && [[ -d $BUILD_ROOT/m2_repository ]]; then
-      YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
+    local m2_repository_in_build_root=$BUILD_ROOT/m2_repository
+    if "$is_run_test_script" && [[ -d $m2_repository_in_build_root ]]; then
+      YB_MVN_LOCAL_REPO=$m2_repository_in_build_root
       # Do not use the "shared Maven settings" path even if it is available.
       YB_MVN_SETTINGS_PATH=$YB_DEFAULT_MVN_SETTINGS_PATH
       log "Will use Maven repository from build root ($YB_MVN_LOCAL_REPO) and the" \
@@ -2088,6 +2089,24 @@ check_python_script_syntax() {
   pushd "$YB_SRC_ROOT"
   local IFS=$'\n'
   git ls-files '*.py' | xargs -P 8 -n 1 "$YB_BUILD_SUPPORT_DIR/check_python_syntax.py"
+  popd
+}
+
+run_shellcheck() {
+  scripts_to_check=(
+    yb_build.sh
+    build-support/find_linuxbrew.sh
+    build-support/common-build-env.sh
+    build-support/common-test-env.sh
+    build-support/common-cli-env.sh
+    build-support/run-test.sh
+    build-support/compiler-wrappers/compiler-wrapper.sh
+  )
+  pushd "$YB_SRC_ROOT"
+  local script_path
+  for script_path in "${scripts_to_check[@]}"; do
+    ( set -x; shellcheck -x "$script_path" )
+  done
   popd
 }
 

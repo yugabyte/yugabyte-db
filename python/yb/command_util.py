@@ -26,16 +26,25 @@ import shlex
 
 from collections import namedtuple
 
+from typing import Union, List, Optional
+
 
 class ProgramResult:
+    cmd_line: List[str]
+    returncode: int
+    stdout: str
+    stderr: str
+    error_msg: Optional[str]
+    program_path: str
+
     def __init__(
             self,
-            cmd_line,
-            returncode,
-            stdout,
-            stderr,
-            error_msg,
-            program_path):
+            cmd_line: List[str],
+            returncode: int,
+            stdout: str,
+            stderr: str,
+            error_msg: Optional[str],
+            program_path: str) -> None:
         self.cmd_line = cmd_line
         self.returncode = returncode
         self.stdout = stdout
@@ -44,7 +53,7 @@ class ProgramResult:
         self.program_path = program_path
 
 
-def trim_output(output, max_lines):
+def trim_output(output: Union[str, bytes], max_lines: int) -> str:
     if isinstance(output, bytes):
         output = output.decode('utf-8')
     lines = output.split("\n")
@@ -53,7 +62,12 @@ def trim_output(output, max_lines):
     return "\n".join(lines[:max_lines] + ['({} lines skipped)'.format(len(lines) - max_lines)])
 
 
-def run_program(args, error_ok=False, max_error_lines=100, cwd=None, log_command=False):
+def run_program(
+        args: Union[str, List[str]],
+        error_ok: bool = False,
+        max_error_lines: int = 100,
+        cwd: Optional[str] = None,
+        log_command: bool = False) -> ProgramResult:
     """
     Run the given program identified by its argument list, and return a ProgramResult object.
 
@@ -93,7 +107,7 @@ def run_program(args, error_ok=False, max_error_lines=100, cwd=None, log_command
     )
 
 
-def mkdir_p(d):
+def mkdir_p(d: str) -> None:
     """
     Similar to the "mkdir -p ..." shell command. Creates the given directory and all enclosing
     directories. No-op if the directory already exists.
@@ -108,7 +122,7 @@ def mkdir_p(d):
         raise e
 
 
-def copy_deep(src, dst, create_dst_dir=False):
+def copy_deep(src: str, dst: str, create_dst_dir: bool = False) -> None:
     """
     Does recursive copy of src path to dst path. Copies symlinks as symlinks. Doesn't overwrite
     existing files and symlinks (even if they are broken) in Linux.

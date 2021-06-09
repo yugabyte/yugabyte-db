@@ -142,7 +142,7 @@ def set_env_vars_from_build_root(build_root: str) -> None:
     os.environ['YB_COMPILER_TYPE'] = compiler_type_from_build_root
 
 
-def safe_path_join(*args: List[Optional[str]]) -> str:
+def safe_path_join(args: List[Optional[str]]) -> Optional[str]:
     """Like os.path.join, but allows the first argument to be None."""
     if args[0] is None:
         return None
