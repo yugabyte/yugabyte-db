@@ -437,5 +437,10 @@ class AtomicTryMutex {
   std::atomic<bool> locked_{false};
 };
 
+template <class T, class D>
+T AddFetch(std::atomic<T>* atomic, const D& delta, std::memory_order memory_order) {
+  return atomic->fetch_add(delta, memory_order) + delta;
+}
+
 } // namespace yb
 #endif /* YB_UTIL_ATOMIC_H */

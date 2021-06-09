@@ -167,6 +167,7 @@ CQLProcessor::~CQLProcessor() {
 }
 
 void CQLProcessor::Shutdown() {
+  executor_.Shutdown();
   auto call = std::move(call_);
   if (call) {
     call->RespondFailure(
