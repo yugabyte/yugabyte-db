@@ -4,7 +4,7 @@ column_type ::= '<type>';
 
 create_index ::= 'CREATE' 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
                      table_name '(' partition_key_columns [ clustering_key_columns ] ')' \
-                     [ clustering_key_column_ordering ] [ covering_columns ];
+                     [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate];
 
 partition_key_columns = ( index_column | '(' index_column { ',' index_column } ')' );
 
@@ -17,6 +17,8 @@ index_column = column_name | jsonb_attribute;
 jsonb_attribute = column_name {'->' "'attribute_name'" } '->>' "'attribute_name'";
 
 covering_columns = ( 'COVERING' | 'INCLUDE' ) '(' column_name { ',' column_name } ')';
+
+index_predicate = where_expression;
 
 create_keyspace ::= 'CREATE' ( 'KEYSPACE' | 'SCHEMA' ) [ 'IF' 'NOT' 'EXISTS' ] keyspace_name keyspace_properties ;
 
@@ -49,9 +51,9 @@ delete ::= 'DELETE' 'FROM' table_name
                [ 'IF' ( [ 'NOT' ] 'EXISTS' | if_expression ) ]
                [ 'RETURNS STATUS AS ROW' ];
 
-where_expression ::= ( column_name ( '<' | '<=' | '=' |  '>=' | '>' | 'IN' | 'NOT IN' ) expression ) { 'AND' ( column_name ( '<' | '<=' | '=' |  '>=' | '>' | 'IN' | 'NOT IN' ) expression ) } ;
+where_expression ::= ( column_name ( '<' | '<=' | '=' | '!=' | '>=' | '>' | 'IN' | 'NOT IN' ) expression ) { 'AND' ( column_name ( '<' | '<=' | '=' | '!=' | '>=' | '>' | 'IN' | 'NOT IN' ) expression ) } ;
 
-if_expression ::= ( column_name ( '<' | '<=' | '=' |  '>=' | '>' | 'IN' | 'NOT IN' ) expression ) { 'AND' ( column_name ( '<' | '<=' | '=' |  '>=' | '>' | 'IN' | 'NOT IN' ) expression ) } ;
+if_expression ::= ( column_name ( '<' | '<=' | '=' | '!=' | '>=' | '>' | 'IN' | 'NOT IN' ) expression ) { 'AND' ( column_name ( '<' | '<=' | '=' | '!=' | '>=' | '>' | 'IN' | 'NOT IN' ) expression ) } ;
 
 insert ::= 'INSERT' 'INTO' table_name '(' column_name { ',' column_name } ')'
                'VALUES' '(' expression { ',' expression } ')' \
