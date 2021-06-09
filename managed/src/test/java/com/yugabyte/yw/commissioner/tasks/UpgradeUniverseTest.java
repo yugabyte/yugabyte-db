@@ -115,9 +115,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     MockitoAnnotations.initMocks(this);
     upgradeUniverse.setUserTaskUUID(UUID.randomUUID());
     region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    az1 = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
-    az2 = AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
-    az3 = AvailabilityZone.create(region, "az-3", "AZ 3", "subnet-3");
+    az1 = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    az2 = AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
+    az3 = AvailabilityZone.createOrThrow(region, "az-3", "AZ 3", "subnet-3");
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
     CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();

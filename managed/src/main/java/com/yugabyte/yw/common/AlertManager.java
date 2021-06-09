@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Alert.State;
@@ -32,6 +33,8 @@ public class AlertManager {
   @VisibleForTesting static final String ALERT_MANAGER_ERROR_CODE = "ALERT_MANAGER_FAILURE";
 
   @Inject private EmailHelper emailHelper;
+
+  @Inject private AlertDefinitionService alertDefinitionService;
 
   public static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
 
@@ -69,7 +72,7 @@ public class AlertManager {
 
     String subject = String.format("Yugabyte Platform Alert - <%s>", customer.getTag());
     AlertDefinition definition =
-        alert.definitionUUID == null ? null : AlertDefinition.get(alert.definitionUUID);
+        alert.definitionUUID == null ? null : alertDefinitionService.get(alert.definitionUUID);
     String content;
     if (definition != null) {
       // The universe should exist (otherwise the definition should not exist as
@@ -77,8 +80,7 @@ public class AlertManager {
       // TODO notification templates should be reimplemented to base on alert message
       // For now this code only supports definitions with Universe target type.
       Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
-      content =
-          String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name, state);
+      content = String.format("%s for %s is %s.", definition.getName(), universe.name, state);
     } else {
       Universe universe =
           alert.targetType == Alert.TargetType.UniverseType
