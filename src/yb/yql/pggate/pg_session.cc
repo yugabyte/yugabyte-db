@@ -78,16 +78,6 @@ using yb::master::MasterServiceProxy;
 
 using yb::tserver::TServerSharedObject;
 
-#if defined(__APPLE__) && !defined(NDEBUG)
-// We are experiencing more slowness in tests on macOS in debug mode.
-const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
-#else
-const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
-#endif
-
-DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
-             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
-
 namespace {
 //--------------------------------------------------------------------------------------------------
 // Constants used for the sequences data table.
@@ -316,13 +306,6 @@ bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
   return false;
 }
 
-void SetupSession(client::YBSession* session) {
-  // Sets the timeout for each rpc as well as the whole operation to
-  // 'FLAGS_pg_yb_session_timeout_ms'.
-  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
-  session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
-}
-
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -549,15 +532,12 @@ PgSession::PgSession(
     const tserver::TServerSharedObject* tserver_shared_object,
     const YBCPgCallbacks& pg_callbacks)
     : client_(client),
-      session_(client_->NewSession()),
+      session_(BuildSession(client_)),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
-      catalog_session_(std::make_shared<YBSession>(client_, clock_.get())),
+      catalog_session_(BuildSession(client_, clock_)),
       tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
-
-  SetupSession(session_.get());
-  SetupSession(catalog_session_.get());
 }
 
 PgSession::~PgSession() {

@@ -47,6 +47,10 @@ YB_DEFINE_ENUM(
   ((SERIALIZABLE, 3))
 );
 
+std::shared_ptr<yb::client::YBSession> BuildSession(
+    yb::client::YBClient* client,
+    const scoped_refptr<ClockBase>& clock = nullptr);
+
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(client::AsyncClientInitialiser* async_client_init,
