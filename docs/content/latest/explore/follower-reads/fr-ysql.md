@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: follower-reads-2-fr-ysql
     parent: explore
-    weight: 240
+    weight: 285
 isTocNested: true
 showAsideToc: true
 ---

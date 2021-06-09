@@ -12,7 +12,7 @@ menu:
   latest:
     identifier: follower-reads-1-fr-ycql
     parent: explore
-    weight: 237
+    weight: 285
 isTocNested: true
 showAsideToc: true
 ---

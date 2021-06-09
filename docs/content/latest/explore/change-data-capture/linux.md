@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: change-data-capture-2-linux
     parent: explore
-    weight: 249
+    weight: 610
 isTocNested: true
 showAsideToc: true
 ---

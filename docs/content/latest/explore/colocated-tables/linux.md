@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: colocated-tables-2-linux
     parent: explore
-    weight: 245
+    weight: 600
 isTocNested: true
 showAsideToc: true
 ---
