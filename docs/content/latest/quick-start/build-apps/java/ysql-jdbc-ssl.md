@@ -3,16 +3,11 @@ title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the PostgreSQL JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
-aliases:
-  - /develop/client-drivers/java/
-  - /latest/develop/client-drivers/java/
-  - /latest/develop/build-apps/java/
-  - /latest/quick-start/build-apps/java/
 menu:
   latest:
     parent: build-apps
     name: Java
-    identifier: java-1
+    identifier: java-2
     weight: 550
 type: page
 isTocNested: true
@@ -21,13 +16,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link">
+    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC SSL/TLS
     </a>
@@ -59,8 +54,37 @@ This tutorial assumes that:
 - YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
+- [OpenSSL](https://www.openssl.org/) is installed.
 
-## Create the sample Java application
+## Set up SSL certificates for Java applications
+
+1. Download YSQL certificates `yugabytedb.crt`, `yugabytedb.key`, and `ca.crt`. Follow the instructions [here](../../../yugabyte-platform/security/enable-encryption-in-transit/#how-to-connect-to-a-ysql-endpoint-with-tls).
+
+1. If you do not have access to the system cacerts truststore you can create your own truststore.
+
+    ```sh
+    $ keytool -keystore ybtruststore -alias ybtruststore -import -file ca.crt
+    ```
+
+1. Verify the `yugabytedb.crt` client certificate with `ybtruststore` by running the following command:
+
+    ```sh
+    $ openssl verify -CAfile ca.crt -purpose sslclient tlstest.crt
+    ```
+
+1. Convert the client certificate to DER format by running the following command:
+  
+    ```sh
+    $ openssl x509 –in yugabytedb.crt -out yugabytedb.crt.der -outform der
+    ```
+
+1. Convert the client key to pk8 format by running the following command:
+
+    ```sh
+    $ openssl pkcs8 -topk8 -inform PEM -in yugabytedb.key -outform DER -nocrypt -out yugabytedb.key.pk8
+    ```
+
+## Create the sample Java application with TLS connection
 
 1. Create a project called "MySample".
 
@@ -129,13 +153,15 @@ This tutorial assumes that:
 
 1. Save and close `pom.xml`.
 
-1. Install the added dependency.
+1. Create an ssl resource folder.
 
     ```sh
-    $ mvn install
+    $ mkdir -p src/main/resources/ssl
     ```
 
-1. Copy the following Java code to a new file named `src/main/java/com/yugabyte/HelloSqlApp.java`:
+1. Copy the `yugabytedb.crt.der` and `yugabytedb.key.pk8` certificates into the folder created in the previous step.
+
+1. Copy the following Java code to a new file named `src/main/java/com/yugabyte/HelloSqlSslApp.java`:
 
     ```java
     package com.yugabyte;
@@ -146,11 +172,10 @@ This tutorial assumes that:
     import java.sql.SQLException;
     import java.sql.Statement;
 
-    public class HelloSqlApp {
+    public class HelloSqlSslApp {
       public static void main(String[] args) throws ClassNotFoundException, SQLException {
         Class.forName("org.postgresql.Driver");
-        Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte",
-                                                      "yugabyte", "yugabyte");
+        Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte");
         Statement stmt = conn.createStatement();
         try {
             System.out.println("Connected to the PostgreSQL server successfully.");
@@ -175,13 +200,19 @@ This tutorial assumes that:
     }
     ```
 
+1. Build the project.
+
+    ```sh
+    $ mvn clean install
+    ```
+
 1. Run your new program.
 
     ```sh
-    $ mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.HelloSqlApp
+    $ java -Djavax.net.ssl.trustStore=ybtruststore -Djavax.net.ssl.trustStorePassword=yugabyte -cp "target/MySample-1.0-SNAPSHOT.jar:target/lib/*" -jar target/MySample-1.0-SNAPSHOT.jar
     ```
 
-    You should see the following as the output:
+    You should see the following output:
 
     ```output
     Connected to the PostgreSQL server successfully.
