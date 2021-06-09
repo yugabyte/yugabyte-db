@@ -23,6 +23,7 @@ import random
 import sys
 import tempfile
 import atexit
+import glob
 
 from functools import total_ordering
 
@@ -301,6 +302,7 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
     'build/venv',
     'requirements.txt',
     'requirements_frozen.txt',
+    'build/yugabyte-bash-common',
 ]
 
 
@@ -319,6 +321,42 @@ def find_rel_java_paths_to_archive(yb_src_root):
             for classes_dir_name in ['classes', 'test-classes']:
                 paths.append(os.path.join(submodule_dir_path, 'target', classes_dir_name))
     return [os.path.relpath(p, yb_src_root) for p in paths]
+
+
+def validate_mvn_local_repo(mvn_local_repo: str) -> None:
+    """
+    Check the presence of some required artifacts.
+    """
+    found_errors = False
+    for rel_path_pattern in [
+        'org/apache/maven/plugins/maven-antrun-plugin/*/maven-antrun-plugin',
+        'org/apache/maven/plugins/maven-assembly-plugin/*/maven-assembly-plugin',
+        'org/apache/maven/plugins/maven-clean-plugin/*/maven-clean-plugin',
+        'org/apache/maven/plugins/maven-compiler-plugin/*/maven-compiler-plugin',
+        'org/apache/maven/plugins/maven-dependency-plugin/*/maven-dependency-plugin',
+        'org/apache/maven/plugins/maven-deploy-plugin/*/maven-deploy-plugin',
+        'org/apache/maven/plugins/maven-enforcer-plugin/*/maven-enforcer-plugin',
+        'org/apache/maven/plugins/maven-install-plugin/*/maven-install-plugin',
+        'org/apache/maven/plugins/maven-jar-plugin/*/maven-jar-plugin',
+        'org/apache/maven/plugins/maven-javadoc-plugin/*/maven-javadoc-plugin',
+        'org/apache/maven/plugins/maven-resources-plugin/*/maven-resources-plugin',
+        'org/apache/maven/plugins/maven-site-plugin/*/maven-site-plugin',
+        'org/apache/maven/plugins/maven-source-plugin/*/maven-source-plugin',
+        'org/apache/maven/plugins/maven-surefire-plugin/*/maven-surefire-plugin',
+        'org/xolstice/maven/plugins/protobuf-maven-plugin/*/protobuf-maven-plugin',
+    ]:
+        for suffix in ['.pom', '.jar']:
+            glob_pattern = os.path.join(mvn_local_repo, f"{rel_path_pattern}-*{suffix}")
+            glob_result = glob.glob(glob_pattern)
+            if not glob_result:
+                logging.warning(f"Glob pattern did not return any results: {glob_pattern}.")
+                found_errors = True
+    if found_errors:
+        logging.info(
+            "The above warnings about glob patterns mean that Java tests could fail to run "
+            f"properly on Spark. Maven local repo: {mvn_local_repo}")
+    else:
+        logging.info(f"All Maven plugin patterns were found in local repo {mvn_local_repo}")
 
 
 def create_archive_for_workers():
@@ -347,6 +385,7 @@ def create_archive_for_workers():
                 # Here, the path we're adding has to be relative to YB_SRC_ROOT.
                 paths_in_src_dir.append(os.path.relpath(mvn_local_repo, yb_src_root))
                 logging.info("Will add YB_MVN_LOCAL_REPO to archive: %s", mvn_local_repo)
+                validate_mvn_local_repo(mvn_local_repo)
                 added_local_repo = True
         if not added_local_repo:
             raise ValueError("YB_MVN_LOCAL_REPO (%s) must be within $YB_SRC_ROOT/build (%s)" % (
