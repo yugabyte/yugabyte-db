@@ -131,6 +131,8 @@ For more information, refer to [Analyzing queries with EXPLAIN](../explain-analy
 
 ## Advanced tools
 
+Use the following tools to log slow-running queries and optimize queries using hint plans.
+
 ### Log slow queries
 
 You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
