@@ -124,7 +124,7 @@ public class NodeManagerTest extends FakeDBApplication {
       this.storageType = storageType;
       provider = p;
       region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-      zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+      zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
 
       NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
       nodeData.ip = "fake_ip";
