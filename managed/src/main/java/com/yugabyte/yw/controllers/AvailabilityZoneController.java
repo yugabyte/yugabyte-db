@@ -2,9 +2,15 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -16,21 +22,17 @@ import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 @Api
 public class AvailabilityZoneController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZoneController.class);
 
-  @Inject FormFactory formFactory;
+  @Inject ValidatingFormFactory formFactory;
 
   /**
    * GET endpoint for listing availability zones
@@ -39,22 +41,11 @@ public class AvailabilityZoneController extends AuthenticatedController {
    */
   @ApiOperation(value = "listAZ", response = AvailabilityZone.class, responseContainer = "List")
   public Result list(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    Region region = Region.get(customerUUID, providerUUID, regionUUID);
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
-    if (region == null) {
-      LOG.warn(
-          "PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID);
-      return ApiResponse.error(BAD_REQUEST, "Invalid PlacementRegion/Provider UUID");
-    }
-
-    try {
-      List<AvailabilityZone> zoneList =
-          AvailabilityZone.find.query().where().eq("region", region).findList();
-      return ApiResponse.success(zoneList);
-    } catch (Exception e) {
-      LOG.error(e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to fetch zones");
-    }
+    List<AvailabilityZone> zoneList =
+        AvailabilityZone.find.query().where().eq("region", region).findList();
+    return ApiResponse.success(zoneList);
   }
 
   /**
@@ -71,33 +62,19 @@ public class AvailabilityZoneController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.AvailabilityZoneFormData",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     Form<AvailabilityZoneFormData> formData =
-        formFactory.form(AvailabilityZoneFormData.class).bindFromRequest();
-    Region region = Region.get(customerUUID, providerUUID, regionUUID);
-
-    if (region == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid PlacementRegion/Provider UUID");
-    }
-
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+        formFactory.getFormDataOrBadRequest(AvailabilityZoneFormData.class);
 
     List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
     Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
-    try {
-      for (AvailabilityZoneData azData : azDataList) {
-        AvailabilityZone az =
-            AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
-        availabilityZones.put(az.code, az);
-      }
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return ApiResponse.success(availabilityZones);
-    } catch (Exception e) {
-      LOG.error(e.getMessage());
-      AvailabilityZoneData failedAz = azDataList.get(availabilityZones.size());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create zone: " + failedAz.code);
+    for (AvailabilityZoneData azData : azDataList) {
+      AvailabilityZone az =
+          AvailabilityZone.createOrThrow(region, azData.code, azData.name, azData.subnet);
+      availabilityZones.put(az.code, az);
     }
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return ApiResponse.success(availabilityZones);
   }
 
   /**
@@ -110,29 +87,13 @@ public class AvailabilityZoneController extends AuthenticatedController {
    */
   @ApiOperation(value = "deleteAZ", response = Object.class)
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
-    Region region = Region.get(customerUUID, providerUUID, regionUUID);
-
-    if (region == null) {
-      ApiResponse.error(BAD_REQUEST, "Invalid PlacementRegion/Provider UUID");
-    }
-
-    AvailabilityZone az =
-        AvailabilityZone.find.query().where().idEq(azUUID).eq("region_uuid", regionUUID).findOne();
-
-    if (az == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
-    }
-
-    try {
-      az.setActiveFlag(false);
-      az.update();
-      ObjectNode responseJson = Json.newObject();
-      auditService().createAuditEntry(ctx(), request());
-      responseJson.put("success", true);
-      return ApiResponse.success(responseJson);
-    } catch (Exception e) {
-      return ApiResponse.error(
-          INTERNAL_SERVER_ERROR, "Unable to flag AZ UUID as deleted: " + azUUID);
-    }
+    Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);
+    az.setActiveFlag(false);
+    az.update();
+    ObjectNode responseJson = Json.newObject();
+    auditService().createAuditEntry(ctx(), request());
+    responseJson.put("success", true);
+    return ApiResponse.success(responseJson);
   }
 }
