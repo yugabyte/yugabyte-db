@@ -13,8 +13,10 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.*;
 
 @Entity
 public class AvailabilityZone extends Model {
@@ -77,14 +79,22 @@ public class AvailabilityZone extends Model {
   public static final Finder<UUID, AvailabilityZone> find =
       new Finder<UUID, AvailabilityZone>(AvailabilityZone.class) {};
 
-  public static AvailabilityZone create(Region region, String code, String name, String subnet) {
-    AvailabilityZone az = new AvailabilityZone();
-    az.region = region;
-    az.code = code;
-    az.name = name;
-    az.subnet = subnet;
-    az.save();
-    return az;
+  public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZone.class);
+
+  public static AvailabilityZone createOrThrow(
+      Region region, String code, String name, String subnet) {
+    try {
+      AvailabilityZone az = new AvailabilityZone();
+      az.region = region;
+      az.code = code;
+      az.name = name;
+      az.subnet = subnet;
+      az.save();
+      return az;
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to create zone: " + code);
+    }
   }
 
   public static List<AvailabilityZone> getAZsForRegion(UUID regionUUID) {
@@ -93,6 +103,15 @@ public class AvailabilityZone extends Model {
 
   public static Set<AvailabilityZone> getAllByCode(String code) {
     return find.query().where().eq("code", code).findSet();
+  }
+
+  public static AvailabilityZone getByRegionOrBadRequest(UUID azUUID, UUID regionUUID) {
+    AvailabilityZone availabilityZone =
+        AvailabilityZone.find.query().where().idEq(azUUID).eq("region_uuid", regionUUID).findOne();
+    if (availabilityZone == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
+    }
+    return availabilityZone;
   }
 
   public static AvailabilityZone getByCode(Provider provider, String code) {

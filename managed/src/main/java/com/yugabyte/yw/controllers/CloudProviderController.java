@@ -245,7 +245,7 @@ public class CloudProviderController extends AuthenticatedController {
       if (isConfigInRegion) {}
       for (ZoneData zd : rd.zoneList) {
         Map<String, String> zoneConfig = zd.config;
-        AvailabilityZone az = AvailabilityZone.create(region, zd.code, zd.name, null);
+        AvailabilityZone az = AvailabilityZone.createOrThrow(region, zd.code, zd.name, null);
         boolean isConfigInZone = updateKubeConfig(provider, region, az, zoneConfig, false);
         if (isConfigInZone) {}
       }
@@ -406,7 +406,7 @@ public class CloudProviderController extends AuthenticatedController {
               .forEach(
                   (zoneSuffix) -> {
                     String zoneName = regionCode + zoneSuffix;
-                    AvailabilityZone.create(region, zoneName, zoneName, "yugabyte-bridge");
+                    AvailabilityZone.createOrThrow(region, zoneName, zoneName, "yugabyte-bridge");
                   });
         });
     Map<String, Object> instanceTypeMetadata = configHelper.getConfig(DockerInstanceTypeMetadata);

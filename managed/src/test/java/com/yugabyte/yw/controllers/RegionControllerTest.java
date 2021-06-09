@@ -101,7 +101,7 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testListAllRegionsWithValidRegion() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     AvailabilityZone az =
-        AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+        AvailabilityZone.createOrThrow(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     Result result = listAllRegions();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -144,7 +144,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionsWithValidProviderUUID() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
-    AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone.createOrThrow(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -162,11 +162,11 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testListRegions() {
     Region r1 = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     Region r2 = Region.create(provider, "region-2", "PlacementRegion 2", "default-image");
-    AvailabilityZone.create(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
-    AvailabilityZone.create(r1, "PlacementAZ-1.2", "PlacementAZ 1.2", "Subnet - 1.2");
-    AvailabilityZone.create(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
-    AvailabilityZone.create(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
-    AvailabilityZone.create(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.2", "PlacementAZ 1.2", "Subnet - 1.2");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
+    AvailabilityZone.createOrThrow(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
+    AvailabilityZone.createOrThrow(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
     Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -286,8 +286,8 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteRegionWithValidParams() {
     Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "AZ 2", "subnet-2");
     Result result = deleteRegion(provider.uuid, r.uuid);
     assertEquals(OK, result.status());
 

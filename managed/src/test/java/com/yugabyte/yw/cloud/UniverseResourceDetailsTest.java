@@ -216,7 +216,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   public void setUp() {
     provider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-    az = AvailabilityZone.create(region, "az-1", "PlacementAZ 1", "subnet-1");
+    az = AvailabilityZone.createOrThrow(region, "az-1", "PlacementAZ 1", "subnet-1");
     sampleNodeDetails = new NodeDetails();
     sampleNodeDetails.cloudInfo = new CloudSpecificInfo();
     sampleNodeDetails.cloudInfo.cloud = provider.code;

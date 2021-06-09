@@ -149,7 +149,7 @@ public class ProviderTest extends FakeDBApplication {
   public void testCascadeDelete() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
     Region region = Region.create(provider, "region-1", "region 1", "ybImage");
-    AvailabilityZone.create(region, "zone-1", "zone 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "zone-1", "zone 1", "subnet-1");
     provider.delete();
     assertEquals(0, Region.find.all().size());
     assertEquals(0, AvailabilityZone.find.all().size());
@@ -191,7 +191,7 @@ public class ProviderTest extends FakeDBApplication {
     String subnetId = "subnet-1";
     String regionCode = "region-1";
     Region region = Region.create(provider, regionCode, "test region", "default-image");
-    AvailabilityZone az = AvailabilityZone.create(region, "az-1", "A Zone", subnetId);
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "A Zone", subnetId);
     CloudBootstrap.Params params = provider.getCloudParams();
     assertNotNull(params);
     Map<String, CloudBootstrap.Params.PerRegionMetadata> metadata = params.perRegionMetadata;

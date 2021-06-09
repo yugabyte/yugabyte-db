@@ -73,7 +73,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, AZ_CODE, "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, AZ_CODE, "AZ 1", "subnet-1");
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;

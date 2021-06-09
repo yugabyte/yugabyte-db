@@ -72,7 +72,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
@@ -104,7 +104,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     taskParams.currentClusterType = ClusterType.ASYNC;
     userIntent = new UserIntent();
     region = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
-    AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
