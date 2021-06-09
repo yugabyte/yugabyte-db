@@ -679,6 +679,9 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   if grep -q "CentOS Linux 7" /etc/os-release; then
     log "This is CentOS 7, doing a quick sanity-check of the release package using Docker."
 
+    # Have to export this for the script inside Docker to see it.
+    export YB_PACKAGE_PATH
+
     # Do a quick sanity test on the release package. This verifies that we can at least start the
     # cluster, which requires all RPATHs to be set correctly, either at the time the package is
     # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
