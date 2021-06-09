@@ -20,6 +20,8 @@
   }, {
     "name" : "Universe"
   }, {
+    "name" : "RuntimeConfig"
+  }, {
     "name" : "Provider"
   } ],
   "paths" : {
@@ -144,7 +146,7 @@
           "description" : "region form data for new region to be created",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/RegionFormData"
           }
         } ],
         "responses" : {
@@ -201,7 +203,7 @@
           "description" : "login form data",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/CustomerLoginFormData"
           }
         } ],
         "responses" : {
@@ -445,7 +447,7 @@
           "description" : "upgrade params",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/UpgradeParams"
           }
         } ],
         "responses" : {
@@ -1072,7 +1074,7 @@
           "description" : "univ definition",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/UniverseDefinitionTaskParams"
           }
         } ],
         "responses" : {
@@ -1171,7 +1173,7 @@
           "description" : "univ definition",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/UniverseDefinitionTaskParams"
           }
         } ],
         "responses" : {
@@ -1259,7 +1261,7 @@
           "description" : "univ definition",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/UniverseDefinitionTaskParams"
           }
         } ],
         "responses" : {
@@ -1577,6 +1579,185 @@
         }
       }
     },
+    "/api/v1/customers/{cUUID}/runtime_config/{scope}" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "listScopes",
+        "description" : "Lists all (including empty scopes) runtime config scopes for current customer. List includes the Global scope that spans multiple customers, scope for customer specific overrides for current customer and one scope each for each universe and provider.",
+        "operationId" : "getConfig",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "includeInherited",
+          "in" : "query",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RuntimeConfigFormData"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime_config/mutable_keys" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "listKeys",
+        "description" : "List all the mutable runtime config keys",
+        "operationId" : "listKeys",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/runtime_config/{scope}/key/{key}" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "getKey",
+        "description" : "",
+        "operationId" : "getKey",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "key",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "setKey",
+        "description" : "",
+        "operationId" : "setKey",
+        "consumes" : [ "text/plain" ],
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "key",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "newValue",
+          "description" : "new value for config key",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "deleteKey",
+        "description" : "",
+        "operationId" : "deleteKey",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "key",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/runtime_config/scopes" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "listScopes",
+        "description" : "Lists all (including empty scopes) runtime config scopes for current customer. List includes the Global scope that spans multiple customers, scope for customer specific overrides for current customer and one scope each for each universe and provider.",
+        "operationId" : "listScopes",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RuntimeConfigFormData"
+            }
+          }
+        }
+      }
+    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/bootstrap" : {
       "post" : {
         "tags" : [ "Provider" ],
@@ -1601,7 +1782,7 @@
           "description" : "bootstrap params",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/CloudBootstrapParams"
           }
         } ],
         "responses" : {
@@ -1638,7 +1819,7 @@
           "description" : "edit provider form data",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "type" : "object"
           }
         } ],
         "responses" : {
@@ -1755,7 +1936,7 @@
           "description" : "provider form data",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/CloudProviderFormData"
           }
         } ],
         "responses" : {
@@ -1920,7 +2101,7 @@
           "description" : "az form data",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/AvailabilityZoneFormData"
           }
         } ],
         "responses" : {
@@ -1965,6 +2146,56 @@
           "$ref" : "#/definitions/Provider"
         },
         "kubeconfigPath" : {
+          "type" : "string"
+        }
+      }
+    },
+    "CloudBootstrapParams" : {
+      "type" : "object",
+      "required" : [ "airGapInstall", "customHostCidrs", "destVpcId", "errorString", "hostVpcId", "hostVpcRegion", "keyPairName", "perRegionMetadata", "providerUUID", "sshPort", "sshPrivateKeyContent", "sshUser" ],
+      "properties" : {
+        "errorString" : {
+          "type" : "string"
+        },
+        "providerUUID" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "perRegionMetadata" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerRegionMetadata"
+          }
+        },
+        "keyPairName" : {
+          "type" : "string"
+        },
+        "sshPrivateKeyContent" : {
+          "type" : "string"
+        },
+        "sshUser" : {
+          "type" : "string"
+        },
+        "airGapInstall" : {
+          "type" : "boolean"
+        },
+        "sshPort" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "hostVpcId" : {
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "type" : "string"
+        },
+        "customHostCidrs" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "destVpcId" : {
           "type" : "string"
         }
       }
@@ -2039,56 +2270,6 @@
         }
       }
     },
-    "Params" : {
-      "type" : "object",
-      "required" : [ "airGapInstall", "customHostCidrs", "destVpcId", "errorString", "hostVpcId", "hostVpcRegion", "keyPairName", "perRegionMetadata", "providerUUID", "sshPort", "sshPrivateKeyContent", "sshUser" ],
-      "properties" : {
-        "errorString" : {
-          "type" : "string"
-        },
-        "providerUUID" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "perRegionMetadata" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "$ref" : "#/definitions/PerRegionMetadata"
-          }
-        },
-        "keyPairName" : {
-          "type" : "string"
-        },
-        "sshPrivateKeyContent" : {
-          "type" : "string"
-        },
-        "sshUser" : {
-          "type" : "string"
-        },
-        "airGapInstall" : {
-          "type" : "boolean"
-        },
-        "sshPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "hostVpcId" : {
-          "type" : "string"
-        },
-        "hostVpcRegion" : {
-          "type" : "string"
-        },
-        "customHostCidrs" : {
-          "type" : "array",
-          "items" : {
-            "type" : "string"
-          }
-        },
-        "destVpcId" : {
-          "type" : "string"
-        }
-      }
-    },
     "PerRegionMetadata" : {
       "type" : "object",
       "required" : [ "azToSubnetIds", "customImageId", "customSecurityGroupId", "subnetId", "vpcCidr", "vpcId" ],
@@ -2151,7 +2332,14 @@
           "type" : "string"
         },
         "cloudParams" : {
-          "$ref" : "#/definitions/Params"
+          "$ref" : "#/definitions/CloudBootstrapParams"
+        },
+        "config" : {
+          "type" : "object",
+          "readOnly" : true,
+          "additionalProperties" : {
+            "type" : "string"
+          }
         }
       }
     },
@@ -2203,9 +2391,48 @@
         },
         "vnetName" : {
           "type" : "string"
+        },
+        "config" : {
+          "type" : "object",
+          "readOnly" : true,
+          "additionalProperties" : {
+            "type" : "string"
+          }
         }
       },
       "description" : "Region within a given provider. Typically this will map to a single cloud provider region"
+    },
+    "RegionFormData" : {
+      "type" : "object",
+      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "type" : "string"
+        },
+        "destVpcId" : {
+          "type" : "string"
+        },
+        "latitude" : {
+          "type" : "number",
+          "format" : "double"
+        },
+        "longitude" : {
+          "type" : "number",
+          "format" : "double"
+        }
+      }
     },
     "Generic error response from Yugawware Platform API" : {
       "type" : "object",
@@ -2218,6 +2445,18 @@
           "type" : "string",
           "example" : "There was a problem creating universe",
           "description" : "User visible unstructurred error message"
+        }
+      }
+    },
+    "CustomerLoginFormData" : {
+      "type" : "object",
+      "required" : [ "email", "password" ],
+      "properties" : {
+        "email" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
         }
       }
     },
@@ -2783,6 +3022,148 @@
         }
       }
     },
+    "UpgradeParams" : {
+      "type" : "object",
+      "required" : [ "allowInsecure", "backupInProgress", "capability", "certUUID", "clusters", "cmkArn", "communicationPorts", "currentClusterType", "deviceInfo", "encryptionAtRestConfig", "errorString", "expectedUniverseVersion", "extraDependencies", "firstTry", "importedState", "itestS3PackagePath", "masterGFlags", "nextClusterIndex", "nodeDetailsSet", "nodeExporterUser", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootCA", "rotateRoot", "setTxnTableWaitCountFlag", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "taskType", "tserverGFlags", "universePaused", "universeUUID", "updateInProgress", "updateSucceeded", "upgradeOption", "userAZSelected", "ybSoftwareVersion" ],
+      "properties" : {
+        "errorString" : {
+          "type" : "string"
+        },
+        "nodeExporterUser" : {
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
+        "universeUUID" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "expectedUniverseVersion" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "cmkArn" : {
+          "type" : "string"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig"
+        },
+        "nodeDetailsSet" : {
+          "type" : "array",
+          "uniqueItems" : true,
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
+          }
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies"
+        },
+        "firstTry" : {
+          "type" : "boolean"
+        },
+        "clusters" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/Cluster"
+          }
+        },
+        "currentClusterType" : {
+          "type" : "string",
+          "enum" : [ "PRIMARY", "ASYNC" ]
+        },
+        "nodePrefix" : {
+          "type" : "string"
+        },
+        "rootCA" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "userAZSelected" : {
+          "type" : "boolean"
+        },
+        "resetAZConfig" : {
+          "type" : "boolean"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "backupInProgress" : {
+          "type" : "boolean"
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "universePaused" : {
+          "type" : "boolean"
+        },
+        "nextClusterIndex" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "allowInsecure" : {
+          "type" : "boolean"
+        },
+        "setTxnTableWaitCountFlag" : {
+          "type" : "boolean"
+        },
+        "itestS3PackagePath" : {
+          "type" : "string"
+        },
+        "remotePackagePath" : {
+          "type" : "string"
+        },
+        "importedState" : {
+          "type" : "string",
+          "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ]
+        },
+        "capability" : {
+          "type" : "string",
+          "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ]
+        },
+        "taskType" : {
+          "type" : "string",
+          "enum" : [ "Everything", "Software", "GFlags", "Restart", "Certs" ]
+        },
+        "ybSoftwareVersion" : {
+          "type" : "string"
+        },
+        "certUUID" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "rotateRoot" : {
+          "type" : "boolean"
+        },
+        "masterGFlags" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "tserverGFlags" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "sleepAfterMasterRestartMillis" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "sleepAfterTServerRestartMillis" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "upgradeOption" : {
+          "type" : "string",
+          "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ]
+        }
+      }
+    },
     "YWSuccess" : {
       "type" : "object",
       "required" : [ "message", "success" ],
@@ -3269,6 +3650,56 @@
         }
       }
     },
+    "ConfigEntry" : {
+      "type" : "object",
+      "required" : [ "inherited", "key", "value" ],
+      "properties" : {
+        "inherited" : {
+          "type" : "boolean"
+        },
+        "key" : {
+          "type" : "string"
+        },
+        "value" : {
+          "type" : "string"
+        }
+      }
+    },
+    "RuntimeConfigFormData" : {
+      "type" : "object",
+      "required" : [ "scopedConfigList" ],
+      "properties" : {
+        "scopedConfigList" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/ScopedConfig"
+          }
+        }
+      }
+    },
+    "ScopedConfig" : {
+      "type" : "object",
+      "required" : [ "configEntries", "mutableScope", "type", "uuid" ],
+      "properties" : {
+        "type" : {
+          "type" : "string",
+          "enum" : [ "GLOBAL", "CUSTOMER", "UNIVERSE", "PROVIDER" ]
+        },
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "mutableScope" : {
+          "type" : "boolean"
+        },
+        "configEntries" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/ConfigEntry"
+          }
+        }
+      }
+    },
     "YWTask" : {
       "type" : "object",
       "required" : [ "taskUUID" ],
@@ -3276,6 +3707,58 @@
         "taskUUID" : {
           "type" : "string",
           "format" : "uuid"
+        }
+      }
+    },
+    "CloudProviderFormData" : {
+      "type" : "object",
+      "required" : [ "active", "code", "config", "name", "region" ],
+      "properties" : {
+        "code" : {
+          "type" : "string",
+          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ]
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "active" : {
+          "type" : "boolean"
+        },
+        "config" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "region" : {
+          "type" : "string"
+        }
+      }
+    },
+    "AvailabilityZoneData" : {
+      "type" : "object",
+      "required" : [ "code", "name", "subnet" ],
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "subnet" : {
+          "type" : "string"
+        }
+      }
+    },
+    "AvailabilityZoneFormData" : {
+      "type" : "object",
+      "required" : [ "availabilityZones" ],
+      "properties" : {
+        "availabilityZones" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/AvailabilityZoneData"
+          }
         }
       }
     }

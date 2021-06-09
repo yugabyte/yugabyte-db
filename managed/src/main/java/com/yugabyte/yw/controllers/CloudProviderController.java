@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -38,8 +37,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
+import javax.persistence.NonUniqueResultException;
+
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Api("Provider")
 public class CloudProviderController extends AuthenticatedController {
@@ -92,15 +94,7 @@ public class CloudProviderController extends AuthenticatedController {
    */
   @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
-    List<Provider> providerList = Provider.getAll(customerUUID);
-    ArrayNode providers = Json.newArray();
-    providerList.forEach(
-        (provider) -> {
-          ObjectNode providerJson = (ObjectNode) Json.toJson(provider);
-          providerJson.set("config", provider.getMaskedConfig());
-          providers.add(providerJson);
-        });
-    return ApiResponse.success(providers);
+    return ApiResponse.success(Provider.getAll(customerUUID));
   }
 
   // This endpoint we are using only for deleting provider for integration test purpose. our
@@ -139,13 +133,19 @@ public class CloudProviderController extends AuthenticatedController {
           name = "providerFormData",
           value = "provider form data",
           paramType = "body",
-          dataTypeClass = CloudProviderFormData.class,
+          dataType = "com.yugabyte.yw.forms.CloudProviderFormData",
           required = true))
   public Result create(UUID customerUUID) throws IOException {
     Form<CloudProviderFormData> formData =
         formFactory.getFormDataOrBadRequest(CloudProviderFormData.class);
 
     Common.CloudType providerCode = formData.get().code;
+    Provider existentProvider = Provider.get(customerUUID, formData.get().name, providerCode);
+    if (existentProvider != null) {
+      return ApiResponse.error(
+          BAD_REQUEST,
+          String.format("Provider with the name %s already exists", formData.get().name));
+    }
 
     // Since the Map<String, String> doesn't get parsed, so for now we would just
     // parse it from the requestBody
@@ -245,7 +245,7 @@ public class CloudProviderController extends AuthenticatedController {
       if (isConfigInRegion) {}
       for (ZoneData zd : rd.zoneList) {
         Map<String, String> zoneConfig = zd.config;
-        AvailabilityZone az = AvailabilityZone.create(region, zd.code, zd.name, null);
+        AvailabilityZone az = AvailabilityZone.createOrThrow(region, zd.code, zd.name, null);
         boolean isConfigInZone = updateKubeConfig(provider, region, az, zoneConfig, false);
         if (isConfigInZone) {}
       }
@@ -406,7 +406,7 @@ public class CloudProviderController extends AuthenticatedController {
               .forEach(
                   (zoneSuffix) -> {
                     String zoneName = regionCode + zoneSuffix;
-                    AvailabilityZone.create(region, zoneName, zoneName, "yugabyte-bridge");
+                    AvailabilityZone.createOrThrow(region, zoneName, zoneName, "yugabyte-bridge");
                   });
         });
     Map<String, Object> instanceTypeMetadata = configHelper.getConfig(DockerInstanceTypeMetadata);
@@ -431,7 +431,7 @@ public class CloudProviderController extends AuthenticatedController {
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "bootstrap params",
-          dataTypeClass = CloudBootstrap.Params.class,
+          dataType = "com.yugabyte.yw.commissioner.tasks.CloudBootstrap$Params",
           paramType = "body",
           required = true))
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
@@ -512,7 +512,7 @@ public class CloudProviderController extends AuthenticatedController {
       @ApiImplicitParam(
           value = "edit provider form data",
           name = "editProviderFormData",
-          dataTypeClass = Object.class,
+          dataType = "java.lang.Object",
           required = true,
           paramType = "body"))
   public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {

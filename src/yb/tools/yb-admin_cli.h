@@ -103,6 +103,8 @@ Result<client::YBTableName> ResolveSingleTableName(
     const CLIArgumentsIterator& end,
     TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
 
+CHECKED_STATUS CheckArgumentsCount(int count, int min, int max);
+
 }  // namespace tools
 }  // namespace yb
 

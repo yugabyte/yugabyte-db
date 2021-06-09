@@ -18,7 +18,6 @@ import azureLogo from './images/azure_logo.svg';
 import gcsLogo from './images/gcs-logo.png';
 import nfsIcon from './images/nfs.svg';
 import { Formik } from 'formik';
-import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -182,13 +181,6 @@ class StorageConfiguration extends Component {
           }
         });
     } else {
-      this.setState({
-        listView: {
-          ...this.state.listView,
-          [props.activeTab]: true
-        }
-      });
-
       return this.props
         .addCustomerConfig({
           type: 'STORAGE',
@@ -201,6 +193,14 @@ class StorageConfiguration extends Component {
             // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
             this.props.reset();
             this.props.fetchCustomerConfigs();
+
+            // Change to list view if form is successfully submitted.
+            this.setState({
+              ...this.state,
+              listView: {
+                [props.activeTab]: true
+              }
+            });
           } else if (getPromiseState(this.props.addConfig).isError()) {
             // show server-side validation errors under form inputs
             throw new SubmissionError(this.props.addConfig.error);
@@ -349,6 +349,7 @@ class StorageConfiguration extends Component {
       if (activeTab === list.name.toLowerCase()) {
         return list;
       }
+      return null;
     });
 
     if (getPromiseState(customerConfigs).isLoading()) {

@@ -153,6 +153,7 @@ GET     /customers/:cUUID/cost                                                 c
 PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state               com.yugabyte.yw.controllers.UniverseController.setBackupFlag(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     com.yugabyte.yw.controllers.UniverseController.configureAlerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/toggle_tls                        com.yugabyte.yw.controllers.UniverseController.toggleTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/run_query                         com.yugabyte.yw.controllers.UniverseController.runQuery(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/run_in_shell                      com.yugabyte.yw.controllers.UniverseController.runInShell(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/update_db_credentials             com.yugabyte.yw.controllers.UniverseController.setDatabaseCredentials(cUUID: java.util.UUID, uniUUID: java.util.UUID)

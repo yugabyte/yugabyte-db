@@ -183,6 +183,29 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ModelFactory.awsProvider(customer);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
+    bodyJson.put("name", "Amazon1");
+    Result result = createProvider(bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "name", "Amazon1");
+    assertOk(result);
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCreateMultiInstanceProviderWithSameNameAndCloud() {
+    ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "Amazon");
+    Result result = createProvider(bodyJson);
+    assertBadRequest(result, "Provider with the name Amazon already exists");
+  }
+
+  @Test
+  public void testCreateMultiInstanceProviderWithSameNameButDifferentCloud() {
+    ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "gcp");
     bodyJson.put("name", "Amazon");
     Result result = createProvider(bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
@@ -443,8 +466,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.provider = p.uuid.toString();
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     userIntent.regionList = new ArrayList<>();
     userIntent.regionList.add(r.uuid);
     universe =

@@ -138,6 +138,9 @@ typedef PTDmlUsingClauseElement::SharedPtr     PDmlUsingClauseElement;
 typedef PTTableProperty::SharedPtr     PTableProperty;
 typedef PTTablePropertyListNode::SharedPtr     PTablePropertyListNode;
 typedef PTTablePropertyMap::SharedPtr  PTablePropertyMap;
+typedef PTDmlWriteProperty::SharedPtr     PDmlWriteProperty;
+typedef PTDmlWritePropertyListNode::SharedPtr     PDmlWritePropertyListNode;
+typedef PTDmlWritePropertyMap::SharedPtr  PDmlWritePropertyMap;
 
 typedef PTTypeField::SharedPtr         PTypeField;
 typedef PTTypeFieldListNode::SharedPtr PTypeFieldListNode;
@@ -367,6 +370,10 @@ using namespace yb::ql;
 %type <PTablePropertyMap> property_map_list property_map
 %type <PTablePropertyListNode>   opt_table_options table_property table_properties orderingList
                           opt_index_options
+
+%type <PDmlWriteProperty>    write_dml_property_map_list_element
+%type <PDmlWritePropertyMap> write_dml_property_map_list write_dml_property_map
+%type <PDmlWritePropertyListNode>   opt_write_dml_properties write_dml_property write_dml_properties
 
 %type <PTypeField>         TypeField
 %type <PTypeFieldListNode> TypeFieldList
@@ -2791,12 +2798,13 @@ DELETE_P opt_target_list FROM relation_expr_opt_alias opt_using_ttl_timestamp_cl
 
 UpdateStmt:
   UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET set_clause_list
-  opt_where_or_current_clause opt_returns_clause {
-    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, nullptr, false, $3, $7);
+  opt_where_or_current_clause opt_returns_clause opt_write_dml_properties {
+    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, nullptr, false, $3, $7, $8);
   }
   | UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET
-  set_clause_list opt_where_or_current_clause if_clause opt_else_clause opt_returns_clause {
-    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, $7, $8, $3, $9);
+  set_clause_list opt_where_or_current_clause if_clause opt_else_clause opt_returns_clause
+  opt_write_dml_properties {
+    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, $7, $8, $3, $9, $10);
   }
 ;
 
@@ -2871,6 +2879,60 @@ set_target_list:
   set_target {
   }
   | set_target_list ',' set_target {
+  }
+;
+
+opt_write_dml_properties:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | WITH write_dml_properties {
+    $$ = $2;
+  }
+;
+
+write_dml_properties:
+  write_dml_property {
+    $$ = $1;
+  }
+  | write_dml_properties AND write_dml_property {
+    $1->AppendList($3);
+    $$ = $1;
+  }
+;
+
+write_dml_property:
+  property_name '=' write_dml_property_map {
+    $3->SetPropertyName($1);
+    $$ = MAKE_NODE(@1, PTDmlWritePropertyListNode, $3);
+  }
+;
+
+write_dml_property_map:
+  '{' write_dml_property_map_list '}' {
+    $$ = $2;
+  }
+;
+
+write_dml_property_map_list:
+  write_dml_property_map_list_element {
+    $$ = MAKE_NODE(@1, PTDmlWritePropertyMap);
+    $$->AppendMapElement($1);
+  }
+  | write_dml_property_map_list ',' write_dml_property_map_list_element {
+    $1->AppendMapElement($3);
+    $$ = $1;
+  }
+;
+
+write_dml_property_map_list_element:
+  Sconst ':' TRUE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, true);
+    $$ = MAKE_NODE(@1, PTDmlWriteProperty, $1, pt_constbool);
+  }
+  | Sconst ':' FALSE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, false);
+    $$ = MAKE_NODE(@1, PTDmlWriteProperty, $1, pt_constbool);
   }
 ;
 

@@ -93,6 +93,8 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   { ErrorCode::INVALID_ROLE_DEFINITION, "Invalid Role Definition" },
   { ErrorCode::DUPLICATE_ROLE, "Duplicate Role"},
   { ErrorCode::NULL_IN_COLLECTIONS, "null is not supported inside collections"},
+  { ErrorCode::INVALID_UPDATE_PROPERTY, "Invalid Update Property" },
+  { ErrorCode::DUPLICATE_UPDATE_PROPERTY, "Duplicate Update Property" },
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

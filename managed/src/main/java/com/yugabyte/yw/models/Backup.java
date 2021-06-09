@@ -273,10 +273,7 @@ public class Backup extends Model {
   public static Set<Universe> getAssociatedUniverses(UUID configUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList =
-        find.query()
-            .where()
-            .in("state", BackupState.Completed, BackupState.InProgress)
-            .findList();
+        find.query().where().in("state", BackupState.Completed, BackupState.InProgress).findList();
     backupList =
         backupList
             .stream()
@@ -303,7 +300,7 @@ public class Backup extends Model {
                             .asText()
                             .equals(configUUID.toString())
                         && universeUUIDs.add(
-                            UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
+                            UUID.fromString(s.getTaskParams().get("universeUUID").asText())))
             .collect(Collectors.toList());
     Set<Universe> universes = new HashSet<>();
     for (UUID universeUUID : universeUUIDs) {
