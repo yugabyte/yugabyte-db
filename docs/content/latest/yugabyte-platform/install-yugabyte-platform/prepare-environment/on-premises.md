@@ -42,12 +42,12 @@ showAsideToc: true
     </a>
   </li>
 
-<li>
+  <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
- </li>
+  </li>
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link active">
@@ -58,18 +58,18 @@ showAsideToc: true
 
 </ul>
 
-
 ## Platform Node Preparation
 
-*   Hardware requirements
-    *   Nodes: 1 Virtual Machine 
-    *   Cores: 8 Cores
-    *   RAM: 16 GB
-*   Storage Disk:  100GB (minimum) (confirm SSD)
-*   Docker Engine: supported version 19.03.n. If not installed, see Installing Docker in [airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
-*   The following ports should be open on the Yugabyte Platform host:
-    *   8800 – HTTP access to the Replicated UI
-    *   80 – HTTP access to the Yugabyte Platform console
-    *   443 - HTTPs access to the Yugabyte Platform console
-    *   22 – SSH
-*   Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes. 
+* Hardware requirements
+  * Nodes: 1 Virtual Machine 
+  * Cores: 8 Cores
+  * RAM: 16 GB
+* Storage Disk:  100GB (minimum) (confirm SSD)
+* Docker Engine: supported version 19.03.n. If not installed, see Installing Docker in [airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
+* The following ports should be open on the Yugabyte Platform host:
+  * 8800 – HTTP access to the Replicated UI
+  * 80 – HTTP access to the Yugabyte Platform console
+  * 443 - HTTPs access to the Yugabyte Platform console
+  * 22 – SSH
+* If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, and 6379. (For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).)
+* Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes.
