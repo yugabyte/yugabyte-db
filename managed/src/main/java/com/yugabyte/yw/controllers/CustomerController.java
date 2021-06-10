@@ -16,6 +16,7 @@ package com.yugabyte.yw.controllers;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.HashMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -28,17 +29,17 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -118,6 +119,7 @@ public class CustomerController extends AuthenticatedController {
       responseJson.set("error", formData.errorsAsJson());
       return badRequest(responseJson);
     }
+    AlertingFormData alertingFormData = formData.get();
 
     if (formData.get().name != null) {
       customer.name = formData.get().name;
@@ -127,11 +129,35 @@ public class CustomerController extends AuthenticatedController {
     if (request.has("alertingData") || request.has("smtpData")) {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
-      if (config == null && formData.get().alertingData != null) {
-        CustomerConfig.createAlertConfig(customerUUID, Json.toJson(formData.get().alertingData));
-      } else if (config != null && formData.get().alertingData != null) {
-        config.setData(Json.toJson(formData.get().alertingData));
-        config.update();
+      if (alertingFormData.alertingData != null) {
+        if (config == null) {
+          CustomerConfig.createAlertConfig(
+              customerUUID, Json.toJson(alertingFormData.alertingData));
+        } else {
+          config.setData(Json.toJson(alertingFormData.alertingData));
+          config.update();
+        }
+
+        // Update Clock Skew Alert definition activity.
+        // TODO: Remove after implementation of a separate window for all definitions
+        // configuration.
+        Set<UUID> universeUUIDs = Universe.getAllUUIDs(customer);
+        int updatedDefinitions = 0;
+        for (UUID universeUUID : universeUUIDs) {
+          AlertDefinition definition =
+              AlertDefinition.get(
+                  customerUUID, universeUUID, AlertDefinitionTemplate.CLOCK_SKEW.getName());
+          if (definition != null) {
+            definition.isActive = alertingFormData.alertingData.enableClockSkew;
+            definition.save();
+            updatedDefinitions++;
+          }
+        }
+
+        LOG.info(
+            "Updated {} Clock Skew Alert definitions, new state {}",
+            updatedDefinitions,
+            alertingFormData.alertingData.enableClockSkew);
       }
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
