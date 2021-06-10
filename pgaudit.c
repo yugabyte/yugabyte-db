@@ -135,6 +135,13 @@ bool auditLogParameter = false;
 bool auditLogRelation = false;
 
 /*
+ * GUC variable for pgaudit.log_statement
+ *
+ * Administrators can choose to not have the full statement text logged.
+ */
+bool auditLogStatement = true;
+
+/*
  * GUC variable for pgaudit.log_statement_once
  *
  * Administrators can choose to have the statement run logged only once instead
@@ -655,7 +662,7 @@ log_audit_event(AuditEventStackItem *stackItem)
      * parameters if they have not already been logged for this substatement.
      */
     appendStringInfoCharMacro(&auditStr, ',');
-    if (!stackItem->auditEvent.statementLogged || !auditLogStatementOnce)
+    if (auditLogStatement && !(stackItem->auditEvent.statementLogged && auditLogStatementOnce))
     {
         append_valid_csv(&auditStr, stackItem->auditEvent.commandText);
 
@@ -709,8 +716,11 @@ log_audit_event(AuditEventStackItem *stackItem)
 
         stackItem->auditEvent.statementLogged = true;
     }
+    /* we were asked to not log it */
+    else if (!auditLogStatement)
+        appendStringInfoString(&auditStr,
+                               "<not logged>,<not logged>");
     else
-        /* we were asked to not log it */
         appendStringInfoString(&auditStr,
                                "<previously logged>,<previously logged>");
 
@@ -1935,6 +1945,21 @@ _PG_init(void)
         NULL,
         &auditLogRelation,
         false,
+        PGC_SUSET,
+        GUC_NOT_IN_SAMPLE,
+        NULL, NULL, NULL);
+
+    /* Define pgaudit.log_statement */
+    DefineCustomBoolVariable(
+        "pgaudit.log_statement",
+
+        "Specifies whether logging will include the statement text and "
+        "parameters.  Depending on requirements, the full statement text might "
+        "not be required in the audit log.",
+
+        NULL,
+        &auditLogStatement,
+        true,
         PGC_SUSET,
         GUC_NOT_IN_SAMPLE,
         NULL, NULL, NULL);

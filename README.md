@@ -158,6 +158,12 @@ Specifies whether session audit logging should create a separate log entry for e
 
 The default is `off`.
 
+### pgaudit.log_statement
+
+Specifies whether logging will include the statement text and parameters (if enabled). Depending on requirements, an audit log might not require this and it makes the logs less verbose.
+
+The default is `on`.
+
 ### pgaudit.log_statement_once
 
 Specifies whether logging will include the statement text and parameters with the first log entry for a statement/substatement combination or with every entry. Disabling this setting will result in less verbose logging but may make it more difficult to determine the statement that generated a log entry, though the statement/substatement pair along with the process id should suffice to identify the statement text logged with a previous entry.

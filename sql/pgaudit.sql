@@ -430,6 +430,18 @@ UPDATE account
    SET password = 'HASH2';
 
 --
+-- Change configuration of user 1 so that full statements are not logged
+\connect - :current_user
+ALTER ROLE user1 RESET pgaudit.log_relation;
+ALTER ROLE user1 RESET pgaudit.log;
+ALTER ROLE user1 SET pgaudit.log_statement = OFF;
+\connect - user1
+
+--
+-- Logged but without full statement
+SELECT * FROM account;
+
+--
 -- Change back to superuser to do exhaustive tests
 \connect - :current_user
 SET pgaudit.log = 'ALL';
@@ -858,6 +870,7 @@ ALTER ROLE :current_user RESET pgaudit.log_client;
 ALTER ROLE :current_user RESET pgaudit.log_level;
 ALTER ROLE :current_user RESET pgaudit.log_parameter;
 ALTER ROLE :current_user RESET pgaudit.log_relation;
+ALTER ROLE :current_user RESET pgaudit.log_statement;
 ALTER ROLE :current_user RESET pgaudit.log_statement_once;
 ALTER ROLE :current_user RESET pgaudit.role;
 
@@ -866,6 +879,7 @@ RESET pgaudit.log_catalog;
 RESET pgaudit.log_level;
 RESET pgaudit.log_parameter;
 RESET pgaudit.log_relation;
+RESET pgaudit.log_statement;
 RESET pgaudit.log_statement_once;
 RESET pgaudit.role;
 

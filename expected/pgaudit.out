@@ -569,6 +569,25 @@ NOTICE:  AUDIT: OBJECT,5,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
 NOTICE:  AUDIT: SESSION,5,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
    SET password = 'HASH2';",<not logged>
 --
+-- Change configuration of user 1 so that full statements are not logged
+\connect - :current_user
+ALTER ROLE user1 RESET pgaudit.log_relation;
+NOTICE:  AUDIT: SESSION,1,1,ROLE,ALTER ROLE,,,ALTER ROLE user1 RESET pgaudit.log_relation;,<not logged>
+ALTER ROLE user1 RESET pgaudit.log;
+NOTICE:  AUDIT: SESSION,2,1,ROLE,ALTER ROLE,,,ALTER ROLE user1 RESET pgaudit.log;,<not logged>
+ALTER ROLE user1 SET pgaudit.log_statement = OFF;
+NOTICE:  AUDIT: SESSION,3,1,ROLE,ALTER ROLE,,,ALTER ROLE user1 SET pgaudit.log_statement = OFF;,<not logged>
+\connect - user1
+--
+-- Logged but without full statement
+SELECT * FROM account;
+NOTICE:  AUDIT: OBJECT,1,1,READ,SELECT,TABLE,public.account,<not logged>,<not logged>
+ id | name  | password | description 
+----+-------+----------+-------------
+  1 | user1 | HASH2    | yada, yada
+(1 row)
+
+--
 -- Change back to superuser to do exhaustive tests
 \connect - :current_user
 SET pgaudit.log = 'ALL';
@@ -1239,6 +1258,7 @@ ALTER ROLE :current_user RESET pgaudit.log_client;
 ALTER ROLE :current_user RESET pgaudit.log_level;
 ALTER ROLE :current_user RESET pgaudit.log_parameter;
 ALTER ROLE :current_user RESET pgaudit.log_relation;
+ALTER ROLE :current_user RESET pgaudit.log_statement;
 ALTER ROLE :current_user RESET pgaudit.log_statement_once;
 ALTER ROLE :current_user RESET pgaudit.role;
 RESET pgaudit.log;
@@ -1246,6 +1266,7 @@ RESET pgaudit.log_catalog;
 RESET pgaudit.log_level;
 RESET pgaudit.log_parameter;
 RESET pgaudit.log_relation;
+RESET pgaudit.log_statement;
 RESET pgaudit.log_statement_once;
 RESET pgaudit.role;
 DROP TABLE test.account_copy;
