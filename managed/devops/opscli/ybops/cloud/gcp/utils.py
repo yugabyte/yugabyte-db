@@ -677,8 +677,8 @@ class GoogleCloudAdmin():
 
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
-                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None):
-        network_name = os.environ.get("CUSTOM_GCE_NETWORK", YB_NETWORK_NAME)
+                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None,
+                        boot_script=None):
         # Name of the project that target VPC network belongs to.
         host_project = os.environ.get("GCE_HOST_PROJECT", self.project)
 
@@ -726,6 +726,13 @@ class GoogleCloudAdmin():
               "preemptible": use_preemptible
             }
         }
+
+        if boot_script:
+            with open(boot_script, 'r') as script:
+                body["metadata"]["items"].append({
+                    "key": "startup-script",
+                    "value": script.read()
+                    })
 
         initial_params = {}
         if volume_type == GCP_SCRATCH:

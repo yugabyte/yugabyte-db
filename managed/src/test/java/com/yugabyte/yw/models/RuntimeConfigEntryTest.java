@@ -7,6 +7,8 @@ import org.junit.Test;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.*;
 
@@ -115,6 +117,17 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
     defaultProvider.deletePermanent();
     checkCascadeDelete(scopeUuid);
+  }
+
+  @Test
+  public void testCreateEntryWithHugeValues() {
+    UUID scopeUuid = defaultCustomer.uuid;
+    String longString =
+        Stream.generate(() -> "\u4F60\u597D")
+            .limit(1024 * 64 / 2 + 1)
+            .collect(Collectors.joining());
+    RuntimeConfigEntry.upsert(defaultCustomer, YB_SB_START_YEAR_KEY, longString);
+    checkStartYear(scopeUuid, longString);
   }
 
   private void checkCascadeDelete(UUID scopeUuid) {

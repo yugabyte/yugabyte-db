@@ -54,7 +54,7 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
             args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
             server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
-            ssh_keys)
+            ssh_keys, boot_script=args.boot_script)
 
 
 class GcpProvisionInstancesMethod(ProvisionInstancesMethod):

@@ -13,9 +13,11 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
@@ -39,6 +41,9 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -49,6 +54,7 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 
 @Singleton
 public class NodeManager extends DevopsBase {
+  static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
@@ -79,6 +85,8 @@ public class NodeManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
   @Inject play.Configuration appConfig;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
@@ -611,10 +619,11 @@ public class NodeManager extends DevopsBase {
     return subcommand;
   }
 
-  public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam)
-      throws RuntimeException {
+  public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
+    Path bootScriptFile = null;
+
     switch (type) {
       case Provision:
         {
@@ -628,6 +637,29 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.instanceType);
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
+
+            Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+
+            if (config.hasPath(BOOT_SCRIPT_PATH)) {
+              String bootScript = config.getString(BOOT_SCRIPT_PATH);
+              commandArgs.add("--boot_script");
+
+              // treat the contents as script body if it starts with a shebang line
+              // otherwise consider the contents to be a path
+              if (bootScript.startsWith("#!")) {
+                try {
+                  bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+                  Files.write(bootScriptFile, bootScript.getBytes());
+
+                  commandArgs.add(bootScriptFile.toAbsolutePath().toString());
+                } catch (IOException e) {
+                  LOG.error(e.getMessage(), e);
+                  throw new RuntimeException(e);
+                }
+              } else {
+                commandArgs.add(bootScript);
+              }
+          }
 
             // For now we wouldn't add machine image for aws and fallback on the default
             // one devops gives us, we need to transition to having this use versioning
@@ -845,13 +877,23 @@ public class NodeManager extends DevopsBase {
         }
     }
     commandArgs.add(nodeTaskParam.nodeName);
-    return execCommand(
-        nodeTaskParam.getRegion().uuid,
-        null,
-        null,
-        type.toString().toLowerCase(),
-        commandArgs,
-        getCloudArgs(nodeTaskParam));
+    try {
+      return execCommand(
+          nodeTaskParam.getRegion().uuid,
+          null,
+          null,
+          type.toString().toLowerCase(),
+          commandArgs,
+          getCloudArgs(nodeTaskParam));
+    } finally {
+      if (bootScriptFile != null) {
+        try {
+          Files.deleteIfExists(bootScriptFile);
+        } catch (IOException e) {
+          LOG.error(e.getMessage(), e);
+        }
+      }
+    }
   }
 
   private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {

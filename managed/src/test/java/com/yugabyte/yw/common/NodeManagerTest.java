@@ -4,12 +4,14 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
@@ -98,6 +100,10 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock ReleaseManager releaseManager;
+
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock Config mockConfig;
 
   @InjectMocks NodeManager nodeManager;
 
@@ -269,6 +275,8 @@ public class NodeManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    when(mockConfig.hasPath(NodeManager.BOOT_SCRIPT_PATH)).thenReturn(false);
+    when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
   }
