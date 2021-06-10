@@ -4,7 +4,10 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
@@ -26,6 +29,8 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import org.apache.commons.collections4.MultiValuedMap;
+import org.apache.commons.collections4.multimap.HashSetValuedHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -86,6 +91,10 @@ public class CloudProviderController extends AuthenticatedController {
   @Inject private play.Environment environment;
 
   @Inject CloudAPI.Factory cloudAPIFactory;
+
+  @Inject KubernetesManager kubernetesManager;
+
+  @Inject play.Configuration appConfig;
 
   /**
    * GET endpoint for listing providers
@@ -225,7 +234,8 @@ public class CloudProviderController extends AuthenticatedController {
               throw new YWServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
             }
           } else if (!hasConfig) {
-            throw new YWServiceException(BAD_REQUEST, "No Kubeconfig found for zone(s)");
+            LOG.warn(
+                "No Kubeconfig found at any level, in-cluster service account credentials will be used.");
           }
         }
       }
@@ -247,7 +257,10 @@ public class CloudProviderController extends AuthenticatedController {
         Map<String, String> zoneConfig = zd.config;
         AvailabilityZone az = AvailabilityZone.createOrThrow(region, zd.code, zd.name, null);
         boolean isConfigInZone = updateKubeConfig(provider, region, az, zoneConfig, false);
-        if (isConfigInZone) {}
+        if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
+          // Use in-cluster ServiceAccount credentials
+          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+        }
       }
     }
     try {
@@ -385,6 +398,123 @@ public class CloudProviderController extends AuthenticatedController {
           KUBERNETES_CLOUD_INSTANCE_TYPE.get("memSizeGB").asDouble(),
           idt);
     }
+  }
+
+  // Performs discovery of region, zones, pull secret, storageClass
+  // when running inside a Kubernetes cluster. Returns the discovered
+  // information as a JSON, which is similar to the one which is
+  // passed to the createKubernetes method.
+  @ApiOperation(
+      value = "getSuggestedKubernetesConfigs",
+      response = KubernetesProviderFormData.class)
+  public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
+    try {
+      MultiValuedMap<String, String> regionToAZ = getKubernetesRegionToZoneInfo();
+      if (regionToAZ.isEmpty()) {
+        LOG.info(
+            "No regions and zones found, check if the region and zone labels are present on the nodes. https://k8s.io/docs/reference/labels-annotations-taints/");
+        throw new YWServiceException(
+            INTERNAL_SERVER_ERROR, "No region and zone information found.");
+      }
+
+      String storageClass = appConfig.getString("yb.kubernetes.storageClass");
+      String pullSecretName = appConfig.getString("yb.kubernetes.pullSecretName");
+      if (storageClass == null || pullSecretName == null) {
+        LOG.error("Required configuration keys from yb.kubernetes.* are missing.");
+        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Required configuration is missing.");
+      }
+      String pullSecretContent = getKubernetesPullSecretContent(pullSecretName);
+
+      KubernetesProviderFormData formData = new KubernetesProviderFormData();
+      formData.code = Common.CloudType.kubernetes;
+      if (pullSecretContent != null) {
+        formData.config =
+            ImmutableMap.of(
+                "KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName,
+                "KUBECONFIG_PULL_SECRET_NAME", pullSecretName, // filename
+                "KUBECONFIG_PULL_SECRET_CONTENT", pullSecretContent);
+      }
+
+      for (String region : regionToAZ.keySet()) {
+        RegionData regionData = new RegionData();
+        regionData.code = region;
+        for (String az : regionToAZ.get(region)) {
+          ZoneData zoneData = new ZoneData();
+          zoneData.code = az;
+          zoneData.name = az;
+          zoneData.config = ImmutableMap.of("STORAGE_CLASS", storageClass);
+          regionData.zoneList.add(zoneData);
+        }
+        formData.regionList.add(regionData);
+      }
+
+      ObjectMapper mapper = new ObjectMapper();
+      return ApiResponse.success(mapper.valueToTree(formData));
+    } catch (RuntimeException e) {
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  // Performs region and zone discovery based on
+  // topology/failure-domain labels from the Kubernetes nodes.
+  private MultiValuedMap<String, String> getKubernetesRegionToZoneInfo() {
+    JsonNode nodeInfos = kubernetesManager.getNodeInfos(null);
+    MultiValuedMap<String, String> regionToAZ = new HashSetValuedHashMap<>();
+    for (JsonNode nodeInfo : nodeInfos.path("items")) {
+      JsonNode nodeLabels = nodeInfo.path("metadata").path("labels");
+      // failure-domain.beta.k8s.io is deprecated as of 1.17
+      String region = nodeLabels.path("topology.kubernetes.io/region").asText();
+      region =
+          region.isEmpty()
+              ? nodeLabels.path("failure-domain.beta.kubernetes.io/region").asText()
+              : region;
+      String zone = nodeLabels.path("topology.kubernetes.io/zone").asText();
+      zone =
+          zone.isEmpty()
+              ? nodeLabels.path("failure-domain.beta.kubernetes.io/zone").asText()
+              : zone;
+      if (region.isEmpty() || zone.isEmpty()) {
+        LOG.debug(
+            "Value of the zone or region label is empty for "
+                + nodeInfo.path("metadata").path("name").asText()
+                + ", skipping.");
+        continue;
+      }
+      regionToAZ.put(region, zone);
+    }
+    return regionToAZ;
+  }
+
+  // Fetches the secret secretName from current namespace, removes
+  // extra metadata and returns the secret as JSON string. Returns
+  // null if the secret is not present.
+  private String getKubernetesPullSecretContent(String secretName) {
+    JsonNode pullSecretJson;
+    try {
+      pullSecretJson = kubernetesManager.getSecret(null, secretName, null);
+    } catch (RuntimeException e) {
+      if (e.getMessage().contains("Error from server (NotFound): secrets")) {
+        LOG.debug(
+            "The pull secret " + secretName + " is not present, provider won't have this field.");
+        return null;
+      }
+      throw new RuntimeException("Unable to fetch the pull secret.");
+    }
+    JsonNode secretMetadata = pullSecretJson.get("metadata");
+    if (secretMetadata == null) {
+      LOG.error(
+          "metadata of the pull secret " + secretName + " is missing. This should never happen.");
+      throw new RuntimeException("Error while fetching the pull secret.");
+    }
+    ((ObjectNode) secretMetadata)
+        .remove(
+            ImmutableList.of(
+                "namespace", "uid", "selfLink", "creationTimestamp", "resourceVersion"));
+    JsonNode secretAnnotations = secretMetadata.get("annotations");
+    if (secretAnnotations != null) {
+      ((ObjectNode) secretAnnotations).remove("kubectl.kubernetes.io/last-applied-configuration");
+    }
+    return pullSecretJson.toString();
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this
