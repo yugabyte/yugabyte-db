@@ -16,15 +16,472 @@
   "host" : "localhost",
   "basePath" : "/",
   "tags" : [ {
-    "name" : "Universe"
+    "name" : "Provider"
   }, {
     "name" : "RuntimeConfig"
   }, {
-    "name" : "Provider"
-  }, {
     "name" : "Region"
+  }, {
+    "name" : "Universe"
   } ],
   "paths" : {
+    "/universes/{uniUUID}/proxy/{proxyUrl}" : {
+      "get" : {
+        "operationId" : "proxyRequest",
+        "parameters" : [ {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "proxyUrl",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/logout" : {
+      "get" : {
+        "operationId" : "logout",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/login" : {
+      "post" : {
+        "summary" : "login",
+        "description" : "",
+        "operationId" : "login",
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "loginFormData",
+          "description" : "login form data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomerLoginFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/insecure_login" : {
+      "get" : {
+        "summary" : "insecureLogin",
+        "description" : "",
+        "operationId" : "insecure_login",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform_config" : {
+      "get" : {
+        "operationId" : "getPlatformConfig",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/third_party_login" : {
+      "get" : {
+        "operationId" : "thirdPartyLogin",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/security" : {
+      "put" : {
+        "operationId" : "set_security",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/api_token" : {
+      "put" : {
+        "summary" : "apiToken",
+        "description" : "",
+        "operationId" : "api_token",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customer_count" : {
+      "get" : {
+        "operationId" : "customerCount",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/app_version" : {
+      "get" : {
+        "operationId" : "appVersion",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{maxLines}" : {
+      "get" : {
+        "operationId" : "getLogs",
+        "parameters" : [ {
+          "name" : "maxLines",
+          "in" : "path",
+          "required" : true,
+          "type" : "integer",
+          "format" : "int32"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/ui_theme" : {
+      "get" : {
+        "operationId" : "getUITheme",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/register" : {
+      "post" : {
+        "operationId" : "register",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/bootstrap" : {
+      "post" : {
+        "tags" : [ "Provider" ],
+        "summary" : "bootstrap",
+        "description" : "",
+        "operationId" : "bootstrap",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "body",
+          "description" : "bootstrap params",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CloudBootstrapParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWTask"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
+      "put" : {
+        "tags" : [ "Provider" ],
+        "summary" : "editProvider",
+        "description" : "",
+        "operationId" : "edit",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "editProviderFormData",
+          "description" : "edit provider form data",
+          "required" : true,
+          "schema" : {
+            "type" : "object"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Provider"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/kubernetes" : {
+      "post" : {
+        "tags" : [ "Provider" ],
+        "operationId" : "createKubernetes",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/suggested_kubernetes_config" : {
+      "get" : {
+        "tags" : [ "Provider" ],
+        "summary" : "getSuggestedKubernetesConfigs",
+        "description" : "",
+        "operationId" : "getSuggestedKubernetesConfigs",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/KubernetesProviderFormData"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/setup_docker" : {
+      "post" : {
+        "tags" : [ "Provider" ],
+        "operationId" : "setupDocker",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
+      "delete" : {
+        "tags" : [ "Provider" ],
+        "summary" : "deleteProvider",
+        "description" : "",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers" : {
+      "get" : {
+        "tags" : [ "Provider" ],
+        "summary" : "listProvider",
+        "description" : "",
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/Provider"
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Provider" ],
+        "summary" : "createProvider",
+        "description" : "",
+        "operationId" : "create",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "providerFormData",
+          "description" : "provider form data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CloudProviderFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Provider"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/initialize" : {
+      "get" : {
+        "tags" : [ "Provider" ],
+        "operationId" : "initialize",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/cleanup" : {
+      "post" : {
+        "tags" : [ "Provider" ],
+        "operationId" : "cleanup",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/import" : {
       "post" : {
         "summary" : "import",
@@ -42,6 +499,319 @@
             "description" : "successful operation",
             "schema" : {
               "type" : "object"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/runtime_config/{scope}" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "listScopes",
+        "description" : "Lists all (including empty scopes) runtime config scopes for current customer. List includes the Global scope that spans multiple customers, scope for customer specific overrides for current customer and one scope each for each universe and provider.",
+        "operationId" : "getConfig",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "includeInherited",
+          "in" : "query",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RuntimeConfigFormData"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime_config/mutable_keys" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "listKeys",
+        "description" : "List all the mutable runtime config keys",
+        "operationId" : "listKeys",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/runtime_config/{scope}/key/{key}" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "getKey",
+        "description" : "",
+        "operationId" : "getKey",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "key",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "setKey",
+        "description" : "",
+        "operationId" : "setKey",
+        "consumes" : [ "text/plain" ],
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "key",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "newValue",
+          "description" : "new value for config key",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "deleteKey",
+        "description" : "",
+        "operationId" : "deleteKey",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "key",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/runtime_config/scopes" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "listScopes",
+        "description" : "Lists all (including empty scopes) runtime config scopes for current customer. List includes the Global scope that spans multiple customers, scope for customer specific overrides for current customer and one scope each for each universe and provider.",
+        "operationId" : "listScopes",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RuntimeConfigFormData"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/regions" : {
+      "get" : {
+        "tags" : [ "Region" ],
+        "summary" : "list all Regions across all providers",
+        "description" : "",
+        "operationId" : "listAllRegions",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/Region"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}" : {
+      "delete" : {
+        "tags" : [ "Region" ],
+        "summary" : "delete",
+        "description" : "",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions" : {
+      "get" : {
+        "tags" : [ "Region" ],
+        "summary" : "list Regions for a specific provider",
+        "description" : "",
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/Region"
+              }
+            }
+          },
+          "500" : {
+            "description" : "If there was a server or database issue when listing the regions",
+            "schema" : {
+              "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Region" ],
+        "summary" : "create new region",
+        "description" : "",
+        "operationId" : "create",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "region",
+          "description" : "region form data for new region to be created",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RegionFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Region"
             }
           }
         }
@@ -65,35 +835,6 @@
             "description" : "successful operation",
             "schema" : {
               "$ref" : "#/definitions/UniverseDefinitionTaskParams"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
-      "post" : {
-        "tags" : [ "Universe" ],
-        "summary" : "setUniverse",
-        "description" : "",
-        "operationId" : "setUniverseKey",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/UniverseResp"
             }
           }
         }
@@ -184,6 +925,35 @@
             "description" : "successful operation",
             "schema" : {
               "$ref" : "#/definitions/YWSuccess"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
+      "post" : {
+        "tags" : [ "Universe" ],
+        "summary" : "setUniverse",
+        "description" : "",
+        "operationId" : "setUniverseKey",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UniverseResp"
             }
           }
         }
@@ -463,6 +1233,30 @@
             "schema" : {
               "$ref" : "#/definitions/YWSuccess"
             }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/toggle_tls" : {
+      "post" : {
+        "tags" : [ "Universe" ],
+        "operationId" : "toggleTls",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
           }
         }
       }
@@ -974,6 +1768,126 @@
         }
       }
     },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones/{azUUID}" : {
+      "delete" : {
+        "summary" : "deleteAZ",
+        "description" : "",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "azUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
+      "get" : {
+        "summary" : "listAZ",
+        "description" : "",
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/AvailabilityZone"
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "summary" : "createAZ",
+        "description" : "",
+        "operationId" : "create",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "azFormData",
+          "description" : "az form data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AvailabilityZoneFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "$ref" : "#/definitions/AvailabilityZone"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/customers/{cUUID}/certificates" : {
       "get" : {
         "operationId" : "list",
@@ -1249,927 +2163,28 @@
           }
         }
       }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
-      "get" : {
-        "summary" : "listAZ",
-        "description" : "",
-        "operationId" : "list",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "$ref" : "#/definitions/AvailabilityZone"
-              }
-            }
-          }
-        }
-      },
-      "post" : {
-        "summary" : "createAZ",
-        "description" : "",
-        "operationId" : "create",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "azFormData",
-          "description" : "az form data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AvailabilityZoneFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object",
-              "additionalProperties" : {
-                "$ref" : "#/definitions/AvailabilityZone"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones/{azUUID}" : {
-      "delete" : {
-        "summary" : "deleteAZ",
-        "description" : "",
-        "operationId" : "delete",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "azUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/runtime_config/{scope}" : {
-      "get" : {
-        "tags" : [ "RuntimeConfig" ],
-        "summary" : "listScopes",
-        "description" : "Lists all (including empty scopes) runtime config scopes for current customer. List includes the Global scope that spans multiple customers, scope for customer specific overrides for current customer and one scope each for each universe and provider.",
-        "operationId" : "getConfig",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "scope",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "includeInherited",
-          "in" : "query",
-          "required" : false,
-          "type" : "boolean",
-          "default" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/RuntimeConfigFormData"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/runtime_config/mutable_keys" : {
-      "get" : {
-        "tags" : [ "RuntimeConfig" ],
-        "summary" : "listKeys",
-        "description" : "List all the mutable runtime config keys",
-        "operationId" : "listKeys",
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "type" : "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/runtime_config/{scope}/key/{key}" : {
-      "get" : {
-        "tags" : [ "RuntimeConfig" ],
-        "summary" : "getKey",
-        "description" : "",
-        "operationId" : "getKey",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "scope",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "key",
-          "in" : "path",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "string"
-            }
-          }
-        }
-      },
-      "put" : {
-        "tags" : [ "RuntimeConfig" ],
-        "summary" : "setKey",
-        "description" : "",
-        "operationId" : "setKey",
-        "consumes" : [ "text/plain" ],
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "scope",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "key",
-          "in" : "path",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "body",
-          "name" : "newValue",
-          "description" : "new value for config key",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      },
-      "delete" : {
-        "tags" : [ "RuntimeConfig" ],
-        "summary" : "deleteKey",
-        "description" : "",
-        "operationId" : "deleteKey",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "scope",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "key",
-          "in" : "path",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/runtime_config/scopes" : {
-      "get" : {
-        "tags" : [ "RuntimeConfig" ],
-        "summary" : "listScopes",
-        "description" : "Lists all (including empty scopes) runtime config scopes for current customer. List includes the Global scope that spans multiple customers, scope for customer specific overrides for current customer and one scope each for each universe and provider.",
-        "operationId" : "listScopes",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/RuntimeConfigFormData"
-            }
-          }
-        }
-      }
-    },
-    "/universes/{uniUUID}/proxy/{proxyUrl}" : {
-      "get" : {
-        "operationId" : "proxyRequest",
-        "parameters" : [ {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "proxyUrl",
-          "in" : "path",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/logout" : {
-      "get" : {
-        "operationId" : "logout",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/login" : {
-      "post" : {
-        "summary" : "login",
-        "description" : "",
-        "operationId" : "login",
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "loginFormData",
-          "description" : "login form data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CustomerLoginFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/insecure_login" : {
-      "get" : {
-        "summary" : "insecureLogin",
-        "description" : "",
-        "operationId" : "insecure_login",
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/platform_config" : {
-      "get" : {
-        "operationId" : "getPlatformConfig",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/third_party_login" : {
-      "get" : {
-        "operationId" : "thirdPartyLogin",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/security" : {
-      "put" : {
-        "operationId" : "set_security",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/api_token" : {
-      "put" : {
-        "summary" : "apiToken",
-        "description" : "",
-        "operationId" : "api_token",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customer_count" : {
-      "get" : {
-        "operationId" : "customerCount",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/app_version" : {
-      "get" : {
-        "operationId" : "appVersion",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/logs/{maxLines}" : {
-      "get" : {
-        "operationId" : "getLogs",
-        "parameters" : [ {
-          "name" : "maxLines",
-          "in" : "path",
-          "required" : true,
-          "type" : "integer",
-          "format" : "int32"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/ui_theme" : {
-      "get" : {
-        "operationId" : "getUITheme",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/register" : {
-      "post" : {
-        "operationId" : "register",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/bootstrap" : {
-      "post" : {
-        "tags" : [ "Provider" ],
-        "summary" : "bootstrap",
-        "description" : "",
-        "operationId" : "bootstrap",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "body",
-          "description" : "bootstrap params",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CloudBootstrapParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YWTask"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
-      "put" : {
-        "tags" : [ "Provider" ],
-        "summary" : "editProvider",
-        "description" : "",
-        "operationId" : "edit",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "editProviderFormData",
-          "description" : "edit provider form data",
-          "required" : true,
-          "schema" : {
-            "type" : "object"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Provider"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/kubernetes" : {
-      "post" : {
-        "tags" : [ "Provider" ],
-        "operationId" : "createKubernetes",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/suggested_kubernetes_config" : {
-      "get" : {
-        "tags" : [ "Provider" ],
-        "summary" : "getSuggestedKubernetesConfigs",
-        "description" : "",
-        "operationId" : "getSuggestedKubernetesConfigs",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/KubernetesProviderFormData"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/setup_docker" : {
-      "post" : {
-        "tags" : [ "Provider" ],
-        "operationId" : "setupDocker",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers" : {
-      "get" : {
-        "tags" : [ "Provider" ],
-        "summary" : "listProvider",
-        "description" : "",
-        "operationId" : "list",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "$ref" : "#/definitions/Provider"
-              }
-            }
-          }
-        }
-      },
-      "post" : {
-        "tags" : [ "Provider" ],
-        "summary" : "createProvider",
-        "description" : "",
-        "operationId" : "create",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "providerFormData",
-          "description" : "provider form data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CloudProviderFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Provider"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/initialize" : {
-      "get" : {
-        "tags" : [ "Provider" ],
-        "operationId" : "initialize",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
-      "delete" : {
-        "tags" : [ "Provider" ],
-        "summary" : "deleteProvider",
-        "description" : "",
-        "operationId" : "delete",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/cleanup" : {
-      "post" : {
-        "tags" : [ "Provider" ],
-        "operationId" : "cleanup",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/regions" : {
-      "get" : {
-        "tags" : [ "Region" ],
-        "summary" : "list all Regions across all providers",
-        "description" : "",
-        "operationId" : "listAllRegions",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "$ref" : "#/definitions/Region"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions" : {
-      "get" : {
-        "tags" : [ "Region" ],
-        "summary" : "list Regions for a specific provider",
-        "description" : "",
-        "operationId" : "list",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "$ref" : "#/definitions/Region"
-              }
-            }
-          },
-          "500" : {
-            "description" : "If there was a server or database issue when listing the regions",
-            "schema" : {
-              "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
-            }
-          }
-        }
-      },
-      "post" : {
-        "tags" : [ "Region" ],
-        "summary" : "create new region",
-        "description" : "",
-        "operationId" : "create",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "region",
-          "description" : "region form data for new region to be created",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/RegionFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Region"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}" : {
-      "delete" : {
-        "tags" : [ "Region" ],
-        "summary" : "delete",
-        "description" : "",
-        "operationId" : "delete",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        }
-      }
     }
   },
   "definitions" : {
-    "AvailabilityZone" : {
+    "CustomerLoginFormData" : {
       "type" : "object",
-      "required" : [ "active", "code", "kubeconfigPath", "name", "provider", "region", "subnet", "uuid" ],
+      "required" : [ "email", "password" ],
       "properties" : {
-        "uuid" : {
+        "email" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        }
+      }
+    },
+    "YWTask" : {
+      "type" : "object",
+      "required" : [ "taskUUID" ],
+      "properties" : {
+        "taskUUID" : {
           "type" : "string",
           "format" : "uuid"
-        },
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "region" : {
-          "$ref" : "#/definitions/Region"
-        },
-        "active" : {
-          "type" : "boolean"
-        },
-        "subnet" : {
-          "type" : "string"
-        },
-        "provider" : {
-          "$ref" : "#/definitions/Provider"
-        },
-        "kubeconfigPath" : {
-          "type" : "string"
         }
       }
     },
@@ -2220,6 +2235,441 @@
         },
         "destVpcId" : {
           "type" : "string"
+        }
+      }
+    },
+    "PerRegionMetadata" : {
+      "type" : "object",
+      "required" : [ "azToSubnetIds", "customImageId", "customSecurityGroupId", "subnetId", "vpcCidr", "vpcId" ],
+      "properties" : {
+        "vpcId" : {
+          "type" : "string"
+        },
+        "vpcCidr" : {
+          "type" : "string"
+        },
+        "azToSubnetIds" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "subnetId" : {
+          "type" : "string"
+        },
+        "customImageId" : {
+          "type" : "string"
+        },
+        "customSecurityGroupId" : {
+          "type" : "string"
+        }
+      }
+    },
+    "AvailabilityZone" : {
+      "type" : "object",
+      "required" : [ "active", "code", "kubeconfigPath", "name", "provider", "region", "subnet", "uuid" ],
+      "properties" : {
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "region" : {
+          "$ref" : "#/definitions/Region"
+        },
+        "active" : {
+          "type" : "boolean"
+        },
+        "subnet" : {
+          "type" : "string"
+        },
+        "provider" : {
+          "$ref" : "#/definitions/Provider"
+        },
+        "kubeconfigPath" : {
+          "type" : "string"
+        }
+      }
+    },
+    "JsonNode" : {
+      "type" : "object",
+      "required" : [ "array", "bigDecimal", "bigInteger", "binary", "boolean", "containerNode", "double", "float", "floatingPointNumber", "int", "integralNumber", "long", "missingNode", "nodeType", "null", "number", "object", "pojo", "short", "textual", "valueNode" ],
+      "properties" : {
+        "float" : {
+          "type" : "boolean"
+        },
+        "nodeType" : {
+          "type" : "string",
+          "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ]
+        },
+        "object" : {
+          "type" : "boolean"
+        },
+        "valueNode" : {
+          "type" : "boolean"
+        },
+        "containerNode" : {
+          "type" : "boolean"
+        },
+        "missingNode" : {
+          "type" : "boolean"
+        },
+        "pojo" : {
+          "type" : "boolean"
+        },
+        "number" : {
+          "type" : "boolean"
+        },
+        "integralNumber" : {
+          "type" : "boolean"
+        },
+        "floatingPointNumber" : {
+          "type" : "boolean"
+        },
+        "short" : {
+          "type" : "boolean"
+        },
+        "int" : {
+          "type" : "boolean"
+        },
+        "long" : {
+          "type" : "boolean"
+        },
+        "double" : {
+          "type" : "boolean"
+        },
+        "bigDecimal" : {
+          "type" : "boolean"
+        },
+        "bigInteger" : {
+          "type" : "boolean"
+        },
+        "textual" : {
+          "type" : "boolean"
+        },
+        "boolean" : {
+          "type" : "boolean"
+        },
+        "binary" : {
+          "type" : "boolean"
+        },
+        "array" : {
+          "type" : "boolean"
+        },
+        "null" : {
+          "type" : "boolean"
+        }
+      }
+    },
+    "Provider" : {
+      "type" : "object",
+      "required" : [ "active", "cloudParams", "code", "customerUUID", "hostedZoneId", "hostedZoneName", "name", "regions", "uuid" ],
+      "properties" : {
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "active" : {
+          "type" : "boolean"
+        },
+        "customerUUID" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "regions" : {
+          "type" : "array",
+          "uniqueItems" : true,
+          "items" : {
+            "$ref" : "#/definitions/Region"
+          }
+        },
+        "hostedZoneName" : {
+          "type" : "string"
+        },
+        "hostedZoneId" : {
+          "type" : "string"
+        },
+        "cloudParams" : {
+          "$ref" : "#/definitions/CloudBootstrapParams"
+        },
+        "config" : {
+          "type" : "object",
+          "readOnly" : true,
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        }
+      }
+    },
+    "Region" : {
+      "type" : "object",
+      "required" : [ "active", "code", "details", "latitude", "longitude", "name", "provider", "securityGroupId", "uuid", "vnetName", "ybImage", "zones" ],
+      "properties" : {
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "code" : {
+          "type" : "string",
+          "example" : "us-west-2",
+          "description" : "Cloud provider region code"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "type" : "string"
+        },
+        "longitude" : {
+          "type" : "number",
+          "format" : "double"
+        },
+        "latitude" : {
+          "type" : "number",
+          "format" : "double"
+        },
+        "provider" : {
+          "$ref" : "#/definitions/Provider"
+        },
+        "zones" : {
+          "type" : "array",
+          "uniqueItems" : true,
+          "items" : {
+            "$ref" : "#/definitions/AvailabilityZone"
+          }
+        },
+        "active" : {
+          "type" : "boolean"
+        },
+        "details" : {
+          "$ref" : "#/definitions/JsonNode"
+        },
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnetName" : {
+          "type" : "string"
+        },
+        "config" : {
+          "type" : "object",
+          "readOnly" : true,
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        }
+      },
+      "description" : "Region within a given provider. Typically this will map to a single cloud provider region"
+    },
+    "KubernetesProviderFormData" : {
+      "type" : "object",
+      "required" : [ "active", "code", "config", "name", "region", "regionList" ],
+      "properties" : {
+        "code" : {
+          "type" : "string",
+          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ]
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "active" : {
+          "type" : "boolean"
+        },
+        "config" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "region" : {
+          "type" : "string"
+        },
+        "regionList" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/RegionData"
+          }
+        }
+      }
+    },
+    "RegionData" : {
+      "type" : "object",
+      "required" : [ "code", "config", "latitude", "longitude", "name", "zoneList" ],
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "latitude" : {
+          "type" : "number",
+          "format" : "double"
+        },
+        "longitude" : {
+          "type" : "number",
+          "format" : "double"
+        },
+        "zoneList" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/ZoneData"
+          }
+        },
+        "config" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        }
+      }
+    },
+    "ZoneData" : {
+      "type" : "object",
+      "required" : [ "code", "config", "name" ],
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "config" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        }
+      }
+    },
+    "CloudProviderFormData" : {
+      "type" : "object",
+      "required" : [ "active", "code", "config", "name", "region" ],
+      "properties" : {
+        "code" : {
+          "type" : "string",
+          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ]
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "active" : {
+          "type" : "boolean"
+        },
+        "config" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "region" : {
+          "type" : "string"
+        }
+      }
+    },
+    "ConfigEntry" : {
+      "type" : "object",
+      "required" : [ "inherited", "key", "value" ],
+      "properties" : {
+        "inherited" : {
+          "type" : "boolean"
+        },
+        "key" : {
+          "type" : "string"
+        },
+        "value" : {
+          "type" : "string"
+        }
+      }
+    },
+    "RuntimeConfigFormData" : {
+      "type" : "object",
+      "required" : [ "scopedConfigList" ],
+      "properties" : {
+        "scopedConfigList" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/ScopedConfig"
+          }
+        }
+      }
+    },
+    "ScopedConfig" : {
+      "type" : "object",
+      "required" : [ "configEntries", "mutableScope", "type", "uuid" ],
+      "properties" : {
+        "type" : {
+          "type" : "string",
+          "enum" : [ "GLOBAL", "CUSTOMER", "UNIVERSE", "PROVIDER" ]
+        },
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "mutableScope" : {
+          "type" : "boolean"
+        },
+        "configEntries" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/ConfigEntry"
+          }
+        }
+      }
+    },
+    "RegionFormData" : {
+      "type" : "object",
+      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "type" : "string"
+        },
+        "destVpcId" : {
+          "type" : "string"
+        },
+        "latitude" : {
+          "type" : "number",
+          "format" : "double"
+        },
+        "longitude" : {
+          "type" : "number",
+          "format" : "double"
+        }
+      }
+    },
+    "Generic error response from Yugawware Platform API" : {
+      "type" : "object",
+      "required" : [ "success" ],
+      "properties" : {
+        "success" : {
+          "type" : "boolean"
+        },
+        "error" : {
+          "type" : "string",
+          "example" : "There was a problem creating universe",
+          "description" : "User visible unstructurred error message"
         }
       }
     },
@@ -2408,76 +2858,6 @@
         }
       }
     },
-    "JsonNode" : {
-      "type" : "object",
-      "required" : [ "array", "bigDecimal", "bigInteger", "binary", "boolean", "containerNode", "double", "float", "floatingPointNumber", "int", "integralNumber", "long", "missingNode", "nodeType", "null", "number", "object", "pojo", "short", "textual", "valueNode" ],
-      "properties" : {
-        "float" : {
-          "type" : "boolean"
-        },
-        "nodeType" : {
-          "type" : "string",
-          "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ]
-        },
-        "object" : {
-          "type" : "boolean"
-        },
-        "valueNode" : {
-          "type" : "boolean"
-        },
-        "containerNode" : {
-          "type" : "boolean"
-        },
-        "missingNode" : {
-          "type" : "boolean"
-        },
-        "pojo" : {
-          "type" : "boolean"
-        },
-        "number" : {
-          "type" : "boolean"
-        },
-        "integralNumber" : {
-          "type" : "boolean"
-        },
-        "floatingPointNumber" : {
-          "type" : "boolean"
-        },
-        "short" : {
-          "type" : "boolean"
-        },
-        "int" : {
-          "type" : "boolean"
-        },
-        "long" : {
-          "type" : "boolean"
-        },
-        "double" : {
-          "type" : "boolean"
-        },
-        "bigDecimal" : {
-          "type" : "boolean"
-        },
-        "bigInteger" : {
-          "type" : "boolean"
-        },
-        "textual" : {
-          "type" : "boolean"
-        },
-        "boolean" : {
-          "type" : "boolean"
-        },
-        "binary" : {
-          "type" : "boolean"
-        },
-        "array" : {
-          "type" : "boolean"
-        },
-        "null" : {
-          "type" : "boolean"
-        }
-      }
-    },
     "NodeDetails" : {
       "type" : "object",
       "required" : [ "azUuid", "cloudInfo", "cronsActive", "isMaster", "isRedisServer", "isTserver", "isYqlServer", "isYsqlServer", "masterHttpPort", "masterRpcPort", "nodeExporterPort", "nodeIdx", "nodeName", "nodeUuid", "placementUuid", "redisServerHttpPort", "redisServerRpcPort", "state", "tserverHttpPort", "tserverRpcPort", "yqlServerHttpPort", "yqlServerRpcPort", "ysqlServerHttpPort", "ysqlServerRpcPort" ],
@@ -2506,7 +2886,7 @@
         },
         "state" : {
           "type" : "string",
-          "enum" : [ "ToBeAdded", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert" ]
+          "enum" : [ "ToBeAdded", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls" ]
         },
         "isMaster" : {
           "type" : "boolean"
@@ -2569,33 +2949,6 @@
         },
         "cronsActive" : {
           "type" : "boolean"
-        }
-      }
-    },
-    "PerRegionMetadata" : {
-      "type" : "object",
-      "required" : [ "azToSubnetIds", "customImageId", "customSecurityGroupId", "subnetId", "vpcCidr", "vpcId" ],
-      "properties" : {
-        "vpcId" : {
-          "type" : "string"
-        },
-        "vpcCidr" : {
-          "type" : "string"
-        },
-        "azToSubnetIds" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        },
-        "subnetId" : {
-          "type" : "string"
-        },
-        "customImageId" : {
-          "type" : "string"
-        },
-        "customSecurityGroupId" : {
-          "type" : "string"
         }
       }
     },
@@ -2678,111 +3031,6 @@
           }
         }
       }
-    },
-    "Provider" : {
-      "type" : "object",
-      "required" : [ "active", "cloudParams", "code", "customerUUID", "hostedZoneId", "hostedZoneName", "name", "regions", "uuid" ],
-      "properties" : {
-        "uuid" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "active" : {
-          "type" : "boolean"
-        },
-        "customerUUID" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "regions" : {
-          "type" : "array",
-          "uniqueItems" : true,
-          "items" : {
-            "$ref" : "#/definitions/Region"
-          }
-        },
-        "hostedZoneName" : {
-          "type" : "string"
-        },
-        "hostedZoneId" : {
-          "type" : "string"
-        },
-        "cloudParams" : {
-          "$ref" : "#/definitions/CloudBootstrapParams"
-        },
-        "config" : {
-          "type" : "object",
-          "readOnly" : true,
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        }
-      }
-    },
-    "Region" : {
-      "type" : "object",
-      "required" : [ "active", "code", "details", "latitude", "longitude", "name", "provider", "securityGroupId", "uuid", "vnetName", "ybImage", "zones" ],
-      "properties" : {
-        "uuid" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "code" : {
-          "type" : "string",
-          "example" : "us-west-2",
-          "description" : "Cloud provider region code"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "type" : "string"
-        },
-        "longitude" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "latitude" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "provider" : {
-          "$ref" : "#/definitions/Provider"
-        },
-        "zones" : {
-          "type" : "array",
-          "uniqueItems" : true,
-          "items" : {
-            "$ref" : "#/definitions/AvailabilityZone"
-          }
-        },
-        "active" : {
-          "type" : "boolean"
-        },
-        "details" : {
-          "$ref" : "#/definitions/JsonNode"
-        },
-        "securityGroupId" : {
-          "type" : "string"
-        },
-        "vnetName" : {
-          "type" : "string"
-        },
-        "config" : {
-          "type" : "object",
-          "readOnly" : true,
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        }
-      },
-      "description" : "Region within a given provider. Typically this will map to a single cloud provider region"
     },
     "UniverseDefinitionTaskParams" : {
       "type" : "object",
@@ -2987,6 +3235,166 @@
         }
       }
     },
+    "UpgradeParams" : {
+      "type" : "object",
+      "required" : [ "allowInsecure", "backupInProgress", "capability", "certUUID", "clusters", "cmkArn", "communicationPorts", "currentClusterType", "deviceInfo", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "encryptionAtRestConfig", "errorString", "expectedUniverseVersion", "extraDependencies", "firstTry", "importedState", "itestS3PackagePath", "masterGFlags", "nextClusterIndex", "nodeDetailsSet", "nodeExporterUser", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootCA", "rotateRoot", "setTxnTableWaitCountFlag", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "taskType", "tserverGFlags", "universePaused", "universeUUID", "updateInProgress", "updateSucceeded", "upgradeOption", "userAZSelected", "ybSoftwareVersion" ],
+      "properties" : {
+        "errorString" : {
+          "type" : "string"
+        },
+        "nodeExporterUser" : {
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
+        "universeUUID" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "expectedUniverseVersion" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "cmkArn" : {
+          "type" : "string"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig"
+        },
+        "nodeDetailsSet" : {
+          "type" : "array",
+          "uniqueItems" : true,
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
+          }
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies"
+        },
+        "firstTry" : {
+          "type" : "boolean"
+        },
+        "clusters" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/Cluster"
+          }
+        },
+        "currentClusterType" : {
+          "type" : "string",
+          "enum" : [ "PRIMARY", "ASYNC" ]
+        },
+        "nodePrefix" : {
+          "type" : "string"
+        },
+        "rootCA" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "userAZSelected" : {
+          "type" : "boolean"
+        },
+        "resetAZConfig" : {
+          "type" : "boolean"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "backupInProgress" : {
+          "type" : "boolean"
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "universePaused" : {
+          "type" : "boolean"
+        },
+        "nextClusterIndex" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "allowInsecure" : {
+          "type" : "boolean"
+        },
+        "setTxnTableWaitCountFlag" : {
+          "type" : "boolean"
+        },
+        "itestS3PackagePath" : {
+          "type" : "string"
+        },
+        "remotePackagePath" : {
+          "type" : "string"
+        },
+        "importedState" : {
+          "type" : "string",
+          "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ]
+        },
+        "capability" : {
+          "type" : "string",
+          "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ]
+        },
+        "taskType" : {
+          "type" : "string",
+          "enum" : [ "Everything", "Software", "GFlags", "Restart", "Certs", "ToggleTls" ]
+        },
+        "ybSoftwareVersion" : {
+          "type" : "string"
+        },
+        "certUUID" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "rotateRoot" : {
+          "type" : "boolean"
+        },
+        "enableNodeToNodeEncrypt" : {
+          "type" : "boolean"
+        },
+        "enableClientToNodeEncrypt" : {
+          "type" : "boolean"
+        },
+        "masterGFlags" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "tserverGFlags" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "sleepAfterMasterRestartMillis" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "sleepAfterTServerRestartMillis" : {
+          "type" : "integer",
+          "format" : "int32"
+        },
+        "upgradeOption" : {
+          "type" : "string",
+          "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ]
+        }
+      }
+    },
+    "YWSuccess" : {
+      "type" : "object",
+      "required" : [ "message", "success" ],
+      "properties" : {
+        "success" : {
+          "type" : "boolean"
+        },
+        "message" : {
+          "type" : "string"
+        }
+      }
+    },
     "NodeDetailsResp" : {
       "type" : "object",
       "required" : [ "azUuid", "cloudInfo", "cronsActive", "isMaster", "isRedisServer", "isTserver", "isYqlServer", "isYsqlServer", "masterHttpPort", "masterRpcPort", "nodeExporterPort", "nodeIdx", "nodeName", "nodeUuid", "placementUuid", "redisServerHttpPort", "redisServerRpcPort", "state", "tserverHttpPort", "tserverRpcPort", "yqlServerHttpPort", "yqlServerRpcPort", "ysqlServerHttpPort", "ysqlServerRpcPort" ],
@@ -3015,7 +3423,7 @@
         },
         "state" : {
           "type" : "string",
-          "enum" : [ "ToBeAdded", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert" ]
+          "enum" : [ "ToBeAdded", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls" ]
         },
         "isMaster" : {
           "type" : "boolean"
@@ -3288,171 +3696,30 @@
         }
       }
     },
-    "UpgradeParams" : {
+    "AvailabilityZoneData" : {
       "type" : "object",
-      "required" : [ "allowInsecure", "backupInProgress", "capability", "certUUID", "clusters", "cmkArn", "communicationPorts", "currentClusterType", "deviceInfo", "encryptionAtRestConfig", "errorString", "expectedUniverseVersion", "extraDependencies", "firstTry", "importedState", "itestS3PackagePath", "masterGFlags", "nextClusterIndex", "nodeDetailsSet", "nodeExporterUser", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootCA", "rotateRoot", "setTxnTableWaitCountFlag", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "taskType", "tserverGFlags", "universePaused", "universeUUID", "updateInProgress", "updateSucceeded", "upgradeOption", "userAZSelected", "ybSoftwareVersion" ],
+      "required" : [ "code", "name", "subnet" ],
       "properties" : {
-        "errorString" : {
+        "code" : {
           "type" : "string"
         },
-        "nodeExporterUser" : {
+        "name" : {
           "type" : "string"
         },
-        "deviceInfo" : {
-          "$ref" : "#/definitions/DeviceInfo"
-        },
-        "universeUUID" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "expectedUniverseVersion" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "cmkArn" : {
-          "type" : "string"
-        },
-        "encryptionAtRestConfig" : {
-          "$ref" : "#/definitions/EncryptionAtRestConfig"
-        },
-        "nodeDetailsSet" : {
-          "type" : "array",
-          "uniqueItems" : true,
-          "items" : {
-            "$ref" : "#/definitions/NodeDetails"
-          }
-        },
-        "communicationPorts" : {
-          "$ref" : "#/definitions/CommunicationPorts"
-        },
-        "extraDependencies" : {
-          "$ref" : "#/definitions/ExtraDependencies"
-        },
-        "firstTry" : {
-          "type" : "boolean"
-        },
-        "clusters" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/Cluster"
-          }
-        },
-        "currentClusterType" : {
-          "type" : "string",
-          "enum" : [ "PRIMARY", "ASYNC" ]
-        },
-        "nodePrefix" : {
-          "type" : "string"
-        },
-        "rootCA" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "userAZSelected" : {
-          "type" : "boolean"
-        },
-        "resetAZConfig" : {
-          "type" : "boolean"
-        },
-        "updateInProgress" : {
-          "type" : "boolean"
-        },
-        "backupInProgress" : {
-          "type" : "boolean"
-        },
-        "updateSucceeded" : {
-          "type" : "boolean"
-        },
-        "universePaused" : {
-          "type" : "boolean"
-        },
-        "nextClusterIndex" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "allowInsecure" : {
-          "type" : "boolean"
-        },
-        "setTxnTableWaitCountFlag" : {
-          "type" : "boolean"
-        },
-        "itestS3PackagePath" : {
-          "type" : "string"
-        },
-        "remotePackagePath" : {
-          "type" : "string"
-        },
-        "importedState" : {
-          "type" : "string",
-          "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ]
-        },
-        "capability" : {
-          "type" : "string",
-          "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ]
-        },
-        "taskType" : {
-          "type" : "string",
-          "enum" : [ "Everything", "Software", "GFlags", "Restart", "Certs" ]
-        },
-        "ybSoftwareVersion" : {
-          "type" : "string"
-        },
-        "certUUID" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "rotateRoot" : {
-          "type" : "boolean"
-        },
-        "masterGFlags" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        },
-        "tserverGFlags" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        },
-        "sleepAfterMasterRestartMillis" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "sleepAfterTServerRestartMillis" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "upgradeOption" : {
-          "type" : "string",
-          "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ]
-        }
-      }
-    },
-    "YWSuccess" : {
-      "type" : "object",
-      "required" : [ "message", "success" ],
-      "properties" : {
-        "success" : {
-          "type" : "boolean"
-        },
-        "message" : {
+        "subnet" : {
           "type" : "string"
         }
       }
     },
-    "Generic error response from Yugawware Platform API" : {
+    "AvailabilityZoneFormData" : {
       "type" : "object",
-      "required" : [ "success" ],
+      "required" : [ "availabilityZones" ],
       "properties" : {
-        "success" : {
-          "type" : "boolean"
-        },
-        "error" : {
-          "type" : "string",
-          "example" : "There was a problem creating universe",
-          "description" : "User visible unstructurred error message"
+        "availabilityZones" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/AvailabilityZoneData"
+          }
         }
       }
     },
@@ -3626,243 +3893,6 @@
         "customerId" : {
           "type" : "integer",
           "format" : "int64"
-        }
-      }
-    },
-    "AvailabilityZoneData" : {
-      "type" : "object",
-      "required" : [ "code", "name", "subnet" ],
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "subnet" : {
-          "type" : "string"
-        }
-      }
-    },
-    "AvailabilityZoneFormData" : {
-      "type" : "object",
-      "required" : [ "availabilityZones" ],
-      "properties" : {
-        "availabilityZones" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/AvailabilityZoneData"
-          }
-        }
-      }
-    },
-    "ConfigEntry" : {
-      "type" : "object",
-      "required" : [ "inherited", "key", "value" ],
-      "properties" : {
-        "inherited" : {
-          "type" : "boolean"
-        },
-        "key" : {
-          "type" : "string"
-        },
-        "value" : {
-          "type" : "string"
-        }
-      }
-    },
-    "RuntimeConfigFormData" : {
-      "type" : "object",
-      "required" : [ "scopedConfigList" ],
-      "properties" : {
-        "scopedConfigList" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/ScopedConfig"
-          }
-        }
-      }
-    },
-    "ScopedConfig" : {
-      "type" : "object",
-      "required" : [ "configEntries", "mutableScope", "type", "uuid" ],
-      "properties" : {
-        "type" : {
-          "type" : "string",
-          "enum" : [ "GLOBAL", "CUSTOMER", "UNIVERSE", "PROVIDER" ]
-        },
-        "uuid" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "mutableScope" : {
-          "type" : "boolean"
-        },
-        "configEntries" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/ConfigEntry"
-          }
-        }
-      }
-    },
-    "CustomerLoginFormData" : {
-      "type" : "object",
-      "required" : [ "email", "password" ],
-      "properties" : {
-        "email" : {
-          "type" : "string"
-        },
-        "password" : {
-          "type" : "string"
-        }
-      }
-    },
-    "YWTask" : {
-      "type" : "object",
-      "required" : [ "taskUUID" ],
-      "properties" : {
-        "taskUUID" : {
-          "type" : "string",
-          "format" : "uuid"
-        }
-      }
-    },
-    "KubernetesProviderFormData" : {
-      "type" : "object",
-      "required" : [ "active", "code", "config", "name", "region", "regionList" ],
-      "properties" : {
-        "code" : {
-          "type" : "string",
-          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ]
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "active" : {
-          "type" : "boolean"
-        },
-        "config" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        },
-        "region" : {
-          "type" : "string"
-        },
-        "regionList" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/RegionData"
-          }
-        }
-      }
-    },
-    "RegionData" : {
-      "type" : "object",
-      "required" : [ "code", "config", "latitude", "longitude", "name", "zoneList" ],
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "latitude" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "longitude" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "zoneList" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/ZoneData"
-          }
-        },
-        "config" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        }
-      }
-    },
-    "ZoneData" : {
-      "type" : "object",
-      "required" : [ "code", "config", "name" ],
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "config" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        }
-      }
-    },
-    "CloudProviderFormData" : {
-      "type" : "object",
-      "required" : [ "active", "code", "config", "name", "region" ],
-      "properties" : {
-        "code" : {
-          "type" : "string",
-          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ]
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "active" : {
-          "type" : "boolean"
-        },
-        "config" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        },
-        "region" : {
-          "type" : "string"
-        }
-      }
-    },
-    "RegionFormData" : {
-      "type" : "object",
-      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "type" : "string"
-        },
-        "hostVpcRegion" : {
-          "type" : "string"
-        },
-        "hostVpcId" : {
-          "type" : "string"
-        },
-        "destVpcId" : {
-          "type" : "string"
-        },
-        "latitude" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "longitude" : {
-          "type" : "number",
-          "format" : "double"
         }
       }
     }

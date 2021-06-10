@@ -5,9 +5,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
@@ -42,11 +42,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
-import javax.persistence.NonUniqueResultException;
-
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Api("Provider")
 public class CloudProviderController extends AuthenticatedController {

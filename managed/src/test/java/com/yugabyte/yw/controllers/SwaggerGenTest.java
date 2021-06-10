@@ -32,6 +32,11 @@ import static play.test.Helpers.route;
  */
 public class SwaggerGenTest extends FakeDBApplication {
 
+  @Override
+  protected boolean isSwaggerEnabled() {
+    return true;
+  }
+
   @Test
   public void genJson() throws IOException {
     String resourceName = "swagger.json";
