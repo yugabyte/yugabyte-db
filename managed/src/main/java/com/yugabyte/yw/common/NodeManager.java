@@ -659,7 +659,7 @@ public class NodeManager extends DevopsBase {
               } else {
                 commandArgs.add(bootScript);
               }
-          }
+            }
 
             // For now we wouldn't add machine image for aws and fallback on the default
             // one devops gives us, we need to transition to having this use versioning
