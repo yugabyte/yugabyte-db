@@ -169,7 +169,8 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
-  "commons-codec" % "commons-codec" % "1.15"
+  "commons-codec" % "commons-codec" % "1.15",
+  "org.apache.commons" % "commons-collections4" % "4.4"
 )
 // Clear default resolvers.
 appResolvers := None
