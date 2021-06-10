@@ -7,19 +7,23 @@ on:
     branches:
       - master
     paths-ignore:
+      # TODO: how to avoid duplicating this list?
       - README.md
       - 'docs/**'
       - 'architecture/**'
       - 'managed/**'
+      - '.gitignore'
 
   pull_request:
     branches:
       - master
     paths-ignore:
+      # TODO: how to avoid duplicating this list?
       - README.md
       - 'docs/**'
       - 'architecture/**'
       - 'managed/**'
+      - '.gitignore'
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
