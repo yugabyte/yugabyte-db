@@ -384,7 +384,10 @@ public class NodeManager extends DevopsBase {
               subcommand.add(customCertInfo.nodeCertPath);
               subcommand.add("--node_key_path");
               subcommand.add(customCertInfo.nodeKeyPath);
-              if (customCertInfo.clientCertPath != null) {
+              if (customCertInfo.clientCertPath != null
+                  && !customCertInfo.clientCertPath.isEmpty()
+                  && customCertInfo.clientKeyPath != null
+                  && !customCertInfo.clientKeyPath.isEmpty()) {
                 // These client certs are used for node to postgres communication
                 // These are seprate from clientRoot certs which are used for server to client comm
                 // These are not required anymore as this is not mandatory now and can be removed
@@ -575,7 +578,10 @@ public class NodeManager extends DevopsBase {
           subcommand.add(customCertInfo.nodeCertPath);
           subcommand.add("--node_key_path");
           subcommand.add(customCertInfo.nodeKeyPath);
-          if (customCertInfo.clientCertPath != null) {
+          if (customCertInfo.clientCertPath != null
+              && !customCertInfo.clientCertPath.isEmpty()
+              && customCertInfo.clientKeyPath != null
+              && !customCertInfo.clientKeyPath.isEmpty()) {
             subcommand.add("--client_cert_path");
             subcommand.add(customCertInfo.clientCertPath);
             subcommand.add("--client_key_path");
@@ -636,7 +642,10 @@ public class NodeManager extends DevopsBase {
               subcommand.add(customCertInfo.nodeCertPath);
               subcommand.add("--node_key_path");
               subcommand.add(customCertInfo.nodeKeyPath);
-              if (customCertInfo.clientCertPath != null) {
+              if (customCertInfo.clientCertPath != null
+                  && !customCertInfo.clientCertPath.isEmpty()
+                  && customCertInfo.clientKeyPath != null
+                  && !customCertInfo.clientKeyPath.isEmpty()) {
                 subcommand.add("--client_cert_path");
                 subcommand.add(customCertInfo.clientCertPath);
                 subcommand.add("--client_key_path");
