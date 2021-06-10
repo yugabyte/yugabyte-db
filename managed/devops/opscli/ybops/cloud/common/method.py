@@ -262,6 +262,9 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--disable_custom_ssh", action="store_true",
                                  help="Disable running the ansible task for using custom SSH.")
 
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
+
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if host_info:
