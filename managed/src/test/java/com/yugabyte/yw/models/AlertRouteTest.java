@@ -24,7 +24,10 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertRouteTest extends FakeDBApplication {
@@ -58,6 +61,14 @@ public class AlertRouteTest extends FakeDBApplication {
 
   @Test
   public void testCreateAndListByDefinition() {
+    AlertingData data = new AlertingData();
+    data.sendAlertsToYb = false;
+    data.alertingEmail = "";
+    data.reportOnlyErrors = true;
+    data.enableClockSkew = false;
+    // Setup alerting data.
+    CustomerConfig.createAlertConfig(defaultCustomer.uuid, Json.toJson(data));
+
     CreateAlertDefinitions task =
         new CreateAlertDefinitions(alertDefinitionService, runtimeConfigFactory);
     UniverseTaskParams taskParams = new UniverseTaskParams();
