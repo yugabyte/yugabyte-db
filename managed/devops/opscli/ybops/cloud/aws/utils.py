@@ -931,6 +931,10 @@ def create_instance(args):
         volumes.append(volume)
     vars["BlockDeviceMappings"] = volumes
 
+    if args.boot_script:
+        with open(args.boot_script, 'r') as script:
+            vars["UserData"] = script.read()
+
     # Tag setup.
     def __create_tag(k, v):
         return {"Key": k, "Value": v}
