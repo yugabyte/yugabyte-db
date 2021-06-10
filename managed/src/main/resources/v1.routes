@@ -32,6 +32,7 @@ GET     /customers/:cUUID/providers                                            c
 GET     /customers/:cUUID/providers/:pUUID/initialize                          com.yugabyte.yw.controllers.CloudProviderController.initialize(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderController.create(cUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/kubernetes                                 com.yugabyte.yw.controllers.CloudProviderController.createKubernetes(cUUID: java.util.UUID)
+GET     /customers/:cUUID/providers/suggested_kubernetes_config                com.yugabyte.yw.controllers.CloudProviderController.getSuggestedKubernetesConfigs(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/bootstrap                           com.yugabyte.yw.controllers.CloudProviderController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/cleanup                             com.yugabyte.yw.controllers.CloudProviderController.cleanup(cUUID: java.util.UUID, pUUID: java.util.UUID)

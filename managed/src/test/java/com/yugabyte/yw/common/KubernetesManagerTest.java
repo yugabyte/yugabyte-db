@@ -305,4 +305,32 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "release=" + "demo-universe"),
         command.getValue());
   }
+
+  @Test
+  public void getNodeInfos() {
+    kubernetesManager.runGetNodeInfos(configProvider);
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
+    assertEquals(ImmutableList.of("kubectl", "get", "nodes", "-o", "json"), command.getValue());
+  }
+
+  @Test
+  public void getSecret() {
+    kubernetesManager.runGetSecret(configProvider, "pull-sec", "test-ns");
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
+    assertEquals(
+        ImmutableList.of(
+            "kubectl", "get", "secret", "pull-sec", "-o", "json", "--namespace", "test-ns"),
+        command.getValue());
+  }
+
+  @Test
+  public void getSecretWithoutNamespace() {
+    kubernetesManager.runGetSecret(configProvider, "pull-sec", null);
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
+    assertEquals(
+        ImmutableList.of("kubectl", "get", "secret", "pull-sec", "-o", "json"), command.getValue());
+  }
 }

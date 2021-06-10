@@ -2,13 +2,17 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Singleton;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -133,6 +137,48 @@ public class KubernetesManager {
             namespace,
             "-o",
             "jsonpath=" + SERVICE_INFO_JSONPATH);
+    return execCommand(config, commandList);
+  }
+
+  public JsonNode getNodeInfos(Map<String, String> config) {
+    ShellResponse response = runGetNodeInfos(config);
+    if (response.code != 0) {
+      String msg = "Unable to get node information";
+      if (!response.message.isEmpty()) {
+        msg = String.format("%s: %s", msg, response.message);
+      }
+      throw new RuntimeException(msg);
+    }
+    return Util.convertStringToJson(response.message);
+  }
+
+  public ShellResponse runGetNodeInfos(Map<String, String> config) {
+    List<String> commandList = ImmutableList.of("kubectl", "get", "nodes", "-o", "json");
+    return execCommand(config, commandList);
+  }
+
+  public JsonNode getSecret(Map<String, String> config, String secretName, String namespace) {
+    ShellResponse response = runGetSecret(config, secretName, namespace);
+    if (response.code != 0) {
+      String msg = "Unable to get secret";
+      if (!response.message.isEmpty()) {
+        msg = String.format("%s: %s", msg, response.message);
+      }
+      throw new RuntimeException(msg);
+    }
+    return Util.convertStringToJson(response.message);
+  }
+
+  // TODO: disable the logging of stdout of this command if possibile,
+  // as it just leaks the secret content in the logs at DEBUG level.
+  public ShellResponse runGetSecret(
+      Map<String, String> config, String secretName, String namespace) {
+    List<String> commandList = new ArrayList<String>();
+    commandList.addAll(ImmutableList.of("kubectl", "get", "secret", secretName, "-o", "json"));
+    if (namespace != null) {
+      commandList.add("--namespace");
+      commandList.add(namespace);
+    }
     return execCommand(config, commandList);
   }
 

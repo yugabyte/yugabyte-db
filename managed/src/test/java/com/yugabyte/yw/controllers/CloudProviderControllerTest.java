@@ -20,8 +20,10 @@ import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.runners.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -43,10 +45,13 @@ import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.*;
 
+@RunWith(MockitoJUnitRunner.class)
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
 
   @Mock Config mockConfig;
+
+  @Mock private play.Configuration appConfig;
 
   Customer customer;
   Users user;
@@ -86,6 +91,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         "/api/customers/" + customer.uuid + "/providers/kubernetes",
         user.createAuthToken(),
         bodyJson);
+  }
+
+  private Result getKubernetesSuggestedConfig() {
+    return FakeApiHelper.doRequestWithAuthToken(
+        "GET",
+        "/api/customers/" + customer.uuid + "/providers/suggested_kubernetes_config",
+        user.createAuthToken());
   }
 
   private Result deleteProvider(UUID providerUUID) {
@@ -397,6 +409,104 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertBadRequest(result, "Kubeconfig can't be at two levels");
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testGetK8sSuggestedConfig() {
+    testGetK8sSuggestedConfigBase(false);
+  }
+
+  @Test
+  public void testGetK8sSuggestedConfigWithoutPullSecret() {
+    testGetK8sSuggestedConfigBase(true);
+  }
+
+  private void testGetK8sSuggestedConfigBase(boolean noPullSecret) {
+    String pullSecretName = "pull-sec";
+    String storageClassName = "ssd-class";
+    // Was not able to get this working after trying various
+    // approaches, so added the values to application.test.conf
+    // directly
+    // when(mockAppConfig.getString("yb.kubernetes.storageClass")).thenReturn(storageClassName);
+    // when(mockAppConfig.getString("yb.kubernetes.pullSecretName")).thenReturn(pullSecretName);
+
+    String nodeInfos =
+        "{\"items\": ["
+            + "{\"metadata\": {\"labels\": "
+            + "{\"failure-domain.beta.kubernetes.io/region\": \"deprecated\", "
+            + "\"failure-domain.beta.kubernetes.io/zone\": \"deprecated\", "
+            + "\"topology.kubernetes.io/region\": \"region-1\", \"topology.kubernetes.io/zone\": \"r1-az1\"}, "
+            + "\"name\": \"node-1\"}}, "
+            + "{\"metadata\": {\"labels\": "
+            + "{\"failure-domain.beta.kubernetes.io/region\": \"region-2\", "
+            + "\"failure-domain.beta.kubernetes.io/zone\": \"r2-az1\"}, "
+            + "\"name\": \"node-2\"}}, "
+            + "{\"metadata\": {\"labels\": "
+            + "{\"topology.kubernetes.io/region\": \"region-3\", \"topology.kubernetes.io/zone\": \"r3-az1\"}, "
+            + "\"name\": \"node-3\"}}"
+            + "]}";
+    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(Util.convertStringToJson(nodeInfos));
+
+    String secretContent =
+        "{\"metadata\": {"
+            + "\"annotations\": {\"kubectl.kubernetes.io/last-applied-configuration\": \"removed\"}, "
+            + "\"creationTimestamp\": \"2021-03-05\", \"name\": \""
+            + pullSecretName
+            + "\", "
+            + "\"namespace\": \"testns\", "
+            + "\"resourceVersion\": \"118225713\", \"selfLink\": \"/api/v1/to-be-removed\", "
+            + "\"uid\": \"15fab1c4-3828-4783-b3b1-413c4e131bc7\"}, "
+            + "\"data\": {\".dockerconfigjson\": \"sec-key\"}}";
+    if (noPullSecret) {
+      String msg = "Error from server (NotFound): secrets \"" + pullSecretName + "\" not found";
+      when(mockKubernetesManager.getSecret(null, pullSecretName, null))
+          .thenThrow(new RuntimeException(msg));
+    } else {
+      when(mockKubernetesManager.getSecret(null, pullSecretName, null))
+          .thenReturn(Util.convertStringToJson(secretContent));
+    }
+
+    Result result = getKubernetesSuggestedConfig();
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+
+    if (noPullSecret) {
+      assertTrue(json.path("config").isNull());
+    } else {
+      String parsedSecret =
+          "{\"metadata\":{"
+              + "\"annotations\":{},"
+              + "\"name\":\""
+              + pullSecretName
+              + "\"},"
+              + "\"data\":{\".dockerconfigjson\":\"sec-key\"}}";
+
+      assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName);
+      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_NAME", pullSecretName);
+      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_CONTENT", parsedSecret);
+    }
+
+    assertValues(
+        json,
+        "code",
+        ImmutableList.of(
+            "kubernetes", "region-3", "r3-az1", "region-1", "r1-az1", "region-2", "r2-az1"));
+    assertValues(json, "STORAGE_CLASS", ImmutableList.of(storageClassName));
+  }
+
+  @Test
+  public void testGetKubernetesConfigsDiscoveryFailure() {
+    String nodeInfos =
+        "{\"items\": ["
+            + "{\"metadata\": {\"name\": \"node-1\"}}, "
+            + "{\"metadata\": {\"name\": \"node-2\"}}, "
+            + "{\"metadata\": {\"name\": \"node-3\"}}"
+            + "]}";
+    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(Util.convertStringToJson(nodeInfos));
+
+    Result result =
+        assertThrows(YWServiceException.class, () -> getKubernetesSuggestedConfig()).getResult();
+    assertInternalServerError(result, "No region and zone information found.");
   }
 
   @Test
