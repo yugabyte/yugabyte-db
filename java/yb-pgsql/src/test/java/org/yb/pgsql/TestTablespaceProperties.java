@@ -15,9 +15,14 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
 import java.util.List;
 import java.util.Map;
 
@@ -236,6 +241,9 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
     negativeTest();
 
+    // Test table creation failures.
+    testTableCreationFailure();
+
     createTestData("sanity_test");
 
     // Verify that the table was created and its tablets were placed
@@ -318,6 +326,112 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     LOG.info("Verify whether tablet replicas placed incorrectly at creation time are moved to " +
              "their appropriate placement by the load balancer");
     verifyPlacement();
+  }
+
+  public void testTableCreationFailure() throws Exception {
+    final YBClient client = miniCluster.getClient();
+    int previousBGWait = MiniYBCluster.CATALOG_MANAGER_BG_TASK_WAIT_MS;
+
+    try (Statement stmt = connection.createStatement()) {
+      for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+        // Increase the interval between subsequent runs of bg thread so that
+        // it assigns replicas for tablets of both the tables concurrently.
+        assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms", "10000"));
+        assertTrue(client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "true"));
+      }
+      LOG.info("Increased the delay between successive runs of bg threads.");
+      // Create tablespace with valid placement.
+      stmt.execute(
+          " CREATE TABLESPACE valid_ts " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}," +
+          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+      LOG.info("Created a tablespace with valid placement information.");
+      // Create tablespace with invalid placement.
+      stmt.execute(
+          " CREATE TABLESPACE invalid_ts " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}," +
+          "{\"cloud\":\"cloud4\",\"region\":\"region4\",\"zone\":\"zone4\"," +
+          "\"min_num_replicas\":1}]}')");
+      LOG.info("Created a tablespace with invalid placement information.");
+
+      int count = 2;
+      final AtomicBoolean errorsDetectedForValidTable = new AtomicBoolean(false);
+      final AtomicBoolean errorsDetectedForInvalidTable = new AtomicBoolean(false);
+      final CyclicBarrier barrier = new CyclicBarrier(count);
+      final Thread[] threads = new Thread[count];
+      final Connection[] connections = new Connection[count];
+
+      // Create connections for concurrent create table.
+      for (int i = 0; i < count; ++i) {
+        ConnectionBuilder b = getConnectionBuilder();
+        b.withTServer(count % miniCluster.getNumTServers());
+        connections[i] = b.connect();
+      }
+
+      // Enqueue a couple of concurrent table creation jobs.
+      // Thread that creates an invalid table.
+      threads[0] = new Thread(() -> {
+        try (Statement lstmt = connections[0].createStatement()) {
+          barrier.await();
+          try {
+            LOG.info("Creating a table with invalid placement information.");
+            lstmt.execute("CREATE TABLE invalidplacementtable (a int) TABLESPACE invalid_ts");
+          } catch (Exception e) {
+            LOG.error(e.getMessage());
+            errorsDetectedForInvalidTable.set(true);
+          }
+        } catch (InterruptedException | BrokenBarrierException | SQLException throwables) {
+          LOG.info("Infrastructure exception, can be ignored", throwables);
+        } finally {
+          barrier.reset();
+        }
+      });
+
+      // Thread that creates a valid table.
+      threads[1] = new Thread(() -> {
+        try (Statement lstmt = connections[1].createStatement()) {
+          barrier.await();
+          try {
+            LOG.info("Creating a table with valid placement information.");
+            lstmt.execute("CREATE TABLE validplacementtable (a int) TABLESPACE valid_ts");
+          } catch (Exception e) {
+            LOG.error(e.getMessage());
+            errorsDetectedForValidTable.set(true);
+          }
+        } catch (InterruptedException | BrokenBarrierException | SQLException throwables) {
+          LOG.info("Infrastructure exception, can be ignored", throwables);
+        } finally {
+          barrier.reset();
+        }
+      });
+
+      // Wait for join.
+      Arrays.stream(threads).forEach(t -> t.start());
+      for (Thread t : threads) {
+        t.join();
+      }
+
+      // Reset the bg threads delay.
+      for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+        assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms",
+                                Integer.toString(previousBGWait)));
+        assertTrue(client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "false"));
+      }
+      // Verify that the transaction DDL garbage collector removes this table.
+      assertTrue(client.waitForTableRemoval(30000, "invalidplacementtable"));
+
+      LOG.info("Valid table created successfully: " + !errorsDetectedForValidTable.get());
+      LOG.info("Invalid table created successfully: " + !errorsDetectedForInvalidTable.get());
+      assertFalse(errorsDetectedForValidTable.get());
+      assertTrue(errorsDetectedForInvalidTable.get());
+    }
   }
 
   // Verify that the tables and indices have been placed in appropriate

@@ -416,6 +416,10 @@ DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
 DEFINE_test_flag(bool, select_all_tablets_for_split, false,
                  "When set to true, select all validated processed tablets for split. Specifically "
                  "this flag ensures that ShouldSplitValidTablet always returns true.");
+DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
+                 "When set, it skips checking that all the tablets of a table have enough tservers"
+                 " conforming to the table placement policy during CreateTable API call.");
+TAG_FLAG(TEST_skip_placement_validation_createtable_api, runtime);
 
 namespace yb {
 namespace master {
@@ -3240,15 +3244,17 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
 
-    // Loop through placements and verify that there are sufficient TServers to satisfy the
-    // minimum required replicas.
-    for (const auto& pb : placement_info.placement_blocks()) {
-      RETURN_NOT_OK(FindTServersForPlacementBlock(pb, ts_descs));
-    }
+    if (!FLAGS_TEST_skip_placement_validation_createtable_api) {
+      // Loop through placements and verify that there are sufficient TServers to satisfy the
+      // minimum required replicas.
+      for (const auto& pb : placement_info.placement_blocks()) {
+        RETURN_NOT_OK(FindTServersForPlacementBlock(pb, ts_descs));
+      }
 
-    // Verify that there are enough TServers to match the total required replication factor (which
-    // could be more than the sum of the minimums).
-    RETURN_NOT_OK(FindTServersForPlacementInfo(placement_info, ts_descs));
+      // Verify that there are enough TServers to match the total required replication factor (which
+      // could be more than the sum of the minimums).
+      RETURN_NOT_OK(FindTServersForPlacementInfo(placement_info, ts_descs));
+    }
   }
 
   return Status::OK();
@@ -7860,7 +7866,7 @@ void CatalogManager::GetPendingServerTasksUnlocked(
 
 void CatalogManager::ExtractTabletsToProcess(
     TabletInfos *tablets_to_delete,
-    TabletInfos *tablets_to_process) {
+    TableToTabletInfos *tablets_to_process) {
   SharedLock lock(mutex_);
 
   // TODO: At the moment we loop through all the tablets
@@ -7897,7 +7903,7 @@ void CatalogManager::ExtractTabletsToProcess(
     }
 
     // Tablets not yet assigned or with a report just received.
-    tablets_to_process->push_back(tablet);
+    (*tablets_to_process)[tablet->table()->id()].push_back(tablet);
   }
 }
 
