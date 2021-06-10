@@ -13,6 +13,7 @@ nproc_override_file: /etc/security/limits.d/yb-nproc.conf
 
 linux_packages:
   - rsync
+  - openssl
 
 azure_packages:
   - libselinux-python
