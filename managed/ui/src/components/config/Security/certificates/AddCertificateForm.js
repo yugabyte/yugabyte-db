@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import { Alert, Tabs, Tab } from 'react-bootstrap';
 import PropTypes from 'prop-types';
+import moment from 'moment';
 import { YBFormInput, YBFormDatePicker, YBFormDropZone } from '../../../common/forms/fields';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBModalForm } from '../../../common/forms';
@@ -239,6 +240,7 @@ export default class AddCertificateForm extends Component {
                     placeholder="Select Date"
                     dayPickerProps={{
                       localeUtils: MomentLocaleUtils,
+                      initialMonth: moment().add(1, 'y').toDate(),
                       disabledDays: {
                         before: new Date()
                       }
@@ -281,6 +283,7 @@ export default class AddCertificateForm extends Component {
                     placeholder="Select Date"
                     dayPickerProps={{
                       localeUtils: MomentLocaleUtils,
+                      initialMonth: moment().add(1, 'y').toDate(),
                       disabledDays: {
                         before: new Date()
                       }
