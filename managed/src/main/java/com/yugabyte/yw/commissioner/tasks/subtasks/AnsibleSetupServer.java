@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
