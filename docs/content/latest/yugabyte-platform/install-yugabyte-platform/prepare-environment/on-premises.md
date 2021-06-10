@@ -71,5 +71,5 @@ showAsideToc: true
   * 80 – HTTP access to the Yugabyte Platform console
   * 443 - HTTPs access to the Yugabyte Platform console
   * 22 – SSH
-* If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, and 6379. (For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).)
+* If you will be manually provisioning your nodes, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, and 6379. (For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).)
 * Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes.
