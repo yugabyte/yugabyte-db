@@ -34,6 +34,10 @@ public class AlertingFormData {
     public Boolean reportOnlyErrors = false;
 
     public Boolean reportBackupFailures = false;
+
+    // TODO: Remove after implementation of a separate window for all definitions
+    // configuration.
+    public boolean enableClockSkew = true;
   }
 
   public static class SmtpData {

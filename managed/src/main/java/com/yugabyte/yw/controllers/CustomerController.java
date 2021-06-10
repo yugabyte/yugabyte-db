@@ -108,6 +108,7 @@ public class CustomerController extends AuthenticatedController {
 
     JsonNode request = request().body().asJson();
     Form<AlertingFormData> formData = formFactory.getFormDataOrBadRequest(AlertingFormData.class);
+    AlertingFormData alertingFormData = formData.get();
 
     if (formData.get().name != null) {
       customer.name = formData.get().name;
@@ -117,11 +118,35 @@ public class CustomerController extends AuthenticatedController {
     if (request.has("alertingData") || request.has("smtpData")) {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
-      if (config == null && formData.get().alertingData != null) {
-        CustomerConfig.createAlertConfig(customerUUID, Json.toJson(formData.get().alertingData));
-      } else if (config != null && formData.get().alertingData != null) {
-        config.setData(Json.toJson(formData.get().alertingData));
-        config.update();
+      if (alertingFormData.alertingData != null) {
+        if (config == null) {
+          CustomerConfig.createAlertConfig(
+              customerUUID, Json.toJson(alertingFormData.alertingData));
+        } else {
+          config.setData(Json.toJson(alertingFormData.alertingData));
+          config.update();
+        }
+
+        // Update Clock Skew Alert definition activity.
+        // TODO: Remove after implementation of a separate window for all definitions
+        // configuration.
+        Set<UUID> universeUUIDs = Universe.getAllUUIDs(customer);
+        int updatedDefinitions = 0;
+        for (UUID universeUUID : universeUUIDs) {
+          AlertDefinition definition =
+              AlertDefinition.get(
+                  customerUUID, universeUUID, AlertDefinitionTemplate.CLOCK_SKEW.getName());
+          if (definition != null) {
+            definition.isActive = alertingFormData.alertingData.enableClockSkew;
+            definition.save();
+            updatedDefinitions++;
+          }
+        }
+
+        LOG.info(
+            "Updated {} Clock Skew Alert definitions, new state {}",
+            updatedDefinitions,
+            alertingFormData.alertingData.enableClockSkew);
       }
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
