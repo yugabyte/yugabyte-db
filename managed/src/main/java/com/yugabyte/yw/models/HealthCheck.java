@@ -3,18 +3,22 @@
 package com.yugabyte.yw.models;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EmbeddedId;
-import javax.persistence.Id;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.ebean.*;
+import io.ebean.annotation.DbJson;
+
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -36,15 +40,18 @@ public class HealthCheck extends Model {
 
   // The Json serialized version of the details. This is used only in read from and writing to the
   // DB.
+  @DbJson
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
-  public String detailsJson;
+  public  Map<String, Object>  detailsJson;
 
   public boolean hasError() {
-    JsonNode details = Json.parse(detailsJson);
-    JsonNode hasErrorField = details.get(FIELD_HAS_ERROR);
+    Map<String, Object>  details = detailsJson;
+    Object hasErrorField = details.get(FIELD_HAS_ERROR);
+    ObjectMapper objMapper = new ObjectMapper();
+    JsonNode node = objMapper.convertValue(hasErrorField, JsonNode.class);
     // Only return true if we have the top-level has_error field with a value of true.
-    return hasErrorField != null && hasErrorField.asBoolean();
+    return node != null && node.asBoolean();
   }
 
   public static final Finder<UUID, HealthCheck> find =
@@ -64,7 +71,9 @@ public class HealthCheck extends Model {
     check.idKey = HealthCheckKey.create(universeUUID);
     check.customerId = customerId;
     // Validate it is correct JSON.
-    check.detailsJson = Json.stringify(Json.parse(details));
+    ObjectMapper objMapper = new ObjectMapper();
+    Map<String, Object> features = objMapper.convertValue(Json.parse(details), new TypeReference<Map<String, Object>>(){});
+    check.detailsJson = features;
     // Save the object.
     check.save();
     keepOnlyLast(universeUUID, RECORD_LIMIT);

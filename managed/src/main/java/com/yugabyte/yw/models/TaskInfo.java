@@ -3,7 +3,9 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -91,7 +93,7 @@ public class TaskInfo extends Model {
   @Constraints.Required
   @Column(columnDefinition = "TEXT default '{}'", nullable = false)
   @DbJson
-  private JsonNode details;
+  private Map<String, Object>  details;
 
   // Identifier of the process owning the task.
   @Constraints.Required
@@ -128,7 +130,9 @@ public class TaskInfo extends Model {
 
   @JsonIgnore
   public JsonNode getTaskDetails() {
-    return details;
+    ObjectMapper objMapper = new ObjectMapper();
+    JsonNode jsonNode = objMapper.convertValue(details, JsonNode.class);
+    return jsonNode;
   }
 
   public State getTaskState() {
@@ -176,7 +180,9 @@ public class TaskInfo extends Model {
   }
 
   public void setTaskDetails(JsonNode details) {
-    this.details = details;
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, Object> result = mapper.convertValue(details, new TypeReference<Map<String, Object>>(){}); 
+    this.details = result;
   }
 
   public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};

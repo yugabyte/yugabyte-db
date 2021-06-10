@@ -1638,7 +1638,7 @@ public class UniverseController extends AuthenticatedController {
       List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
       ArrayNode detailsList = Json.newArray();
       for (HealthCheck check : checks) {
-        detailsList.add(Json.stringify(Json.parse(check.detailsJson)));
+        detailsList.add(check.detailsJson.toString());
       }
       return ApiResponse.success(detailsList);
     } catch (RuntimeException e) {
