@@ -39,7 +39,6 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
       // Create the task list sequence.
@@ -70,16 +69,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Start the tserver process
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-      // Mark the node process flags as true.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
       // Bring up any masters, as needed.
-      boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
         // Clean the master addresses in the conf file for the current node so that
         // the master comes up as a shell master.
@@ -109,13 +99,22 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         // Add stopped master to the quorum.
         createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
-        masterAdded = true;
-      }
-
-      // Update all server conf files with new master information.
-      if (masterAdded) {
+        // Update all server conf files with new master information.
         createMasterInfoUpdateTask(universe, currentNode);
       }
+
+      // Start the tserver process
+      createTServerTaskForNode(currentNode, "start")
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Mark the node process flags as true.
+      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Wait for the tablet server to be responsive.
+      createWaitForServersTasks(
+              new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Update node state to running
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
@@ -138,13 +137,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-      hitException = true;
-      throw t;
-    } finally {
+
       // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
+      if (currentNode != null) {
         setNodeState(taskParams().nodeName, currentNode.state);
       }
+      throw t;
+    } finally {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());

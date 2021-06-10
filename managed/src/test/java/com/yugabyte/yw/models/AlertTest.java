@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Alert.TargetType;
 import junitparams.JUnitParamsRunner;
@@ -52,7 +51,7 @@ public class AlertTest extends FakeDBApplication {
     AlertDefinition definition = createDefinition();
     Alert alert = createTestAlert(definition);
 
-    Alert queriedAlert = Alert.get(alert.uuid);
+    Alert queriedAlert = Alert.get(alert.getUuid());
 
     assertTestAlert(queriedAlert, definition);
   }
@@ -81,7 +80,7 @@ public class AlertTest extends FakeDBApplication {
 
     alert.delete();
 
-    Alert queriedAlert = Alert.get(alert.uuid);
+    Alert queriedAlert = Alert.get(alert.getUuid());
 
     assertThat(queriedAlert, Matchers.nullValue());
   }
@@ -119,7 +118,7 @@ public class AlertTest extends FakeDBApplication {
   public void testAlertsTypes(Alert.TargetType alertType, UUID uuid, Class<?> claz) {
     Alert alert =
         Alert.create(cust1.uuid, uuid, alertType, TEST_ALERT_CODE, "Warning", "Testing alert.");
-    assertNotNull(alert.uuid);
+    assertNotNull(alert.getUuid());
     assertEquals(cust1.uuid, alert.customerUUID);
     assertEquals(uuid, alert.targetUUID);
     assertEquals("Warning", alert.type);
@@ -215,15 +214,7 @@ public class AlertTest extends FakeDBApplication {
   @Test
   public void testGetActiveCustomerAlerts() {
     UUID targetUUID = UUID.randomUUID();
-    Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
-    AlertDefinition definition =
-        AlertDefinition.create(
-            cust1.uuid,
-            AlertDefinition.TargetType.Universe,
-            "alertDefinition",
-            "query {{ test.parameter }}",
-            true,
-            ImmutableList.of());
+    AlertDefinition definition = createDefinition();
 
     Alert alert1 =
         Alert.create(
@@ -233,7 +224,7 @@ public class AlertTest extends FakeDBApplication {
             TEST_ALERT_CODE,
             "Warning",
             "Testing alert 1.");
-    alert1.definitionUUID = definition.uuid;
+    alert1.setDefinitionUUID(definition.getUuid());
     alert1.save();
 
     Alert alert2 =
@@ -244,11 +235,11 @@ public class AlertTest extends FakeDBApplication {
             TEST_ALERT_CODE,
             "Warning",
             "Testing alert 2.");
-    alert2.state = State.ACTIVE;
-    alert2.definitionUUID = definition.uuid;
+    alert2.setState(State.ACTIVE);
+    alert2.setDefinitionUUID(definition.getUuid());
     alert2.save();
 
-    assertEquals(2, Alert.getActiveCustomerAlerts(cust1.uuid, definition.uuid).size());
+    assertEquals(2, Alert.getActiveCustomerAlerts(cust1.uuid, definition.getUuid()).size());
   }
 
   @Test
@@ -270,7 +261,7 @@ public class AlertTest extends FakeDBApplication {
             TEST_ALERT_CODE,
             "Warning",
             "Testing alert 2.");
-    alert2.state = State.ACTIVE;
+    alert2.setState(State.ACTIVE);
     alert2.save();
 
     Alert alert3 =
@@ -281,7 +272,7 @@ public class AlertTest extends FakeDBApplication {
             TEST_ALERT_CODE,
             "Warning",
             "Testing alert 3.");
-    alert3.state = State.ACTIVE;
+    alert3.setState(State.ACTIVE);
     alert3.save();
 
     List<Alert> result = Alert.getActiveCustomerAlertsByTargetUuid(cust1.uuid, targetUUID);
@@ -292,13 +283,7 @@ public class AlertTest extends FakeDBApplication {
 
   public AlertDefinition createDefinition() {
     Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
-    return AlertDefinition.create(
-        cust1.getUuid(),
-        AlertDefinition.TargetType.Universe,
-        "name",
-        "query",
-        true,
-        AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+    return ModelFactory.createAlertDefinition(cust1, universe);
   }
 
   public Alert createTestAlert(AlertDefinition definition) {
@@ -312,7 +297,7 @@ public class AlertTest extends FakeDBApplication {
         "Warning",
         "Testing alert 1.",
         true,
-        definition.uuid,
+        definition.getUuid(),
         ImmutableList.of(label, label2));
   }
 
@@ -325,7 +310,7 @@ public class AlertTest extends FakeDBApplication {
     assertThat(alert.errCode, is(TEST_ALERT_CODE));
     assertThat(alert.type, is("Warning"));
     assertThat(alert.message, is("Testing alert 1."));
-    assertThat(alert.definitionUUID, equalTo(definition.uuid));
+    assertThat(alert.getDefinitionUUID(), equalTo(definition.getUuid()));
     assertTrue(alert.sendEmail);
     assertThat(alert.getLabels(), containsInAnyOrder(label, label2));
   }

@@ -54,7 +54,7 @@ public class TableManagerTest extends FakeDBApplication {
       String azName = "PlacementAZ " + Integer.toString(i);
       String subnetName = "Subnet - " + Integer.toString(i);
       Region r = Region.create(testProvider, regionCode, regionName, "default-image");
-      AvailabilityZone.create(r, azCode, azName, subnetName);
+      AvailabilityZone.createOrThrow(r, azCode, azName, subnetName);
       regionUUIDs.add(r.uuid);
     }
     return regionUUIDs;

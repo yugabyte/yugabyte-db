@@ -19,6 +19,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/gutil/macros.h"
+#include "yb/tablet/operation_filter.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
 
@@ -28,7 +29,8 @@ namespace tablet {
 // Operation Context for the TabletSnapshot operation.
 // Keeps track of the Operation states (request, result, ...)
 class SnapshotOperationState :
-    public ExclusiveSchemaOperationState<tserver::TabletSnapshotOpRequestPB> {
+    public ExclusiveSchemaOperationState<tserver::TabletSnapshotOpRequestPB>,
+    public OperationFilter {
  public:
   ~SnapshotOperationState() = default;
 
@@ -54,7 +56,17 @@ class SnapshotOperationState :
 
   bool CheckOperationRequirements();
 
+  static bool ShouldAllowOpDuringRestore(consensus::OperationType op_type);
+
+  static CHECKED_STATUS RejectionStatus(OpId rejected_op_id, consensus::OperationType op_type);
+
  private:
+  void AddedAsPending() override;
+  void RemovedFromPending() override;
+
+  CHECKED_STATUS CheckOperationAllowed(
+      const OpId& id, consensus::OperationType op_type) const override;
+
   CHECKED_STATUS DoCheckOperationRequirements();
 
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperationState);

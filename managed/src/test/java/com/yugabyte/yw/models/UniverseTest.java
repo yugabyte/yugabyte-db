@@ -292,9 +292,9 @@ public class UniverseTest extends FakeDBApplication {
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     Region r3 = Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
-    AvailabilityZone.create(r1, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone.create(r2, "az-2", "AZ 2", "subnet-2");
-    AvailabilityZone.create(r3, "az-3", "AZ 3", "subnet-3");
+    AvailabilityZone.createOrThrow(r1, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r2, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r3, "az-3", "AZ 3", "subnet-3");
     List<UUID> regionList = new ArrayList<>();
     regionList.add(r1.uuid);
     regionList.add(r2.uuid);

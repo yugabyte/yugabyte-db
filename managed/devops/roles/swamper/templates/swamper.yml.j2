@@ -19,13 +19,12 @@ global:
   external_labels:
     monitor: 'swamper'
 
-{% if prometheus_rule_files is defined %}
 # Rule files specifies a list of files from which rules are read.
 rule_files:
+  - '{{ prometheus_rule_path }}/yugaware.ad.*.yml'
   {% for (key, value) in prometheus_rule_files.items() %}
   - {{ prometheus_rule_path }}/{{ value.dest }}
   {% endfor %}
-{% endif %}
 
 # A list of scrape configurations.
 scrape_configs:

@@ -412,10 +412,10 @@ public class CustomerControllerTest extends FakeDBApplication {
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     Region r1 = Region.create(provider, "region-2", "PlacementRegion-2", "default-image");
-    AvailabilityZone.create(r1, "az-2", "PlacementAZ-2", "subnet-2");
-    AvailabilityZone az3 = AvailabilityZone.create(r1, "az-3", "PlacementAZ-3", "subnet-3");
+    AvailabilityZone.createOrThrow(r1, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r1, "az-3", "PlacementAZ-3", "subnet-3");
     az3.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
 
     ObjectNode response = Json.newObject();
@@ -447,7 +447,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
@@ -479,7 +479,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
@@ -778,7 +778,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertNull(CustomerConfig.getSmtpConfig(customer.uuid));
     List<Alert> alerts = Alert.list(customer.uuid, "%", smtpConfig.configUUID);
     assertEquals(1, alerts.size());
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
+    assertEquals(Alert.State.RESOLVED, alerts.get(0).getState());
 
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));

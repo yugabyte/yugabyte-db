@@ -135,7 +135,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private Universe setupK8sUniverse(String name) {
     Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone az = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az.uuid, pi);
     Map<String, String> config = new HashMap<>();
@@ -620,10 +620,10 @@ public class HealthCheckerTest extends FakeDBApplication {
         new HealthChecker.CheckSingleUniverseParams(
             u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
-    assertEquals(State.RESOLVED, Alert.get(alert1.uuid).state);
-    assertEquals(State.RESOLVED, Alert.get(alert2.uuid).state);
+    assertEquals(State.RESOLVED, Alert.get(alert1.getUuid()).getState());
+    assertEquals(State.RESOLVED, Alert.get(alert2.getUuid()).getState());
     // Alert3 is not related to health-check, so it should not be updated.
-    assertNotEquals(State.RESOLVED, Alert.get(alert3.uuid).state);
+    assertNotEquals(State.RESOLVED, Alert.get(alert3.getUuid()).getState());
   }
 
   @Test

@@ -37,6 +37,8 @@
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
 using std::string;
@@ -140,19 +142,33 @@ CHECKED_STATUS TabletInfo::CheckRunning() const {
   return Status::OK();
 }
 
-Result<TSDescriptor*> TabletInfo::GetLeader() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  auto result = GetLeaderUnlocked();
-  if (result) {
-    return result;
-  }
-
+CHECKED_STATUS TabletInfo::GetLeaderNotFoundStatus() const {
   RETURN_NOT_OK(CheckRunning());
 
   return STATUS_FORMAT(
       NotFound,
       "No leader found for tablet $0 with $1 replicas: $2.",
       ToString(), replica_locations_->size(), *replica_locations_);
+}
+
+Result<TSDescriptor*> TabletInfo::GetLeader() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto result = GetLeaderUnlocked();
+  if (result) {
+    return result;
+  }
+  return GetLeaderNotFoundStatus();
+}
+
+Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+
+  for (const auto& pair : *replica_locations_) {
+    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+      return pair.second.drive_info;
+    }
+  }
+  return GetLeaderNotFoundStatus();
 }
 
 TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
@@ -800,6 +816,32 @@ const QLTypePB& UDTypeInfo::field_types(int index) const {
 string UDTypeInfo::ToString() const {
   auto l = LockForRead();
   return Format("$0 [id=$1] {metadata=$2} ", name(), udtype_id_, l->pb);
+}
+
+DdlLogEntry::DdlLogEntry(
+    HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
+    const std::string& action) {
+  pb_.set_time(time.ToUint64());
+  pb_.set_table_type(table.table_type());
+  pb_.set_namespace_name(table.namespace_name());
+  pb_.set_namespace_id(table.namespace_id());
+  pb_.set_table_name(table.name());
+  pb_.set_table_id(table_id);
+  pb_.set_action(action);
+}
+
+const DdlLogEntryPB& DdlLogEntry::old_pb() const {
+  // Since DDL log entry are always added, we don't have previous PB for the same entry.
+  static const DdlLogEntryPB kEmpty;
+  return kEmpty;
+}
+
+const DdlLogEntryPB& DdlLogEntry::new_pb() const {
+  return pb_;
+}
+
+std::string DdlLogEntry::id() const {
+  return DocHybridTime(HybridTime(pb_.time()), kMaxWriteId).EncodedInDocDbFormat();
 }
 
 }  // namespace master

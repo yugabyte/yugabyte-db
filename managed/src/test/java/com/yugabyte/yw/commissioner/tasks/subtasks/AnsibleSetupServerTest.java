@@ -26,7 +26,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
     Provider p = ModelFactory.newProvider(defaultCustomer, cloudType);
     Region r = Region.create(p, "r-1", "r-1", "yb-image");
     AccessKey.create(p.uuid, "demo-key", accessKeyInfo);
-    AvailabilityZone az = AvailabilityZone.create(r, "az-1", "az-1", "subnet-1");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(r, "az-1", "az-1", "subnet-1");
     Universe u =
         ModelFactory.createUniverse(
             cloudType.name() + "-universe", defaultCustomer.getCustomerId(), cloudType);
