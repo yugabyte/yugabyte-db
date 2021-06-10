@@ -9,9 +9,14 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
+
+import play.libs.Json;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,20 +53,24 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
       String nodePrefix = universe.getUniverseDetails().nodePrefix;
 
       Config customerConfig = runtimeConfigFactory.forCustomer(customer);
+      CustomerConfig alertConfig = CustomerConfig.getAlertConfig(customer.getUuid());
+      AlertingData data = Json.fromJson(alertConfig.getData(), AlertingData.class);
 
-      for (AlertDefinitionTemplate definition : AlertDefinitionTemplate.values()) {
-        if (definition.isCreateForNewUniverse()) {
-          AlertDefinition alertDefinition = new AlertDefinition();
-          alertDefinition.setCustomerUUID(customer.getUuid());
-          alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
-          alertDefinition.setName(definition.getName());
-          alertDefinition.setQuery(definition.buildTemplate(nodePrefix));
-          alertDefinition.setQueryThreshold(
-              customerConfig.getDouble(definition.getDefaultThresholdParamName()));
-          alertDefinition.setLabels(
-              AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
-          alertDefinitionService.create(alertDefinition);
-        }
+      for (AlertDefinitionTemplate template : AlertDefinitionTemplate.values()) {
+        AlertDefinition alertDefinition = new AlertDefinition();
+        alertDefinition.setActive(
+            template != AlertDefinitionTemplate.CLOCK_SKEW
+                ? template.isCreateForNewUniverse()
+                : data.enableClockSkew);
+        alertDefinition.setCustomerUUID(customer.getUuid());
+        alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
+        alertDefinition.setName(template.getName());
+        alertDefinition.setQuery(template.buildTemplate(nodePrefix));
+        alertDefinition.setQueryThreshold(
+            customerConfig.getDouble(template.getDefaultThresholdParamName()));
+        alertDefinition.setLabels(
+            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+        alertDefinitionService.create(alertDefinition);
       }
 
     } catch (Exception e) {

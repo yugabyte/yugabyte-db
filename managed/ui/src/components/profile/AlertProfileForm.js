@@ -12,7 +12,7 @@ import { Formik, Form, Field } from 'formik';
 import { isDisabled, showOrRedirect } from '../../utils/LayoutUtils';
 import * as Yup from 'yup';
 import _ from 'lodash';
-import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isEmptyObject } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
 
 // TODO set predefined defaults another way not to share defaults this way
@@ -27,7 +27,8 @@ const validationSchema = Yup.object().shape({
     checkIntervalMs: Yup.number().typeError('Must specify a number'),
     statusUpdateIntervalMs: Yup.number().typeError('Must specify a number'),
     reportOnlyErrors: Yup.boolean().default(false).nullable(),
-    reportBackupFailures: Yup.boolean().default(false).nullable()
+    reportBackupFailures: Yup.boolean().default(false).nullable(),
+    enableClockSkew: Yup.boolean().default(true).nullable()
   }),
   customSmtp: Yup.boolean(),
   smtpData: Yup.object().when('customSmtp', {
@@ -111,7 +112,10 @@ export default class AlertProfileForm extends Component {
           : '',
         sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
         reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors,
-        reportBackupFailures: customer.data.alertingData && customer.data.alertingData.reportBackupFailures
+        reportBackupFailures: customer.data.alertingData && customer.data.alertingData.reportBackupFailures,
+        enableClockSkew: customer.data.alertingData &&
+           (isEmptyObject(customer.data.alertingData.enableClockSkew) || 
+            customer.data.alertingData.enableClockSkew)
       },
       customSmtp: isNonEmptyObject(_.get(customer, 'data.smtpData', {})),
       smtpData: {
@@ -227,6 +231,20 @@ export default class AlertProfileForm extends Component {
                         }}
                         label="Send backup failure notification"
                         subLabel="Whether or not to send an email if a backup task fails."
+                      />
+                    )}
+                  </Field>
+                  <Field name="alertingData.enableClockSkew">
+                    {({ field }) => (
+                      <YBToggle
+                        onToggle={handleChange}
+                        name="alertingData.enableClockSkew"
+                        input={{
+                          value: field.value,
+                          onChange: field.onChange
+                        }}
+                        label="Enable clock skew notification"
+                        subLabel="Whether or not to generate clock skew alerts."
                       />
                     )}
                   </Field>

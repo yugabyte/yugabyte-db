@@ -5,6 +5,8 @@ package com.yugabyte.yw.forms;
 import play.data.validation.Constraints;
 import java.util.Map;
 
+import com.yugabyte.yw.common.alerts.SmtpData;
+
 /** This class will be used by the API and UI Form Elements to validate constraints are met */
 public class AlertingFormData {
   @Constraints.MaxLength(15)
@@ -34,25 +36,14 @@ public class AlertingFormData {
     public Boolean reportOnlyErrors = false;
 
     public Boolean reportBackupFailures = false;
-  }
 
-  public static class SmtpData {
-    public String smtpServer = null;
-
-    public int smtpPort = -1;
-
-    public String emailFrom = null;
-
-    public String smtpUsername = null;
-
-    public String smtpPassword = null;
-
-    public boolean useSSL = true;
-
-    public boolean useTLS = false;
+    // TODO: Remove after implementation of a separate window for all definitions
+    // configuration.
+    public boolean enableClockSkew = true;
   }
 
   public AlertingData alertingData;
+
   public SmtpData smtpData;
 
   @Constraints.Pattern(
