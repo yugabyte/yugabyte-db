@@ -17,6 +17,38 @@ backup:
 monitors:
   cpuacct: []
   memory: []
+custom_requirements:
+  - id: check_free_space
+    message: Ensure there is sufficient space for platform installation.
+    details: Must have at least 16 GB space available.
+    results:
+      - status: success
+        message:
+          default_message: Directory {{.directory}} has enough space available.
+          args:
+            directory: '{{repl ConfigOption "storage_path"}}'
+        condition:
+          status_code: 0
+          bool_expr: '{{repl Trim .Result | ParseFloat | lt 16e9 }}'
+      - status: error
+        message:
+          default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 16 GB.
+          args:
+            directory: '{{repl ConfigOption "storage_path"}}'
+            bytes: '{{repl ParseFloat .Result | HumanSize }}'
+        condition:
+          status_code: 0
+      - status: warn
+        message:
+          default_message: 'Invalid status code {{.status}}. Error: {{.error}}'
+          args:
+            status: '{{repl .StatusCode }}'
+            error: '{{repl .Error }}'
+    command:
+      id: disk_space_available
+      data:
+        cluster: false
+        dir: '{{repl ConfigOption "storage_path"}}'
 cmds:
   - name: dbpass_cmd
     cmd: random
