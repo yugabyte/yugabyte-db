@@ -572,7 +572,20 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testUniverseCreateWithSelfSignedTLS() {
+  @Parameters({
+    "true, false, false, false, false",
+    "true, true, false, true, false",
+    "true, false, true, true, true",
+    "true, true, true, true, true",
+    "false, false, true, false, true",
+    "false, true, true, true, true",
+  })
+  public void testUniverseCreateForSelfSignedTLS(
+      boolean rootAndClientRootCASame,
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt,
+      boolean rootCAExists,
+      boolean clientRootCAExists) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
             Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
@@ -591,8 +604,8 @@ public class UniverseControllerTest extends WithApplication {
         Json.newObject()
             .put("universeName", "SingleUserUniverse")
             .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", true)
-            .put("enableClientToNodeEncrypt", true)
+            .put("enableNodeToNodeEncrypt", enableNodeToNodeEncrypt)
+            .put("enableClientToNodeEncrypt", enableClientToNodeEncrypt)
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
@@ -606,6 +619,7 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject().put("nodePrefix", "demo-node");
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", Json.newArray());
+    bodyJson.put("rootAndClientRootCASame", rootAndClientRootCASame);
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -616,56 +630,10 @@ public class UniverseControllerTest extends WithApplication {
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
     UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
-    assertNotNull(taskParam.rootCA);
-    assertAuditEntry(1, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseCreateWithoutSelfSignedTLS() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-
-    Provider p = ModelFactory.awsProvider(customer);
-    String accessKeyCode = "someKeyCode";
-    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    ObjectNode bodyJson = Json.newObject();
-    ObjectNode userIntentJson =
-        Json.newObject()
-            .put("universeName", "SingleUserUniverse")
-            .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", false)
-            .put("enableClientToNodeEncrypt", false)
-            .put("replicationFactor", 3)
-            .put("numNodes", 3)
-            .put("provider", p.uuid.toString())
-            .put("accessKeyCode", accessKeyCode);
-
-    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
-    userIntentJson.set("regionList", regionList);
-    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", Json.newArray());
-
-    String url = "/api/customers/" + customer.uuid + "/universes";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    ArgumentCaptor<UniverseTaskParams> taskParams =
-        ArgumentCaptor.forClass(UniverseTaskParams.class);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertValue(json, "taskUUID", fakeTaskUUID.toString());
-    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
-    UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
-    assertNull(taskParam.rootCA);
+    if (rootCAExists) assertNotNull(taskParam.rootCA);
+    else assertNull(taskParam.rootCA);
+    if (clientRootCAExists) assertNotNull(taskParam.clientRootCA);
+    else assertNull(taskParam.clientRootCA);
     assertAuditEntry(1, customer.uuid);
   }
 

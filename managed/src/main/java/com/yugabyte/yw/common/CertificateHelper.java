@@ -77,6 +77,7 @@ public class CertificateHelper {
   public static final String DEFAULT_CLIENT = "yugabyte";
   public static final String CERT_PATH = "%s/certs/%s/%s";
   public static final String ROOT_CERT = "root.crt";
+  public static final String CLIENT_NODE_SUFFIX = "-client";
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
     try {
@@ -156,6 +157,10 @@ public class CertificateHelper {
       LOG.error("Unable to create RootCA for universe {}", nodePrefix, e);
       return null;
     }
+  }
+
+  public static UUID createClientRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
+    return createRootCA(nodePrefix + CLIENT_NODE_SUFFIX, customerUUID, storagePath);
   }
 
   public static JsonNode createClientCertificate(

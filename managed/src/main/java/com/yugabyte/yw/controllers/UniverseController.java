@@ -365,6 +365,12 @@ public class UniverseController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
 
+    if (!taskParams.rootAndClientRootCASame
+        && taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
+      throw new YWServiceException(
+          BAD_REQUEST, "root and clientRootCA cannot be different for Kubernetes env.");
+    }
+
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
@@ -449,49 +455,87 @@ public class UniverseController extends AuthenticatedController {
               BAD_REQUEST, "IPV6 not supported for platform deployed VMs.");
         }
       }
-      if (primaryCluster.userIntent.enableNodeToNodeEncrypt
-          || primaryCluster.userIntent.enableClientToNodeEncrypt) {
+      if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
+        // create self signed rootCA in case it is not provided by the user.
         if (taskParams.rootCA == null) {
           taskParams.rootCA =
               CertificateHelper.createRootCA(
                   taskParams.nodePrefix, customerUUID, appConfig.getString("yb.storage.path"));
         }
-        // If client encryption is enabled, generate the client cert file for each node.
-        if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
-          CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
-          if (cert.certType == CertificateInfo.Type.SelfSigned) {
-            CertificateHelper.createClientCertificate(
-                taskParams.rootCA,
+        CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+        if (cert.certType != CertificateInfo.Type.SelfSigned) {
+          if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
+            throw new YWServiceException(
+                BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
+          }
+          if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
+            String errMsg =
                 String.format(
-                    CertificateHelper.CERT_PATH,
-                    appConfig.getString("yb.storage.path"),
-                    customerUUID.toString(),
-                    taskParams.rootCA.toString()),
-                CertificateHelper.DEFAULT_CLIENT,
-                null,
-                null);
-          } else {
-            if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
-              throw new YWServiceException(
-                  BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
-            }
-            if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
-              String errMsg =
-                  String.format(
-                      "The certificate %s needs info. Update the cert" + " and retry.",
-                      CertificateInfo.get(taskParams.rootCA).label);
-              LOG.error(errMsg);
-              throw new YWServiceException(BAD_REQUEST, errMsg);
-            }
-            LOG.info(
-                "Skipping client certificate creation for universe {} ({}) "
-                    + "because cert {} (type {})is not a self-signed cert.",
-                universe.name,
-                universe.universeUUID,
-                taskParams.rootCA,
-                cert.certType);
+                    "The certificate %s needs info. Update the cert" + " and retry.",
+                    CertificateInfo.get(taskParams.rootCA).label);
+            LOG.error(errMsg);
+            throw new YWServiceException(BAD_REQUEST, errMsg);
           }
         }
+      }
+      if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
+        if (taskParams.clientRootCA == null) {
+          if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
+            taskParams.clientRootCA = taskParams.rootCA;
+          } else {
+            // create self signed clientRootCA in case it is not provided by the user
+            // and root and clientRoot CA needs to be different
+            taskParams.clientRootCA =
+                CertificateHelper.createClientRootCA(
+                    taskParams.nodePrefix, customerUUID, appConfig.getString("yb.storage.path"));
+          }
+        }
+
+        // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
+        // This is necessary to set to ensure backward compatibity as existing parts of
+        // codebase (kubernetes) uses rootCA for Client to Node Encryption
+        if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
+          taskParams.rootCA = taskParams.clientRootCA;
+        }
+
+        // If client encryption is enabled, generate the client cert file for each node.
+        CertificateInfo cert = CertificateInfo.get(taskParams.clientRootCA);
+        if (cert.certType == CertificateInfo.Type.SelfSigned) {
+          CertificateHelper.createClientCertificate(
+              taskParams.clientRootCA,
+              String.format(
+                  CertificateHelper.CERT_PATH,
+                  appConfig.getString("yb.storage.path"),
+                  customerUUID.toString(),
+                  taskParams.clientRootCA.toString()),
+              CertificateHelper.DEFAULT_CLIENT,
+              null,
+              null);
+        } else {
+          if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
+            throw new YWServiceException(
+                BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
+          }
+          if (!CertificateInfo.isCertificateValid(taskParams.clientRootCA)) {
+            String errMsg =
+                String.format(
+                    "The certificate %s needs info. Update the cert" + " and retry.",
+                    CertificateInfo.get(taskParams.clientRootCA).label);
+            LOG.error(errMsg);
+            throw new YWServiceException(BAD_REQUEST, errMsg);
+          }
+          LOG.info(
+              "Skipping client certificate creation for universe {} ({}) "
+                  + "because cert {} (type {})is not a self-signed cert.",
+              universe.name,
+              universe.universeUUID,
+              taskParams.clientRootCA,
+              cert.certType);
+        }
+      }
+
+      if (primaryCluster.userIntent.enableNodeToNodeEncrypt
+          || primaryCluster.userIntent.enableClientToNodeEncrypt) {
         // Set the flag to mark the universe as using TLS enabled and therefore not allowing
         // insecure connections.
         taskParams.allowInsecure = false;
@@ -739,6 +783,16 @@ public class UniverseController extends AuthenticatedController {
     taskParams.enableClientToNodeEncrypt = requestParams.enableClientToNodeEncrypt;
     taskParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
+
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      throw new YWServiceException(BAD_REQUEST, "Kubernetes Upgrade is not supported.");
+    }
+
+    if (!universeDetails.rootAndClientRootCASame
+        || (universeDetails.rootCA != universeDetails.clientRootCA)) {
+      throw new YWServiceException(
+          BAD_REQUEST, "RootCA and ClientRootCA cannot be different for Upgrade.");
+    }
 
     // Create root certificate if not exist
     taskParams.rootCA = universeDetails.rootCA;
