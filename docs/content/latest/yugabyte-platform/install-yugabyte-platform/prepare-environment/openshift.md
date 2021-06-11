@@ -1,14 +1,12 @@
 ---
-title: Prepare the OpenShift Environment
-headerTitle: Prepare the OpenShift Environment
+title: Prepare the OpenShift environment
+headerTitle: Prepare the OpenShift environment
 linkTitle: Prepare the environment
 description: Prepare the OpenShift environment for Yugabyte Platform
-aliases:
-  - /latest/deploy/enterprise-edition/prepare-environment/
 menu:
   latest:
+    identifier: prepare-environment-4-OpenShift
     parent: install-yugabyte-platform
-    identifier: prepare-environment-1-OpenShift
     weight: 55
 isTocNested: false
 showAsideToc: true

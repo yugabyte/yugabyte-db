@@ -2,7 +2,7 @@
 title: Prepare the private cloud (on-premise) environment
 headerTitle: Prepare the private cloud (on-premise) environment
 linkTitle: Prepare the environment
-description: Prepare the private cloud (on-premise) environment for the Yugabyte Platform.
+description: Prepare the private cloud (on-premise) environment for Yugabyte Platform.
 menu:
   latest:
     identifier: prepare-environment-5-private-cloud
@@ -58,7 +58,9 @@ showAsideToc: true
 
 </ul>
 
-## Platform Node Preparation
+To run Yugabyte Universe on a private cloud, you need to prepare one machine to run the Yugabyte Platform, which is in turn used to install and manage the nodes that will make up your universe.
+
+The platform node has the following requirements:
 
 * Hardware requirements
   * Nodes: 1 Virtual Machine 
@@ -71,5 +73,5 @@ showAsideToc: true
   * 80 – HTTP access to the Yugabyte Platform console
   * 443 - HTTPs access to the Yugabyte Platform console
   * 22 – SSH
-* If you will be manually provisioning your nodes, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, and 6379. (For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).)
+  * 9090 - Prometheus metrics
 * Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes.

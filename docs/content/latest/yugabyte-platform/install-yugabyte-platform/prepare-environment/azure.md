@@ -84,7 +84,7 @@ To access the Yugabyte Platform from outside the Azure environment, you would ne
 * Check, manage, and upgrade Yugabyte Platform (port tcp:8800)
 * View the Yugabyte Platform console (port tcp:80)
 
-In addition, if you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+In addition, if you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 Yugabyte platform will provision and access database nodes in a later step; you will need to provide a virtual network where the platform needs to create the database nodes. So you would need to ensure connectivity between the platform VM  virtual network and database VMs virtual network. You may need virtual network peering based on your network configuration. Please make sure the platform can access these nodes on the database VM’s virtual network - /latest/reference/configuration/default-ports/
 To create a security group that enables these, go to Network Security Groups > Add> Choose subscription > Select resource group used in the previous step > Add name and region, click Create Security Group, and then add the following values:
@@ -92,7 +92,7 @@ To create a security group that enables these, go to Network Security Groups > A
 * For the name, enter yugaware-sg (you can change the name if you want).
 * Edit inbound security rules:
   * Add the appropriate IP addresses to the Source IP ranges field. To allow access from any machine, add 0.0.0.0/0 but note that this is not very secure.
-  * Add the ports 22, 8800, and 80 to the Port Range field. The protocol selected must be TCP. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, and 6379 to the to the Port Range field.
+  * Add the ports 22, 8800, and 80 to the Port Range field. The protocol selected must be TCP. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 to the to the Port Range field.
 
 ## Create a service principal   
 
