@@ -8,7 +8,7 @@ aliases:
 - /latest/manage/backup-restore/point-in-time-restore
 menu:
   latest:
-    identifier: point-in-time-restore
+    identifier: point-in-time-recovery
     parent: backup-restore
     weight: 704
 isTocNested: true
@@ -25,7 +25,7 @@ To learn more about YugabyteDB's point-in-time recovery feature, refer to the [R
 
 ## Try out the PITR feature
 
-There are several recovery scenarios [for YSQL](../../../explore/backup-restore/point-in-time-restore-ysql/) and [for YCQL](../../../explore/backup-restore/point-in-time-restore-ycql/) in the Explore section.
+There are several recovery scenarios [for YSQL](../../../explore/backup-restore/point-in-time-recovery-ysql/) and [for YCQL](../../../explore/backup-restore/point-in-time-recovery-ycql/) in the Explore section.
 
 ## Recovery scenarios
 

@@ -1,13 +1,14 @@
 ---
-title: Point-in-Time Restore for YCQL
-headerTitle: Point-in-time restore
-linkTitle: Point-in-time restore
+title: Point-in-Time Recovery for YCQL
+headerTitle: Point-in-time recovery
+linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YCQL
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
+- /latest/explore/backup-restore/point-in-time-restore-ycql
 menu:
   latest:
-    identifier: explore-point-in-time-restore-ycql
+    identifier: explore-point-in-time-recovery-ycql
     parent: explore
     weight: 704
 isTocNested: true
@@ -16,24 +17,24 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/explore/backup-restore/point-in-time-restore-ysql" class="nav-link">
+    <a href="/latest/explore/backup-restore/point-in-time-recovery-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/explore/backup-restore/point-in-time-restore-ycql" class="nav-link active">
+    <a href="/latest/explore/backup-restore/point-in-time-recovery-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 </ul>
 
-The point-in-time restore feature allows you to restore the state of your cluster's data (and some types of metadata) from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
+The point-in-time recovery (PITR) feature allows you to restore the state of your cluster's data (and some types of metadata) from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
-Refer to [Features](../../../manage/backup-restore/point-in-time-restore/#features), [Use cases](../../../manage/backup-restore/point-in-time-restore/#use-cases), and [Limitations](../../../manage/backup-restore/point-in-time-restore/#limitations) for details on this feature. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
+Refer to [Features](../../../manage/backup-restore/point-in-time-recovery/#features), [Use cases](../../../manage/backup-restore/point-in-time-recovery/#use-cases), and [Limitations](../../../manage/backup-restore/point-in-time-recovery/#limitations) for details on this feature. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-You can try out the PITR feature by creating a namespace and populating it, creating a snapshot schedule, and restoring (be sure to check out the [limitations](../../../manage/backup-restore/point-in-time-restore/#limitations)!) from that schedule.
+You can try out the PITR feature by creating a namespace and populating it, creating a snapshot schedule, and restoring (be sure to check out the [limitations](../../../manage/backup-restore/point-in-time-recovery/#limitations)!) from that schedule.
 
 {{< tip title="Examples are simplified" >}}
 
