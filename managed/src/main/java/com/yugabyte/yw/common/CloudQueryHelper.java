@@ -12,10 +12,7 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
@@ -23,10 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Singleton;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import play.libs.Json;
@@ -40,7 +34,9 @@ public class CloudQueryHelper extends DevopsBase {
   private static final String DEFAULT_VNET_KEY = "vnet";
 
   @Override
-  protected String getCommandType() { return YB_CLOUD_COMMAND_TYPE; }
+  protected String getCommandType() {
+    return YB_CLOUD_COMMAND_TYPE;
+  }
 
   public JsonNode currentHostInfo(Common.CloudType cloudType, List<String> metadataTypes) {
     List<String> commandArgs = new ArrayList<String>();
@@ -123,8 +119,14 @@ public class CloudQueryHelper extends DevopsBase {
       commandArgs.add("--custom_payload");
       commandArgs.add(customPayload);
     }
-    return execAndParseCommandRegion(
-        regionList.get(0).uuid, "instance_types", commandArgs);
+    return execAndParseCommandRegion(regionList.get(0).uuid, "instance_types", commandArgs);
+  }
+
+  public JsonNode getMachineImages(UUID providerUUID, Region region) {
+    List<String> commandArgs = new ArrayList<String>();
+    commandArgs.add("--regions");
+    commandArgs.add(region.code);
+    return execAndParseCommandCloud(providerUUID, "ami", commandArgs);
   }
 
   public JsonNode queryVpcs(UUID regionUUID) {

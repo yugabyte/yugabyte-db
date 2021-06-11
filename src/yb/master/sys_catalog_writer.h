@@ -34,13 +34,18 @@ class SysCatalogWriter {
 
   ~SysCatalogWriter() = default;
 
-  template <class PersistentDataEntryClass>
-  CHECKED_STATUS MutateItem(const MetadataCowWrapper<PersistentDataEntryClass>* item,
+  // Disable for children of MetadataCowWrapper.
+  template <class Item>
+  CHECKED_STATUS MutateItem(const Item* item, QLWriteRequestPB::QLStmtType op_type) {
+    const auto& old_pb = item->old_pb();
+    const auto& new_pb = IsWrite(op_type) ? item->new_pb() : old_pb;
+    return DoMutateItem(Item::type(), item->id(), old_pb, new_pb, op_type);
+  }
+
+  template <class Item>
+  CHECKED_STATUS MutateItem(const scoped_refptr<Item>& item,
                             QLWriteRequestPB::QLStmtType op_type) {
-    const auto& old_pb = item->metadata().state().pb;
-    const auto& new_pb = IsWrite(op_type) ? item->metadata().dirty().pb : old_pb;
-    return DoMutateItem(
-        PersistentDataEntryClass::type(), item->id(), old_pb, new_pb, op_type);
+    return MutateItem(item.get(), op_type);
   }
 
   // Insert a row into a Postgres sys catalog table.

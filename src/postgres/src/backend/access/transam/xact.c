@@ -1867,7 +1867,11 @@ YBStartTransaction(TransactionState s)
 	s->ybDataSent             = false;
 	s->YBPostponedDdlOps      = NULL;
 
-	YBInitializeTransaction();
+	if (IsYugaByteEnabled())
+	{
+		YBResetOperationsBuffering();
+		YBInitializeTransaction();
+	}
 }
 
 void

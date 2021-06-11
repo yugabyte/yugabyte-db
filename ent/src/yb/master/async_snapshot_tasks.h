@@ -30,7 +30,7 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   AsyncTabletSnapshotOp(
       Master* master,
       ThreadPool* callback_pool,
-      const scoped_refptr<TabletInfo>& tablet,
+      const TabletInfoPtr& tablet,
       const std::string& snapshot_id,
       tserver::TabletSnapshotOpRequestPB::Operation op);
 
@@ -50,6 +50,10 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
 
   void SetMetadata(const SysTablesEntryPB& pb);
 
+  void SetRestorationId(const TxnSnapshotRestorationId& id) {
+    restoration_id_ = id;
+  }
+
   void SetCallback(TabletSnapshotOperationCallback callback) {
     callback_ = std::move(callback);
   }
@@ -61,11 +65,13 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
   void Finished(const Status& status) override;
+  bool RetryAllowed(tserver::TabletServerErrorPB::Code code, const Status& status);
 
-  scoped_refptr<TabletInfo> tablet_;
+  TabletInfoPtr tablet_;
   const std::string snapshot_id_;
   tserver::TabletSnapshotOpRequestPB::Operation operation_;
   SnapshotScheduleId snapshot_schedule_id_ = SnapshotScheduleId::Nil();
+  TxnSnapshotRestorationId restoration_id_ = TxnSnapshotRestorationId::Nil();
   HybridTime snapshot_hybrid_time_;
   tserver::TabletSnapshotOpResponsePB resp_;
   TabletSnapshotOperationCallback callback_;

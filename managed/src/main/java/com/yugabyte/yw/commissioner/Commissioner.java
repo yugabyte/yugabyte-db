@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner;
 
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,7 +29,7 @@ import com.google.inject.Singleton;
 
 import play.libs.Json;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.*;
 
 @Singleton
 public class Commissioner {
@@ -63,9 +64,13 @@ public class Commissioner {
     // Create an task pool which can handle an unbounded number of tasks, while using an initial set
     // of threads that get spawned upto TASK_THREADS limit.
     executor =
-        new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
-                               TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
-                               namedThreadFactory);
+        new ThreadPoolExecutor(
+            TASK_THREADS,
+            TASK_THREADS,
+            THREAD_ALIVE_TIME,
+            TimeUnit.SECONDS,
+            new LinkedBlockingQueue<Runnable>(),
+            namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
 
     // TODO: Conisder replacing simple thread sleep with ScheduledExecutorService
@@ -104,7 +109,13 @@ public class Commissioner {
     }
   }
 
-  public ObjectNode getStatus(UUID taskUUID) {
+  public ObjectNode getStatusOrBadRequest(UUID taskUUID) {
+    return mayGetStatus(taskUUID)
+        .orElseThrow(
+            () -> new YWServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
+  }
+
+  public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
     ObjectNode responseJson = Json.newObject();
 
     // Check if the task is in the DB
@@ -124,12 +135,13 @@ public class Commissioner {
       // Get subtask groups
       UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
       responseJson.set("details", Json.toJson(userTaskDetails));
-      return responseJson;
+      return Optional.of(responseJson);
     }
 
     // We are not able to find the task. Report an error.
-    LOG.error("Not able to find task " + taskUUID);
-    throw new RuntimeException("Not able to find task " + taskUUID);
+    LOG.error(
+        "Error fetching Task Progress for " + taskUUID + ", TaskInfo with that taskUUID not found");
+    return Optional.empty();
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
@@ -138,14 +150,14 @@ public class Commissioner {
       return taskInfo.getTaskDetails();
     } else {
       // TODO: push this down to TaskInfo
-      throw new YWServiceException(BAD_REQUEST,
-        "Failed to retrieve task params for Task UUID: " + taskUUID);
+      throw new YWServiceException(
+          BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);
     }
   }
 
   /**
-   * A progress monitor to constantly write a last updated timestamp in the DB so that this
-   * process and all its subtasks are considered to be alive.
+   * A progress monitor to constantly write a last updated timestamp in the DB so that this process
+   * and all its subtasks are considered to be alive.
    */
   private class ProgressMonitor extends Thread {
 

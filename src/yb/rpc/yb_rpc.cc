@@ -586,7 +586,7 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
     if (now > deadline) {
       auto passed = now - last_read_time_;
       const auto status = STATUS_FORMAT(
-          NetworkError, "Read timeout, passed: $0, timeout: $1, now: $2, last_read_time_: $3",
+          NetworkError, "Rpc timeout, passed: $0, timeout: $1, now: $2, last_read_time_: $3",
           passed, timeout, now, last_read_time_);
       LOG(WARNING) << connection->ToString() << ": " << status;
       connection->reactor()->DestroyConnection(connection.get(), status);

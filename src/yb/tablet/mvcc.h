@@ -171,7 +171,6 @@ class MvccManager {
   friend std::ostream& operator<<(
       std::ostream& out, const InvariantViolationLoggingHelper& helper);
 
-  void PopFront() REQUIRES(mutex_);
   void AddPending(HybridTime ht, const OpId& op_id, bool is_follower_side) REQUIRES(mutex_);
 
   std::string prefix_;
@@ -206,10 +205,6 @@ class MvccManager {
   };
   // An ordered queue of times of tracked operations.
   std::deque<QueueItem> queue_;
-
-  // Priority queue (min-heap, hence std::greater<> as the "less" comparator) of aborted operations.
-  // Required because we could abort operations from the middle of the queue.
-  std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<>> aborted_;
 
   HybridTime last_replicated_ = HybridTime::kMin;
 

@@ -15,10 +15,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-
 @Singleton
 public class DnsManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "dns";
+
   public enum DnsCommandType {
     Create,
     Edit,
@@ -32,8 +32,11 @@ public class DnsManager extends DevopsBase {
   }
 
   public ShellResponse manipulateDnsRecord(
-      DnsCommandType type, UUID providerUUID, String hostedZoneId,
-      String domainNamePrefix, String nodeIpCsv) {
+      DnsCommandType type,
+      UUID providerUUID,
+      String hostedZoneId,
+      String domainNamePrefix,
+      String nodeIpCsv) {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--hosted_zone_id");
     commandArgs.add(hostedZoneId);
@@ -41,15 +44,20 @@ public class DnsManager extends DevopsBase {
     commandArgs.add(domainNamePrefix);
     commandArgs.add("--node_ips");
     commandArgs.add(nodeIpCsv);
-    return execCommand(null, providerUUID, null, type.toString().toLowerCase(),
-        commandArgs, new ArrayList<>());
+    return execCommand(
+        null, providerUUID, null, type.toString().toLowerCase(), commandArgs, new ArrayList<>());
   }
 
   public ShellResponse listDnsRecord(UUID providerUUID, String hostedZoneId) {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--hosted_zone_id");
     commandArgs.add(hostedZoneId);
-    return execCommand(null, providerUUID, null, DnsCommandType.List.toString().toLowerCase(),
-        commandArgs, new ArrayList<>());
+    return execCommand(
+        null,
+        providerUUID,
+        null,
+        DnsCommandType.List.toString().toLowerCase(),
+        commandArgs,
+        new ArrayList<>());
   }
 }

@@ -16,6 +16,7 @@
 
 #include "yb/master/master.h"
 #include "yb/master/yql_virtual_table.h"
+#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 namespace master {
@@ -32,9 +33,9 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   Schema CreateSchema() const;
 
   mutable boost::shared_mutex mutex_;
-  mutable std::shared_ptr<QLRowBlock> cache_;
-  mutable int cached_tablets_version_ = -1;
-  mutable int cached_tablet_locations_version_ = -1;
+  mutable std::shared_ptr<QLRowBlock> cache_ GUARDED_BY(mutex_);
+  mutable int cached_tablets_version_ GUARDED_BY(mutex_) = -1;
+  mutable int cached_tablet_locations_version_ GUARDED_BY(mutex_) = -1;
 };
 
 }  // namespace master

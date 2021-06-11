@@ -54,7 +54,8 @@ public class TaskTest extends FakeDBApplication {
     // Sleep so that the last updated time will be different.
     try {
       Thread.sleep(1000);
-    } catch (InterruptedException e) { }
+    } catch (InterruptedException e) {
+    }
 
     // Update the task, make sure its last update time is changed.
     taskInfo.markAsDirty();

@@ -19,20 +19,20 @@ import org.slf4j.LoggerFactory;
 import play.api.Play;
 
 public abstract class KMSConfigTaskBase extends AbstractTaskBase {
-    public static final Logger LOG = LoggerFactory.getLogger(KMSConfigTaskBase.class);
+  public static final Logger LOG = LoggerFactory.getLogger(KMSConfigTaskBase.class);
 
-    public EncryptionAtRestManager kmsManager;
+  public EncryptionAtRestManager kmsManager;
 
-    @Override
-    protected KMSConfigTaskParams taskParams() {
-        return (KMSConfigTaskParams) taskParams;
-    }
+  @Override
+  protected KMSConfigTaskParams taskParams() {
+    return (KMSConfigTaskParams) taskParams;
+  }
 
-    @Override
-    public void initialize(ITaskParams params) {
-        super.initialize(params);
-        kmsManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
-        // Create the threadpool for the subtasks to use.
-        createThreadpool();
-    }
+  @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    kmsManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
+    // Create the threadpool for the subtasks to use.
+    createThreadpool();
+  }
 }

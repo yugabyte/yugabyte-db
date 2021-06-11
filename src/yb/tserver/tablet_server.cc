@@ -326,6 +326,13 @@ Status TabletServer::RegisterServices() {
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
+
+  std::unique_ptr<ServiceIf> forward_service =
+    std::make_unique<TabletServerForwardServiceImpl>(tablet_server_service_, this);
+  LOG(INFO) << "yb::tserver::ForwardServiceImpl created at " << forward_service.get();
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
+                                                     std::move(forward_service)));
+
   return Status::OK();
 }
 
@@ -486,11 +493,11 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
 }
 
 Env* TabletServer::GetEnv() {
-  return Env::Default();
+  return opts_.env;
 }
 
 rocksdb::Env* TabletServer::GetRocksDBEnv() {
-  return rocksdb::Env::Default();
+  return opts_.rocksdb_env;
 }
 
 int TabletServer::GetSharedMemoryFd() {

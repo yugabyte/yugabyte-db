@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-
 import java.util.UUID;
 
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -33,7 +32,7 @@ public class UnivSetCertificate extends UniverseTaskBase {
   }
 
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -47,26 +46,28 @@ public class UnivSetCertificate extends UniverseTaskBase {
       LOG.info("Running {}", getName());
 
       // Create the update lambda.
-      UniverseUpdater updater = new UniverseUpdater() {
-        @Override
-        public void run(Universe universe) {
-          // If this universe is not being edited, fail the request.
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress) {
-            String errMsg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
-            LOG.error(errMsg);
-            throw new RuntimeException(errMsg);
-          }
-          universeDetails.rootCA = taskParams().certUUID;
-          universe.setUniverseDetails(universeDetails);
-        }
-      };
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              // If this universe is not being edited, fail the request.
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              if (!universeDetails.updateInProgress) {
+                String errMsg =
+                    "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+                LOG.error(errMsg);
+                throw new RuntimeException(errMsg);
+              }
+              universeDetails.rootCA = taskParams().certUUID;
+              universe.setUniverseDetails(universeDetails);
+            }
+          };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
       saveUniverseDetails(updater);
 
     } catch (Exception e) {
-      String msg = getName() + " failed with exception "  + e.getMessage();
+      String msg = getName() + " failed with exception " + e.getMessage();
       LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }

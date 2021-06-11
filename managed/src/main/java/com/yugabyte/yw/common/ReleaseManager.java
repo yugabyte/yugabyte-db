@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-
 import com.google.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,11 +29,9 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 @Singleton
 public class ReleaseManager {
 
-  @Inject
-  ConfigHelper configHelper;
+  @Inject ConfigHelper configHelper;
 
-  @Inject
-  Configuration appConfig;
+  @Inject Configuration appConfig;
 
   public enum ReleaseState {
     ACTIVE,
@@ -84,12 +81,13 @@ public class ReleaseManager {
 
     try {
       // Return a map of version# and software package
-      releaseMap = Files.walk(Paths.get(localReleasePath))
-                   .filter(packagesFilter)
-                   .collect(Collectors.toMap(
+      releaseMap =
+          Files.walk(Paths.get(localReleasePath))
+              .filter(packagesFilter)
+              .collect(
+                  Collectors.toMap(
                       p -> p.getName(p.getNameCount() - 2).toString(),
-                      p -> p.toAbsolutePath().toString()
-                  ));
+                      p -> p.toAbsolutePath().toString()));
     } catch (IOException e) {
       LOG.error(e.getMessage());
     }
@@ -101,11 +99,12 @@ public class ReleaseManager {
     if (releases == null || releases.isEmpty()) {
       return new HashMap<>();
     }
-    releases.forEach((version, metadata) -> {
-      if (metadata instanceof String) {
-        releases.put(version, ReleaseMetadata.fromLegacy(version, metadata));
-      }
-    });
+    releases.forEach(
+        (version, metadata) -> {
+          if (metadata instanceof String) {
+            releases.put(version, ReleaseMetadata.fromLegacy(version, metadata));
+          }
+        });
 
     return releases;
   }
@@ -132,8 +131,9 @@ public class ReleaseManager {
       Map<String, Object> currentReleases = getReleaseMetadata();
       localReleases.keySet().removeAll(currentReleases.keySet());
       if (!localReleases.isEmpty()) {
-        localReleases.forEach((version, releaseFile) ->
-            currentReleases.put(version, ReleaseMetadata.fromLegacy(version, releaseFile)));
+        localReleases.forEach(
+            (version, releaseFile) ->
+                currentReleases.put(version, ReleaseMetadata.fromLegacy(version, releaseFile)));
         configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
       }
     }
@@ -148,8 +148,8 @@ public class ReleaseManager {
   }
 
   /**
-   * This method would move the yugabyte server package that we bundle with docker image
-   * to yb releases path.
+   * This method would move the yugabyte server package that we bundle with docker image to yb
+   * releases path.
    *
    * @param ybReleasesPath (str): Yugabyte releases path to create the move the files to.
    */
@@ -161,22 +161,27 @@ public class ReleaseManager {
 
     try {
       Files.walk(Paths.get(ybDockerRelease))
-        .map(String::valueOf).map(ybPackagePattern::matcher)
-        .filter(Matcher::matches)
-        .forEach(match -> {
-          File releaseFile = new File(match.group());
-          File destinationFolder = new File(ybReleasesPath, match.group(1));
-          File destinationFile = new File(destinationFolder, releaseFile.getName());
-          if (!destinationFolder.exists()) {
-            destinationFolder.mkdir();
-          }
-          try {
-            Files.move(releaseFile.toPath(), destinationFile.toPath(), REPLACE_EXISTING);
-          } catch (IOException e) {
-            throw new RuntimeException("Unable to move docker release file " +
-                releaseFile.toPath() + " to " + destinationFile);
-          }
-        });
+          .map(String::valueOf)
+          .map(ybPackagePattern::matcher)
+          .filter(Matcher::matches)
+          .forEach(
+              match -> {
+                File releaseFile = new File(match.group());
+                File destinationFolder = new File(ybReleasesPath, match.group(1));
+                File destinationFile = new File(destinationFolder, releaseFile.getName());
+                if (!destinationFolder.exists()) {
+                  destinationFolder.mkdir();
+                }
+                try {
+                  Files.move(releaseFile.toPath(), destinationFile.toPath(), REPLACE_EXISTING);
+                } catch (IOException e) {
+                  throw new RuntimeException(
+                      "Unable to move docker release file "
+                          + releaseFile.toPath()
+                          + " to "
+                          + destinationFile);
+                }
+              });
     } catch (IOException e) {
       LOG.error(e.getMessage());
       throw new RuntimeException("Unable to look up release files in " + ybDockerRelease);

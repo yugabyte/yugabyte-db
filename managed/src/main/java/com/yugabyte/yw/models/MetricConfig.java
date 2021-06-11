@@ -32,32 +32,37 @@ public class MetricConfig extends Model {
     public Axis yaxis;
   }
 
-  @Transient
-  public String metric;
-  @Transient
-  public String function;
-  @Transient
-  public String range;
-  @Transient
-  public JsonNode filters;
-  @Transient
-  public String group_by;
-  @Transient
-  public JsonNode layout;
-  @Transient
-  public String operator;
+  @Transient public String metric;
+  @Transient public String function;
+  @Transient public String range;
+  @Transient public JsonNode filters;
+  @Transient public String group_by;
+  @Transient public JsonNode layout;
+  @Transient public String operator;
+
   @Id
   @Column(length = 100)
   private String config_key;
-  public String getKey() { return config_key; }
-  public void setKey(String key) { this.config_key = key; }
+
+  public String getKey() {
+    return config_key;
+  }
+
+  public void setKey(String key) {
+    this.config_key = key;
+  }
 
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode config;
 
-  public void setConfig(JsonNode config) { this.config = config; }
-  public MetricConfig getConfig() { return Json.fromJson(this.config, MetricConfig.class); }
+  public void setConfig(JsonNode config) {
+    this.config = config;
+  }
+
+  public MetricConfig getConfig() {
+    return Json.fromJson(this.config, MetricConfig.class);
+  }
 
   // If we have any special filter pattern, then we need to use =~ instead
   // of = in our filter condition. Special patterns include *, |, $ or +.
@@ -77,10 +82,7 @@ public class MetricConfig extends Model {
     return new Layout();
   }
 
-  public Map<String, String> getQueries(
-    Map<String, String> additionalFilters,
-    int queryRangeSecs
-  ) {
+  public Map<String, String> getQueries(Map<String, String> additionalFilters, int queryRangeSecs) {
     MetricConfig metricConfig = getConfig();
     if (metricConfig.metric == null) {
       throw new RuntimeException("Invalid MetricConfig: metric attribute is required");
@@ -95,8 +97,7 @@ public class MetricConfig extends Model {
       }
     } else {
       output.put(
-        metricConfig.metric,
-        getQuery(metricConfig.metric, additionalFilters, queryRangeSecs));
+          metricConfig.metric, getQuery(metricConfig.metric, additionalFilters, queryRangeSecs));
     }
     return output;
   }
@@ -106,20 +107,15 @@ public class MetricConfig extends Model {
   }
 
   /**
-   * This method construct the prometheus queryString based on the metric config
-   * if additional filters are provided, it applies those filters as well.
-   * example query string:
-   *  - avg(collectd_cpu_percent{cpu="system"})
-   *  - rate(collectd_cpu_percent{cpu="system"}[30m])
-   *  - avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory)
-   *  - avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory) /10
+   * This method construct the prometheus queryString based on the metric config if additional
+   * filters are provided, it applies those filters as well. example query string: -
+   * avg(collectd_cpu_percent{cpu="system"}) - rate(collectd_cpu_percent{cpu="system"}[30m]) -
+   * avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory) -
+   * avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory) /10
+   *
    * @return, a valid prometheus query string
    */
-  public String getQuery(
-    String metric,
-    Map<String, String> additionalFilters,
-    int queryRangeSecs
-  ) {
+  public String getQuery(String metric, Map<String, String> additionalFilters, int queryRangeSecs) {
     // Special case searchs for .avg to convert into the respective ratio of
     // avg(irate(metric_sum)) / avg(irate(metric_count))
     if (metric.endsWith(".avg")) {
@@ -127,15 +123,14 @@ public class MetricConfig extends Model {
       String sumQuery = getQuery(metricPrefix + "_sum", additionalFilters, queryRangeSecs);
       String countQuery = getQuery(metricPrefix + "_count", additionalFilters, queryRangeSecs);
       return "(" + sumQuery + ") / (" + countQuery + ")";
-    }
-    else if (metric.contains("/")) {
+    } else if (metric.contains("/")) {
       String[] metricNames = metric.split("/");
       MetricConfig numerator = get(metricNames[0]);
       MetricConfig denominator = get(metricNames[1]);
-      String numQuery = numerator.getQuery(
-        numerator.getConfig().metric, additionalFilters, queryRangeSecs);
-      String denomQuery = denominator.getQuery(
-        denominator.getConfig().metric, additionalFilters, queryRangeSecs);
+      String numQuery =
+          numerator.getQuery(numerator.getConfig().metric, additionalFilters, queryRangeSecs);
+      String denomQuery =
+          denominator.getQuery(denominator.getConfig().metric, additionalFilters, queryRangeSecs);
       return String.format("((%s)/(%s))*100", numQuery, denomQuery);
     }
 
@@ -175,13 +170,13 @@ public class MetricConfig extends Model {
 
     if (metricConfig.function != null) {
       /* We have added special way to represent multiple functions that we want to
-         do, we pipe delimit those, but they follow an order.
-         Scenario 1:
-           function: rate|avg,
-           query str: avg(rate(metric{memory="used"}[30m]))
-         Scenario 2:
-           function: rate
-           query str: rate(metric{memory="used"}[30m]). */
+      do, we pipe delimit those, but they follow an order.
+      Scenario 1:
+        function: rate|avg,
+        query str: avg(rate(metric{memory="used"}[30m]))
+      Scenario 2:
+        function: rate
+        query str: rate(metric{memory="used"}[30m]). */
       if (metricConfig.function.contains("|")) {
         // We need to split the multiple functions and form the query string
         String[] functions = metricConfig.function.split("\\|");
@@ -203,15 +198,13 @@ public class MetricConfig extends Model {
   }
 
   /**
-   * filtersToString method converts a map to a string with quotes around the value.
-   * The reason we have to do this way is because prometheus expects the json
-   * key to have no quote, and just value should have double quotes.
+   * filtersToString method converts a map to a string with quotes around the value. The reason we
+   * have to do this way is because prometheus expects the json key to have no quote, and just value
+   * should have double quotes.
+   *
    * @param filters is map<String, String>
-   * @return String representation of the map
-   * ex:
-   *  {memory="used", extra="1"}
-   *  {memory="used"}
-   *  {type=~"iostat_write_count|iostat_read_count"}
+   * @return String representation of the map ex: {memory="used", extra="1"} {memory="used"}
+   *     {type=~"iostat_write_count|iostat_read_count"}
    */
   private String filtersToString(Map<String, String> filters) {
     StringBuilder filterStr = new StringBuilder();
@@ -230,10 +223,11 @@ public class MetricConfig extends Model {
   }
 
   public static final Finder<String, MetricConfig> find =
-    new Finder<String, MetricConfig>(MetricConfig.class) {};
+      new Finder<String, MetricConfig>(MetricConfig.class) {};
 
   /**
    * returns metric config for the given key
+   *
    * @param configKey
    * @return MetricConfig
    */
@@ -243,6 +237,7 @@ public class MetricConfig extends Model {
 
   /**
    * Create a new instance of metric config for given config key and config data
+   *
    * @param configKey
    * @param configData
    * @return returns a instance of MetricConfig
@@ -255,17 +250,18 @@ public class MetricConfig extends Model {
   }
 
   /**
-   * Loads the configs into the db, if the config already exists it would update that
-   * if not it will create new config.
+   * Loads the configs into the db, if the config already exists it would update that if not it will
+   * create new config.
+   *
    * @param configs
    */
   public static void loadConfig(Map<String, Object> configs) {
-    List<String> currentConfigs = MetricConfig.find.all().stream()
-      .map(MetricConfig::getKey).collect(Collectors.toList());
+    List<String> currentConfigs =
+        MetricConfig.find.all().stream().map(MetricConfig::getKey).collect(Collectors.toList());
 
-    for(Map.Entry<String, Object> configData : configs.entrySet()) {
-      MetricConfig metricConfig = MetricConfig.create(configData.getKey(),
-                                                      Json.toJson(configData.getValue()));
+    for (Map.Entry<String, Object> configData : configs.entrySet()) {
+      MetricConfig metricConfig =
+          MetricConfig.create(configData.getKey(), Json.toJson(configData.getValue()));
       // Check if the config already exists if so, let's update it or else,
       // we will create new one.
       if (currentConfigs.contains(metricConfig.getKey())) {

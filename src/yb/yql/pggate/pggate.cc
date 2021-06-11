@@ -35,6 +35,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/table.h"
@@ -43,11 +44,14 @@
 #include "yb/server/secure.h"
 
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_forward_service.proxy.h"
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
+DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
+DECLARE_bool(use_node_hostname_for_local_tserver);
 
 namespace yb {
 namespace pggate {
@@ -195,7 +199,22 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
     const YBCPgTypeEntity *type_entity = &YBCDataTypeArray[idx];
     type_map_[type_entity->type_oid] = type_entity;
   }
-
+  if (FLAGS_ysql_forward_rpcs_to_local_tserver) {
+    async_client_init_.AddPostCreateHook([this](client::YBClient *client) {
+      const auto& tserver_shared_data = **tserver_shared_object_;
+      HostPort host_port(tserver_shared_data.endpoint());
+      boost::optional<MonoDelta> resolve_cache_timeout;
+      if (FLAGS_use_node_hostname_for_local_tserver) {
+        host_port = HostPort(tserver_shared_data.host().ToBuffer(),
+                             tserver_shared_data.endpoint().port());
+        resolve_cache_timeout = MonoDelta::kMax;
+      }
+      auto proxy = std::make_shared<tserver::TabletServerForwardServiceProxy>(
+          &client->proxy_cache(), host_port, nullptr /* protocol */, resolve_cache_timeout);
+      client->SetNodeLocalForwardProxy(proxy);
+      client->SetNodeLocalTServerHostPort(host_port);
+    });
+  }
   async_client_init_.Start();
 }
 
@@ -739,6 +758,9 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
       is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid,
       tablespace_oid);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -915,8 +937,8 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
   return STATUS_FORMAT(Corruption, "Not all attributes ($0) were resolved", remain_attr);
 }
 
-void PgApiImpl::StartOperationsBuffering() {
-  pg_session_->StartOperationsBuffering();
+Status PgApiImpl::StartOperationsBuffering() {
+  return pg_session_->StartOperationsBuffering();
 }
 
 Status PgApiImpl::StopOperationsBuffering() {
@@ -1337,6 +1359,10 @@ void PgApiImpl::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid
 
 void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   pg_session_->DeleteForeignKeyReference(table_id, ybctid);
+}
+
+void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  pg_session_->AddForeignKeyReference(table_id, ybctid);
 }
 
 void PgApiImpl::SetTimeout(const int timeout_ms) {

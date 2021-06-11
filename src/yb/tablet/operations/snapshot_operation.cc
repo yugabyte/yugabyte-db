@@ -6,7 +6,7 @@
 
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/snapshot_coordinator.h"
@@ -17,6 +17,8 @@
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/util/trace.h"
+
+DEFINE_bool(consistent_restore, false, "Whether to enable consistent restoration of snapshots");
 
 namespace yb {
 namespace tablet {
@@ -37,7 +39,7 @@ using yb::tserver::TabletSnapshotOpRequestPB;
 
 string SnapshotOperationState::ToString() const {
   return Format("SnapshotOperationState { hybrid_time: $0 request: $1 }",
-                hybrid_time(), request());
+                hybrid_time_even_if_unset(), request());
 }
 
 Result<std::string> SnapshotOperationState::GetSnapshotDir() const {
@@ -85,12 +87,11 @@ bool SnapshotOperationState::CheckOperationRequirements() {
   }
 
   // LogPrefix() calls ToString() which needs correct hybrid_time.
-  TrySetHybridTimeFromClock();
   LOG_WITH_PREFIX(WARNING) << status;
   TRACE("Requirements was not satisfied for snapshot operation: $0", operation());
   // Run the callback, finish RPC and return the error to the sender.
   CompleteWithStatus(status);
-  Finish();
+  Release();
   return false;
 }
 
@@ -120,12 +121,60 @@ Status SnapshotOperationState::Apply(int64_t leader_term) {
       return tablet()->snapshots().Restore(this);
     case TabletSnapshotOpRequestPB::DELETE_ON_TABLET:
       return tablet()->snapshots().Delete(this);
+    case TabletSnapshotOpRequestPB::RESTORE_FINISHED:
+      return tablet()->snapshots().RestoreFinished(this);
     case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
     case TabletSnapshotOpRequestPB::UNKNOWN:
       break;
   }
   FATAL_INVALID_ENUM_VALUE(TabletSnapshotOpRequestPB::Operation, operation);
+}
+
+void SnapshotOperationState::AddedAsPending() {
+  if (request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+    tablet()->RegisterOperationFilter(this);
+  }
+}
+
+void SnapshotOperationState::RemovedFromPending() {
+  if (request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+    tablet()->UnregisterOperationFilter(this);
+  }
+}
+
+Status SnapshotOperationState::RejectionStatus(
+    OpId rejected_op_id, consensus::OperationType op_type) {
+  return STATUS_FORMAT(
+      IllegalState, "Operation $0 ($1) is not allowed during restore",
+      OperationType_Name(op_type), rejected_op_id);
+}
+
+bool SnapshotOperationState::ShouldAllowOpDuringRestore(consensus::OperationType op_type) {
+  switch (op_type) {
+    case consensus::NO_OP: FALLTHROUGH_INTENDED;
+    case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
+    case consensus::CHANGE_METADATA_OP: FALLTHROUGH_INTENDED;
+    case consensus::CHANGE_CONFIG_OP: FALLTHROUGH_INTENDED;
+    case consensus::HISTORY_CUTOFF_OP: FALLTHROUGH_INTENDED;
+    case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
+    case consensus::TRUNCATE_OP: FALLTHROUGH_INTENDED;
+    case consensus::SPLIT_OP:
+      return true;
+    case consensus::UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
+    case consensus::WRITE_OP:
+      return !FLAGS_consistent_restore;
+  }
+  FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);
+}
+
+Status SnapshotOperationState::CheckOperationAllowed(
+    const OpId& id, consensus::OperationType op_type) const {
+  if (id == op_id() || ShouldAllowOpDuringRestore(op_type)) {
+    return Status::OK();
+  }
+
+  return RejectionStatus(id, op_type);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -161,14 +210,11 @@ Status SnapshotOperation::Prepare() {
 
 Status SnapshotOperation::DoAborted(const Status& status) {
   TRACE("SnapshotOperation: operation aborted");
-  state()->Finish();
   return status;
 }
 
 Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
-  auto status = state()->Apply(leader_term);
-  state()->Finish();
-  return status;
+  return state()->Apply(leader_term);
 }
 
 string SnapshotOperation::ToString() const {

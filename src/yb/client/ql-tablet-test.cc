@@ -325,10 +325,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   scoped_refptr<master::TableInfo> GetTableInfo(const YBTableName& table_name) {
     auto* catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
-    std::vector<scoped_refptr<master::TableInfo>> all_tables;
-    catalog_manager->GetAllTables(&all_tables);
-    scoped_refptr<master::TableInfo> table_info;
-    for (auto& table : all_tables) {
+    auto all_tables = catalog_manager->GetTables(master::GetTablesMode::kAll);
+    for (const auto& table : all_tables) {
       if (table->name() == table_name.table_name()) {
         return table;
       }

@@ -26,27 +26,29 @@ import java.util.HashSet;
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 /**
- * Class contains the tasks to start a node in a given universe.
- * It starts the tserver process and the master process if needed.
+ * Class contains the tasks to start a node in a given universe. It starts the tserver process and
+ * the master process if needed.
  */
 public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   protected NodeTaskParams taskParams() {
-    return (NodeTaskParams)taskParams;
+    return (NodeTaskParams) taskParams;
   }
 
   @Override
   public void run() {
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      LOG.info("Start Node with name {} from universe {}", taskParams().nodeName, taskParams().universeUUID);
+      LOG.info(
+          "Start Node with name {} from universe {}",
+          taskParams().nodeName,
+          taskParams().universeUUID);
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
@@ -67,22 +69,16 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Start the tserver process
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-      // Mark the node process flags as true.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
       // Bring up any masters, as needed.
-      boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
         // Clean the master addresses in the conf file for the current node so that
         // the master comes up as a shell master.
-        createConfigureServerTasks(ImmutableList.of(currentNode), true /* isShell */,
-            true /* updateMasterAddrs */, true /* isMaster */)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        createConfigureServerTasks(
+                ImmutableList.of(currentNode),
+                true /* isShell */,
+                true /* updateMasterAddrs */,
+                true /* isMaster */)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Set gflags for master.
         createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);
@@ -96,30 +92,39 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Wait for the master to be responsive.
-        createWaitForServersTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.MASTER)
+        createWaitForServersTasks(
+                new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.MASTER)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Add stopped master to the quorum.
         createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
-        masterAdded = true;
-      }
-
-      // Update all server conf files with new master information.
-      if (masterAdded) {
+        // Update all server conf files with new master information.
         createMasterInfoUpdateTask(universe, currentNode);
       }
+
+      // Start the tserver process
+      createTServerTaskForNode(currentNode, "start")
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Mark the node process flags as true.
+      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Wait for the tablet server to be responsive.
+      createWaitForServersTasks(
+              new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Update node state to running
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       // Update the DNS entry for this universe.
-      UniverseDefinitionTaskParams.UserIntent userIntent = universe.getUniverseDetails()
-        .getClusterByUuid(currentNode.placementUuid)
-        .userIntent;
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
-        .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+          .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       // Update the swamper target file.
       // It is required because the node could be removed from the swamper file
@@ -127,19 +132,18 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Mark universe update success to true
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-      hitException = true;
-      throw t;
-    } finally {
+
       // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
+      if (currentNode != null) {
         setNodeState(taskParams().nodeName, currentNode.state);
       }
+      throw t;
+    } finally {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());

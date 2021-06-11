@@ -220,6 +220,11 @@ message RaftGroupReplicaSuperBlockPB {
 
   // Reject client queries (read and write) to this tablet like it does not present.
   optional bool hidden = 28;
+
+  optional OpIdPB split_op_id = 29;
+  repeated bytes split_child_tablet_ids = 30;
+
+  repeated bytes active_restorations = 31;
 }
 
 message FilePB {

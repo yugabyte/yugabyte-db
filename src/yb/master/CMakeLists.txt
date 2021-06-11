@@ -92,6 +92,7 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   tasks_tracker.cc
+  tablet_split_manager.cc
   ts_descriptor.cc
   ts_manager.cc
   yql_virtual_table.cc
@@ -115,6 +116,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_partitions_vtable.cc
   ysql_transaction_ddl.cc
+  ysql_tablespace_manager.cc
   ${MASTER_SRCS_EXTENSIONS})
 
 set(MASTER_DEPS

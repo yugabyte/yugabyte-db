@@ -31,11 +31,10 @@ YQLSizeEstimatesVTable::YQLSizeEstimatesVTable(const TableName& table_name,
 Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
   CatalogManager* catalog_manager = master_->catalog_manager();
-  catalog_manager->GetAllTables(&tables, true);
 
-  for (scoped_refptr<TableInfo> table : tables) {
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  for (const auto& table : tables) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
 

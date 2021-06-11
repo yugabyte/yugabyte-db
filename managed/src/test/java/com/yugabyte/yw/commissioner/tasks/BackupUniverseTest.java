@@ -31,12 +31,10 @@ import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
 
-
 @RunWith(MockitoJUnitRunner.class)
 public class BackupUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
 
   Universe defaultUniverse;
 
@@ -46,15 +44,16 @@ public class BackupUniverseTest extends CommissionerBaseTest {
   public void setUp() {
     mockClient = mock(YBClient.class);
     Master.SysClusterConfigEntryPB.Builder configBuilder =
-      Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
     GetMasterClusterConfigResponse mockConfigResponse =
-      new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
+        new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
     ChangeMasterClusterConfigResponse mockChangeConfigResponse =
-      new ChangeMasterClusterConfigResponse(0, "", null);
+        new ChangeMasterClusterConfigResponse(0, "", null);
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
-    } catch (Exception e) {}
+    } catch (Exception e) {
+    }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
@@ -76,8 +75,12 @@ public class BackupUniverseTest extends CommissionerBaseTest {
       Backup backup = Backup.create(defaultCustomer.uuid, backupTableParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);
       backup.setTaskUUID(taskUUID);
-      CustomerTask.create(defaultCustomer, defaultUniverse.universeUUID, taskUUID,
-          CustomerTask.TargetType.Backup, CustomerTask.TaskType.Create,
+      CustomerTask.create(
+          defaultCustomer,
+          defaultUniverse.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Backup,
+          CustomerTask.TaskType.Create,
           "bar");
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
@@ -88,7 +91,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableCreateAction() {
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
@@ -103,7 +106,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableError() {
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"error\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
@@ -117,7 +120,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableFatal() {
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"error\": true}";
     shellResponse.code = 99;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
@@ -130,7 +133,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableRestoreAction() {
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
@@ -145,7 +148,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testBackupTableRestoreVerbose() {
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"snapshot_url\": \"s3://random\", \"skipthis\": \"INFO\"}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);

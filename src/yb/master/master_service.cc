@@ -41,23 +41,23 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_service_base-internal.h"
 #include "yb/master/master.h"
+#include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-#include "yb/master/encryption_manager.h"
+
 #include "yb/server/webserver.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 #include "yb/util/shared_lock.h"
-
-DEFINE_int64(tablet_split_size_threshold_bytes, 0,
-             "Threshold on tablet size after which tablet should be split. Automated splitting is "
-             "disabled if this value is set to 0");
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
@@ -185,12 +185,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     return;
   }
 
-  ts_desc->UpdateHeartbeatTime();
-  ts_desc->set_num_live_replicas(req->num_live_tablets());
-  ts_desc->set_leader_count(req->leader_count());
-  ts_desc->set_physical_time(req->ts_physical_time());
-  ts_desc->set_hybrid_time(HybridTime::FromPB(req->ts_hybrid_time()));
-  ts_desc->set_heartbeat_rtt(MonoDelta::FromMicroseconds(req->rtt_us()));
+  ts_desc->UpdateHeartbeat(req);
 
   // Adjust the table report limit per heartbeat so this can be dynamically changed.
   if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit)) {
@@ -260,10 +255,6 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                  << s.ToUserMessage();
   }
 
-  if (FLAGS_tablet_split_size_threshold_bytes > 0) {
-    resp->set_tablet_split_size_threshold_bytes(FLAGS_tablet_split_size_threshold_bytes);
-  }
-
   rpc.RespondSuccess();
 }
 
@@ -279,8 +270,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
   if (PREDICT_FALSE(FLAGS_TEST_master_fail_transactional_tablet_lookups)) {
-    std::vector<scoped_refptr<TableInfo>> tables;
-    server_->catalog_manager()->GetAllTables(&tables);
+    auto tables = server_->catalog_manager()->GetTables(GetTablesMode::kAll);
     const auto& tablet_id = req->tablet_ids(0);
     for (const auto& table : tables) {
       TabletInfos tablets;
@@ -406,6 +396,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (AreLeadersOnPreferredOnly)
     (SplitTablet)
     (DeleteTablet)
+    (DdlLog)
 )
 
 

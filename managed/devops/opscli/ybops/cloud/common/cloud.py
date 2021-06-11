@@ -29,6 +29,8 @@ import os
 import yaml
 import errno
 import shutil
+import socket
+import time
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -49,6 +51,8 @@ class AbstractCloud(AbstractCommandParser):
     CLIENT_ROOT_NAME = "root.crt"
     CLIENT_CERT_NAME = "yugabytedb.crt"
     CLIENT_KEY_NAME = "yugabytedb.key"
+    SSH_RETRY_COUNT = 30
+    SSH_WAIT_SECONDS = 10
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
@@ -233,6 +237,7 @@ class AbstractCloud(AbstractCommandParser):
         remote_shell.run_command('cp {} {}'.format(node_key_path,
                                                    os.path.join(certs_node_dir, key_file)))
         remote_shell.run_command('chmod 400 {}/*'.format(certs_node_dir))
+
         if "client_cert_path" in extra_vars:
             client_cert_path = extra_vars["client_cert_path"]
             client_key_path = extra_vars["client_key_path"]
@@ -254,10 +259,10 @@ class AbstractCloud(AbstractCommandParser):
         root_cert_path = extra_vars["rootCA_cert"]
         root_key_path = extra_vars["rootCA_key"]
         certs_node_dir = extra_vars["certs_node_dir"]
-        with open(root_cert_path, 'r') as cert_in:
+        with open(root_cert_path, 'rb') as cert_in:
             certlines = cert_in.read()
         root_cert = x509.load_pem_x509_certificate(certlines, default_backend())
-        with open(root_key_path, 'r') as key_in:
+        with open(root_key_path, 'rb') as key_in:
             keylines = key_in.read()
         root_key = load_pem_private_key(keylines, None, default_backend())
         private_key = rsa.generate_private_key(
@@ -385,3 +390,23 @@ class AbstractCloud(AbstractCommandParser):
         for mount_point in mount_points:
             logging.info("Expanding file system with mount point: {}".format(mount_point))
             remote_shell.run_command('sudo xfs_growfs {}'.format(mount_point))
+
+    def _wait_for_ssh_port(self, private_ip, instance_name, ssh_port):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            retry_count = 0
+
+            while retry_count < self.SSH_RETRY_COUNT:
+                time.sleep(self.SSH_WAIT_SECONDS)
+                retry_count = retry_count + 1
+                result = sock.connect_ex((private_ip, ssh_port))
+                if result == 0:
+                    break
+            else:
+                logging.error("Start instance {} exceeded maxRetries!".format(instance_name))
+                raise YBOpsRuntimeError(
+                    "Cannot reach the instance {} after its start at port {}".format(
+                        instance_name, ssh_port)
+                    )
+        finally:
+            sock.close()

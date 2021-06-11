@@ -13,6 +13,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
 
 namespace yb {

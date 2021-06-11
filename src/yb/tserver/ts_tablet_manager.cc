@@ -887,8 +887,10 @@ Status TSTabletManager::ApplyTabletSplit(
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
   }
 
-  meta.set_tablet_data_state(tablet::TABLET_DATA_SPLIT_COMPLETED);
+  meta.SetSplitDone(op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id());
   RETURN_NOT_OK(meta.Flush());
+
+  tablet->SplitDone();
 
   for (auto& tcmeta : tcmetas) {
     // Call CreatePeerAndOpenTablet asynchronously to avoid write-locking TSTabletManager::mutex_
@@ -1387,8 +1389,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
         tablet_prepare_pool(),
-        &retryable_requests,
-        bootstrap_info.split_op_info);
+        &retryable_requests);
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "

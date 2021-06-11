@@ -13,20 +13,18 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.UUID;
 
-
 public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
 
-  @Inject
-  private CustomerConfigValidator configValidator;
+  @Inject private CustomerConfigValidator configValidator;
 
-  @Inject
-  private AlertManager alertManager;
+  @Inject private AlertManager alertManager;
 
   public Result create(UUID customerUUID) {
     ObjectNode formData = (ObjectNode) request().body().asJson();
@@ -46,13 +44,10 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   public Result delete(UUID customerUUID, UUID configUUID) {
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
-    if (customerConfig == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
-    }
+    CustomerConfig customerConfig = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     if (!customerConfig.delete()) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR,
-          "Customer Configuration could not be deleted.");
+      return ApiResponse.error(
+          INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
     }
     alertManager.resolveAlerts(customerUUID, configUUID, "%");
     auditService().createAuditEntry(ctx(), request());
@@ -64,7 +59,7 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   public Result edit(UUID customerUUID, UUID configUUID) {
-    JsonNode formData =  request().body().asJson();
+    JsonNode formData = request().body().asJson();
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
       return ApiResponse.error(BAD_REQUEST, errorJson);
@@ -74,17 +69,15 @@ public class CustomerConfigController extends AuthenticatedController {
     if (errorJson.size() > 0) {
       return ApiResponse.error(BAD_REQUEST, errorJson);
     }
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
-    if (customerConfig == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
-    }
-    CustomerConfig config = CustomerConfig.get(configUUID);
+    CustomerConfig config = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     JsonNode data = Json.toJson(formData.get("data"));
     if (data != null && data.get("BACKUP_LOCATION") != null) {
-      ((ObjectNode)data).put("BACKUP_LOCATION", config.data.get("BACKUP_LOCATION"));
+      ((ObjectNode) data).put("BACKUP_LOCATION", config.data.get("BACKUP_LOCATION"));
     }
     JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
     config.data = Json.toJson(updatedData);
+    config.configName = formData.get("configName").textValue();
+    config.name = formData.get("name").textValue();
     config.update();
     auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success(config);

@@ -685,7 +685,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
   vector<TabletId> tablet_ids;
   {
-    SharedLock<CatalogManager::LockType> l(mini_master_->master()->catalog_manager()->lock_);
+    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
     for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
       auto tablet = elem.second;
       if (tablet->table()->name() == kTableName) {
@@ -704,7 +704,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
 
   // Verify that the test table's tablets are in the DELETED state.
   {
-    SharedLock<CatalogManager::LockType> l(mini_master_->master()->catalog_manager()->lock_);
+    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
     for (const auto& tablet_id : tablet_ids) {
       auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
       ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
@@ -763,34 +763,12 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
   s = DoCreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
-  // Succeed the CreateTable call, but expect to have errors on call.
+  // Fail because there are no TServers matching the given placement policy.
   pb->set_min_num_replicas(live_replicas->num_replicas());
   cloud_info->set_placement_cloud("fail");
   UpdateMasterClusterConfig(&cluster_config);
-  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
-
-  IsCreateTableDoneRequestPB is_create_req;
-  IsCreateTableDoneResponsePB is_create_resp;
-
-  is_create_req.mutable_table()->set_table_name(kTableName);
-  is_create_req.mutable_table()->mutable_namespace_()->set_name(default_namespace_name);
-
-  // TODO(bogdan): once there are mechanics to cancel a create table, or for it to be cancelled
-  // automatically by the master, refactor this retry loop to an explicit wait and check the error.
-  int num_retries = 10;
-  while (num_retries > 0) {
-    s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
-    LOG(INFO) << s.ToString();
-    // The RPC layer will respond OK, but the internal fields will be set to error.
-    ASSERT_TRUE(s.ok());
-    ASSERT_TRUE(is_create_resp.has_done());
-    ASSERT_FALSE(is_create_resp.done());
-    if (is_create_resp.has_error()) {
-      ASSERT_EQ(is_create_resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
-    }
-
-    --num_retries;
-  }
+  s = DoCreateTable(kTableName, schema, &req);
+  ASSERT_TRUE(s.IsInvalidArgument());
 }
 
 TEST_F(MasterTest, TestNamespaces) {

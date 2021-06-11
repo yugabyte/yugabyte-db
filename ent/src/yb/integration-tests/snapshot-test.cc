@@ -80,8 +80,6 @@ using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
 using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
-using master::ListTablesRequestPB;
-using master::ListTablesResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::MasterServiceProxy;
@@ -106,7 +104,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     messenger_ = ASSERT_RESULT(

@@ -37,11 +37,9 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(PlatformReplicationController.class);
 
-  @Inject
-  private PlatformReplicationManager replicationManager;
+  @Inject private PlatformReplicationManager replicationManager;
 
-  @Inject
-  private FormFactory formFactory;
+  @Inject private FormFactory formFactory;
 
   public Result startPeriodicBackup(UUID configUUID) {
     try {
@@ -51,7 +49,7 @@ public class PlatformReplicationController extends AuthenticatedController {
       }
 
       Form<PlatformBackupFrequencyFormData> formData =
-        formFactory.form(PlatformBackupFrequencyFormData.class).bindFromRequest();
+          formFactory.form(PlatformBackupFrequencyFormData.class).bindFromRequest();
 
       if (formData.hasErrors()) {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
@@ -119,11 +117,12 @@ public class PlatformReplicationController extends AuthenticatedController {
       }
 
       List<String> backups =
-        replicationManager.listBackups(new URL(leaderAddr))
-          .stream()
-          .map(File::getName)
-          .sorted(Collections.reverseOrder())
-          .collect(Collectors.toList());
+          replicationManager
+              .listBackups(new URL(leaderAddr))
+              .stream()
+              .map(File::getName)
+              .sorted(Collections.reverseOrder())
+              .collect(Collectors.toList());
       return ApiResponse.success(backups);
     } catch (Exception e) {
       LOG.error("Error listing backups", e);

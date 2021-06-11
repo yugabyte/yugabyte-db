@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <signal.h>
+
+#include <fstream>
 #include <thread>
 
 #include "yb/util/barrier.h"
@@ -1638,7 +1641,7 @@ class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
     options->extra_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
-    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=8");
   }
 };
 
@@ -1652,6 +1655,7 @@ TEST_F_EX(PgLibPqTest,
   const int starting_num_tablet_servers = cluster_->num_tablet_servers();
   ExternalMiniClusterOptions opts;
   std::map<std::string, int> ts_loads;
+  static const int tserver_unresponsive_timeout_ms = 8000;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -1702,24 +1706,18 @@ TEST_F_EX(PgLibPqTest,
   // Remove a tablet server.
   cluster_->tablet_server(0)->Shutdown();
 
-  // Wait for load balancing.  This should move the remaining tablet-peers off the dead tserver.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
-        return !is_idle;
-      },
-      kTimeout,
-      "wait for load balancer to be active"));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        return client->IsLoadBalancerIdle();
-      },
-      kTimeout,
-      "wait for load balancer to be idle"));
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return cluster_->is_ts_stale(0);
+  },
+  MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
+  "Is TS dead",
+  MonoDelta::FromSeconds(1)));
 
-  // Collect colocation tablet replica locations.
-  {
-    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+  // Collect colocation tablet replica locations and verify that load has been moved off
+  // from the dead TS.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    master::TabletLocationsPB tablet_locations = VERIFY_RESULT(GetColocatedTabletLocations(
         client.get(),
         kDatabaseName,
         kTimeout));
@@ -1727,18 +1725,21 @@ TEST_F_EX(PgLibPqTest,
     for (const auto& replica : tablet_locations.replicas()) {
       ts_loads[replica.ts_info().permanent_uuid()]++;
     }
-  }
-
-  // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
-  // which is shut down.
-  ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
-  for (const auto& entry : ts_loads) {
-    ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
-    ASSERT_NOTNULL(ts);
-    ASSERT_NE(ts, cluster_->tablet_server(0));
-    ASSERT_EQ(entry.second, 1);
-    LOG(INFO) << "found ts " << entry.first << " has " << entry.second << " replicas";
-  }
+    // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
+    // which is shut down.
+    if (ts_loads.size() != starting_num_tablet_servers) {
+      return false;
+    }
+    for (const auto& entry : ts_loads) {
+      ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
+      if (ts == nullptr || ts == cluster_->tablet_server(0) || entry.second != 1) {
+        return false;
+      }
+    }
+    return true;
+  },
+  kTimeout,
+  "Wait for load to be moved off from tserver 0"));
 }
 
 // Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.
@@ -1973,7 +1974,7 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutGC)) {
   NamespaceName test_name = "test_pgsql_table";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  // Create Table: will timeout because the admin setting is lower than the DB create latency.
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
@@ -2004,7 +2005,7 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndResta
   NamespaceName test_name = "test_pgsql_table";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  // Create Table: will timeout because the admin setting is lower than the DB create latency.
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
@@ -2039,6 +2040,195 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndResta
     WARN_NOT_OK(ResultToStatus(ret), "");
     return ret.ok() && ret.get() == false;
   }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
+}
+
+class PgLibPqIndexTableTimeoutTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=10");
+  }
+};
+
+TEST_F(PgLibPqIndexTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableTimeoutGC)) {
+  const string kDatabaseName ="yugabyte";
+  NamespaceName test_name = "test_pgsql_table";
+  NamespaceName test_name_idx = test_name + "_idx";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Lower the delays so we successfully create this first table.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "10"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_slow_table_create_secs", "0"));
+
+  // Create Table that Index will be set on.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
+  }
+
+  // After successfully creating the first table, set to flags similar to: PgLibPqTableTimeoutTest.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "13000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_slow_table_create_secs", "12"));
+
+  // Create Index: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE INDEX " + test_name_idx + " ON " + test_name + "(key)"));
+  }
+
+  // Wait for DocDB Table creation, even though it will fail in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Requesting TableExists";
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name_idx));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(40), "Verify Index Table was created in DocDB"));
+
+  // DocDB will notice the PG layer failure because the transaction aborts.
+  // Confirm that DocDB async deletes the namespace.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name_idx));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(40), "Verify Index Table was removed by Transaction GC"));
+}
+
+class PgLibPqTestEnumType: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_do_not_add_enum_sort_order=true");
+  }
+};
+
+// Make sure that enum type backfill works.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(EnumType),
+          PgLibPqTestEnumType) {
+  const string kDatabaseName ="yugabyte";
+  const string kTableName ="enum_table";
+  const string kEnumTypeName ="enum_type";
+  auto conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+  ASSERT_OK(conn->ExecuteFormat(
+    "CREATE TYPE $0 as enum('b', 'e', 'f', 'c', 'a', 'd')", kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat(
+    "CREATE TABLE $0 (id $1)",
+    kTableName,
+    kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('a')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('b')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('c')", kTableName));
+
+  // Do table scan to verify contents the table with an ORDER BY clause. This
+  // ensures that old enum values which did not have sort order can be read back,
+  // sorted and displayed correctly.
+  const std::string query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  PGResultPtr res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<string> values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "c");
+  ASSERT_EQ(values[2], "a");
+
+  // Now alter the gflag so any new values will have sort order added.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+              "TEST_do_not_add_enum_sort_order", "false"));
+
+  // Disconnect from the database so we don't have a case where the
+  // postmaster dies while clients are still connected.
+  conn = nullptr;
+
+  // For each tablet server, kill the corresponding PostgreSQL process.
+  // A new PostgreSQL process will be respawned by the tablet server and
+  // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
+  // server.
+  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ExternalTabletServer* pg_ts = cluster_->tablet_server(i);
+    const string pg_pid_file = JoinPathSegments(pg_ts->GetDataDir(), "pg_data",
+                                                "postmaster.pid");
+
+    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
+    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
+    std::ifstream pg_pid_in;
+    pg_pid_in.open(pg_pid_file, std::ios_base::in);
+    ASSERT_FALSE(pg_pid_in.eof());
+    pid_t pg_pid = 0;
+    pg_pid_in >> pg_pid;
+    ASSERT_GT(pg_pid, 0);
+    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
+    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
+  }
+
+  // Reconnect to the database after the new PostgreSQL starts.
+  conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+
+  // Insert three more rows with --TEST_do_not_add_enum_sort_order=false.
+  // The new enum values will have sort order added.
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('d')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('e')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('f')", kTableName));
+
+  // Do table scan again to verify contents the table with an ORDER BY clause.
+  // This ensures that old enum values which did not have sort order, mixed
+  // with new enum values which have sort order, can be read back, sorted and
+  // displayed correctly.
+  ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 6);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+    ASSERT_RESULT(GetString(res.get(), 3, 0)),
+    ASSERT_RESULT(GetString(res.get(), 4, 0)),
+    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "e");
+  ASSERT_EQ(values[2], "f");
+  ASSERT_EQ(values[3], "c");
+  ASSERT_EQ(values[4], "a");
+  ASSERT_EQ(values[5], "d");
+
+  // Create an index on the enum table column.
+  ASSERT_OK(conn->ExecuteFormat("CREATE INDEX ON $0 (id ASC)", kTableName));
+
+  // Index only scan to verify contents of index table.
+  ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 6);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+    ASSERT_RESULT(GetString(res.get(), 3, 0)),
+    ASSERT_RESULT(GetString(res.get(), 4, 0)),
+    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "e");
+  ASSERT_EQ(values[2], "f");
+  ASSERT_EQ(values[3], "c");
+  ASSERT_EQ(values[4], "a");
+  ASSERT_EQ(values[5], "d");
+
+  // Test where clause.
+  const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
+  res = ASSERT_RESULT(conn->Fetch(query2));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  const string value = ASSERT_RESULT(GetString(res.get(), 0, 0));
+  ASSERT_EQ(value, "b");
 }
 
 namespace {

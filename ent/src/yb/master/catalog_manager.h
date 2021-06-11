@@ -37,7 +37,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   virtual ~CatalogManager();
   void CompleteShutdown();
 
-  CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(lock_);
+  CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(mutex_);
 
   // API to start a snapshot creation.
   CHECKED_STATUS CreateSnapshot(const CreateSnapshotRequestPB* req,
@@ -174,7 +174,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   friend class UniverseReplicationLoader;
 
   CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id)
-      REQUIRES(lock_);
+      REQUIRES(mutex_);
 
   // Per table structure for external cluster snapshot importing to this cluster.
   // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
@@ -257,28 +257,24 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
-  void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                       const std::string& snapshot_id,
-                                       const SnapshotScheduleId& schedule_id,
-                                       HybridTime snapshot_hybrid_time,
-                                       TabletSnapshotOperationCallback callback) override;
+  AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
+      const TabletInfoPtr& tablet, const std::string& snapshot_id,
+      tserver::TabletSnapshotOpRequestPB::Operation operation,
+      TabletSnapshotOperationCallback callback) override;
 
-  void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                        const std::string& snapshot_id,
-                                        HybridTime restore_at,
-                                        SendMetadata send_metadata,
-                                        TabletSnapshotOperationCallback callback) override;
-
-  void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                       const std::string& snapshot_id,
-                                       TabletSnapshotOperationCallback callback) override;
+  void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) override;
 
   CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
 
   CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) override;
   CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
 
-  void CleanupHiddenTablets(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
+  void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
+  void CleanupHiddenTablets(
+      const std::vector<TabletInfoPtr>& hidden_tablets,
+      const ScheduleMinRestoreTime& schedule_min_restore_time);
+  // Will filter tables content, so pass it by value here.
+  void CleanupHiddenTables(std::vector<TableInfoPtr> tables);
 
   rpc::Scheduler& Scheduler() override;
 
@@ -307,7 +303,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Find CDC streams for a table.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id);
 
-  bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override;
+  bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 
   CHECKED_STATUS FillHeartbeatResponseEncryption(const SysClusterConfigEntryPB& cluster_config,
                                                  const TSHeartbeatRequestPB* req,

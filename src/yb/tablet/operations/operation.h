@@ -43,6 +43,9 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/opid_util.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/util/auto_release_pool.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"
@@ -50,14 +53,9 @@
 #include "yb/util/memory/arena.h"
 
 namespace yb {
-
-struct OpId;
-
 namespace tablet {
 
-class Tablet;
-class OperationCompletionCallback;
-class OperationState;
+using OperationCompletionCallback = std::function<void(const Status&)>;
 
 YB_DEFINE_ENUM(
     OperationType,
@@ -163,7 +161,13 @@ class OperationState {
     tablet_ = tablet;
   }
 
-  void set_completion_callback(std::unique_ptr<OperationCompletionCallback> completion_clbk) {
+  template <class F>
+  void set_completion_callback(const F& completion_clbk) {
+    completion_clbk_ = completion_clbk;
+  }
+
+  template <class F>
+  void set_completion_callback(F&& completion_clbk) {
     completion_clbk_ = std::move(completion_clbk);
   }
 
@@ -186,9 +190,6 @@ class OperationState {
 
   // Sets the hybrid_time for the transaction
   void set_hybrid_time(const HybridTime& hybrid_time);
-
-  // If this operation does not have hybrid time yet, then it will be inited from clock.
-  void TrySetHybridTimeFromClock();
 
   HybridTime hybrid_time() const {
     std::lock_guard<simple_spinlock> l(mutex_);
@@ -223,28 +224,36 @@ class OperationState {
   }
 
   void CompleteWithStatus(const Status& status) const;
-  void SetError(const Status& status, tserver::TabletServerErrorPB::Code code) const;
-
-  // Initialize operation at leader side.
-  // op_id - operation id.
-  // committed_op_id - current committed operation id.
-  void LeaderInit(const OpId& op_id, const OpId& committed_op_id);
 
   // Whether we should use MVCC Manager to track this operation.
   virtual bool use_mvcc() const {
     return false;
   }
 
+  // Initialize operation at leader side.
+  // op_id - operation id.
+  // committed_op_id - current committed operation id.
+  virtual void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+
+  virtual void AddedToFollower();
+  virtual void Aborted();
+  virtual void Replicated();
+
   virtual ~OperationState();
 
  protected:
   explicit OperationState(Tablet* tablet);
 
+  virtual void AddedAsPending() {}
+  virtual void RemovedFromPending() {}
+
   // The tablet peer that is coordinating this transaction.
   Tablet* tablet_;
 
   // Optional callback to be called once the transaction completes.
-  std::unique_ptr<OperationCompletionCallback> completion_clbk_;
+  OperationCompletionCallback completion_clbk_;
+
+  mutable std::atomic<bool> complete_{false};
 
   AutoReleasePool pool_;
 
@@ -334,7 +343,7 @@ class ExclusiveSchemaOperationState :
       : OperationStateBase<Request, ExclusiveSchemaOperationStateBase>(
             std::forward<Args>(args)...) {}
 
-  void Finish() {
+  void Release() override {
     ExclusiveSchemaOperationStateBase::ReleasePermitToken();
 
     // Make the request NULL since after this operation commits
@@ -343,125 +352,24 @@ class ExclusiveSchemaOperationState :
   }
 };
 
-// A parent class for the callback that gets called when transactions complete.
-//
-// This must be set in the OperationState if the transaction initiator is to be notified of when a
-// transaction completes. The callback belongs to the transaction context and is deleted along with
-// it.
-//
-// NOTE: this is a concrete class so that we can use it as a default implementation which avoids
-// callers having to keep checking for NULL.
-class OperationCompletionCallback {
- public:
-
-  OperationCompletionCallback();
-
-  // Allows to set an error for this transaction and a mapping to a server level code.  Calling this
-  // method does not mean the transaction is completed.
-  void set_error(const Status& status, tserver::TabletServerErrorPB::Code code);
-
-  void set_error(const Status& status);
-
-  bool has_error() const;
-
-  const Status& status() const;
-
-  const tserver::TabletServerErrorPB::Code error_code() const;
-
-  // Subclasses should override this.
-  virtual void OperationCompleted() = 0;
-
-  void CompleteWithStatus(const Status& status) {
-    set_error(status);
-    OperationCompleted();
-  }
-
-  virtual ~OperationCompletionCallback();
-
- protected:
-  Status status_;
-  tserver::TabletServerErrorPB::Code code_;
-};
-
-// OperationCompletionCallback implementation that can be waited on.  Helper to make async
-// transactions, sync.  This is templated to accept any response PB that has a TabletServerError
-// 'error' field and to set the error before performing the latch countdown.  The callback does
-// *not* take ownership of either latch or response.
 template<class LatchPtr, class ResponsePBPtr>
-class LatchOperationCompletionCallback : public OperationCompletionCallback {
- public:
-  explicit LatchOperationCompletionCallback(LatchPtr latch,
-                                            ResponsePBPtr response)
-    : latch_(std::move(latch)),
-      response_(std::move(response)) {
-  }
-
-  virtual void OperationCompleted() override {
-    if (!status_.ok()) {
-      StatusToPB(status_, response_->mutable_error()->mutable_status());
+auto MakeLatchOperationCompletionCallback(LatchPtr latch, ResponsePBPtr response) {
+  return [latch, response](const Status& status) {
+    if (!status.ok()) {
+      StatusToPB(status, response->mutable_error()->mutable_status());
     }
-    latch_->CountDown();
-  }
-
- private:
-  LatchPtr latch_;
-  ResponsePBPtr response_;
-};
-
-template<class LatchPtr, class ResponsePBPtr>
-std::unique_ptr<LatchOperationCompletionCallback<LatchPtr, ResponsePBPtr>>
-    MakeLatchOperationCompletionCallback(
-        LatchPtr latch, ResponsePBPtr response) {
-  return std::make_unique<LatchOperationCompletionCallback<LatchPtr, ResponsePBPtr>>(
-      std::move(latch), std::move(response));
+    latch->CountDown();
+  };
 }
 
-class SynchronizerOperationCompletionCallback : public OperationCompletionCallback {
- public:
-  explicit SynchronizerOperationCompletionCallback(Synchronizer* synchronizer)
-    : synchronizer_(DCHECK_NOTNULL(synchronizer)) {}
-
-  void OperationCompleted() override {
-    synchronizer_->StatusCB(status());
-  }
-
- private:
-  Synchronizer* synchronizer_;
-};
-
-class WeakSynchronizerOperationCompletionCallback : public OperationCompletionCallback {
- public:
-  explicit WeakSynchronizerOperationCompletionCallback(std::weak_ptr<Synchronizer> synchronizer)
-      : synchronizer_(std::move(synchronizer)) {}
-
-  void OperationCompleted() override {
-    auto synchronizer = synchronizer_.lock();
-    if (synchronizer) {
-      synchronizer->StatusCB(status());
+inline auto MakeWeakSynchronizerOperationCompletionCallback(
+    std::weak_ptr<Synchronizer> synchronizer) {
+  return [synchronizer = std::move(synchronizer)](const Status& status) {
+    auto shared_synchronizer = synchronizer.lock();
+    if (shared_synchronizer) {
+      shared_synchronizer->StatusCB(status);
     }
-  }
-
- private:
-  std::weak_ptr<Synchronizer> synchronizer_;
-};
-
-template <class Functor>
-class FunctorOperationCompletionCallback : public OperationCompletionCallback {
- public:
-  explicit FunctorOperationCompletionCallback(Functor&& functor)
-      : functor_(std::move(functor)) {}
-
-  void OperationCompleted() override {
-    functor_(status());
-  }
-
- private:
-  Functor functor_;
-};
-
-template <class Functor>
-auto MakeFunctorOperationCompletionCallback(Functor&& functor) {
-  return std::make_unique<FunctorOperationCompletionCallback<Functor>>(std::move(functor));
+  };
 }
 
 }  // namespace tablet

@@ -133,7 +133,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client_ = ASSERT_RESULT(YBClientBuilder()
@@ -551,8 +551,8 @@ DontVerifyClusterBeforeNextTearDown();
   LOG(INFO) << "========================================================";
   LOG(INFO) << "Tables and tablets:";
   LOG(INFO) << "========================================================";
-  std::vector<scoped_refptr<master::TableInfo> > tables;
-  cluster_->mini_master()->master()->catalog_manager()->GetAllTables(&tables);
+  auto tables = cluster_->mini_master()->master()->catalog_manager()->GetTables(
+      master::GetTablesMode::kAll);
   for (const scoped_refptr<master::TableInfo>& table_info : tables) {
     LOG(INFO) << "Table: " << table_info->ToString();
     std::vector<scoped_refptr<master::TabletInfo> > tablets;

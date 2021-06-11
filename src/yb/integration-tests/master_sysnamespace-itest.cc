@@ -33,7 +33,7 @@ class MasterSysNamespaceTest : public YBTest {
     YBTest::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     rpc::MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());

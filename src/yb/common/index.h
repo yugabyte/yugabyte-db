@@ -17,6 +17,7 @@
 #ifndef YB_COMMON_INDEX_H_
 #define YB_COMMON_INDEX_H_
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -68,6 +69,10 @@ class IndexInfo {
     return indexed_range_column_ids_;
   }
   const IndexPermissions index_permissions() const { return index_permissions_; }
+
+  std::shared_ptr<const IndexInfoPB::WherePredicateSpecPB>& where_predicate_spec() const {
+    return where_predicate_spec_;
+  }
 
   // Return column ids that are primary key columns of the indexed table.
   std::vector<ColumnId> index_key_column_ids() const;
@@ -147,6 +152,8 @@ class IndexInfo {
   // Newer INDEX use mangled column name instead of ID.
   bool use_mangled_column_name_ = false;
   bool has_index_by_expr_ = false;
+
+  mutable std::shared_ptr<const IndexInfoPB::WherePredicateSpecPB> where_predicate_spec_ = nullptr;
 };
 
 // A map to look up an index by its index table id.

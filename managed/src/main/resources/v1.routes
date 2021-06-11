@@ -32,6 +32,7 @@ GET     /customers/:cUUID/providers                                            c
 GET     /customers/:cUUID/providers/:pUUID/initialize                          com.yugabyte.yw.controllers.CloudProviderController.initialize(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderController.create(cUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/kubernetes                                 com.yugabyte.yw.controllers.CloudProviderController.createKubernetes(cUUID: java.util.UUID)
+GET     /customers/:cUUID/providers/suggested_kubernetes_config                com.yugabyte.yw.controllers.CloudProviderController.getSuggestedKubernetesConfigs(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/bootstrap                           com.yugabyte.yw.controllers.CloudProviderController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/cleanup                             com.yugabyte.yw.controllers.CloudProviderController.cleanup(cUUID: java.util.UUID, pUUID: java.util.UUID)
@@ -121,6 +122,17 @@ POST    /customers/:cUUID/universes/:uniUUID/alert_definitions                 c
 GET     /customers/:cUUID/alert_definitions/:uniUUID/:name                     com.yugabyte.yw.controllers.AlertController.getAlertDefinition(cUUID: java.util.UUID, uniUUID: java.util.UUID, name: String)
 PUT     /customers/:cUUID/alert_definitions/:dUUID                             com.yugabyte.yw.controllers.AlertController.updateAlertDefinition(cUUID: java.util.UUID, dUUID: java.util.UUID)
 
+POST    /customers/:cUUID/alert_receivers                                      com.yugabyte.yw.controllers.AlertController.createAlertReceiver(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_receivers                                      com.yugabyte.yw.controllers.AlertController.listAlertReceivers(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_receivers/:arcUUID                             com.yugabyte.yw.controllers.AlertController.getAlertReceiver(cUUID: java.util.UUID, arcUUID: java.util.UUID)
+PUT     /customers/:cUUID/alert_receivers/:arcUUID                             com.yugabyte.yw.controllers.AlertController.updateAlertReceiver(cUUID: java.util.UUID, arcUUID: java.util.UUID)
+DELETE  /customers/:cUUID/alert_receivers/:arcUUID                             com.yugabyte.yw.controllers.AlertController.deleteAlertReceiver(cUUID: java.util.UUID, arcUUID: java.util.UUID)
+
+POST    /customers/:cUUID/alert_routes                                         com.yugabyte.yw.controllers.AlertController.createAlertRoute(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_routes                                         com.yugabyte.yw.controllers.AlertController.listAlertRoutes(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_routes/:artUUID                                com.yugabyte.yw.controllers.AlertController.getAlertRoute(cUUID: java.util.UUID, artUUID: java.util.UUID)
+DELETE  /customers/:cUUID/alert_routes/:artUUID                                com.yugabyte.yw.controllers.AlertController.deleteAlertRoute(cUUID: java.util.UUID, artUUID: java.util.UUID)
+
 # Access Key API
 GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: java.lang.String)
 GET     /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
@@ -146,13 +158,14 @@ GET     /customers/:cUUID/universes/:uniUUID/redisservers                      c
 GET     /customers/:cUUID/universes/:uniUUID/leader                            com.yugabyte.yw.controllers.UniverseController.getMasterLeaderIP(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade                           com.yugabyte.yw.controllers.UniverseController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/disk_update                       com.yugabyte.yw.controllers.UniverseController.updateDiskSize(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseController.status(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseController.status1(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/find/:universeName                         com.yugabyte.yw.controllers.UniverseController.findByName(cUUID: java.util.UUID, universeName: String)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state               com.yugabyte.yw.controllers.UniverseController.setBackupFlag(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     com.yugabyte.yw.controllers.UniverseController.configureAlerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/toggle_tls                        com.yugabyte.yw.controllers.UniverseController.toggleTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/run_query                         com.yugabyte.yw.controllers.UniverseController.runQuery(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/run_in_shell                      com.yugabyte.yw.controllers.UniverseController.runInShell(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/update_db_credentials             com.yugabyte.yw.controllers.UniverseController.setDatabaseCredentials(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -251,3 +264,4 @@ GET    /settings/ha/internal/config                                            c
 PUT    /settings/ha/internal/config/demote/:timestamp                          com.yugabyte.yw.controllers.InternalHAController.demoteLocalLeader(timestamp: java.lang.Long)
 PUT    /settings/ha/internal/config/sync/:timestamp                            com.yugabyte.yw.controllers.InternalHAController.syncInstances(timestamp: java.lang.Long)
 POST   /settings/ha/internal/upload                                            com.yugabyte.yw.controllers.InternalHAController.syncBackups()
+

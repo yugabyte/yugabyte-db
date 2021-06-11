@@ -44,6 +44,8 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
+#include "yb/util/random_util.h"
+
 namespace yb {
 
 // See top-level comments in yb/gutil/atomicops.h for further
@@ -395,6 +397,14 @@ void AtomicFlagSleepMs(T* flag) {
   }
 }
 
+template <class T>
+void AtomicFlagRandomSleepMs(T* flag) {
+  auto value = GetAtomicFlag(flag);
+  if (value != 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(RandomUniformInt<T>(0, value)));
+  }
+}
+
 template <class U, class T>
 bool CompareAndSetFlag(T* flag, U exp, U desired) {
   std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
@@ -426,6 +436,11 @@ class AtomicTryMutex {
  private:
   std::atomic<bool> locked_{false};
 };
+
+template <class T, class D>
+T AddFetch(std::atomic<T>* atomic, const D& delta, std::memory_order memory_order) {
+  return atomic->fetch_add(delta, memory_order) + delta;
+}
 
 } // namespace yb
 #endif /* YB_UTIL_ATOMIC_H */

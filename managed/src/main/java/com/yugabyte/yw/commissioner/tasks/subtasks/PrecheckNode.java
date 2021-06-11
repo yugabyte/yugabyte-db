@@ -42,13 +42,13 @@ public class PrecheckNode extends UniverseTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
     String errMsg = "";
-    for (Map.Entry<NodeInstance, String> entry: taskParams().failedNodes.entrySet()) {
+    for (Map.Entry<NodeInstance, String> entry : taskParams().failedNodes.entrySet()) {
       NodeInstance node = entry.getKey();
       if (!taskParams().reserveNodes) {
         try {
@@ -58,8 +58,10 @@ public class PrecheckNode extends UniverseTaskBase {
         }
       }
 
-      errMsg += String.format("\n-----\nNode %s (%s) failed preflight checks:\n%s",
-        node.instanceName, node.getDetails().ip, entry.getValue());
+      errMsg +=
+          String.format(
+              "\n-----\nNode %s (%s) failed preflight checks:\n%s",
+              node.instanceName, node.getDetails().ip, entry.getValue());
     }
 
     throw new RuntimeException(errMsg);

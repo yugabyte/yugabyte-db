@@ -29,8 +29,7 @@ import static org.mockito.Mockito.verify;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CloudCleanupTestTest extends CommissionerBaseTest {
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
 
   private UUID submitTask(List<String> regionList) {
     CloudCleanup.Params taskParams = new CloudCleanup.Params();
@@ -47,15 +46,17 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
       assertNull(r);
     }
 
-    zones.forEach(zone -> {
-      Optional<AvailabilityZone> az = AvailabilityZone.maybeGetByCode(defaultProvider, zone);
-      if (exists) {
-        assertTrue(az.isPresent());
-      } else {
-        assertFalse(az.isPresent());
-      }
-    });
+    zones.forEach(
+        zone -> {
+          Optional<AvailabilityZone> az = AvailabilityZone.maybeGetByCode(defaultProvider, zone);
+          if (exists) {
+            assertTrue(az.isPresent());
+          } else {
+            assertFalse(az.isPresent());
+          }
+        });
   }
+
   private void assertAccessKeyAndProvider(boolean exists) {
     List<AccessKey> accessKeyList = AccessKey.getAll(defaultProvider.uuid);
     defaultProvider = Provider.get(defaultProvider.uuid);
@@ -71,8 +72,8 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
   @Test
   public void testCloudCleanupSuccess() throws InterruptedException {
     Region region = Region.create(defaultProvider, "us-west-1", "us west 1", "yb-image");
-    AvailabilityZone.create(region, "az-1", "az 1", "subnet-1");
-    AvailabilityZone.create(region, "az-2", "az 2", "subnet-2");
+    AvailabilityZone.createOrThrow(region, "az-1", "az 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-2", "az 2", "subnet-2");
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": \"VPC Deleted\"}");
     when(mockNetworkManager.cleanup(region.uuid)).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
@@ -86,11 +87,11 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
   @Test
   public void testCloudCleanupWithMultipleRegions() throws InterruptedException {
     Region region1 = Region.create(defaultProvider, "us-west-1", "us west 1", "yb-image");
-    AvailabilityZone.create(region1, "az-1", "az 1", "subnet-1");
-    AvailabilityZone.create(region1, "az-2", "az 2", "subnet-2");
+    AvailabilityZone.createOrThrow(region1, "az-1", "az 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region1, "az-2", "az 2", "subnet-2");
     Region region2 = Region.create(defaultProvider, "us-west-2", "us west 2", "yb-image");
-    AvailabilityZone.create(region2, "az-3", "az 3", "subnet-3");
-    AvailabilityZone.create(region2, "az-4", "az 4", "subnet-4");
+    AvailabilityZone.createOrThrow(region2, "az-3", "az 3", "subnet-3");
+    AvailabilityZone.createOrThrow(region2, "az-4", "az 4", "subnet-4");
     AccessKey.create(defaultProvider.uuid, "access-key", new AccessKey.KeyInfo());
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": \"VPC Deleted\"}");
     when(mockNetworkManager.cleanup(region1.uuid)).thenReturn(vpcInfo);

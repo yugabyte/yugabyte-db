@@ -466,17 +466,16 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     ASSERT_OK(sync.Wait());
 
     // Check schema version.
-    //   kNumThreads (INDEX_PERM_WRITE_AND_DELETE)
-    // + 1 (INDEX_PERM_READ_WRITE_AND_DELETE)
-    // = kNumThreads + 1
+    //   Failed Threads = INDEX_PERM_WRITE_AND_DELETE + Transaction DDL Rollback
+    //   Success Thread = INDEX_PERM_WRITE_AND_DELETE + Transaction DDL Success
     // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
     // schema version.
-    ASSERT_EQ(table_info->schema.version(), kNumThreads + 1)
+    ASSERT_EQ(table_info->schema.version(), kNumThreads * 2)
         << "got indexed table schema version " << table_info->schema.version()
-        << ": expected " << kNumThreads + 1;
+        << ": expected " << kNumThreads * 2;
 
     // Check number of DocDB indexes.
-    ASSERT_EQ(table_info->index_map.size(), kNumThreads)
+    ASSERT_EQ(table_info->index_map.size(), 1)
         << "found " << table_info->index_map.size() << " DocDB indexes: expected " << kNumThreads;
 
     // Check index permissions.  Also collect orphaned DocDB indexes.
@@ -493,15 +492,6 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     }
     ASSERT_EQ(num_rwd, 1)
         << "found " << num_rwd << " fully created (readable) DocDB indexes: expected " << 1;
-  }
-
-  LOG(INFO) << "Removing orphaned DocDB indexes";
-  {
-    auto client = ASSERT_RESULT(cluster_->CreateClient());
-    for (const TableId& index_id : orphaned_docdb_index_ids) {
-      client::YBTableName indexed_table_name;
-      ASSERT_OK(client->DeleteIndexTable(index_id, &indexed_table_name));
-    }
   }
 
   LOG(INFO) << "Checking if index still works";

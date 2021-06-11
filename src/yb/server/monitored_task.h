@@ -104,6 +104,10 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     return false;
   }
 
+  std::string ToString() const {
+    return Format("{ type: $0 description: $1 }", type(), description());
+  }
+
  protected:
   static bool IsStateTerminal(MonitoredTaskState state) {
     return state == MonitoredTaskState::kComplete ||

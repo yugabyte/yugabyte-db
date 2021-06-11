@@ -25,7 +25,6 @@ import play.libs.Json;
 import java.util.List;
 import java.util.UUID;
 
-
 public class DeleteBackup extends AbstractTaskBase {
 
   public static class Params extends AbstractTaskParams {
@@ -57,15 +56,19 @@ public class DeleteBackup extends AbstractTaskBase {
     try {
       BackupTableParams backupParams = backup.getBackupInfo();
       List<BackupTableParams> backupList =
-        backupParams.backupList == null ? ImmutableList.of(backupParams) : backupParams.backupList;
+          backupParams.backupList == null
+              ? ImmutableList.of(backupParams)
+              : backupParams.backupList;
       if (deleteAllBackups(backupList)) {
         transitionState(backup, Backup.BackupState.Deleted);
         return;
       }
     } catch (Exception ex) {
-      LOG.error("Unexpected error in DeleteBackup {}. We will ignore the error and Mark the " +
-        "backup as failed to be deleted and remove it from scheduled cleanup.",
-        params().backupUUID, ex);
+      LOG.error(
+          "Unexpected error in DeleteBackup {}. We will ignore the error and Mark the "
+              + "backup as failed to be deleted and remove it from scheduled cleanup.",
+          params().backupUUID,
+          ex);
     }
     transitionState(backup, Backup.BackupState.FailedToDelete);
   }
@@ -91,8 +94,11 @@ public class DeleteBackup extends AbstractTaskBase {
     ShellResponse response = tableManager.deleteBackup(backupTableParams);
     JsonNode jsonNode = Json.parse(response.message);
     if (response.code != 0 || jsonNode.has("error")) {
-      LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
-        backupTableParams.storageLocation, response.code, jsonNode.has("error"));
+      LOG.error(
+          "Delete Backup failed for {}. Response code={}, hasError={}.",
+          backupTableParams.storageLocation,
+          response.code,
+          jsonNode.has("error"));
       return false;
     } else {
       LOG.info("[" + getName() + "] STDOUT: " + response.message);

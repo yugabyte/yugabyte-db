@@ -27,6 +27,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+
 @Entity
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
@@ -45,53 +46,80 @@ public class Schedule extends Model {
 
   private static final int MAX_FAIL_COUNT = 3;
 
-  @Id
-  public UUID scheduleUUID;
-  public UUID getScheduleUUID() { return scheduleUUID; }
+  @Id public UUID scheduleUUID;
+
+  public UUID getScheduleUUID() {
+    return scheduleUUID;
+  }
 
   @Column(nullable = false)
   private UUID customerUUID;
-  public UUID getCustomerUUID() { return customerUUID; }
+
+  public UUID getCustomerUUID() {
+    return customerUUID;
+  }
 
   @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
-  public int getFailureCount() { return failureCount; }
+
+  public int getFailureCount() {
+    return failureCount;
+  }
 
   @Column(nullable = false)
   private long frequency;
-  public long getFrequency() { return frequency; }
+
+  public long getFrequency() {
+    return frequency;
+  }
 
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
-  public JsonNode getTaskParams() { return taskParams; }
+
+  public JsonNode getTaskParams() {
+    return taskParams;
+  }
 
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
-  public TaskType getTaskType() { return taskType; }
+
+  public TaskType getTaskType() {
+    return taskType;
+  }
 
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private State status = State.Active;
-  public State getStatus() { return status; }
 
-  @Column
-  private String cronExpression;
-  public String getCronExpression() { return cronExpression; }
+  public State getStatus() {
+    return status;
+  }
+
+  @Column private String cronExpression;
+
+  public String getCronExpression() {
+    return cronExpression;
+  }
+
   public void setCronExpression(String cronExpression) {
     this.cronExpression = cronExpression;
   }
 
-  public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class){};
+  public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
-  public static Schedule create(UUID customerUUID, ITaskParams params, TaskType taskType,
-                                long frequency) {
+  public static Schedule create(
+      UUID customerUUID, ITaskParams params, TaskType taskType, long frequency) {
     return create(customerUUID, params, taskType, frequency, null);
   }
 
-  public static Schedule create(UUID customerUUID, ITaskParams params, TaskType taskType,
-                                long frequency, String cronExpression) {
+  public static Schedule create(
+      UUID customerUUID,
+      ITaskParams params,
+      TaskType taskType,
+      long frequency,
+      String cronExpression) {
     Schedule schedule = new Schedule();
     schedule.scheduleUUID = UUID.randomUUID();
     schedule.customerUUID = customerUUID;
@@ -105,9 +133,7 @@ public class Schedule extends Model {
     return schedule;
   }
 
-   /**
-   * DEPRECATED: use {@link #getOrBadRequest()}
-   */
+  /** DEPRECATED: use {@link #getOrBadRequest()} */
   @Deprecated
   public static Schedule get(UUID scheduleUUID) {
     return find.query().where().idEq(scheduleUUID).findOne();
@@ -126,8 +152,7 @@ public class Schedule extends Model {
   }
 
   public static List<Schedule> getAllActiveByCustomerUUID(UUID customerUUID) {
-    return find.query().
-      where().eq("customer_uuid", customerUUID).eq("status", "Active").findList();
+    return find.query().where().eq("customer_uuid", customerUUID).eq("status", "Active").findList();
   }
 
   public static List<Schedule> getAllActive() {
@@ -135,18 +160,26 @@ public class Schedule extends Model {
   }
 
   public static boolean existsStorageConfig(UUID customerConfigUUID) {
-    List<Schedule> scheduleList = find.query().where()
-        .or()
-          .eq("task_type", TaskType.BackupUniverse)
-          .eq("task_type", TaskType.MultiTableBackup)
-        .endOr()
-        .eq("status", "Active")
-        .findList();
+    List<Schedule> scheduleList =
+        find.query()
+            .where()
+            .or()
+            .eq("task_type", TaskType.BackupUniverse)
+            .eq("task_type", TaskType.MultiTableBackup)
+            .endOr()
+            .eq("status", "Active")
+            .findList();
     // This should be safe to do since storageConfigUUID is a required constraint.
-    scheduleList = scheduleList.stream()
-        .filter(s -> s.getTaskParams().path("storageConfigUUID")
-          .asText().equals(customerConfigUUID.toString()))
-        .collect(Collectors.toList());
+    scheduleList =
+        scheduleList
+            .stream()
+            .filter(
+                s ->
+                    s.getTaskParams()
+                        .path("storageConfigUUID")
+                        .asText()
+                        .equals(customerConfigUUID.toString()))
+            .collect(Collectors.toList());
     return scheduleList.size() != 0;
   }
 

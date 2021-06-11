@@ -31,7 +31,7 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
 
   @Override
   protected DiskIncreaseFormData taskParams() {
-    return (DiskIncreaseFormData)taskParams;
+    return (DiskIncreaseFormData) taskParams;
   }
 
   @Override

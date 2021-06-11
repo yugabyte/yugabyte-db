@@ -26,11 +26,9 @@ import java.util.UUID;
 public abstract class AbstractInitializer {
   public static final Logger LOG = LoggerFactory.getLogger(AbstractInitializer.class);
 
-  @Inject
-  ApiHelper apiHelper;
+  @Inject ApiHelper apiHelper;
 
-  @Inject
-  CloudQueryHelper cloudQueryHelper;
+  @Inject CloudQueryHelper cloudQueryHelper;
 
   public abstract Result initialize(UUID customerUUID, UUID providerUUID);
 

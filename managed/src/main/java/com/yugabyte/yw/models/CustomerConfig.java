@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -21,10 +22,10 @@ import play.libs.Json;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import java.util.*;
+
+import com.yugabyte.yw.common.Util;
+import static play.mvc.Http.Status.*;
 
 @Entity
 public class CustomerConfig extends Model {
@@ -62,16 +63,18 @@ public class CustomerConfig extends Model {
     }
   }
 
-  @Id
-  public UUID configUUID;
+  @Id public UUID configUUID;
+
+  @Column(length = 100, nullable = true)
+  public String configName;
 
   @Column(nullable = false)
   public UUID customerUUID;
 
-  @Column(length=25, nullable = false)
+  @Column(length = 25, nullable = false)
   public ConfigType type;
 
-  @Column(length=100, nullable = false)
+  @Column(length = 100, nullable = false)
   public String name;
 
   @Constraints.Required
@@ -81,7 +84,7 @@ public class CustomerConfig extends Model {
   public JsonNode data;
 
   public static final Finder<UUID, CustomerConfig> find =
-    new Finder<UUID, CustomerConfig>(CustomerConfig.class){};
+      new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
 
   public Map<String, String> dataAsMap() {
     return new ObjectMapper().convertValue(data, Map.class);
@@ -92,8 +95,8 @@ public class CustomerConfig extends Model {
   }
 
   /**
-   * Updates configuration data. If some fields are still masked with asterisks
-   * then these fields remain unchanged.
+   * Updates configuration data. If some fields are still masked with asterisks then these fields
+   * remain unchanged.
    *
    * @param data
    */
@@ -105,10 +108,18 @@ public class CustomerConfig extends Model {
   public boolean getInUse() {
     if (this.type == ConfigType.STORAGE) {
       // Check if a backup or schedule currently has a reference.
-      return (Backup.existsStorageConfig(this.configUUID) ||
-              Schedule.existsStorageConfig(this.configUUID));
+      return (Backup.existsStorageConfig(this.configUUID)
+          || Schedule.existsStorageConfig(this.configUUID));
     }
     return false;
+  }
+
+  public ArrayNode getUniverseDetails() {
+    Set<Universe> universes = new HashSet<>();
+    if (this.type == ConfigType.STORAGE) {
+      universes = Backup.getAssociatedUniverses(this.configUUID);
+    }
+    return Util.getUniverseDetails(universes);
   }
 
   @Override
@@ -132,17 +143,18 @@ public class CustomerConfig extends Model {
 
   @Deprecated
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
-    return CustomerConfig.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .idEq(configUUID)
-      .findOne();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .idEq(configUUID)
+        .findOne();
   }
 
   public static CustomerConfig getOrBadRequest(UUID customerUUID, UUID configUUID) {
     CustomerConfig storageConfig = get(customerUUID, configUUID);
     if (storageConfig == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid StorageConfig UUID: "
-          + configUUID);
+      throw new YWServiceException(BAD_REQUEST, "Invalid StorageConfig UUID: " + configUUID);
     }
     return storageConfig;
   }
@@ -163,8 +175,8 @@ public class CustomerConfig extends Model {
     return createConfig(customerUUID, ConfigType.PASSWORD_POLICY, PASSWORD_POLICY, payload);
   }
 
-  public static CustomerConfig createConfig(UUID customerUUID, ConfigType type, String name,
-                                            JsonNode payload) {
+  public static CustomerConfig createConfig(
+      UUID customerUUID, ConfigType type, String name, JsonNode payload) {
     CustomerConfig customerConfig = new CustomerConfig();
     customerConfig.type = type;
     customerConfig.name = name;
@@ -187,11 +199,13 @@ public class CustomerConfig extends Model {
   }
 
   public static CustomerConfig getConfig(UUID customerUUID, ConfigType type, String name) {
-    return CustomerConfig.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("type", type.toString())
-      .eq("name", name)
-      .findOne();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("type", type.toString())
+        .eq("name", name)
+        .findOne();
   }
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
@@ -213,7 +227,7 @@ public class CustomerConfig extends Model {
     return getConfig(customerUUID, ConfigType.CALLHOME, CALLHOME_PREFERENCES);
   }
 
-  public static CollectionLevel getOrCreateCallhomeLevel(UUID customerUUID){
+  public static CollectionLevel getOrCreateCallhomeLevel(UUID customerUUID) {
     CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customerUUID);
     if (callhomeConfig == null) CustomerConfig.createCallHomeConfig(customerUUID);
     return CustomerConfig.getCallhomeLevel(customerUUID);
@@ -221,7 +235,7 @@ public class CustomerConfig extends Model {
 
   public static CollectionLevel getCallhomeLevel(UUID customerUUID) {
     CustomerConfig config = getCallhomeConfig(customerUUID);
-    if (config != null){
+    if (config != null) {
       return CollectionLevel.valueOf(config.getData().get("callhomeLevel").textValue());
     }
     return null;

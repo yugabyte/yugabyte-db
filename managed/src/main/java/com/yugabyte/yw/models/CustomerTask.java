@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -22,6 +23,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class CustomerTask extends Model {
@@ -87,8 +90,14 @@ public class CustomerTask extends Model {
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 
+    @EnumValue("UpgradeVMImage")
+    UpgradeVMImage,
+
     @EnumValue("UpdateCert")
     UpdateCert,
+
+    @EnumValue("ToggleTls")
+    ToggleTls,
 
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
@@ -141,6 +150,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case UpdateCert:
           return completed ? "Updated Cert " : "Updating Cert ";
+        case ToggleTls:
+          return completed ? "Toggled Tls " : "Toggling Tls ";
         case UpgradeGflags:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case BulkImportData:
@@ -156,8 +167,9 @@ public class CustomerTask extends Model {
         case EnableEncryptionAtRest:
           return completed ? "Enabled encryption at rest" : "Enabling encryption at rest";
         case RotateEncryptionKey:
-          return completed ? "Rotated encryption at rest universe key" :
-            "Rotating encryption at rest universe key";
+          return completed
+              ? "Rotated encryption at rest universe key"
+              : "Rotating encryption at rest universe key";
         case DisableEncryptionAtRest:
           return completed ? "Disabled encryption at rest" : "Disabling encryption at rest";
         case StartMaster:
@@ -170,14 +182,17 @@ public class CustomerTask extends Model {
     }
 
     public static List<TaskType> filteredValues() {
-      return Arrays.stream(TaskType.values()).filter(value -> {
-        try {
-          Field field = TaskType.class.getField(value.name());
-          return !field.isAnnotationPresent(Deprecated.class);
-        } catch (Exception e) {
-          return false;
-        }
-      }).collect(Collectors.toList());
+      return Arrays.stream(TaskType.values())
+          .filter(
+              value -> {
+                try {
+                  Field field = TaskType.class.getField(value.name());
+                  return !field.isAnnotationPresent(Deprecated.class);
+                } catch (Exception e) {
+                  return false;
+                }
+              })
+          .collect(Collectors.toList());
     }
 
     public String getFriendlyName() {
@@ -277,11 +292,15 @@ public class CustomerTask extends Model {
   }
 
   public static final Finder<Long, CustomerTask> find =
-    new Finder<Long, CustomerTask>(CustomerTask.class) {
-    };
+      new Finder<Long, CustomerTask>(CustomerTask.class) {};
 
-  public static CustomerTask create(Customer customer, UUID targetUUID, UUID taskUUID,
-                                    TargetType targetType, TaskType type, String targetName) {
+  public static CustomerTask create(
+      Customer customer,
+      UUID targetUUID,
+      UUID taskUUID,
+      TargetType targetType,
+      TaskType type,
+      String targetName) {
     CustomerTask th = new CustomerTask();
     th.customerUUID = customer.uuid;
     th.targetUUID = targetUUID;
@@ -295,15 +314,25 @@ public class CustomerTask extends Model {
   }
 
   public static CustomerTask get(Long id) {
-    return CustomerTask.find.query().where()
-      .idEq(id).findOne();
+    return CustomerTask.find.query().where().idEq(id).findOne();
   }
 
+  @Deprecated
   public static CustomerTask get(UUID customerUUID, UUID taskUUID) {
-    return CustomerTask.find.query().where()
-    .eq("customer_uuid", customerUUID)
-    .eq("task_uuid", taskUUID)
-    .findOne();
+    return CustomerTask.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("task_uuid", taskUUID)
+        .findOne();
+  }
+
+  public static CustomerTask getOrBadRequest(UUID customerUUID, UUID taskUUID) {
+    CustomerTask customerTask = get(customerUUID, taskUUID);
+    if (customerTask == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
+    }
+    return customerTask;
   }
 
   public String getFriendlyDescription() {
@@ -315,34 +344,37 @@ public class CustomerTask extends Model {
   }
 
   /**
-   * deletes customer_task, task_info and all its subtasks of a given task.
-   * Assumes task_info tree is one level deep. If this assumption changes then
-   * this code needs to be reworked to recurse.
-   * When successful; it deletes at least 2 rows because there is always
-   * customer_task and associated task_info row that get deleted.
+   * deletes customer_task, task_info and all its subtasks of a given task. Assumes task_info tree
+   * is one level deep. If this assumption changes then this code needs to be reworked to recurse.
+   * When successful; it deletes at least 2 rows because there is always customer_task and
+   * associated task_info row that get deleted.
    *
-   * @return number of rows deleted.
-   * ==0 - if deletion was skipped due to data integrity issues.
-   * >=2 - number of rows deleted
+   * @return number of rows deleted. ==0 - if deletion was skipped due to data integrity issues. >=2
+   *     - number of rows deleted
    */
   @Transactional
   public int cascadeDeleteCompleted() {
-    Preconditions.checkNotNull(completionTime,
-      String.format("CustomerTask %s has not completed", id));
+    Preconditions.checkNotNull(
+        completionTime, String.format("CustomerTask %s has not completed", id));
     TaskInfo rootTaskInfo = TaskInfo.get(taskUUID);
     if (!rootTaskInfo.hasCompleted()) {
-      LOG.warn("Completed CustomerTask(id:{}, type:{}) has incomplete task_info {}",
-        id, type, rootTaskInfo);
+      LOG.warn(
+          "Completed CustomerTask(id:{}, type:{}) has incomplete task_info {}",
+          id,
+          type,
+          rootTaskInfo);
       return 0;
     }
     List<TaskInfo> subTasks = rootTaskInfo.getSubTasks();
-    List<TaskInfo> incompleteSubTasks = subTasks.stream()
-      .filter(taskInfo -> !taskInfo.hasCompleted())
-      .collect(Collectors.toList());
+    List<TaskInfo> incompleteSubTasks =
+        subTasks.stream().filter(taskInfo -> !taskInfo.hasCompleted()).collect(Collectors.toList());
     if (rootTaskInfo.getTaskState() == TaskInfo.State.Success && !incompleteSubTasks.isEmpty()) {
       LOG.warn(
-        "For a customer_task.id: {}, Successful task_info.uuid ({}) has {} incomplete subtasks {}",
-        id, rootTaskInfo.getTaskUUID(), incompleteSubTasks.size(), incompleteSubTasks);
+          "For a customer_task.id: {}, Successful task_info.uuid ({}) has {} incomplete subtasks {}",
+          id,
+          rootTaskInfo.getTaskUUID(),
+          incompleteSubTasks.size(),
+          incompleteSubTasks);
       return 0;
     }
     // Note: delete leaf nodes first to preserve referential integrity.
@@ -358,26 +390,26 @@ public class CustomerTask extends Model {
 
   public static List<CustomerTask> findOlderThan(Customer customer, Duration duration) {
     Date cutoffDate = new Date(Instant.now().minus(duration).toEpochMilli());
-    return find.query().where()
-      .eq("customerUUID", customer.uuid)
-      .le("completion_time", cutoffDate)
-      .findList();
+    return find.query()
+        .where()
+        .eq("customerUUID", customer.uuid)
+        .le("completion_time", cutoffDate)
+        .findList();
   }
 
   public static List<CustomerTask> findIncompleteByTargetUUID(UUID targetUUID) {
-    return find.query().where()
-      .eq("target_uuid", targetUUID)
-      .isNull("completion_time")
-      .findList();
+    return find.query().where().eq("target_uuid", targetUUID).isNull("completion_time").findList();
   }
 
   public static CustomerTask getLatestByUniverseUuid(UUID universeUUID) {
-    List<CustomerTask> tasks = find.query().where()
-      .eq("target_uuid", universeUUID)
-      .isNotNull("completion_time")
-      .orderBy("completion_time desc")
-      .setMaxRows(1)
-      .findList();
+    List<CustomerTask> tasks =
+        find.query()
+            .where()
+            .eq("target_uuid", universeUUID)
+            .isNotNull("completion_time")
+            .orderBy("completion_time desc")
+            .setMaxRows(1)
+            .findList();
     if (tasks.size() > 0) {
       return tasks.get(0);
     } else {

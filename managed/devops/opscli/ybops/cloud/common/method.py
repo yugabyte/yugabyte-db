@@ -12,20 +12,16 @@ import getpass
 import glob
 import json
 import logging
-import boto3
 import os
 import sys
 import time
-
-from dateutil.parser import parse
-from texttable import Texttable
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
     generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
     YB_HOME_DIR, YB_SUDO_PASS
 from ansible_vault import Vault
-from ybops.utils import generate_rsa_keypair, get_datafile_path, scp_to_tmp
+from ybops.utils import generate_rsa_keypair, scp_to_tmp
 
 
 class AbstractMethod(object):
@@ -204,6 +200,47 @@ class AbstractInstancesMethod(AbstractMethod):
         self.extra_vars.update(get_ssh_host_port(host_info, custom_ssh_port))
 
 
+class ReplaceRootVolumeMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(ReplaceRootVolumeMethod, self).__init__(base_command, "replace_root_volume")
+
+    def add_extra_args(self):
+        super(ReplaceRootVolumeMethod, self).add_extra_args()
+        self.parser.add_argument("--replacement_disk",
+                                 required=True,
+                                 help="The new boot disk to attach to the instance")
+
+    def _replace_root_volume(self, args, host_info, current_root_volume):
+        unmounted = False
+
+        try:
+            id = args.search_pattern
+            logging.info("==> Stopping instance {}".format(id))
+            self.cloud.stop_instance(host_info)
+            self.cloud.unmount_disk(host_info, current_root_volume)
+            logging.info("==> Root volume {} unmounted from {}".format(
+                current_root_volume, id))
+            unmounted = True
+            logging.info("==> Mounting {} as the new root volume on {}".format(
+                args.replacement_disk, id))
+            self._mount_root_volume(host_info, args.replacement_disk)
+        except Exception as e:
+            logging.exception(e)
+            if unmounted:
+                self._mount_root_volume(host_info, current_root_volume)
+        finally:
+            self.cloud.start_instance(host_info, 22)
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+
+        if not host_info:
+            raise YBOpsRuntimeError(
+                "Instance {} not found, was it stopped?".format(args.search_pattern))
+
+        self._replace_root_volume(args, *self._host_info_with_current_root_volume(args, host_info))
+
+
 class DestroyInstancesMethod(AbstractInstancesMethod):
     """Superclass for destroying an instnace.
     """
@@ -254,6 +291,11 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  default=40,
                                  help="Size of the boot disk in GBs. Currently only works on GCP.")
 
+        self.parser.add_argument("--auto_delete_boot_disk",
+                                 action="store_true",
+                                 default=True,
+                                 help="Delete the root volume on VM termination")
+
         self.parser.add_argument("--os_name",
                                  required=False,
                                  help="The os name to provision the universe in.",
@@ -262,6 +304,9 @@ class CreateInstancesMethod(AbstractInstancesMethod):
 
         self.parser.add_argument("--disable_custom_ssh", action="store_true",
                                  help="Disable running the ansible task for using custom SSH.")
+
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -273,15 +318,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         })
 
         self.run_ansible_create(args)
-
-        if self.can_ssh:
-            self.update_ansible_vars(args)
-            host_info = self.wait_for_host(args)
-            ansible = self.cloud.setup_ansible(args)
-            ansible.run("preprovision.yml", self.extra_vars, host_info)
-
-            if not args.disable_custom_ssh:
-                ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
+        self.preprovision(args)
 
     def run_ansible_create(self, args):
         self.update_ansible_vars(args)
@@ -304,6 +341,16 @@ class CreateInstancesMethod(AbstractInstancesMethod):
 
         self.extra_vars["assign_public_ip"] = "yes" if args.assign_public_ip else "no"
         self.update_ansible_vars_with_args(args)
+
+    def preprovision(self, args):
+        if self.can_ssh:
+            self.update_ansible_vars(args)
+            host_info = self.wait_for_host(args)
+            ansible = self.cloud.setup_ansible(args)
+            ansible.run("preprovision.yml", self.extra_vars, host_info)
+
+            if not args.disable_custom_ssh:
+                ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
     def wait_for_host(self, args, default_port=True):
         logging.info("Waiting for instance {}".format(args.search_pattern))
@@ -362,6 +409,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         # Actually call the Create method function for setting up extra options.
         self.create_method.add_extra_args()
         # Add extra options on top of the Create method ones.
+        self.parser.add_argument("--reprovision", action="store_true",
+                                 help="Run full reprovisioning on an existing host", default=False)
         self.parser.add_argument("--air_gap", action="store_true", help="Run airgapped install.")
         self.parser.add_argument("--reuse_host", action="store_true", default=False)
         self.parser.add_argument("--local_package_path",
@@ -404,7 +453,41 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"remote_package_path": args.remote_package_path})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+
+        if args.reprovision:
+            self.create_method.preprovision(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
+
+
+class CreateRootVolumesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(CreateRootVolumesMethod, self).__init__(base_command, "create_root_volumes")
+        self.provision_method = ProvisionInstancesMethod(self.base_command)
+
+    def add_extra_args(self):
+        self.provision_method.parser = self.parser
+        self.provision_method.add_extra_args()
+
+        self.parser.add_argument("--num_disks",
+                                 required=False,
+                                 default=1,
+                                 help="The number of boot disks to allocate in the zone")
+
+    def preprocess_args(self, args):
+        super(CreateRootVolumesMethod, self).preprocess_args(args)
+        self.provision_method.preprocess_args(args)
+
+    def callback(self, args):
+        args.search_pattern += "-{}".format(time.time()).replace('.', '-')
+        vid = self.create_master_volume(args)
+        output = [vid]
+        num_disks = int(args.num_disks) - 1
+
+        if num_disks > 0:
+            output.extend(self.cloud.clone_disk(args, vid, num_disks))
+
+        logging.info("==> Created volumes {}".format(output))
+        print(json.dumps(output))
 
 
 class ListInstancesMethod(AbstractInstancesMethod):
@@ -510,6 +593,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_cert')
         self.parser.add_argument('--use_custom_certs', action="store_true")
         self.parser.add_argument('--rotating_certs', action="store_true")
+        self.parser.add_argument('--adding_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
         self.parser.add_argument('--node_cert_path')
         self.parser.add_argument('--node_key_path')
@@ -686,7 +770,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
         # If we are just rotating certs, we don't need to do any configuration changes.
-        if not args.rotating_certs:
+        if not args.rotating_certs and not args.adding_certs:
             self.cloud.setup_ansible(args).run(
                 "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 
