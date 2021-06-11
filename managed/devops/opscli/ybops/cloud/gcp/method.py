@@ -9,13 +9,28 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesMethod,\
-    AbstractMethod, DestroyInstancesMethod, AbstractAccessMethod
+    AbstractMethod, DestroyInstancesMethod, AbstractAccessMethod, CreateRootVolumesMethod, \
+    ReplaceRootVolumeMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils import validated_key_file, format_rsa_key
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
 
 import json
-import os
+
+
+class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
+    def __init__(self, base_command):
+        super(GcpReplaceRootVolumeMethod, self).__init__(base_command)
+
+    def _mount_root_volume(self, args, volume):
+        self.cloud.mount_disk(args, {
+            "boot": True,
+            "source": volume
+        })
+
+    def _host_info_with_current_root_volume(self, args, host_info):
+        args.private_ip = host_info["private_ip"]
+        return (args, host_info["root_volume_device_name"])
 
 
 class GcpCreateInstancesMethod(CreateInstancesMethod):
@@ -54,7 +69,8 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
             args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
             server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
-            ssh_keys, boot_script=args.boot_script)
+            ssh_keys, boot_script=args.boot_script,
+            auto_delete_boot_disk=args.auto_delete_boot_disk)
 
 
 class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
@@ -79,6 +95,23 @@ class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
         self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
+
+
+class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
+    def __init__(self, base_command):
+        super(GcpCreateRootVolumesMethod, self).__init__(base_command)
+        self.provision_method = GcpProvisionInstancesMethod(base_command)
+
+    def create_master_volume(self, args):
+        name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
+        res = self.cloud.get_admin().create_disk(args.zone, body={
+            "name": name,
+            "sizeGb": args.boot_disk_size_gb,
+            "sourceImage": args.machine_image})
+        return res["targetLink"]
+
+    def delete_instance(self, args, instance_id):
+        self.cloud.get_admin().delete_instance(args.zone, instance_id)
 
 
 class GcpDestroyInstancesMethod(DestroyInstancesMethod):

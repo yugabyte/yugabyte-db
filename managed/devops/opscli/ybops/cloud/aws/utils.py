@@ -26,6 +26,7 @@ IGW_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-igw"
 ROUTE_TABLE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-rt"
 SG_YUGABYTE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-sg"
 PEER_CONN_FORMAT = "yb-peer-conn-{}-to-{}"
+ROOT_VOLUME_LABEL = "/dev/sda1"
 
 
 class AwsBootstrapRegion():
@@ -883,9 +884,8 @@ def create_instance(args):
     # Volume setup.
     volumes = []
     ebs = {
-        "DeleteOnTermination": True,
-        # TODO: constant
-        "VolumeSize": 40,
+        "DeleteOnTermination": args.auto_delete_boot_disk,
+        "VolumeSize": args.boot_disk_size_gb,
         "VolumeType": "gp2"
     }
 
@@ -898,7 +898,7 @@ def create_instance(args):
             "Arn": args.iam_profile_arn
         }
     volumes.append({
-        "DeviceName": "/dev/sda1",
+        "DeviceName": ROOT_VOLUME_LABEL,
         "Ebs": ebs
     })
 

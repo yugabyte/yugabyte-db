@@ -48,6 +48,12 @@ public enum TaskType {
 
   UpgradeUniverse("UpgradeUniverse"),
 
+  CreateRootVolumes("subtasks.CreateRootVolumes"),
+
+  ReplaceRootVolume("subtasks.ReplaceRootVolume"),
+
+  UpdateNodeDetails("subtasks.UpdateNodeDetails"),
+
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),
 
   DeleteNodeFromUniverse("DeleteNodeFromUniverse"),

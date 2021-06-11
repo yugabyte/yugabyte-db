@@ -90,6 +90,9 @@ public class CustomerTask extends Model {
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 
+    @EnumValue("UpgradeVMImage")
+    UpgradeVMImage,
+
     @EnumValue("UpdateCert")
     UpdateCert,
 

@@ -13,10 +13,8 @@ import json
 import logging
 import os
 import socket
-import time
 
 from botocore.utils import InstanceMetadataFetcher
-from botocore.credentials import InstanceMetadataProvider
 from botocore.exceptions import ClientError
 
 from six.moves.urllib.request import urlopen
@@ -28,13 +26,11 @@ from ybops.cloud.aws.utils import get_vpc_for_subnet
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.utils import is_valid_ip_address, validated_key_file, format_rsa_key
 
-from ybops.utils.remote_shell import RemoteShell
-
 from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.cloud.aws.utils import set_yb_sg_and_fetch_vpc, query_vpc, get_zones, \
-    delete_vpc, get_client, get_clients, AwsBootstrapClient, get_available_regions, \
+from ybops.cloud.aws.utils import query_vpc, get_zones, \
+    delete_vpc, get_client, get_clients, AwsBootstrapClient, \
     get_spot_pricing, YbVpcComponents, create_instance, has_ephemerals, get_device_names, \
-    modify_tags, update_disk
+    modify_tags, update_disk, ROOT_VOLUME_LABEL
 
 
 class AwsCloud(AbstractCloud):
@@ -44,9 +40,6 @@ class AwsCloud(AbstractCloud):
     INSTANCE_IDENTITY_API = "http://169.254.169.254/2016-09-02/dynamic/instance-identity/document"
     NETWORK_METADATA_API = os.path.join(INSTANCE_METADATA_API, "network/interfaces/macs/")
     METADATA_API_TIMEOUT_SECONDS = 3
-    RETRY_COUNT = 30
-    WAIT_SECONDS = 10
-
 
     def __init__(self):
         super(AwsCloud, self).__init__("aws")
@@ -335,6 +328,10 @@ class AwsCloud(AbstractCloud):
                 server_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "yb-server-type"]
                 name_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "Name"]
                 launched_by_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "launched-by"]
+
+            disks = data.get("BlockDeviceMappings")
+            root_vol = next(disk for disk in disks if disk.get("DeviceName") == ROOT_VOLUME_LABEL)
+
             result = dict(
                 id=data.get("InstanceId", None),
                 name=name_tags[0] if name_tags else None,
@@ -350,6 +347,7 @@ class AwsCloud(AbstractCloud):
                 server_type=server_tags[0] if server_tags else None,
                 launched_by=launched_by_tags[0] if launched_by_tags else None,
                 vpc=data["VpcId"],
+                root_volume=root_vol["Ebs"]["VolumeId"]
             )
             if not get_all:
                 return result
@@ -365,6 +363,52 @@ class AwsCloud(AbstractCloud):
     def create_instance(self, args):
         return create_instance(args)
 
+    def delete_instance(self, region, instance_id):
+        ec2 = boto3.resource('ec2', region)
+        instance = ec2.Instance(instance_id)
+        instance.terminate()
+        instance.wait_until_terminated()
+
+    def mount_disk(self, host_info, vol_id, label):
+        ec2 = boto3.client('ec2', region_name=host_info['region'])
+        ec2.attach_volume(
+            Device=label,
+            VolumeId=vol_id,
+            InstanceId=host_info['id']
+        )
+        waiter = ec2.get_waiter('volume_in_use')
+        waiter.wait(VolumeIds=[vol_id])
+
+    def unmount_disk(self, host_info, vol_id):
+        ec2 = boto3.client('ec2', region_name=host_info['region'])
+        ec2.detach_volume(VolumeId=vol_id, InstanceId=host_info['id'])
+        waiter = ec2.get_waiter('volume_available')
+        waiter.wait(VolumeIds=[vol_id])
+
+    def clone_disk(self, args, volume_id, num_disks):
+        output = []
+        snapshot = None
+
+        try:
+            ec2 = boto3.resource('ec2', args.region)
+            volume = ec2.Volume(volume_id)
+            logging.info("==> Going to create a snapshot from {}".format(volume_id))
+            snapshot = volume.create_snapshot()
+            snapshot.wait_until_completed()
+            logging.info("==> Created a snapshot {}".format(snapshot.id))
+
+            for _ in range(num_disks):
+                vol = ec2.create_volume(
+                    AvailabilityZone=args.zone,
+                    SnapshotId=snapshot.id
+                )
+                output.append(vol.id)
+        finally:
+            if snapshot:
+                snapshot.delete()
+
+        return output
+
     def modify_tags(self, args):
         instance = self.get_host_info(args)
         if not instance:
@@ -378,7 +422,7 @@ class AwsCloud(AbstractCloud):
         update_disk(args, instance["id"])
 
     def stop_instance(self, args):
-        ec2 = boto3.resource('ec2',  args["region"])
+        ec2 = boto3.resource('ec2', args["region"])
         try:
             instance = ec2.Instance(id=args["id"])
             instance.stop()
@@ -387,7 +431,7 @@ class AwsCloud(AbstractCloud):
             logging.error(e)
 
     def start_instance(self, args, ssh_port):
-        ec2 = boto3.resource('ec2',  args["region"])
+        ec2 = boto3.resource('ec2', args["region"])
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             instance = ec2.Instance(id=args["id"])
@@ -395,19 +439,7 @@ class AwsCloud(AbstractCloud):
             instance.wait_until_running()
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
-            retry_count = 0
-            while retry_count < self.RETRY_COUNT:
-                time.sleep(self.WAIT_SECONDS)
-                retry_count = retry_count + 1
-                result = sock.connect_ex((args["private_ip"], ssh_port))
-                if result == 0:
-                    break
-            else:
-                logging.error("Start instance {} exceeded maxRetries!".format(args["id"]))
-                raise YBOpsRuntimeError(
-                    "Cannot reach the instance {} after its start at port {}".format(
-                        args["id"], ssh_port)
-                    )
+            self._wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
         except ClientError as e:
             logging.error(e)
         finally:

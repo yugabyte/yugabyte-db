@@ -10,13 +10,8 @@
 
 from __future__ import print_function
 
-import atexit
-import boto3
-import botocore
 import distro
 import datetime
-import glob
-import hashlib
 import json
 import logging
 import os
@@ -26,7 +21,6 @@ import platform
 import random
 import re
 import shutil
-import six
 import socket
 import string
 import stat
@@ -34,7 +28,6 @@ import subprocess
 import sys
 import time
 import tempfile
-import yaml
 
 from Crypto.PublicKey import RSA
 from enum import Enum
@@ -46,7 +39,7 @@ from ybops.utils.remote_shell import RemoteShell
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
-SSH_RETRY_LIMIT = 20
+SSH_RETRY_LIMIT = 60
 SSH_RETRY_LIMIT_PRECHECK = 4
 DEFAULT_SSH_PORT = 22
 # Timeout in seconds.
