@@ -52,7 +52,6 @@ public class AlertRouteTest extends FakeDBApplication {
     receiver =
         AlertReceiver.create(
             defaultCustomer.getUuid(),
-            AlertReceiver.TargetType.Slack,
             AlertUtils.createParamsInstance(AlertReceiver.TargetType.Slack));
     definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
 

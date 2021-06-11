@@ -62,7 +62,7 @@ public class AlertManagerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    when(receiversManager.get(AlertReceiver.TargetType.Email)).thenReturn(emailReceiver);
+    when(receiversManager.get(AlertReceiver.TargetType.Email.name())).thenReturn(emailReceiver);
 
     universe = ModelFactory.createUniverse();
     definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
@@ -308,6 +308,6 @@ public class AlertManagerTest extends FakeDBApplication {
     params.recipients = Collections.singletonList("test@test.com");
     params.smtpData = EmailFixtures.createSmtpData();
 
-    return AlertReceiver.create(defaultCustomer.uuid, AlertReceiver.TargetType.Email, params);
+    return AlertReceiver.create(defaultCustomer.uuid, params);
   }
 }

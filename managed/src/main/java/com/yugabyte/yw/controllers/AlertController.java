@@ -23,7 +23,6 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertReceiverParams;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.YWValidateException;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
@@ -209,11 +208,7 @@ public class AlertController extends AuthenticatedController {
     AlertReceiver receiver = new AlertReceiver();
     receiver.setCustomerUuid(customerUUID);
     receiver.setUuid(UUID.randomUUID());
-    receiver.setTargetType(data.targetType);
-    receiver.setParams(
-        data.params == null
-            ? AlertUtils.createParamsInstance(data.targetType)
-            : AlertUtils.fromJson(data.targetType, data.params));
+    receiver.setParams(data.params);
 
     try {
       AlertUtils.validate(receiver);
@@ -237,14 +232,7 @@ public class AlertController extends AuthenticatedController {
     AlertReceiver receiver = AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID);
 
     AlertReceiverFormData data = getFormData();
-    AlertReceiverParams newParams = AlertUtils.fromJson(data.targetType, data.params);
-    if (newParams == null) {
-      throw new YWServiceException(
-          BAD_REQUEST, "Unable to update alert receiver. Invalid parameters.");
-    }
-
-    receiver.setTargetType(data.targetType);
-    receiver.setParams(newParams);
+    receiver.setParams(data.params);
 
     try {
       AlertUtils.validate(receiver);

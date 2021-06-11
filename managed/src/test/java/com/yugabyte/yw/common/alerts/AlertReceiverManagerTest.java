@@ -30,9 +30,9 @@ public class AlertReceiverManagerTest extends FakeDBApplication {
   public void testGet() {
     for (TargetType targetType : TargetType.values()) {
       if (IMPLEMENTED_TYPES.contains(targetType)) {
-        assertNotNull(receiversManager.get(targetType));
+        assertNotNull(receiversManager.get(targetType.name()));
       } else {
-        assertThrows(IllegalArgumentException.class, () -> receiversManager.get(targetType));
+        assertThrows(IllegalArgumentException.class, () -> receiversManager.get(targetType.name()));
       }
     }
   }

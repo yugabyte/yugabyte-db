@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.alerts.YWNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
 
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,7 +47,6 @@ public class AlertReceiverEmailTest extends FakeDBApplication {
 
   private AlertReceiver createFilledReceiver() {
     AlertReceiver receiver = new AlertReceiver();
-    receiver.setTargetType(TargetType.Email);
     AlertReceiverEmailParams params = new AlertReceiverEmailParams();
     params.recipients = Collections.singletonList("test@test.com");
     params.smtpData = new SmtpData();

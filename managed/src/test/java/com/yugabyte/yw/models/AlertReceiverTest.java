@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.models.AlertReceiver.TargetType;
 
@@ -37,21 +38,17 @@ public class AlertReceiverTest extends FakeDBApplication {
   public void testCreateAndGet() {
     AlertReceiver receiver =
         AlertReceiver.create(
-            defaultCustomer.uuid,
-            TargetType.Slack,
-            AlertUtils.createParamsInstance(TargetType.Slack));
+            defaultCustomer.uuid, AlertUtils.createParamsInstance(TargetType.Slack));
 
     AlertReceiver fromDb = AlertReceiver.get(defaultCustomer.uuid, receiver.getUuid());
-    assertEquals(TargetType.Slack, fromDb.getTargetType());
+    assertTrue(fromDb.getParams() instanceof AlertReceiverSlackParams);
   }
 
   @Test
   public void testGetSetParams() {
     AlertReceiver receiver =
         AlertReceiver.create(
-            defaultCustomer.uuid,
-            TargetType.Slack,
-            AlertUtils.createParamsInstance(TargetType.Slack));
+            defaultCustomer.uuid, AlertUtils.createParamsInstance(TargetType.Slack));
 
     assertNull(
         AlertReceiver.get(defaultCustomer.uuid, receiver.getUuid()).getParams().titleTemplate);
@@ -73,29 +70,14 @@ public class AlertReceiverTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetSetTargetType() {
-    AlertReceiver receiver =
-        AlertReceiver.create(
-            defaultCustomer.uuid,
-            TargetType.Slack,
-            AlertUtils.createParamsInstance(TargetType.Slack));
-    for (TargetType targetType : TargetType.values()) {
-      receiver.setTargetType(targetType);
-      assertTrue(receiver.getTargetType() == targetType);
-    }
-  }
-
-  @Test
   public void testGetOrBadRequest() {
     // Happy path.
     AlertReceiver receiver =
         AlertReceiver.create(
-            defaultCustomer.uuid,
-            TargetType.Slack,
-            AlertUtils.createParamsInstance(TargetType.Slack));
+            defaultCustomer.uuid, AlertUtils.createParamsInstance(TargetType.Slack));
 
     AlertReceiver fromDb = AlertReceiver.getOrBadRequest(defaultCustomer.uuid, receiver.getUuid());
-    assertEquals(TargetType.Slack, fromDb.getTargetType());
+    assertTrue(fromDb.getParams() instanceof AlertReceiverSlackParams);
 
     // A receiver doesn't exist, an exception is thrown.
     try {
@@ -110,19 +92,14 @@ public class AlertReceiverTest extends FakeDBApplication {
     // First customer with two receivers.
     AlertReceiver receiver1 =
         AlertReceiver.create(
-            defaultCustomer.uuid,
-            TargetType.Email,
-            AlertUtils.createParamsInstance(TargetType.Email));
+            defaultCustomer.uuid, AlertUtils.createParamsInstance(TargetType.Email));
     AlertReceiver receiver2 =
         AlertReceiver.create(
-            defaultCustomer.uuid,
-            TargetType.Slack,
-            AlertUtils.createParamsInstance(TargetType.Slack));
+            defaultCustomer.uuid, AlertUtils.createParamsInstance(TargetType.Slack));
 
     // Second customer with one receiver.
     UUID newCustomerUUID = ModelFactory.testCustomer().uuid;
-    AlertReceiver.create(
-        newCustomerUUID, TargetType.Slack, AlertUtils.createParamsInstance(TargetType.Slack));
+    AlertReceiver.create(newCustomerUUID, AlertUtils.createParamsInstance(TargetType.Slack));
 
     List<AlertReceiver> receivers = AlertReceiver.list(defaultCustomer.uuid);
     assertEquals(2, receivers.size());

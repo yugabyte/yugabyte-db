@@ -50,7 +50,7 @@ public class AlertUtilsTest extends FakeDBApplication {
     params.textTemplate = TEST_TEXT_TEMPLATE;
     params.titleTemplate = TEST_TITLE_TEMPLATE;
     params.smtpData = EmailFixtures.createSmtpData();
-    return AlertReceiver.create(defaultCustomer.uuid, TargetType.Email, params);
+    return AlertReceiver.create(defaultCustomer.uuid, params);
   }
 
   private AlertReceiver createEmailReceiverWithEmptyTemplates() {
@@ -82,7 +82,7 @@ public class AlertUtilsTest extends FakeDBApplication {
     params.webhookUrl = "hook-url";
     params.iconUrl = "icon-url";
 
-    AlertReceiver receiver = AlertReceiver.create(defaultCustomer.uuid, TargetType.Slack, params);
+    AlertReceiver receiver = AlertReceiver.create(defaultCustomer.uuid, params);
     AlertReceiver fromDb = AlertReceiver.get(defaultCustomer.uuid, receiver.getUuid());
     assertNotNull(fromDb);
     assertEquals(receiver, fromDb);
@@ -206,7 +206,7 @@ public class AlertUtilsTest extends FakeDBApplication {
       AlertUtils.validate(receiver);
       fail("YWValidateException is expected.");
     } catch (YWValidateException e) {
-      assertEquals("Undefined target type.", e.getMessage());
+      assertEquals("Incorrect parameters in AlertReceiver.", e.getMessage());
     }
   }
 

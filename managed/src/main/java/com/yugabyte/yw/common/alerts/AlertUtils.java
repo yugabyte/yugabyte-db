@@ -2,18 +2,12 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertReceiver;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-
-import play.libs.Json;
 
 import java.lang.reflect.InvocationTargetException;
 
@@ -119,31 +113,15 @@ public class AlertUtils {
     }
   }
 
-  /**
-   * Restores object of the AlertReceiverParams type (or one of its descendant types) from JSON.
-   *
-   * @param targetType
-   * @param json
-   * @return created object or null if some of parameters are incorrect.
-   */
-  public static AlertReceiverParams fromJson(TargetType targetType, JsonNode json) {
-    if (targetType == null) {
-      return null;
-    }
-
-    ObjectMapper mapper = Json.mapper();
-    try {
-      Class<?> paramsClass = getAlertParamsClass(targetType);
-      return ((AlertReceiverParams) mapper.treeToValue(json, paramsClass));
-    } catch (JsonProcessingException e) {
-      LOG.debug("Unable to deserialize AlertReceiverParams", e);
-      return null;
-    }
+  public static String getJsonTypeName(AlertReceiverParams params) {
+    Class<?> clz = params.getClass();
+    JsonTypeName an = clz.getDeclaredAnnotation(JsonTypeName.class);
+    return an.value();
   }
 
   public static void validate(AlertReceiver receiver) throws YWValidateException {
-    if (receiver.getTargetType() == null) {
-      throw new YWValidateException("Undefined target type.");
+    if (receiver.getParams() == null) {
+      throw new YWValidateException("Incorrect parameters in AlertReceiver.");
     }
     receiver.getParams().validate();
   }

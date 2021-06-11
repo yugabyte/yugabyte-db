@@ -4,9 +4,15 @@ package com.yugabyte.yw.common.alerts;
 
 import java.util.Objects;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = As.PROPERTY, property = "targetType")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = AlertReceiverEmailParams.class, name = "Email"),
+  @JsonSubTypes.Type(value = AlertReceiverSlackParams.class, name = "Slack")
+})
 public class AlertReceiverParams {
   // Specifies template string for the notification title.
   // If null then template from the alert is used (?).

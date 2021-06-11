@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.YWValidateException;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -142,7 +141,8 @@ public class AlertManager {
       }
 
       try {
-        AlertReceiverInterface handler = receiversManager.get(receiver.getTargetType());
+        AlertReceiverInterface handler =
+            receiversManager.get(AlertUtils.getJsonTypeName(receiver.getParams()));
         handler.sendNotification(customer, alert, receiver);
         resolveAlerts(customer.uuid, receiver.getUuid(), ALERT_MANAGER_ERROR_CODE);
 
@@ -152,7 +152,10 @@ public class AlertManager {
       } catch (Exception e) {
         LOG.error(e.getMessage());
         createAlert(
-            customer, Alert.TargetType.AlertReceiverType, receiver.getUuid(), e.getMessage());
+            customer,
+            Alert.TargetType.AlertReceiverType,
+            receiver.getUuid(),
+            "Error sending notification: " + e);
       }
     }
   }
@@ -165,7 +168,6 @@ public class AlertManager {
     AlertReceiver defaultReceiver = new AlertReceiver();
     defaultReceiver.setUuid(DEFAULT_ALERT_RECEIVER_UUID);
     defaultReceiver.setCustomerUuid(customerUUID);
-    defaultReceiver.setTargetType(TargetType.Email);
     defaultReceiver.setParams(params);
     return defaultReceiver;
   }

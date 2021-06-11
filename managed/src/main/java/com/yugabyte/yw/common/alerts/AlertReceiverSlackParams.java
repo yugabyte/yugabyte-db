@@ -7,6 +7,8 @@ import java.util.Objects;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.UrlValidator;
 
+import com.fasterxml.jackson.annotation.JsonTypeName;
+
 /*
  * Settings example:
  *
@@ -16,6 +18,7 @@ import org.apache.commons.validator.routines.UrlValidator;
  *    title: '{{ template "slack_health.title.tmpl" . }}'
  *    text: '{{ template "slack_health.body.tmpl" . }}'
  */
+@JsonTypeName("Slack")
 public class AlertReceiverSlackParams extends AlertReceiverParams {
 
   public String channel;
