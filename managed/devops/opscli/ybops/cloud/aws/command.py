@@ -15,10 +15,9 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
     AwsQueryCurrentHostMethod, AwsAccessDeleteKeyMethod, \
     AwsQueryVPCMethod, AwsQuerySpotPricingMethod, AwsCreateDnsEntryMethod, AwsEditDnsEntryMethod, \
     AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod, AwsPauseInstancesMethod, \
-    AwsResumeInstancesMethod
+    AwsResumeInstancesMethod, AwsCreateRootVolumesMethod, AwsReplaceRootVolumeMethod
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
-from ybops.cloud.common.base import AbstractPerCloudCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
     InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod
 
@@ -41,6 +40,8 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(CronCheckMethod(self))
         self.add_method(AwsPauseInstancesMethod(self))
         self.add_method(AwsResumeInstancesMethod(self))
+        self.add_method(AwsReplaceRootVolumeMethod(self))
+        self.add_method(AwsCreateRootVolumesMethod(self))
 
 
 class AwsNetworkCommand(NetworkCommand):

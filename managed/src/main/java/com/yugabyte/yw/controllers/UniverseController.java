@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
@@ -92,6 +93,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
@@ -1483,6 +1485,41 @@ public class UniverseController extends AuthenticatedController {
     CustomerTask.TaskType customerTaskType;
     // Validate if any required params are missed based on the taskType
     switch (taskParams.taskType) {
+      case VMImage:
+        if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+          throw new YWServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled");
+        }
+
+        CloudType provider = primaryIntent.providerType;
+        if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
+          throw new YWServiceException(
+              BAD_REQUEST,
+              "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
+        }
+
+        boolean hasEphemeralStorage = false;
+        if (provider == CloudType.gcp) {
+          if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
+            hasEphemeralStorage = true;
+          }
+        } else {
+          if (taskParams.getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
+            hasEphemeralStorage = true;
+          }
+        }
+
+        if (hasEphemeralStorage) {
+          throw new YWServiceException(
+              BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage");
+        }
+
+        if (taskParams.machineImages.isEmpty()) {
+          throw new YWServiceException(
+              BAD_REQUEST, "machineImages param is required for taskType: " + taskParams.taskType);
+        }
+
+        customerTaskType = CustomerTask.TaskType.UpgradeVMImage;
+        break;
       case Software:
         customerTaskType = CustomerTask.TaskType.UpgradeSoftware;
         if (taskParams.ybSoftwareVersion == null || taskParams.ybSoftwareVersion.isEmpty()) {

@@ -79,7 +79,7 @@ get_ephemeral_drives() {
   declare -i exit_code=0
 
   # Take into account xvdb or sdb
-  root_drive=$(df | awk 'NR==2{print $1}')
+  root_drive=$(df | awk '$6 == "/" {print $1}')
 
   if [[ "$root_drive" == "/dev/xvda1" ]]; then
     echo "Detected 'xvd' drive naming scheme (root: $root_drive)"

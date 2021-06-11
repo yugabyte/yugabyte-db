@@ -43,6 +43,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     // If set, we will use this Amazon Resource Name of the user's
     // instance profile instead of an access key id and secret
     public String ipArnString;
+    public String machineImage;
+    public boolean reprovision;
   }
 
   @Override
