@@ -22,8 +22,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -48,6 +50,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
@@ -80,6 +83,8 @@ public class NodeManager extends DevopsBase {
     Disk_Update,
     Pause,
     Resume,
+    Create_Root_Volumes,
+    Replace_Root_Volume
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
@@ -625,6 +630,25 @@ public class NodeManager extends DevopsBase {
     Path bootScriptFile = null;
 
     switch (type) {
+      case Replace_Root_Volume:
+        if (!(nodeTaskParam instanceof ReplaceRootVolume.Params)) {
+          throw new RuntimeException("NodeTaskParams is not ReplaceRootVolume.Params");
+        }
+
+        ReplaceRootVolume.Params rrvParams = (ReplaceRootVolume.Params) nodeTaskParam;
+        commandArgs.add("--replacement_disk");
+        commandArgs.add(rrvParams.replacementDisk);
+        commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, type));
+        break;
+      case Create_Root_Volumes:
+        if (!(nodeTaskParam instanceof CreateRootVolumes.Params)) {
+          throw new RuntimeException("NodeTaskParams is not CreateRootVolumes.Params");
+        }
+
+        CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) nodeTaskParam;
+        commandArgs.add("--num_disks");
+        commandArgs.add(String.valueOf(crvParams.numVolumes));
+        // intentional fall-thru
       case Provision:
         {
           if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
@@ -664,7 +688,8 @@ public class NodeManager extends DevopsBase {
             // For now we wouldn't add machine image for aws and fallback on the default
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
-            String ybImage = taskParam.getRegion().ybImage;
+            String ybImage =
+                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -744,6 +769,11 @@ public class NodeManager extends DevopsBase {
           if (localPackagePath != null) {
             commandArgs.add("--local_package_path");
             commandArgs.add(localPackagePath);
+          }
+
+          if (taskParam.reprovision) {
+            commandArgs.add("--reuse_host");
+            commandArgs.add("--reprovision");
           }
 
           break;
