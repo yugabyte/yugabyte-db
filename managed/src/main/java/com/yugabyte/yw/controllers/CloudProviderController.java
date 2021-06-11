@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -29,8 +31,6 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
-import org.apache.commons.collections4.MultiValuedMap;
-import org.apache.commons.collections4.multimap.HashSetValuedHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -406,7 +406,7 @@ public class CloudProviderController extends AuthenticatedController {
       response = KubernetesProviderFormData.class)
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
     try {
-      MultiValuedMap<String, String> regionToAZ = getKubernetesRegionToZoneInfo();
+      SetMultimap<String, String> regionToAZ = getKubernetesRegionToZoneInfo();
       if (regionToAZ.isEmpty()) {
         LOG.info(
             "No regions and zones found, check if the region and zone labels are present on the nodes. https://k8s.io/docs/reference/labels-annotations-taints/");
@@ -454,9 +454,9 @@ public class CloudProviderController extends AuthenticatedController {
 
   // Performs region and zone discovery based on
   // topology/failure-domain labels from the Kubernetes nodes.
-  private MultiValuedMap<String, String> getKubernetesRegionToZoneInfo() {
+  private SetMultimap<String, String> getKubernetesRegionToZoneInfo() {
     JsonNode nodeInfos = kubernetesManager.getNodeInfos(null);
-    MultiValuedMap<String, String> regionToAZ = new HashSetValuedHashMap<>();
+    SetMultimap<String, String> regionToAZ = HashMultimap.create();
     for (JsonNode nodeInfo : nodeInfos.path("items")) {
       JsonNode nodeLabels = nodeInfo.path("metadata").path("labels");
       // failure-domain.beta.k8s.io is deprecated as of 1.17
