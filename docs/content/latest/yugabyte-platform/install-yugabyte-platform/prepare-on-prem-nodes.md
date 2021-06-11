@@ -49,49 +49,51 @@ For more information on ports used by YugabyteDB, refer to [Default ports](../..
     $ ssh -i your_private_key.pem ssh_user@node_ip
     ```
 
-1. The following actions will be performed with sudo access.
-    * Create the `yugabyte:yugabyte` user + group.
-    * Set home dir /home/yugabyte.
-    * Create the `prometheus:prometheus` user + group.
+The following actions will be performed with sudo access.
 
-    {{< tip title="Tip" >}}
-    If you’re using the LDAP directory for managing system users, you can pre-provision yugabyte and prometheus users: 
+* Create the `yugabyte:yugabyte` user + group.
+* Set home dir /home/yugabyte.
+* Create the `prometheus:prometheus` user + group.
 
-    * `yugabyte` user should belong to the `yugabyte` group.
-    * Set home dir for yugabyte user (default /home/yugabyte) and ensure the directory is owned by `yugabyte:yugabyte`. The home directory will be used in the cloud provider config step.
-    * Prometheus username and the group can be user-defined. You will enter the custom user during the cloud provider configuration setup.
-    {{< /tip >}}
+{{< tip title="Tip" >}}
+If you're using the LDAP directory for managing system users, you can pre-provision Yugabyte and Prometheus users: 
 
-    * Ability to schedule Cron jobs with Crontab. Cron jobs are used for health monitoring, log file rotation, and system core files cleanup.
+* The `yugabyte` user should belong to the `yugabyte` group.
 
-    {{< tip title="Tip" >}}
-    For any 3rd party cron scheduling tools, you can add these cron entries and disable Crontab. Disabling Crontab will create alerts after the universe creation that can be ignored. But you need to ensure cron jobs are set appropriately  for the platform to work as expected. 
+* Set the home dir for the `yugabyte` user (default /home/yugabyte) and ensure the directory is owned by `yugabyte:yugabyte`. The home directory will be used during cloud provider configuration.
+    
+* The Prometheus username and the group can be user-defined. You will enter the custom user during cloud provider configuration.
+{{< /tip >}}
 
-    ```sh
-    # Ansible: cleanup core files hourly
-    0 * * * * /home/yugabyte/bin/clean_cores.sh
-    # Ansible: cleanup yb log files hourly
-    5 * * * * /home/yugabyte/bin/zip_purge_yb_logs.sh
-    # Ansible: Check liveness of master
-    */1 * * * * /home/yugabyte/bin/yb-server-ctl.sh master cron-check || /home/yugabyte/bin/yb-server-ctl.sh master start
-    # Ansible: Check liveness of tserver
-    */1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
-    ```
+* Ensure you can schedule Cron jobs with Crontab. Cron jobs are used for health monitoring, log file rotation, and system core files cleanup.
 
-    {{< /tip >}}
+{{< tip title="Tip" >}}
+For any 3rd party cron scheduling tools, you can add these cron entries and disable Crontab. Disabling Crontab will create alerts after the universe creation that can be ignored. But you need to ensure cron jobs are set appropriately for the platform to work as expected. 
 
-    * Verify that Python 2.7 is installed.
-    * Enable core dumps + set ulimits.
+```sh
+# Ansible: cleanup core files hourly
+0 * * * * /home/yugabyte/bin/clean_cores.sh
+# Ansible: cleanup yb log files hourly
+5 * * * * /home/yugabyte/bin/zip_purge_yb_logs.sh
+# Ansible: Check liveness of master
+*/1 * * * * /home/yugabyte/bin/yb-server-ctl.sh master cron-check || /home/yugabyte/bin/yb-server-ctl.sh master start
+# Ansible: Check liveness of tserver
+*/1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
+```
+{{< /tip >}}
+
+* Verify that Python 2.7 is installed.
+* Enable core dumps + set ulimits.
 
     ```sh
     *       hard        core        unlimited
     *       soft        core        unlimited
     ```
 
-    * Configure SSH as follows:
+* Configure SSH as follows:
 
-        1. Disable `sshguard`.
-        2. Set `UseDNS no` in `/etc/ssh/sshd_config` (disables reverse lookup, which is used for auth; DNS is still useable).
+    * Disable `sshguard`.
+    * Set `UseDNS no` in `/etc/ssh/sshd_config` (disables reverse lookup, which is used for auth; DNS is still useable).
 
-    * Set `vm.swappiness` to 0.
-    * Set `mount` path permissions to 0755.
+* Set `vm.swappiness` to 0.
+* Set `mount` path permissions to 0755.
