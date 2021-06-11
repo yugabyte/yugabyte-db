@@ -18,9 +18,8 @@
 #include "yb/util/header_manager.h"
 
 namespace yb {
-namespace enterprise {
 
-class HeaderManagerMockImpl : public yb::enterprise::HeaderManager {
+class HeaderManagerMockImpl : public yb::HeaderManager {
  public:
   HeaderManagerMockImpl();
   void SetFileEncryption(bool file_encrypted);
@@ -42,7 +41,6 @@ class HeaderManagerMockImpl : public yb::enterprise::HeaderManager {
 
 std::unique_ptr<HeaderManager> GetMockHeaderManager();
 
-} // namespace enterprise
 } // namespace yb
 
 

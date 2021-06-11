@@ -159,7 +159,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void InitCluster() {
     // Start mini-cluster with 1 tserver, config client options
-    cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+    cluster_.reset(new MiniCluster(MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
     YBClientBuilder builder;
     builder.add_master_server_addr(

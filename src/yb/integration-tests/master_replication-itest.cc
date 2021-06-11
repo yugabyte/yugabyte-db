@@ -76,7 +76,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
-    cluster_.reset(new MiniCluster(env_.get(), opts_));
+    cluster_.reset(new MiniCluster(opts_));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
   }

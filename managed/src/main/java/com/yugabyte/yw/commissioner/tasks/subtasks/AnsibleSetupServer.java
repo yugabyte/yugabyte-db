@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
@@ -44,6 +43,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     // If set, we will use this Amazon Resource Name of the user's
     // instance profile instead of an access key id and secret
     public String ipArnString;
+    public String machineImage;
+    public boolean reprovision;
   }
 
   @Override

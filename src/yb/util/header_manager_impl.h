@@ -19,7 +19,6 @@
 #include "yb/util/header_manager.h"
 
 namespace yb {
-namespace enterprise {
 
 class HeaderManager;
 class UniverseKeyManager;
@@ -35,7 +34,6 @@ class UniverseKeyManager;
 // EncryptionParamsPB
 std::unique_ptr<HeaderManager> DefaultHeaderManager(UniverseKeyManager* universe_key_manager);
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_HEADER_MANAGER_IMPL_H
