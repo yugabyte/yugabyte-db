@@ -13,10 +13,13 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
-import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -24,7 +27,6 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import play.data.validation.Constraints;
 import play.data.validation.Constraints.Required;
-import play.libs.Json;
 
 @Entity
 public class AlertReceiver extends Model {
@@ -55,30 +57,27 @@ public class AlertReceiver extends Model {
   private UUID customerUUID;
 
   @Constraints.Required
-  @Column(nullable = false)
-  @JsonProperty("target_type")
-  private TargetType targetType;
-
-  @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
   @DbJson
-  private JsonNode params;
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = As.PROPERTY, property = "targetType")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = AlertReceiverEmailParams.class, name = "Email"),
+    @JsonSubTypes.Type(value = AlertReceiverSlackParams.class, name = "Slack")
+  })
+  private AlertReceiverParams params;
 
   private static final Finder<UUID, AlertReceiver> find =
       new Finder<UUID, AlertReceiver>(AlertReceiver.class) {};
 
-  public static AlertReceiver create(
-      UUID customerUUID, TargetType targetType, AlertReceiverParams params) {
-    return create(UUID.randomUUID(), customerUUID, targetType, params);
+  public static AlertReceiver create(UUID customerUUID, AlertReceiverParams params) {
+    return create(UUID.randomUUID(), customerUUID, params);
   }
 
-  public static AlertReceiver create(
-      UUID uuid, UUID customerUUID, TargetType targetType, AlertReceiverParams params) {
+  public static AlertReceiver create(UUID uuid, UUID customerUUID, AlertReceiverParams params) {
     AlertReceiver receiver = new AlertReceiver();
     receiver.uuid = uuid;
     receiver.customerUUID = customerUUID;
-    receiver.targetType = targetType;
-    receiver.setParams(params);
+    receiver.params = params;
     receiver.save();
     return receiver;
   }
@@ -91,20 +90,12 @@ public class AlertReceiver extends Model {
     this.uuid = uuid;
   }
 
-  public TargetType getTargetType() {
-    return targetType;
-  }
-
-  public void setTargetType(TargetType targetType) {
-    this.targetType = targetType;
-  }
-
   public AlertReceiverParams getParams() {
-    return AlertUtils.fromJson(targetType, params);
+    return params;
   }
 
   public void setParams(AlertReceiverParams params) {
-    this.params = Json.toJson(params);
+    this.params = params;
   }
 
   public UUID getCustomerUUID() {
@@ -133,7 +124,7 @@ public class AlertReceiver extends Model {
 
   @Override
   public int hashCode() {
-    return Objects.hash(customerUUID, params, targetType, uuid);
+    return Objects.hash(customerUUID, params, uuid);
   }
 
   @Override
@@ -147,7 +138,6 @@ public class AlertReceiver extends Model {
     AlertReceiver other = (AlertReceiver) obj;
     return Objects.equals(customerUUID, other.customerUUID)
         && Objects.equals(params, other.params)
-        && targetType == other.targetType
         && Objects.equals(uuid, other.uuid);
   }
 
@@ -157,8 +147,6 @@ public class AlertReceiver extends Model {
         + uuid
         + ", customerUUID="
         + customerUUID
-        + ", targetType="
-        + targetType
         + ", params="
         + params
         + "]";
