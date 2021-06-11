@@ -8,6 +8,7 @@
 
 - name: Perform command {{ command }} on YB {{ process }}
   hosts: "{{ instance_search_pattern }}"
+  gather_facts: no
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   vars:
@@ -19,6 +20,7 @@
 
 - name: Stopping thirdparty services
   hosts: "{{ instance_search_pattern }}"
+  gather_facts: "{{ process == 'thirdparty' }}"
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   tasks:

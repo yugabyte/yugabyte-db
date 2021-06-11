@@ -483,6 +483,9 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--gflags_to_remove");
             subcommand.add(Json.stringify(Json.toJson(taskParam.gflagsToRemove)));
           }
+
+          subcommand.add("--tags");
+          subcommand.add("override_gflags");
         }
         break;
       case Certs:

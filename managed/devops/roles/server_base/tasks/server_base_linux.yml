@@ -104,7 +104,7 @@
         patterns: "*.repo"
       register: repos
 
-    - name: Replace mirror links from https to http
+    - name: Uncomment mirror links
       become: yes
       become_method: sudo
       replace:
