@@ -10,13 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionLabel;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
@@ -24,17 +17,31 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import play.api.Play;
-
+import javax.inject.Inject;
 import java.util.List;
 import java.util.UUID;
 
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
+
+  private final AlertDefinitionService alertDefinitionService;
+  private final AlertManager alertManager;
+
+  @Inject
+  public DestroyUniverse(AlertDefinitionService alertDefinitionService, AlertManager alertManager) {
+    this.alertDefinitionService = alertDefinitionService;
+    this.alertManager = alertManager;
+  }
 
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
@@ -102,12 +109,11 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
 
-      AlertManager alertManager = Play.current().injector().instanceOf(AlertManager.class);
       alertManager.resolveAlerts(params().customerUUID, params().universeUUID, "%");
-      AlertDefinition.delete(
-          params().customerUUID,
-          new AlertDefinitionLabel(
-              KnownAlertLabels.UNIVERSE_UUID, params().universeUUID.toString()));
+      alertDefinitionService.delete(
+          new AlertDefinitionFilter()
+              .setCustomerUuid(params().customerUUID)
+              .setLabel(KnownAlertLabels.UNIVERSE_UUID, params().universeUUID.toString()));
 
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update

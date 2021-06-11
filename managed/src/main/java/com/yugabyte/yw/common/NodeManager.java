@@ -13,14 +13,27 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -28,15 +41,20 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 
 @Singleton
 public class NodeManager extends DevopsBase {
+  static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
@@ -67,6 +85,8 @@ public class NodeManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
   @Inject play.Configuration appConfig;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
@@ -493,14 +513,117 @@ public class NodeManager extends DevopsBase {
           }
         }
         break;
+      case ToggleTls:
+        String processType = taskParam.getProperty("processType");
+        String subType = taskParam.getProperty("taskSubType");
+
+        if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+          throw new RuntimeException("Invalid processType: " + processType);
+        } else {
+          subcommand.add("--yb_process_type");
+          subcommand.add(processType.toLowerCase());
+        }
+
+        String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
+        String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
+        String allowInsecureString = String.valueOf(taskParam.allowInsecure);
+
+        String certsNodeDir =
+            Provider.getOrBadRequest(
+                        UUID.fromString(
+                            universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                    .getYbHome()
+                + "/yugabyte-tls-config";
+
+        if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+          if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+            CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
+            if (cert == null) {
+              throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
+            }
+
+            subcommand.add("--adding_certs");
+            subcommand.add("--certs_node_dir");
+            subcommand.add(certsNodeDir);
+
+            if (cert.certType == CertificateInfo.Type.SelfSigned) {
+              subcommand.add("--rootCA_cert");
+              subcommand.add(cert.certificate);
+              subcommand.add("--rootCA_key");
+              subcommand.add(cert.privateKey);
+              if (taskParam.enableClientToNodeEncrypt) {
+                subcommand.add("--client_cert");
+                subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+                subcommand.add("--client_key");
+                subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+              }
+            } else {
+              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+              subcommand.add("--use_custom_certs");
+              subcommand.add("--root_cert_path");
+              subcommand.add(customCertInfo.rootCertPath);
+              subcommand.add("--node_cert_path");
+              subcommand.add(customCertInfo.nodeCertPath);
+              subcommand.add("--node_key_path");
+              subcommand.add(customCertInfo.nodeKeyPath);
+              if (customCertInfo.clientCertPath != null) {
+                subcommand.add("--client_cert_path");
+                subcommand.add(customCertInfo.clientCertPath);
+                subcommand.add("--client_key_path");
+                subcommand.add(customCertInfo.clientKeyPath);
+              }
+            }
+          } else {
+            throw new RuntimeException("No changes needed for both root cert and client cert.");
+          }
+        } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+          Map<String, String> gflags = new HashMap<>();
+          if (taskParam.nodeToNodeChange > 0) {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", "true");
+            gflags.put("certs_dir", certsNodeDir);
+          } else if (taskParam.nodeToNodeChange < 0) {
+            gflags.put("allow_insecure_connections", "true");
+          } else {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", allowInsecureString);
+            gflags.put("certs_dir", certsNodeDir);
+          }
+
+          subcommand.add("--replace_gflags");
+          subcommand.add("--gflags");
+          subcommand.add(Json.stringify(Json.toJson(gflags)));
+        } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+          Map<String, String> gflags = new HashMap<>();
+          if (taskParam.nodeToNodeChange > 0) {
+            gflags.put("allow_insecure_connections", allowInsecureString);
+          } else if (taskParam.nodeToNodeChange < 0) {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", allowInsecureString);
+            gflags.put("certs_dir", certsNodeDir);
+          } else {
+            LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+          }
+
+          subcommand.add("--replace_gflags");
+          subcommand.add("--gflags");
+          subcommand.add(Json.stringify(Json.toJson(gflags)));
+        } else {
+          throw new RuntimeException("Invalid taskSubType property: " + subType);
+        }
+        break;
     }
     return subcommand;
   }
 
-  public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam)
-      throws RuntimeException {
+  public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
+    Path bootScriptFile = null;
+
     switch (type) {
       case Provision:
         {
@@ -514,6 +637,29 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.instanceType);
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
+
+            Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+
+            if (config.hasPath(BOOT_SCRIPT_PATH)) {
+              String bootScript = config.getString(BOOT_SCRIPT_PATH);
+              commandArgs.add("--boot_script");
+
+              // treat the contents as script body if it starts with a shebang line
+              // otherwise consider the contents to be a path
+              if (bootScript.startsWith("#!")) {
+                try {
+                  bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+                  Files.write(bootScriptFile, bootScript.getBytes());
+
+                  commandArgs.add(bootScriptFile.toAbsolutePath().toString());
+                } catch (IOException e) {
+                  LOG.error(e.getMessage(), e);
+                  throw new RuntimeException(e);
+                }
+              } else {
+                commandArgs.add(bootScript);
+              }
+            }
 
             // For now we wouldn't add machine image for aws and fallback on the default
             // one devops gives us, we need to transition to having this use versioning
@@ -731,13 +877,23 @@ public class NodeManager extends DevopsBase {
         }
     }
     commandArgs.add(nodeTaskParam.nodeName);
-    return execCommand(
-        nodeTaskParam.getRegion().uuid,
-        null,
-        null,
-        type.toString().toLowerCase(),
-        commandArgs,
-        getCloudArgs(nodeTaskParam));
+    try {
+      return execCommand(
+          nodeTaskParam.getRegion().uuid,
+          null,
+          null,
+          type.toString().toLowerCase(),
+          commandArgs,
+          getCloudArgs(nodeTaskParam));
+    } finally {
+      if (bootScriptFile != null) {
+        try {
+          Files.deleteIfExists(bootScriptFile);
+        } catch (IOException e) {
+          LOG.error(e.getMessage(), e);
+        }
+      }
+    }
   }
 
   private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {

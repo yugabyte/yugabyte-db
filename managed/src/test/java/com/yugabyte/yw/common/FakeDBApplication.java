@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.*;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -14,6 +15,7 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
@@ -21,12 +23,12 @@ import play.test.WithApplication;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.*;
-import java.util.function.BiFunction;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 
 import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
-import static play.test.Helpers.route;
 
 public class FakeDBApplication extends WithApplication {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -49,6 +51,8 @@ public class FakeDBApplication extends WithApplication {
   public NetworkManager mockNetworkManager = mock(NetworkManager.class);
   public YamlWrapper mockYamlWrapper = mock(YamlWrapper.class);
   public QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
+  public AlertConfigurationWriter mockAlertConfigurationWriter =
+      mock(AlertConfigurationWriter.class);
   public Executors mockExecutors = mock(Executors.class);
   public ShellProcessHandler mockShellProcessHandler = mock(ShellProcessHandler.class);
   public TableManager mockTableManager = mock(TableManager.class);
@@ -61,7 +65,11 @@ public class FakeDBApplication extends WithApplication {
 
   public Application provideApplication(Map<String, Object> additionalConfiguration) {
 
-    return new GuiceApplicationBuilder()
+    GuiceApplicationBuilder guiceApplicationBuilder = new GuiceApplicationBuilder();
+    if (!isSwaggerEnabled()) {
+      guiceApplicationBuilder.disable(SwaggerModule.class);
+    }
+    return guiceApplicationBuilder
         .configure(additionalConfiguration)
         .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
@@ -84,11 +92,16 @@ public class FakeDBApplication extends WithApplication {
         .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
         .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
         .overrides(bind(TableManager.class).toInstance(mockTableManager))
         .build();
+  }
+
+  protected boolean isSwaggerEnabled() {
+    return false;
   }
 
   public Application getApp() {

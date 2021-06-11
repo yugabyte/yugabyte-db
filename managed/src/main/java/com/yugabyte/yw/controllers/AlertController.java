@@ -14,19 +14,30 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
-import com.yugabyte.yw.common.config.ConfigSubstitutor;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertReceiverParams;
+import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.YWValidateException;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.forms.AlertFormData;
+import com.yugabyte.yw.forms.AlertReceiverFormData;
+import com.yugabyte.yw.forms.AlertRouteFormData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertRoute;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -39,9 +50,9 @@ import java.util.UUID;
 public class AlertController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AlertController.class);
 
-  @Inject ValidatingFormFactory formFactory;
+  @Inject private ValidatingFormFactory formFactory;
 
-  @Inject private SettableRuntimeConfigFactory configFactory;
+  @Inject private AlertDefinitionService alertDefinitionService;
 
   /** Lists alerts for given customer. */
   public Result list(UUID customerUUID) {
@@ -87,7 +98,7 @@ public class AlertController extends AuthenticatedController {
     } else if (alerts.size() == 1) {
       alerts.get(0).update(data.message);
     } else {
-      Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
+      Alert.create(customerUUID, data.errCode, data.type, data.message);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
@@ -100,22 +111,9 @@ public class AlertController extends AuthenticatedController {
     Form<AlertFormData> formData = formFactory.getFormDataOrBadRequest(AlertFormData.class);
 
     AlertFormData data = formData.get();
-    Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
+    Alert.create(customerUUID, data.errCode, data.type, data.message);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
-  }
-
-  /**
-   * Saves a value to customer's configuration with name 'paramName'. The saved double value is
-   * normalized (removed trailing '.0').
-   *
-   * @param universe
-   * @param paramName
-   * @param value
-   */
-  private void updateAlertDefinitionParameter(Universe universe, String paramName, double value) {
-    String valueStr = value == (int) value ? String.valueOf((int) value) : String.valueOf(value);
-    configFactory.forUniverse(universe).setValue(paramName, valueStr);
   }
 
   public Result createDefinition(UUID customerUUID, UUID universeUUID) {
@@ -127,27 +125,44 @@ public class AlertController extends AuthenticatedController {
 
     AlertDefinitionFormData data = formData.get();
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-    AlertDefinition definition =
-        AlertDefinition.create(
-            customerUUID,
-            AlertDefinition.TargetType.Universe,
-            data.name,
-            data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-            data.isActive,
-            AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
 
-    return ok(Json.toJson(definition));
+    AlertDefinition definition = new AlertDefinition();
+    definition.setCustomerUUID(customerUUID);
+    definition.setTargetType(AlertDefinition.TargetType.Universe);
+    definition.setName(data.name);
+    definition.setQuery(data.template.buildTemplate(universe.getUniverseDetails().nodePrefix));
+    definition.setQueryThreshold(data.value);
+    definition.setActive(true);
+    definition.setLabels(AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+    AlertDefinition createdDefinition = alertDefinitionService.create(definition);
+
+    return ok(Json.toJson(createdDefinition));
   }
 
   public Result getAlertDefinition(UUID customerUUID, UUID universeUUID, String name) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinition definition = AlertDefinition.getOrBadRequest(customerUUID, universeUUID, name);
+    List<AlertDefinition> definitions =
+        alertDefinitionService.list(
+            new AlertDefinitionFilter()
+                .setCustomerUuid(customerUUID)
+                .setName(name)
+                .setLabel(KnownAlertLabels.UNIVERSE_UUID, universeUUID.toString()));
+    AlertDefinition definition =
+        definitions
+            .stream()
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new YWServiceException(
+                        BAD_REQUEST,
+                        name
+                            + " alert definition for customer "
+                            + customerUUID.toString()
+                            + " and universe "
+                            + universeUUID
+                            + " not found"));
 
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    definition.query =
-        new ConfigSubstitutor(configFactory.forUniverse(universe)).replace(definition.query);
     return ok(Json.toJson(definition));
   }
 
@@ -155,7 +170,7 @@ public class AlertController extends AuthenticatedController {
 
     Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinition definition = AlertDefinition.getOrBadRequest(alertDefinitionUUID);
+    AlertDefinition definition = alertDefinitionService.getOrBadRequest(alertDefinitionUUID);
 
     Form<AlertDefinitionFormData> formData =
         formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class);
@@ -163,23 +178,143 @@ public class AlertController extends AuthenticatedController {
     AlertDefinitionFormData data = formData.get();
 
     AlertDefinition updatedDefinition;
-    switch (definition.targetType) {
-        // TODO Need to store threshold and duration in definition itself - this way custom
-        // logic will not be needed for each definition target type
+    switch (definition.getTargetType()) {
       case Universe:
         Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
-        updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
-        updatedDefinition =
-            AlertDefinition.update(
-                definition.uuid,
-                data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-                data.isActive,
-                AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+        definition.setQuery(data.template.buildTemplate(universe.getUniverseDetails().nodePrefix));
         break;
       default:
         throw new IllegalStateException(
-            "Unexpected definition type " + definition.targetType.name());
+            "Unexpected definition type " + definition.getTargetType().name());
     }
+    definition.setQueryThreshold(data.value);
+    definition.setActive(data.active);
+    updatedDefinition = alertDefinitionService.update(definition);
     return ok(Json.toJson(updatedDefinition));
+  }
+
+  private AlertReceiverFormData getFormData() {
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      return mapper.treeToValue(request().body().asJson(), AlertReceiverFormData.class);
+    } catch (RuntimeException | JsonProcessingException e) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid JSON");
+    }
+  }
+
+  public Result createAlertReceiver(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertReceiverFormData data = getFormData();
+    AlertReceiver receiver = new AlertReceiver();
+    receiver.setCustomerUuid(customerUUID);
+    receiver.setUuid(UUID.randomUUID());
+    receiver.setTargetType(data.targetType);
+    receiver.setParams(
+        data.params == null
+            ? AlertUtils.createParamsInstance(data.targetType)
+            : AlertUtils.fromJson(data.targetType, data.params));
+
+    try {
+      AlertUtils.validate(receiver);
+    } catch (YWValidateException e) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Unable to create alert receiver: " + e.getMessage());
+    }
+
+    receiver.save();
+    auditService().createAuditEntryWithReqBody(ctx());
+    return ok(Json.toJson(receiver));
+  }
+
+  public Result getAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    return ok(Json.toJson(AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID)));
+  }
+
+  public Result updateAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    AlertReceiver receiver = AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID);
+
+    AlertReceiverFormData data = getFormData();
+    AlertReceiverParams newParams = AlertUtils.fromJson(data.targetType, data.params);
+    if (newParams == null) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Unable to update alert receiver. Invalid parameters.");
+    }
+
+    receiver.setTargetType(data.targetType);
+    receiver.setParams(newParams);
+
+    try {
+      AlertUtils.validate(receiver);
+      receiver.save();
+    } catch (YWValidateException e) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Unable to update alert receiver: " + e.getMessage());
+    }
+
+    auditService().createAuditEntryWithReqBody(ctx());
+    return ok(Json.toJson(receiver));
+  }
+
+  public Result deleteAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    AlertReceiver receiver = AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID);
+    LOG.info("Deleting alert receiver {} for customer {}", receiver.getUuid(), customerUUID);
+
+    if (!receiver.delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Unable to delete alert receiver: " + receiver.getUuid());
+    }
+
+    auditService().createAuditEntry(ctx(), request());
+    return ok();
+  }
+
+  public Result listAlertReceivers(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    return ok(Json.toJson(AlertReceiver.list(customerUUID)));
+  }
+
+  public Result createAlertRoute(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    AlertRouteFormData data = formFactory.getFormDataOrBadRequest(AlertRouteFormData.class).get();
+    try {
+      AlertRoute route = AlertRoute.create(customerUUID, data.definitionUUID, data.receiverUUID);
+      auditService().createAuditEntryWithReqBody(ctx());
+      return ok(Json.toJson(route));
+    } catch (Exception e) {
+      throw new YWServiceException(BAD_REQUEST, "Unable to create alert route.");
+    }
+  }
+
+  public Result getAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    AlertRoute route = AlertRoute.getOrBadRequest(alertRouteUUID);
+    AlertDefinition definition = alertDefinitionService.getOrBadRequest(route.getDefinitionUUID());
+    if ((definition == null) || !customerUUID.equals(definition.getCustomerUUID())) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Route UUID: " + route.getUuid());
+    }
+    return ok(Json.toJson(route));
+  }
+
+  public Result deleteAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    AlertRoute route = AlertRoute.getOrBadRequest(alertRouteUUID);
+    LOG.info("Deleting alert route {} for customer {}", route.getUuid(), customerUUID);
+
+    if (!route.delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Unable to delete alert route: " + route.getUuid());
+    }
+
+    auditService().createAuditEntry(ctx(), request());
+    return ok();
+  }
+
+  public Result listAlertRoutes(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    return ok(Json.toJson(AlertRoute.listByCustomer(customerUUID)));
   }
 }

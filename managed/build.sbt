@@ -9,7 +9,7 @@ import scala.sys.process.Process
 // ------------------------------------------------------------------------------------------------
 
 // This is used to decide whether to clean/build the py2 or py3 venvs.
-lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"))
+lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"), true)
 
 // Use this to enable debug logging in this script.
 lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
@@ -22,9 +22,12 @@ def normalizeEnvVarValue(value: String): String = {
   if (value == null) null else value.trim()
 }
 
-def strToBool(s: String): Boolean = {
-  val normalizedStr = normalizeEnvVarValue(s)
-  normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
+def strToBool(s: String, default: Boolean = false): Boolean = {
+  if (s == null) default
+  else {
+    val normalizedStr = normalizeEnvVarValue(s)
+    normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
+  }
 }
 
 def ybLog(s: String): Unit = {
@@ -144,6 +147,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.931",
   "com.cronutils" % "cron-utils" % "9.0.1",
   "io.prometheus" % "simpleclient" % "0.8.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.8.0",
@@ -165,7 +169,8 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
-  "commons-codec" % "commons-codec" % "1.15"
+  "commons-codec" % "commons-codec" % "1.15",
+  "org.apache.commons" % "commons-collections4" % "4.4"
 )
 // Clear default resolvers.
 appResolvers := None

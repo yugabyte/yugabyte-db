@@ -5,19 +5,13 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 
@@ -93,6 +87,10 @@ public class ModelFactory {
 
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
     return Provider.create(customer.uuid, cloud, cloud.toString());
+  }
+
+  public static Provider newProvider(Customer customer, Common.CloudType cloud, String name) {
+    return Provider.create(customer.uuid, cloud, name);
   }
 
   public static Provider newProvider(
@@ -180,25 +178,26 @@ public class ModelFactory {
   public static CustomerConfig createS3StorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", "
-                + "\"ACCESS_SECRET\": \"A-SECRET\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"S3\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
+                + " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createNfsStorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"NFS\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"/foo/bar\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"NFS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createGcsStorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"GCS\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"gs://foo\", \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"GCS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\","
+                + " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
@@ -247,6 +246,20 @@ public class ModelFactory {
     data.reportOnlyErrors = reportOnlyErrors;
 
     return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
+  }
+
+  public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
+    AlertDefinition alertDefinition = new AlertDefinition();
+    alertDefinition.generateUUID();
+    alertDefinition.setCustomerUUID(customer.getUuid());
+    alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
+    alertDefinition.setName("alertDefinition");
+    alertDefinition.setQuery("query < {{ query_threshold }}");
+    alertDefinition.setQueryThreshold(1);
+    alertDefinition.setLabels(AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+
+    alertDefinition.save();
+    return alertDefinition;
   }
 
   /*

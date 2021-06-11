@@ -148,6 +148,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
@@ -172,6 +173,7 @@
 #include "yb/util/shared_lock.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
 
 DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
              "Timeout used for the Master->TS async rpc calls.");
@@ -375,8 +377,26 @@ DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
 TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
 
 DEFINE_int64(tablet_split_size_threshold_bytes, 0,
-             "Threshold on tablet size after which tablet should be split. Automated splitting is "
-             "disabled if this value is set to 0");
+             "DEPRECATED -- Threshold on tablet size after which tablet should be split. Automated "
+             "splitting is disabled if this value is set to 0.");
+TAG_FLAG(tablet_split_size_threshold_bytes, hidden);
+
+DEFINE_int64(tablet_split_low_phase_tablet_count_per_node, 1,
+             "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
+             "as defined by tablet_split_low_phase_size_threshold_bytes.");
+DEFINE_int64(tablet_split_high_phase_tablet_count_per_node, 32,
+             "The per-node tablet count until which a table is splitting at the phase 2 threshold, "
+             "as defined by tablet_split_high_phase_size_threshold_bytes.");
+
+DEFINE_int64(tablet_split_low_phase_size_threshold_bytes, 1_GB,
+             "The tablet size threshold at which to split tablets in phase 1. "
+             "See tablet_split_low_phase_tablet_count_per_node.");
+DEFINE_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
+             "The tablet size threshold at which to split tablets in phase 2. "
+             "See tablet_split_high_phase_tablet_count_per_node.");
+DEFINE_int64(tablet_split_final_phase_size_threshold_bytes, 32_GB,
+             "The tablet size threshold at which to split tablets after both phases have been "
+             "surpassed.");
 
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
@@ -387,6 +407,19 @@ DEFINE_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailo
              "gives sufficient time for heartbeats so that we don't report"
              " a premature incorrect completion.");
 TAG_FLAG(blacklist_progress_initial_delay_secs, runtime);
+
+DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
+                 "When set to true, consider any tablet a valid candidate for splitting. "
+                 "Specifically this flag ensures that ValidateSplitCandidate always returns OK and "
+                 "all tablets are considered valid candidates for splitting.");
+
+DEFINE_test_flag(bool, select_all_tablets_for_split, false,
+                 "When set to true, select all validated processed tablets for split. Specifically "
+                 "this flag ensures that ShouldSplitValidTablet always returns true.");
+DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
+                 "When set, it skips checking that all the tablets of a table have enough tservers"
+                 " conforming to the table placement policy during CreateTable API call.");
+TAG_FLAG(TEST_skip_placement_validation_createtable_api, runtime);
 
 namespace yb {
 namespace master {
@@ -452,9 +485,9 @@ namespace {
 // - During transition period, we have to consider both fields and the following macros help
 //   avoiding duplicate protobuf version check thru out our code.
 
-#define PROTO_GET_INDEXED_TABLE_ID(tabpb) \
-  (tabpb.has_index_info() ? tabpb.index_info().indexed_table_id() \
-                          : tabpb.indexed_table_id())
+const std::string& GetIndexedTableId(const SysTablesEntryPB& pb) {
+  return pb.has_index_info() ? pb.index_info().indexed_table_id() : pb.indexed_table_id();
+}
 
 #define PROTO_GET_IS_LOCAL(tabpb) \
   (tabpb.has_index_info() ? tabpb.index_info().is_local() \
@@ -481,7 +514,7 @@ bool IsTable(const SysTablesEntryPB& pb) {
 
 #if (0)
 // Once the deprecated fields are obsolete, the above macros should be defined as the following.
-#define PROTO_GET_INDEXED_TABLE_ID(tabpb) (tabpb.index_info().indexed_table_id())
+#define GetIndexedTableId(tabpb) (tabpb.index_info().indexed_table_id())
 #define PROTO_GET_IS_LOCAL(tabpb) (tabpb.index_info().is_local())
 #define PROTO_GET_IS_UNIQUE(tabpb) (tabpb.index_info().is_unique())
 #define PROTO_IS_INDEX(tabpb) (tabpb.has_index_info())
@@ -629,8 +662,7 @@ CatalogManager::CatalogManager(Master* master)
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
       ysql_transaction_(this, master_),
-      tablespace_placement_map_(std::make_shared<TablespaceIdToReplicationInfoMap>()),
-      table_to_tablespace_map_(std::make_shared<TableToTablespaceIdMap>()),
+      tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this) {
   yb::InitCommonFlags();
@@ -1637,7 +1669,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   // replication info.
   if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
     boost::optional<ReplicationInfoPB> tablespace_pb =
-      VERIFY_RESULT(GetTablespaceReplicationInfo(tablespace_id));
+      VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
     if (tablespace_pb) {
       // Return the tablespace placement.
       return tablespace_pb.value();
@@ -1649,55 +1681,41 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   return l->pb.replication_info();
 }
 
-void CatalogManager::GetTablespaceInfo(
-  shared_ptr<TablespaceIdToReplicationInfoMap> *const out_tablespace_placement_map,
-  shared_ptr<TableToTablespaceIdMap> *const out_table_to_tablespace_map) {
-
+std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() {
   SharedLock lock(tablespace_mutex_);
-  if (out_tablespace_placement_map) {
-    *out_tablespace_placement_map = tablespace_placement_map_;
-  }
-  if (out_table_to_tablespace_map) {
-    *out_table_to_tablespace_map = table_to_tablespace_map_;
-  }
+  return tablespace_manager_;
 }
 
-Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfo(
+Result<boost::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
+    const scoped_refptr<TableInfo>& table) {
+
+  auto tablespace_manager = GetTablespaceManager();
+  return tablespace_manager->GetTablespaceForTable(table);
+}
+
+Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
   const TablespaceId& tablespace_id) {
 
-  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
-    // Tablespaces feature has been disabled.
-    return boost::none;
+  auto tablespace_manager = GetTablespaceManager();
+  auto replication_info_result = tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
+
+  if (replication_info_result) {
+    return replication_info_result;
   }
 
-  if (tablespace_id.empty()) {
-    // No tablespace id passed in. Return.
-    return boost::none;
-  }
+  // We failed to find the tablespace placement policy. Refresh the tablespace info and try again.
+  auto tablespace_map = VERIFY_RESULT(GetYsqlTablespaceInfo());
 
-  // Lookup tablespace placement info in tablespace_placement_map_.
-  shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_placement_map;
+  // We clone the tablespace_manager and update the clone with the new tablespace_map that we
+  // fetched above. We do this instead of updating the tablespace_manager object in-place because
+  // other clients may have a shared_ptr to it through 'GetTablespaceManager()'.
+  tablespace_manager = tablespace_manager->CreateCloneWithTablespaceMap(tablespace_map);
   {
-    SharedLock lock(tablespace_mutex_);
-    tablespace_placement_map = tablespace_placement_map_;
+    LockGuard lock(tablespace_mutex_);
+    tablespace_manager_ = tablespace_manager;
   }
 
-  auto iter = tablespace_placement_map->find(tablespace_id);
-  if (iter != tablespace_placement_map->end()) {
-    return iter->second;
-  }
-
-  // Given tablespace id was not found in the map.
-  // Read pg_tablespace table to see if this is a new tablespace.
-  auto tablespace_map = VERIFY_RESULT(GetAndUpdateYsqlTablespaceInfo());
-
-  // Now find the placement info from the updated map.
-  iter = tablespace_map->find(tablespace_id);
-  if (iter != tablespace_placement_map->end()) {
-    return iter->second;
-  }
-  return STATUS(InternalError, "pg_tablespace info for tablespace " +
-    tablespace_id + " not found");
+  return tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
 }
 
 bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
@@ -1749,9 +1767,7 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   return Status::OK();
 }
 
-Result<shared_ptr<TablespaceIdToReplicationInfoMap>>
-CatalogManager::GetAndUpdateYsqlTablespaceInfo() {
-
+Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTablespaceInfo() {
   auto table_info = GetTableInfo(kPgTablespaceTableId);
   if (table_info == nullptr) {
     return STATUS(InternalError, "pg_tablespace table info not found");
@@ -1784,13 +1800,49 @@ CatalogManager::GetAndUpdateYsqlTablespaceInfo() {
       RETURN_NOT_OK(ValidateTableReplicationInfo(iter.second.value()));
     }
   }
-  // Update tablespace_placement_map_.
-  {
-    LockGuard lock(tablespace_mutex_);
-    tablespace_placement_map_ = tablespace_map;
-  }
 
   return tablespace_map;
+}
+
+Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablespaceMap() {
+  // First fetch all namespaces. This is because the table_to_tablespace information is only
+  // found in the pg_class catalog table. There exists a separate pg_class table in each
+  // namespace. To build in-memory state for all tables, process pg_class table for each
+  // namespace.
+  vector<NamespaceId> namespace_id_vec;
+  {
+    LockGuard lock(mutex_);
+    for (const auto& ns : namespace_ids_map_) {
+      if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
+        continue;
+      }
+
+      if (ns.second->colocated()) {
+        // Skip processing tables in colocated databases.
+        continue;
+      }
+
+      // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
+      namespace_id_vec.emplace_back(ns.first);
+    }
+  }
+  // For each namespace, fetch the table->tablespace information by reading pg_class
+  // table for each namespace.
+  auto table_to_tablespace_map = std::make_shared<TableToTablespaceIdMap>();
+  for (const NamespaceId& nsid : namespace_id_vec) {
+    VLOG(5) << "Refreshing placement information for namespace " << nsid;
+    const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(nsid));
+    Status s = sys_catalog_->ReadPgClassInfo(database_oid,
+                                             table_to_tablespace_map.get());
+    if (!s.ok()) {
+      LOG(WARNING) << "Refreshing table->tablespace info failed for namespace "
+                   << nsid << " with error: " << s.ToString();
+      continue;
+    }
+    VLOG(5) << "Successfully refreshed placement information for namespace " << nsid;
+  }
+
+  return table_to_tablespace_map;
 }
 
 void CatalogManager::StartTablespaceBgTaskIfStopped() {
@@ -1846,69 +1898,38 @@ void CatalogManager::RefreshTablespaceInfoPeriodically() {
   }
 
   // Refresh the tablespace info in memory.
-  DoRefreshTablespaceInfo();
+  Status s = DoRefreshTablespaceInfo();
+  if (!s.IsOk()) {
+    LOG(WARNING) << "Tablespace refresh task failed with error " << s.ToString();
+  }
 
   // Schedule the next iteration of the task.
   ScheduleRefreshTablespaceInfoTask();
 }
 
-void CatalogManager::DoRefreshTablespaceInfo() {
+Status CatalogManager::DoRefreshTablespaceInfo() {
   VLOG(2) << "Running RefreshTablespaceInfoPeriodically task";
 
   // First refresh the tablespace info in memory.
-  auto s = GetAndUpdateYsqlTablespaceInfo();
-  if (!s.ok()) {
-    // Refresh of tablespaces failed.
-    LOG(WARNING) << "Updating tablespace information failed with error "
-                 << StatusToString(s);
-    return;
+  auto tablespace_info = VERIFY_RESULT(GetYsqlTablespaceInfo());
+
+  shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map = nullptr;
+
+  if (tablespace_info->size() > kYsqlNumDefaultTablespaces) {
+    // There exist custom tablespaces in the system. Fetch the table->tablespace
+    // map from PG catalog tables.
+    table_to_tablespace_map = VERIFY_RESULT(GetYsqlTableToTablespaceMap());
   }
 
-  // Now the table->tablespace information has to be updated in memory. To do this, first,
-  // fetch all namespaces. This is because the table_to_tablespace information is only
-  // found in the pg_class catalog table. There exists a separate pg_class table in each
-  // namespace. To build in-memory state for all tables, process pg_class table for each
-  // namespace.
-  vector<NamespaceId> namespace_id_vec;
-  {
-    LockGuard lock(mutex_);
-    for (const auto& ns : namespace_ids_map_) {
-      if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
-        continue;
-      }
-
-      if (ns.second->colocated()) {
-        // Skip processing tables in colocated databases.
-        continue;
-      }
-
-      // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
-      namespace_id_vec.emplace_back(ns.first);
-    }
-  }
-  // For each namespace, fetch the table->tablespace information by reading pg_class
-  // table for each namespace.
-  auto table_to_tablespace_map = std::make_shared<TableToTablespaceIdMap>();
-  for (const NamespaceId& nsid : namespace_id_vec) {
-    const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(nsid));
-    Status s = sys_catalog_->ReadPgClassInfo(database_oid,
-                                             table_to_tablespace_map.get());
-    if (!s.ok()) {
-      LOG(WARNING) << "Refreshing table->tablespace info failed for namespace "
-                   << nsid << " with error: " << s.ToString();
-      continue;
-    }
-    VLOG(5) << "Successfully refreshed placement information for namespace "
-            << nsid;
-  }
-  // Update table_to_tablespace_map_.
+  // Update tablespace_manager_.
   {
     LockGuard lock(tablespace_mutex_);
-    table_to_tablespace_map_ = table_to_tablespace_map;
+    tablespace_manager_ = std::make_shared<YsqlTablespaceManager>(tablespace_info,
+                                                                  table_to_tablespace_map);
   }
 
   VLOG(3) << "Refreshed tablespace information in memory";
-  return;
+  return Status::OK();
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
@@ -2091,6 +2112,9 @@ Status CatalogManager::TEST_SplitTablet(
 }
 
 Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) const {
+  if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
+    return Status::OK();
+  }
   if (tablet_info.table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported,
@@ -2132,10 +2156,34 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) con
   return Status::OK();
 }
 
-bool CatalogManager::ShouldSplitValidCandidate(const TabletReplicaDriveInfo& drive_info) const {
-  return FLAGS_tablet_split_size_threshold_bytes > 0
-      && !drive_info.may_have_orphaned_post_split_data
-      && drive_info.sst_files_size > FLAGS_tablet_split_size_threshold_bytes;
+bool CatalogManager::ShouldSplitValidCandidate(
+    const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
+  if (PREDICT_FALSE(FLAGS_TEST_select_all_tablets_for_split)) {
+    return true;
+  }
+  if (drive_info.may_have_orphaned_post_split_data) {
+    return false;
+  }
+  int64 size = drive_info.sst_files_size;
+  DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
+  if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+    return false;
+  }
+  TSDescriptorVector ts_descs;
+  {
+    BlacklistSet blacklist = BlacklistSetFromPB();
+    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
+  }
+  auto num_servers = ts_descs.size();
+  int64 num_tablets_per_server = tablet_info.table()->NumTablets() / num_servers;
+
+  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_tablet_count_per_node) {
+    return size > FLAGS_tablet_split_low_phase_size_threshold_bytes;
+  }
+  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_tablet_count_per_node) {
+    return size > FLAGS_tablet_split_high_phase_size_threshold_bytes;
+  }
+  return size > FLAGS_tablet_split_final_phase_size_threshold_bytes;
 }
 
 Status CatalogManager::DoSplitTablet(
@@ -2149,6 +2197,19 @@ Status CatalogManager::DoSplitTablet(
   // This process adds new subtablets in the CREATING state, which if encountered by backfill code
   // will block the backfill process.
   RETURN_NOT_OK(ValidateSplitCandidate(*source_tablet_info));
+
+  auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
+  if (!ShouldSplitValidCandidate(*source_tablet_info, drive_info)) {
+    // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
+    // time, a valid split candidate, but by the time the candidate was actually processed here, the
+    // cluster may have changed, putting us in a new split threshold phase, and it may no longer be
+    // a valid candidate. This is not an unexpected error, but we should bail out of splitting this
+    // tablet regardless.
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Tablet split candidate $0 is no longer a valid split candidate.",
+        source_tablet_info->tablet_id());
+  }
 
   LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
@@ -2271,6 +2332,11 @@ Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
 Status CatalogManager::DeleteTablet(
     const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc) {
   return DeleteTablets({ req->tablet_id() });
+}
+
+Status CatalogManager::DdlLog(
+    const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc) {
+  return sys_catalog_->FetchDdlLog(resp->mutable_entries());
 }
 
 namespace {
@@ -2486,7 +2552,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
 
     if (IsIndex(l->pb)) {
       const uint32_t indexed_table_oid =
-        VERIFY_RESULT(GetPgsqlTableOid(PROTO_GET_INDEXED_TABLE_ID(l->pb)));
+        VERIFY_RESULT(GetPgsqlTableOid(GetIndexedTableId(l->pb)));
       const TableId indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
 
       // Set index_info.
@@ -3178,15 +3244,17 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
 
-    // Loop through placements and verify that there are sufficient TServers to satisfy the
-    // minimum required replicas.
-    for (const auto& pb : placement_info.placement_blocks()) {
-      RETURN_NOT_OK(FindTServersForPlacementBlock(pb, ts_descs));
-    }
+    if (!FLAGS_TEST_skip_placement_validation_createtable_api) {
+      // Loop through placements and verify that there are sufficient TServers to satisfy the
+      // minimum required replicas.
+      for (const auto& pb : placement_info.placement_blocks()) {
+        RETURN_NOT_OK(FindTServersForPlacementBlock(pb, ts_descs));
+      }
 
-    // Verify that there are enough TServers to match the total required replication factor (which
-    // could be more than the sum of the minimums).
-    RETURN_NOT_OK(FindTServersForPlacementInfo(placement_info, ts_descs));
+      // Verify that there are enough TServers to match the total required replication factor (which
+      // could be more than the sum of the minimums).
+      RETURN_NOT_OK(FindTServersForPlacementInfo(placement_info, ts_descs));
+    }
   }
 
   return Status::OK();
@@ -3353,7 +3421,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   // 4. If this is an index, we are not done until the index is in the indexed table's schema.  An
   // exception is YSQL system table indexes, which don't get added to their indexed tables' schemas.
   if (resp->done() && IsIndex(pb)) {
-    auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
+    auto& indexed_table_id = GetIndexedTableId(pb);
     // For user indexes (which add index info to indexed table's schema),
     // - if this index is created without backfill,
     //   - waiting for the index to be in the indexed table's schema is sufficient, and, by that
@@ -3500,13 +3568,14 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntry::CDC_STREAM:
         if (!CDCStreamExistsUnlocked(id)) return id;
         break;
-      case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
       case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
       case SysRowEntry::SYS_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SNAPSHOT_SCHEDULE:
+      case SysRowEntry::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
+      case SysRowEntry::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntry::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
     }
@@ -3856,7 +3925,7 @@ Status CatalogManager::BackfillIndex(
   scoped_refptr<TableInfo> indexed_table;
   {
     auto l = index_table->LockForRead();
-    TableId indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->pb);
+    TableId indexed_table_id = GetIndexedTableId(l->pb);
     resp->mutable_table_identifier()->set_table_id(indexed_table_id);
     indexed_table = GetTableInfo(indexed_table_id);
   }
@@ -4034,7 +4103,7 @@ Status CatalogManager::DeleteTable(
     TableId indexed_table_id;
     {
       auto l = table->LockForRead();
-      indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->pb);
+      indexed_table_id = GetIndexedTableId(l->pb);
     }
     scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
     const bool is_pg_table = indexed_table != nullptr &&
@@ -4199,8 +4268,22 @@ Status CatalogManager::DeleteTableInMemory(
                                  Substitute("Started deleting at $0", LocalTimeAsString()));
   }
 
+  auto now = master_->clock()->Now();
+  DdlLogEntry ddl_log_entry(now, table->id(), l->pb, "Drop");
+  if (is_index_table) {
+    const auto& indexed_table_id = GetIndexedTableId(l->pb);
+    auto indexed_table = FindTableById(indexed_table_id);
+    if (indexed_table.ok()) {
+      auto lock = (**indexed_table).LockForRead();
+      ddl_log_entry = DdlLogEntry(
+          now, indexed_table_id, lock->pb, Format("Drop index $0", l->name()));
+    }
+  }
+
   // Update sys-catalog with the removed table state.
-  Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term());
+  Status s = sys_catalog_->AddAndUpdateItems(
+      std::initializer_list<DdlLogEntry*>{&ddl_log_entry},
+      std::initializer_list<TableInfo*>{table.get()}, leader_ready_term());
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_crash_after_table_marked_deleting)) {
     return Status::OK();
@@ -4239,7 +4322,7 @@ Status CatalogManager::DeleteTableInMemory(
     }
   } else if (update_indexed_table) {
     s = MarkIndexInfoFromTableForDeletion(
-        PROTO_GET_INDEXED_TABLE_ID(l->pb), table->id(), /* multi_stage */ false, resp);
+        GetIndexedTableId(l->pb), table->id(), /* multi_stage */ false, resp);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
                                        s.ToString()));
@@ -4408,10 +4491,13 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 
 namespace {
 
-CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
+CHECKED_STATUS ApplyAlterSteps(server::Clock* clock,
+                               const TableId& table_id,
+                               const SysTablesEntryPB& current_pb,
                                const AlterTableRequestPB* req,
                                Schema* new_schema,
-                               ColumnId* next_col_id) {
+                               ColumnId* next_col_id,
+                               std::vector<DdlLogEntry>* ddl_log_entries) {
   const SchemaPB& current_schema_pb = current_pb.schema();
   Schema cur_schema;
   RETURN_NOT_OK(SchemaFromPB(current_schema_pb, &cur_schema));
@@ -4432,6 +4518,7 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
   }
 
   for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
+    auto time = clock->Now();
     switch (step.type()) {
       case AlterTableRequestPB::ADD_COLUMN: {
         if (!step.has_add_column()) {
@@ -4447,6 +4534,7 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
         ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
 
         RETURN_NOT_OK(builder.AddColumn(new_col, false));
+        ddl_log_entries->emplace_back(time, table_id, current_pb, Format("Add column $0", new_col));
         break;
       }
 
@@ -4460,6 +4548,8 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
         }
 
         RETURN_NOT_OK(builder.RemoveColumn(step.drop_column().name()));
+        ddl_log_entries->emplace_back(
+            time, table_id, current_pb, Format("Drop column $0", step.drop_column().name()));
         break;
       }
 
@@ -4469,8 +4559,12 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
         }
 
         RETURN_NOT_OK(builder.RenameColumn(
-        step.rename_column().old_name(),
-        step.rename_column().new_name()));
+            step.rename_column().old_name(),
+            step.rename_column().new_name()));
+        ddl_log_entries->emplace_back(
+            time, table_id, current_pb,
+            Format("Rename column $0 => $1", step.rename_column().old_name(),
+                   step.rename_column().new_name()));
         break;
       }
 
@@ -4499,6 +4593,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   LOG(INFO) << "Servicing AlterTable request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
+  std::vector<DdlLogEntry> ddl_log_entries;
+
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
@@ -4521,13 +4617,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     // Don't use Namespaces that aren't running.
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
       Status s = STATUS_SUBSTITUTE(TryAgain,
-          "Namespace not running (State=$0).  Cannot create $1.$2",
+          "Namespace not running (State=$0). Cannot create $1.$2",
           SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name() );
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
   }
   if (req->has_new_namespace() || req->has_new_table_name()) {
-
     if (new_namespace_id.empty()) {
       const Status s = STATUS(InvalidArgument, "No namespace used");
       return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
@@ -4549,7 +4644,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   ColumnId next_col_id = ColumnId(l->pb.next_column_id());
   if (req->alter_schema_steps_size() || req->has_alter_properties()) {
     TRACE("Apply alter schema");
-    Status s = ApplyAlterSteps(l->pb, req, &new_schema, &next_col_id);
+    Status s = ApplyAlterSteps(
+        master_->clock(), table->id(), l->pb, req, &new_schema, &next_col_id, &ddl_log_entries);
     if (!s.ok()) {
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
@@ -4661,7 +4757,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Update sys-catalog with the new table schema.
   TRACE("Updating metadata on disk");
-  Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term());
+  std::vector<const DdlLogEntry*> ddl_log_entry_pointers;
+  ddl_log_entry_pointers.reserve(ddl_log_entries.size());
+  for (const auto& entry : ddl_log_entries) {
+    ddl_log_entry_pointers.push_back(&entry);
+  }
+  Status s = sys_catalog_->AddAndUpdateItems(
+      ddl_log_entry_pointers, std::initializer_list<TableInfo*>{table.get()}, leader_ready_term());
   if (!s.ok()) {
     s = s.CloneAndPrepend(
         Substitute("An error occurred while updating sys-catalog tables entry: $0",
@@ -4814,7 +4916,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->set_version(l->pb.fully_applied_schema_version());
     resp->mutable_indexes()->CopyFrom(l->pb.fully_applied_indexes());
     if (l->pb.has_fully_applied_index_info()) {
-      resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->pb));
+      resp->set_obsolete_indexed_table_id(GetIndexedTableId(l->pb));
       *resp->mutable_index_info() = l->pb.fully_applied_index_info();
     }
     VLOG(1) << "Returning"
@@ -4830,7 +4932,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->set_version(l->pb.version());
     resp->mutable_indexes()->CopyFrom(l->pb.indexes());
     if (l->pb.has_index_info()) {
-      resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->pb));
+      resp->set_obsolete_indexed_table_id(GetIndexedTableId(l->pb));
       *resp->mutable_index_info() = l->pb.index_info();
     }
     VLOG(3) << "Returning"
@@ -7764,7 +7866,7 @@ void CatalogManager::GetPendingServerTasksUnlocked(
 
 void CatalogManager::ExtractTabletsToProcess(
     TabletInfos *tablets_to_delete,
-    TabletInfos *tablets_to_process) {
+    TableToTabletInfos *tablets_to_process) {
   SharedLock lock(mutex_);
 
   // TODO: At the moment we loop through all the tablets
@@ -7801,7 +7903,7 @@ void CatalogManager::ExtractTabletsToProcess(
     }
 
     // Tablets not yet assigned or with a report just received.
-    tablets_to_process->push_back(tablet);
+    (*tablets_to_process)[tablet->table()->id()].push_back(tablet);
   }
 }
 
@@ -9474,7 +9576,7 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
-BlacklistSet CatalogManager::BlacklistSetFromPB() {
+BlacklistSet CatalogManager::BlacklistSetFromPB() const {
   auto l = cluster_config_->LockForRead();
 
   const auto& blacklist_pb = l->pb.server_blacklist();

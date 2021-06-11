@@ -108,7 +108,7 @@ class GcpMetadata():
         try:
             url = "{}/{}".format(GcpMetadata.METADATA_URL_BASE, endpoint)
             req = requests.get(url, headers=GcpMetadata.CUSTOM_HEADERS, timeout=2)
-            return req.content if req.status_code == requests.codes.ok else None
+            return req.content.decode('utf-8') if req.status_code == requests.codes.ok else None
         except requests.exceptions.ConnectionError as e:
             return None
 
@@ -121,7 +121,7 @@ class GcpMetadata():
         network_data = GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
         try:
             # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
-            return network_data.split('/')[1]
+            return str(network_data).split('/')[1]
         except (IndexError, AttributeError):
             return None
 
@@ -677,8 +677,8 @@ class GoogleCloudAdmin():
 
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
-                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None):
-        network_name = os.environ.get("CUSTOM_GCE_NETWORK", YB_NETWORK_NAME)
+                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None,
+                        boot_script=None):
         # Name of the project that target VPC network belongs to.
         host_project = os.environ.get("GCE_HOST_PROJECT", self.project)
 
@@ -726,6 +726,13 @@ class GoogleCloudAdmin():
               "preemptible": use_preemptible
             }
         }
+
+        if boot_script:
+            with open(boot_script, 'r') as script:
+                body["metadata"]["items"].append({
+                    "key": "startup-script",
+                    "value": script.read()
+                    })
 
         initial_params = {}
         if volume_type == GCP_SCRATCH:

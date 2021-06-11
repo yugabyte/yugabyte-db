@@ -18,7 +18,6 @@ import sys
 import time
 
 from dateutil.parser import parse
-from texttable import Texttable
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
@@ -262,6 +261,9 @@ class CreateInstancesMethod(AbstractInstancesMethod):
 
         self.parser.add_argument("--disable_custom_ssh", action="store_true",
                                  help="Disable running the ansible task for using custom SSH.")
+
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -510,6 +512,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_cert')
         self.parser.add_argument('--use_custom_certs', action="store_true")
         self.parser.add_argument('--rotating_certs', action="store_true")
+        self.parser.add_argument('--adding_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
         self.parser.add_argument('--node_cert_path')
         self.parser.add_argument('--node_key_path')
@@ -686,7 +689,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
         # If we are just rotating certs, we don't need to do any configuration changes.
-        if not args.rotating_certs:
+        if not args.rotating_certs and not args.adding_certs:
             self.cloud.setup_ansible(args).run(
                 "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 

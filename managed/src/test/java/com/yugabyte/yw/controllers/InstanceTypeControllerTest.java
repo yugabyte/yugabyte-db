@@ -53,8 +53,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     awsProvider = ModelFactory.awsProvider(customer);
     defaultRegion =
         Region.create(awsProvider, "default-region", "Default PlacementRegion", "default-image");
-    zone1 = AvailabilityZone.create(defaultRegion, "zone1", "Zone One", "Subnet 1");
-    zone2 = AvailabilityZone.create(defaultRegion, "zone2", "Zone Two", "Subnet 2");
+    zone1 = AvailabilityZone.createOrThrow(defaultRegion, "zone1", "Zone One", "Subnet 1");
+    zone2 = AvailabilityZone.createOrThrow(defaultRegion, "zone2", "Zone Two", "Subnet 2");
     onPremProvider = ModelFactory.newProvider(customer, Common.CloudType.onprem);
   }
 

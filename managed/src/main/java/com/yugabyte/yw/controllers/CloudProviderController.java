@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -27,6 +29,8 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import org.apache.commons.collections4.MultiValuedMap;
+import org.apache.commons.collections4.multimap.HashSetValuedHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -85,6 +89,10 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject CloudAPI.Factory cloudAPIFactory;
 
+  @Inject KubernetesManager kubernetesManager;
+
+  @Inject play.Configuration appConfig;
+
   /**
    * GET endpoint for listing providers
    *
@@ -92,15 +100,7 @@ public class CloudProviderController extends AuthenticatedController {
    */
   @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
-    List<Provider> providerList = Provider.getAll(customerUUID);
-    ArrayNode providers = Json.newArray();
-    providerList.forEach(
-        (provider) -> {
-          ObjectNode providerJson = (ObjectNode) Json.toJson(provider);
-          providerJson.set("config", provider.getMaskedConfig());
-          providers.add(providerJson);
-        });
-    return ApiResponse.success(providers);
+    return ApiResponse.success(Provider.getAll(customerUUID));
   }
 
   // This endpoint we are using only for deleting provider for integration test purpose. our
@@ -139,13 +139,19 @@ public class CloudProviderController extends AuthenticatedController {
           name = "providerFormData",
           value = "provider form data",
           paramType = "body",
-          dataTypeClass = CloudProviderFormData.class,
+          dataType = "com.yugabyte.yw.forms.CloudProviderFormData",
           required = true))
   public Result create(UUID customerUUID) throws IOException {
     Form<CloudProviderFormData> formData =
         formFactory.getFormDataOrBadRequest(CloudProviderFormData.class);
 
     Common.CloudType providerCode = formData.get().code;
+    Provider existentProvider = Provider.get(customerUUID, formData.get().name, providerCode);
+    if (existentProvider != null) {
+      return ApiResponse.error(
+          BAD_REQUEST,
+          String.format("Provider with the name %s already exists", formData.get().name));
+    }
 
     // Since the Map<String, String> doesn't get parsed, so for now we would just
     // parse it from the requestBody
@@ -225,7 +231,8 @@ public class CloudProviderController extends AuthenticatedController {
               throw new YWServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
             }
           } else if (!hasConfig) {
-            throw new YWServiceException(BAD_REQUEST, "No Kubeconfig found for zone(s)");
+            LOG.warn(
+                "No Kubeconfig found at any level, in-cluster service account credentials will be used.");
           }
         }
       }
@@ -245,9 +252,12 @@ public class CloudProviderController extends AuthenticatedController {
       if (isConfigInRegion) {}
       for (ZoneData zd : rd.zoneList) {
         Map<String, String> zoneConfig = zd.config;
-        AvailabilityZone az = AvailabilityZone.create(region, zd.code, zd.name, null);
+        AvailabilityZone az = AvailabilityZone.createOrThrow(region, zd.code, zd.name, null);
         boolean isConfigInZone = updateKubeConfig(provider, region, az, zoneConfig, false);
-        if (isConfigInZone) {}
+        if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
+          // Use in-cluster ServiceAccount credentials
+          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+        }
       }
     }
     try {
@@ -387,6 +397,123 @@ public class CloudProviderController extends AuthenticatedController {
     }
   }
 
+  // Performs discovery of region, zones, pull secret, storageClass
+  // when running inside a Kubernetes cluster. Returns the discovered
+  // information as a JSON, which is similar to the one which is
+  // passed to the createKubernetes method.
+  @ApiOperation(
+      value = "getSuggestedKubernetesConfigs",
+      response = KubernetesProviderFormData.class)
+  public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
+    try {
+      MultiValuedMap<String, String> regionToAZ = getKubernetesRegionToZoneInfo();
+      if (regionToAZ.isEmpty()) {
+        LOG.info(
+            "No regions and zones found, check if the region and zone labels are present on the nodes. https://k8s.io/docs/reference/labels-annotations-taints/");
+        throw new YWServiceException(
+            INTERNAL_SERVER_ERROR, "No region and zone information found.");
+      }
+
+      String storageClass = appConfig.getString("yb.kubernetes.storageClass");
+      String pullSecretName = appConfig.getString("yb.kubernetes.pullSecretName");
+      if (storageClass == null || pullSecretName == null) {
+        LOG.error("Required configuration keys from yb.kubernetes.* are missing.");
+        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Required configuration is missing.");
+      }
+      String pullSecretContent = getKubernetesPullSecretContent(pullSecretName);
+
+      KubernetesProviderFormData formData = new KubernetesProviderFormData();
+      formData.code = Common.CloudType.kubernetes;
+      if (pullSecretContent != null) {
+        formData.config =
+            ImmutableMap.of(
+                "KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName,
+                "KUBECONFIG_PULL_SECRET_NAME", pullSecretName, // filename
+                "KUBECONFIG_PULL_SECRET_CONTENT", pullSecretContent);
+      }
+
+      for (String region : regionToAZ.keySet()) {
+        RegionData regionData = new RegionData();
+        regionData.code = region;
+        for (String az : regionToAZ.get(region)) {
+          ZoneData zoneData = new ZoneData();
+          zoneData.code = az;
+          zoneData.name = az;
+          zoneData.config = ImmutableMap.of("STORAGE_CLASS", storageClass);
+          regionData.zoneList.add(zoneData);
+        }
+        formData.regionList.add(regionData);
+      }
+
+      ObjectMapper mapper = new ObjectMapper();
+      return ApiResponse.success(mapper.valueToTree(formData));
+    } catch (RuntimeException e) {
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  // Performs region and zone discovery based on
+  // topology/failure-domain labels from the Kubernetes nodes.
+  private MultiValuedMap<String, String> getKubernetesRegionToZoneInfo() {
+    JsonNode nodeInfos = kubernetesManager.getNodeInfos(null);
+    MultiValuedMap<String, String> regionToAZ = new HashSetValuedHashMap<>();
+    for (JsonNode nodeInfo : nodeInfos.path("items")) {
+      JsonNode nodeLabels = nodeInfo.path("metadata").path("labels");
+      // failure-domain.beta.k8s.io is deprecated as of 1.17
+      String region = nodeLabels.path("topology.kubernetes.io/region").asText();
+      region =
+          region.isEmpty()
+              ? nodeLabels.path("failure-domain.beta.kubernetes.io/region").asText()
+              : region;
+      String zone = nodeLabels.path("topology.kubernetes.io/zone").asText();
+      zone =
+          zone.isEmpty()
+              ? nodeLabels.path("failure-domain.beta.kubernetes.io/zone").asText()
+              : zone;
+      if (region.isEmpty() || zone.isEmpty()) {
+        LOG.debug(
+            "Value of the zone or region label is empty for "
+                + nodeInfo.path("metadata").path("name").asText()
+                + ", skipping.");
+        continue;
+      }
+      regionToAZ.put(region, zone);
+    }
+    return regionToAZ;
+  }
+
+  // Fetches the secret secretName from current namespace, removes
+  // extra metadata and returns the secret as JSON string. Returns
+  // null if the secret is not present.
+  private String getKubernetesPullSecretContent(String secretName) {
+    JsonNode pullSecretJson;
+    try {
+      pullSecretJson = kubernetesManager.getSecret(null, secretName, null);
+    } catch (RuntimeException e) {
+      if (e.getMessage().contains("Error from server (NotFound): secrets")) {
+        LOG.debug(
+            "The pull secret " + secretName + " is not present, provider won't have this field.");
+        return null;
+      }
+      throw new RuntimeException("Unable to fetch the pull secret.");
+    }
+    JsonNode secretMetadata = pullSecretJson.get("metadata");
+    if (secretMetadata == null) {
+      LOG.error(
+          "metadata of the pull secret " + secretName + " is missing. This should never happen.");
+      throw new RuntimeException("Error while fetching the pull secret.");
+    }
+    ((ObjectNode) secretMetadata)
+        .remove(
+            ImmutableList.of(
+                "namespace", "uid", "selfLink", "creationTimestamp", "resourceVersion"));
+    JsonNode secretAnnotations = secretMetadata.get("annotations");
+    if (secretAnnotations != null) {
+      ((ObjectNode) secretAnnotations).remove("kubectl.kubernetes.io/last-applied-configuration");
+    }
+    return pullSecretJson.toString();
+  }
+
   // TODO: This is temporary endpoint, so we can setup docker, will move this
   // to standard provider bootstrap route soon.
   public Result setupDocker(UUID customerUUID) {
@@ -406,7 +533,7 @@ public class CloudProviderController extends AuthenticatedController {
               .forEach(
                   (zoneSuffix) -> {
                     String zoneName = regionCode + zoneSuffix;
-                    AvailabilityZone.create(region, zoneName, zoneName, "yugabyte-bridge");
+                    AvailabilityZone.createOrThrow(region, zoneName, zoneName, "yugabyte-bridge");
                   });
         });
     Map<String, Object> instanceTypeMetadata = configHelper.getConfig(DockerInstanceTypeMetadata);
@@ -431,7 +558,7 @@ public class CloudProviderController extends AuthenticatedController {
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "bootstrap params",
-          dataTypeClass = CloudBootstrap.Params.class,
+          dataType = "com.yugabyte.yw.commissioner.tasks.CloudBootstrap$Params",
           paramType = "body",
           required = true))
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
@@ -512,7 +639,7 @@ public class CloudProviderController extends AuthenticatedController {
       @ApiImplicitParam(
           value = "edit provider form data",
           name = "editProviderFormData",
-          dataTypeClass = Object.class,
+          dataType = "java.lang.Object",
           required = true,
           paramType = "body"))
   public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {

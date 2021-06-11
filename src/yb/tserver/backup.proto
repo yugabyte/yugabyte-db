@@ -34,6 +34,7 @@ message TabletSnapshotOpRequestPB {
     CREATE_ON_MASTER = 4; // Replicated at master, while creating snapshot for multiple tablets.
     DELETE_ON_MASTER = 5;
     RESTORE_SYS_CATALOG = 6;
+    RESTORE_FINISHED = 7; // Whole restore operation is finished.
   }
 
   // UUID of server this request is addressed to.
