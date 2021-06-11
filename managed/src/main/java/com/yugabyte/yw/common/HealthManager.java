@@ -35,6 +35,7 @@ public class HealthManager extends DevopsBase {
     public Map<String, String> tserverNodes = new HashMap<>();
     public String ybSoftwareVersion = null;
     public boolean enableTlsClient = false;
+    public boolean rootAndClientRootCASame = true;
     public String sslProtocol = "";
     public boolean enableYSQL = false;
     public int ysqlPort = 5433;

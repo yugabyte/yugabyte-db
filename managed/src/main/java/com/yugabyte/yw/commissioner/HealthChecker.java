@@ -517,6 +517,8 @@ public class HealthChecker {
       // Since health checker only uses CQLSH, we only care about the
       // client to node encryption flag.
       info.enableTlsClient = cluster.userIntent.enableClientToNodeEncrypt;
+      // Setting this flag to identify correct cert location.
+      info.rootAndClientRootCASame = details.rootAndClientRootCASame;
       // Pass in whether YSQL authentication is enabled for the given cluster.
       info.enableYSQLAuth =
           cluster.userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true");

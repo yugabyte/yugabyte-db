@@ -88,6 +88,30 @@ public class CertificateHelperTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateClientRootCAWithClientCert() {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "test-universe";
+    UUID clientRootCA = CertificateHelper.createClientRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
+    CertificateHelper.createClientCertificate(
+        clientRootCA, String.format(certPath + "/%s", clientRootCA), "yugabyte", null, null);
+    assertNotNull(CertificateInfo.get(clientRootCA));
+    try {
+      InputStream in =
+          new FileInputStream(certPath + String.format("/%s/ca.root.crt", clientRootCA));
+      CertificateFactory factory = CertificateFactory.getInstance("X.509");
+      X509Certificate cert = (X509Certificate) factory.generateCertificate(in);
+      assertEquals(cert.getIssuerDN(), cert.getSubjectDN());
+      FileInputStream is =
+          new FileInputStream(
+              new File(certPath + String.format("/%s/yugabytedb.crt", clientRootCA)));
+      X509Certificate clientCer = (X509Certificate) factory.generateCertificate(is);
+      clientCer.verify(cert.getPublicKey(), "BC");
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
+  }
+
+  @Test
   public void testCreateCustomerCertToString()
       throws CertificateException, NoSuchAlgorithmException, InvalidKeyException,
           NoSuchProviderException, SignatureException, IOException {

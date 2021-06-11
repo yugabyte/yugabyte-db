@@ -143,6 +143,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               universeDetails.nodePrefix = taskParams().nodePrefix;
               universeDetails.universeUUID = taskParams().universeUUID;
               universeDetails.rootCA = taskParams().rootCA;
+              universeDetails.clientRootCA = taskParams().clientRootCA;
               universeDetails.allowInsecure = taskParams().allowInsecure;
               Cluster cluster = taskParams().getPrimaryCluster();
               if (cluster != null) {
@@ -748,10 +749,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 
       params.allowInsecure = taskParams().allowInsecure;
       params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
       params.rootCA = taskParams().rootCA;
+      params.clientRootCA = taskParams().clientRootCA;
       params.enableYEDIS = userIntent.enableYEDIS;
 
       // Development testing variable.

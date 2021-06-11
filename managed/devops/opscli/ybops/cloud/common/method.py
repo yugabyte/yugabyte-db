@@ -546,6 +546,7 @@ class UpdateDiskMethod(AbstractInstancesMethod):
 class CronCheckMethod(AbstractInstancesMethod):
     """Superclass for checking cronjob status on specified node.
     """
+
     def __init__(self, base_command):
         super(CronCheckMethod, self).__init__(base_command, "croncheck")
 
@@ -589,18 +590,25 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--server_broadcast_addresses')
         self.parser.add_argument('--rootCA_cert')
         self.parser.add_argument('--rootCA_key')
+        self.parser.add_argument('--clientRootCA_cert')
+        self.parser.add_argument('--clientRootCA_key')
         self.parser.add_argument('--client_key')
         self.parser.add_argument('--client_cert')
         self.parser.add_argument('--use_custom_certs', action="store_true")
+        self.parser.add_argument('--use_custom_client_certs', action="store_true")
         self.parser.add_argument('--rotating_certs', action="store_true")
         self.parser.add_argument('--adding_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
         self.parser.add_argument('--node_cert_path')
         self.parser.add_argument('--node_key_path')
+        self.parser.add_argument('--client_root_cert_path')
+        self.parser.add_argument('--client_node_cert_path')
+        self.parser.add_argument('--client_node_key_path')
         self.parser.add_argument('--client_cert_path')
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
+        self.parser.add_argument('--certs_client_dir')
         self.parser.add_argument('--certs_node_dir',
                                  default=os.path.join(YB_HOME_DIR, "yugabyte-tls-config"))
         self.parser.add_argument('--encryption_key_source_file')
@@ -640,6 +648,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 "redis_proxy_rpc_port": args.redis_proxy_rpc_port,
                 "cert_valid_duration": args.cert_valid_duration,
                 "org_name": args.org_name,
+                "certs_client_dir": args.certs_client_dir,
                 "certs_node_dir": args.certs_node_dir,
                 "encryption_key_dir": args.encryption_key_target_dir
             })
@@ -679,6 +688,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.rootCA_key is not None:
             self.extra_vars["rootCA_key"] = args.rootCA_key.strip()
 
+        if args.clientRootCA_cert is not None:
+            self.extra_vars["clientRootCA_cert"] = args.clientRootCA_cert.strip()
+
+        if args.clientRootCA_key is not None:
+            self.extra_vars["clientRootCA_key"] = args.clientRootCA_key.strip()
+
         if args.client_cert is not None:
             self.extra_vars["client_cert"] = args.client_cert.strip()
 
@@ -693,6 +708,15 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.node_key_path is not None:
             self.extra_vars["node_key_path"] = args.node_key_path.strip()
+
+        if args.client_root_cert_path is not None:
+            self.extra_vars["client_root_cert_path"] = args.client_root_cert_path.strip()
+
+        if args.client_node_cert_path is not None:
+            self.extra_vars["client_node_cert_path"] = args.client_node_cert_path.strip()
+
+        if args.client_node_key_path is not None:
+            self.extra_vars["client_node_key_path"] = args.client_node_key_path.strip()
 
         if args.client_cert_path is not None:
             self.extra_vars["client_cert_path"] = args.client_cert_path.strip()
@@ -732,8 +756,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         "configure-{}.yml".format(args.type), itest_extra_vars, host_info)
                     logging.info(("[app] Running itest tasks including S3 " +
                                   "package download {} to {} took {:.3f} sec").format(
-                                args.itest_s3_package_path,
-                                args.search_pattern, time.time() - start_time))
+                        args.itest_s3_package_path,
+                        args.search_pattern, time.time() - start_time))
                 else:
                     scp_to_tmp(
                         args.package,
@@ -752,14 +776,15 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
-        if args.use_custom_certs:
+        if args.use_custom_certs or args.use_custom_client_certs:
             if args.rotating_certs:
                 logging.info("Verifying root certs are the same.")
                 self.cloud.compare_root_certs(self.extra_vars, ssh_options)
             logging.info("Copying custom certificates to {}.".format(args.search_pattern))
             self.cloud.copy_certs(self.extra_vars, ssh_options)
         else:
-            if args.rootCA_cert and args.rootCA_key is not None:
+            if ((args.clientRootCA_cert and args.clientRootCA_cert is not None)
+                    or (args.rootCA_cert and args.rootCA_key is not None)):
                 logging.info("Creating and copying over client TLS certificate to {}".format(
                     args.search_pattern))
                 self.cloud.generate_client_cert(self.extra_vars, ssh_options)

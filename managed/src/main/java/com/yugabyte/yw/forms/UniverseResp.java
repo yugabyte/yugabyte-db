@@ -133,9 +133,9 @@ public class UniverseResp {
                     + "--workload CassandraKeyValue --nodes <nodes> --ssl_cert /home/root.crt")
                 .replace(
                     "<root_cert_content>",
-                    universe.getUniverseDetails().rootCA != null
+                    universe.getUniverseDetails().clientRootCA != null
                         ? CertificateHelper.getCertPEMFileContents(
-                            universe.getUniverseDetails().rootCA)
+                            universe.getUniverseDetails().clientRootCA)
                         : "")
                 .replace("<nodes>", nodeBuilder.toString());
       }
