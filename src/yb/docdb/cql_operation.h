@@ -132,7 +132,7 @@ class QLWriteOperation :
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
-  Result<bool> IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
+  bool IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
 
   CHECKED_STATUS UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
 
