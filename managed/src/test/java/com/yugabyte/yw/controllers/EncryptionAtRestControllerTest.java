@@ -192,7 +192,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateSMARTKEYKmsProviderWithInValidAPIUrl() {
+  public void testCreateSMARTKEYKmsProviderWithInvalidAPIUrl() {
     String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
     ObjectNode kmsConfigReq =
         Json.newObject().put("base_url", "some_base_url").put("api_key", "some_api_token");
@@ -221,7 +221,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateAwsKmsProviderWithInValidCreds() {
+  public void testCreateAwsKmsProviderWithInvalidCreds() {
     String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
     ObjectNode kmsConfigReq =
         Json.newObject()

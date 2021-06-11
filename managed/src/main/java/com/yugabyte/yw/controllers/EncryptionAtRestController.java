@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
@@ -44,6 +45,8 @@ import java.util.stream.Collectors;
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
+  private static Set<String> API_URL =  ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
+
   @Inject EncryptionAtRestManager keyManager;
 
   @Inject Commissioner commissioner;
@@ -64,11 +67,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
       }
     }
     if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
-      final Set<String> apiUrl =
-          new HashSet<>(
-              Arrays.asList("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io"));
-      if (!(formData.get("base_url") != null
-          && apiUrl.contains(formData.get("base_url").textValue()))) {
+      if (formData.get("base_url") == null
+          || !EncryptionAtRestController.API_URL.contains(formData.get("base_url").textValue())) {
         throw new YWServiceException(BAD_REQUEST, "Invalid API URL.");
       }
     }
