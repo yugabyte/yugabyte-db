@@ -34,7 +34,7 @@ These are described below.
 
 In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (“DN”) constructed with “prefix username suffix” format. Here is an example for Simple bind mode:
 
-```sql
+```sh
 --ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host   all         all      0.0.0.0/0  ldap ldapserver=ldap.yugabyte.com ldapprefix=""uid="" ldapsuffix="", ou=DBAs, dc=example, dc=com"" ldapport=389"'
 ```
 
@@ -87,15 +87,15 @@ In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed
 
 For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ldapbasedn`, and will try to do an exact match of the attribute specified in `ldapsearchattribute`. Once the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
 
-Here is an example for search + bind mode:
+Here is an example for search + bind mode
 
-```sql
---ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldap.yugabyte.com ldapbasedn=""dc=yugabyte, dc=com"" ldapsearchattribute=uid"'
+```sh
+--ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host   all         all      0.0.0.0/0  ldap ldapserver=ldap.yugabyte.com ldapbasedn=""dc=yugabyte, dc=com"" ldapsearchattribute=uid"'
 ```
 
 ### Configurations
 
-The configurations supported for search + bind mode.
+The configurations supported for search + bind mode
 
 <table>
   <tr>
@@ -162,28 +162,28 @@ The configurations supported for search + bind mode.
 
 ## Example
 
-To use LDAP password authentication on a new YugabyteDB cluster, follow these steps.
+To use LDAP password authentication on a new YugabyteDB cluster, follow these steps
 
-1. Use the `--ysql_hba_conf_csv` config flag to enable LDAP authentication on YB-TServer. Use the below configuration to start a YugabyteDB cluster.
+1. Use  `--ysql_hba_conf_csv` config flag to enable LDAP authentication on YB-TServer. Use the below configuration to start a YugabyteDB cluster.
 
-    ```sql
-    --ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0  ldap ldapserver=ldap.forumsys.com ldapprefix="" uid="" ldapsuffix="", dc=example, dc=com"" ldapport=389"'
+    ```sh
+    --ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host   all         all      0.0.0.0/0  ldap ldapserver=ldap.forumsys.com ldapprefix=""uid="" ldapsuffix="", dc=example, dc=com"" ldapport=389"'
     ```
 
     {{< note title="Note" >}}
-    In the above sample configuration, we are using an [online LDAP test server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) for setting up the LDAP authentication with YugabyteDB.
+In the above sample configuration, we are using an [online LDAP test server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) for setting up the LDAP authentication with YugabyteDB.
     {{< /note >}}
 
-    For Convenience we use two host based authentication (HBA) rules. 
+    For convenience we use two host based authentication (HBA) rules. 
 
     * The first HBA rule `host all yugabyte 127.0.0.1/0 password` allows access from the localhost (127.0.0.1) to the admin user (yugabyte) with password authentication. This allows the administrator to log in with the yugabyte user for setting up the roles (and permissions) for the LDAP users.
     * The second HBA rule configures LDAP authentication for all other user/host pairs. We use simple bind with a uid-based username (ldapprefix) and a suffix defining the domain component (dc).
 
-2. Start the YugabyteDB cluster.
+1. Start the YugabyteDB cluster.
 
-3. Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
+1. Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
 
-    ```sql
+    ```sh
     $ ./ysqlsh -U yugabyte -W
     ```
 
@@ -196,11 +196,13 @@ To use LDAP password authentication on a new YugabyteDB cluster, follow these st
     yugabyte=#
     ```
 
-4. To display the current values in the `ysql_hba.conf` file, run the following `SHOW` statement to get the file location:
+1. To display the current values in the `ysql_hba.conf` file, run the following `SHOW` statement to get the file location:
 
     ```sql
     yugabyte=# SHOW hba_file;
+    ```
 
+    ```output
                          hba_file
     -------------------------------------------------------
      /Users/yugabyte/yugabyte-data/node-1/disk-1/pg_data/ysql_hba.conf
@@ -215,21 +217,20 @@ To use LDAP password authentication on a new YugabyteDB cluster, follow these st
     host   all         all      0.0.0.0/0  ldap ldapserver=ldap.forumsys.com ldapprefix="uid=" ldapsuffix=", dc=example, dc=com" ldapport=389
     ```
 
-5. Configure database roles for LDAP users.
-
-    To create a `ROLE` for username `riemann` supported by the test LDAP server: 
+1. Configure database role(s) for the LDAP user(s)
 
     ```sql
+    We are creating a ROLE for username riemann supported by the test LDAP server. 
+
     yugabyte=# CREATE ROLE riemann WITH LOGIN;
     yugabyte=# GRANT ALL ON DATABASE yugabyte T0 riemann;
-
     ```
 
-6. Connect using LDAP authentication.
+1. Connect using LDAP authentication
 
-    Connect ysqlsh using `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page. 
+    Connect ysqlsh using the `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page. 
 
-    ```sql
+    ```sh
     $ ./ysqlsh -U riemann -W
     ```
 
@@ -237,6 +238,9 @@ To use LDAP password authentication on a new YugabyteDB cluster, follow these st
 
     ```sql
     yugabyte=# SELECT current_user;
+    ```
+
+    ```output
      current_user
     --------------
      riemann
