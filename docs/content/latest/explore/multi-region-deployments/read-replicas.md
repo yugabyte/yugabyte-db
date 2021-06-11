@@ -20,9 +20,9 @@ YugabyteDB supports the following types of reads:
 - [Follower reads](../../follower-reads/macos/) that enable spreading the read workload across all replicas in the primary cluster.
 - Observer reads that use read replicas. The latter obtain their data via [asynchronous replication](../asynchronous-replication-ycql) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads. 
 
-A universe can have one primary cluster and several read replica clusters.
+A datacenter (also known as universe) can have one primary cluster and several read replica clusters.
 
-Stale reads are possible with an upper bound on the amount of staleness. Reads are guaranteed to be timeline-consistent. You need to set the consistency level to `ONE` in your application to get reads. In addition, you have to set the application’s local universe to the read replica cluster’s region.
+Stale reads are possible with an upper bound on the amount of staleness. Reads are guaranteed to be timeline-consistent. You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. In addition, you have to set the application’s local datacenter to the read replica cluster’s region.
 
 ## Prerequisites
 
@@ -115,7 +115,7 @@ The following illustration demonstrates the read and write statistics in the pri
 
 As per the preceding illustration, using the default workload directs reads and writes to the tablet leader. The arguments in the `java -jar ./yb-sample-apps.jar` command explicitly restrict the number of keys to be written and read to one in order to follow the reads and writes occurring on a single tablet.
 
-The following is a modified command that enables follower reads. Specifying `--local_reads` changes the consistency level to `ONE`. The `--with_local_dc` option defines in which universe the application is at any given time. When specified, the read traffic is routed to the same region:
+The following is a modified command that enables follower reads. Specifying `--local_reads` changes the consistency level to `ONE`. The `--with_local_dc` option defines in which datacenter the application is at any given time. When specified, the read traffic is routed to the same region:
 
 ```shell
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \ 
@@ -160,13 +160,20 @@ The following illustration demonstrates the reads spread across all the replicas
 
 ## Using Read Replicas
 
-The following commands add three new nodes, and then add these nodes to a read replica cluster in region `r2`:
+The following commands add three new nodes to a read replica cluster in region `r2`:
 
 ```shell
-./bin/yb-ctl add_node --placement_info "c.r2.z21" --tserver_flags "placement_uuid=rr"                                      ./bin/yb-ctl add_node --placement_info "c.r2.z22" --tserver_flags "placement_uuid=rr"
+./bin/yb-ctl add_node --placement_info "c.r2.z21" --tserver_flags "placement_uuid=rr"
+./bin/yb-ctl add_node --placement_info "c.r2.z22" --tserver_flags "placement_uuid=rr"
 ./bin/yb-ctl add_node --placement_info "c.r2.z23" --tserver_flags "placement_uuid=rr"
 
-./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2,127.0.0.3 add_read_replica_placement_info c.r2.z21:1,c.r2.z22:1,c.r2.z23:1 3 rr
+./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2,127.0.0.3
+```
+
+Output:
+
+```
+add_read_replica_placement_info c.r2.z21:1,c.r2.z22:1,c.r2.z23:1 3 rr
 ```
 
 The following illustration demonstrates the setup of two clusters, one of which is primary and another one is read replica visible via [Yugabyte Platform](https://docs.yugabyte.com/latest/yugabyte-platform/):
@@ -205,9 +212,11 @@ The following illustration demonstrates the result of exectuting the preceding c
 
 ![img](/images/explore/multi-region-deployments/read-replicas6.png)
 
+For information on deploying read replicas, see [Read Replica Clusters](../../../deploy/multi-dc/read-replica-clusters/). 
+
 ## Fault Tolerance
 
-In the strong consistency mode (default), more failures can be tolerated by increasing the number of replicas: to tolerate a `k` number of failures, `2k+1` replicas are required in the RAFT group. However, follower reads and observer reads can provide Cassandra-style `CL.ONE` fault tolerance. The  `max_stale_read_bound_time_ms` GFlag controls how far behind the followers are allowed to be before they redirect reads back to the RAFT leader (the default is around 60). For "write once, read many times” workloads, this number could be increased. By stopping nodes, you can induce behavior of follower and observer reads.
+In the strong consistency mode (default), more failures can be tolerated by increasing the number of replicas: to tolerate a `k` number of failures, `2k+1` replicas are required in the RAFT group. However, follower reads and observer reads can provide Cassandra-style `CL.ONE` fault tolerance. The  `max_stale_read_bound_time_ms` GFlag controls how far behind the followers are allowed to be before they redirect reads back to the RAFT leader (the default is 60 seconds). For "write once, read many times” workloads, this number could be increased. By stopping nodes, you can induce behavior of follower and observer reads such that they continue to read (which would not be possible without follower reads).
 
 The following command starts a read-only workload:
 
@@ -253,7 +262,7 @@ The following illustration demonstrates all stopped nodes in the read replica cl
 
 ![img](/images/explore/multi-region-deployments/read-replicas9.png)
 
-This behavior differs from the standard Cassandra behavior. The YCQL interface only honors consistency level `ONE`. All other consistency levels are converted to `QUORUM` including `LOCAL_ONE`. When a local universe is specified by the application with consistency level `ONE`, read traffic is localized to the region as long as this region has active replicas. If the application’s local universe has no replicas, the read traffic is routed to the primary region.
+This behavior differs from the standard Cassandra behavior. The YCQL interface only honors consistency level `ONE`. All other consistency levels are converted to `QUORUM` including `LOCAL_ONE`. When a local datacenter is specified by the application with consistency level `ONE`, read traffic is localized to the region as long as this region has active replicas. If the application’s local datacenter has no replicas, the read traffic is routed to the primary region.
 
 The following command stops one of the nodes in the primary cluster:
 
