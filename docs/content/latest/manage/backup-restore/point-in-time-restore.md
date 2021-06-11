@@ -1,10 +1,11 @@
 ---
-title: Point-in-Time Restore for YSQL
-headerTitle: Point-in-time restore
-linkTitle: Point-in-time restore
+title: Point-in-Time Recovery for YSQL
+headerTitle: Point-in-time recovery
+linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YSQL
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
+- /latest/manage/backup-restore/point-in-time-restore
 menu:
   latest:
     identifier: point-in-time-restore
@@ -14,13 +15,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The point-in-time restore feature allows you to restore the state of your cluster's data from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
+The point-in-time recovery feature allows you to restore the state of your cluster's data from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
-_Point-in-time restores_ (also referred to here as PITR) and _incremental backups_ go hand in hand. These two features help in recovering from a number of error or failure scenarios by allowing the database to be restored to a specific point in time (in the past).
+_Point-in-time recovery_ (also referred to here as PITR) and _incremental backups_ go hand in hand. These two features help in recovering from a number of error or failure scenarios by allowing the database to be restored to a specific point in time (in the past).
 
-Point-in-time restores and incremental backups depend on _full backups_ (also referred to as base backups). A full backup, as the name suggests, is a complete transactional backup of data up to a certain point in time. The entire data set in the database is backed up for all of the namespaces and tables you selected. Full backups are resource-intensive, and can consume considerable amounts of CPU time, bandwidth, and disk space.
+Point-in-time recoveries and incremental backups depend on _full backups_ (also referred to as base backups). A full backup, as the name suggests, is a complete transactional backup of data up to a certain point in time. The entire data set in the database is backed up for all of the namespaces and tables you selected. Full backups are resource-intensive, and can consume considerable amounts of CPU time, bandwidth, and disk space.
 
-To learn more about YugabyteDB's point-in-time restore feature, refer to the [Recovery scenarios](#recovery-scenarios), [Features](#features), [Use cases](#use-cases), and [Limitations](#limitations) sections on this page. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin#backup-and-snapshot-commands) section of the yb-admin documentation.
+To learn more about YugabyteDB's point-in-time recovery feature, refer to the [Recovery scenarios](#recovery-scenarios), [Features](#features), [Use cases](#use-cases), and [Limitations](#limitations) sections on this page. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin#backup-and-snapshot-commands) section of the yb-admin documentation.
 
 ## Try out the PITR feature
 
@@ -32,8 +33,8 @@ There are several recovery scenarios [for YSQL](../../../explore/backup-restore/
 
 Point in time recovery allows recovery from the following scenarios by restoring the database to a point in time before the error occurred. The errors could be any of the following:
 
-* DDL errors: A table is dropped by mistake
-* DML errors: An erroneous UPDATE statement is run on the table
+* DDL errors: For example, a table is dropped by mistake
+* DML errors: For example, an erroneous UPDATE statement is run on the table
 
 In both cases, you restore the table to a point in time before the error occurred.
 
@@ -94,11 +95,11 @@ There are two types of incremental backups, _differential_ and _cumulative_. Alt
 
 #### Differential incremental backups
 
-Each differential incremental backup only contains the updates that occurred after the previous incremental backup. All changes since last incremental. A point-in-time restore operation in this case would involve restoring the latest base backup, followed by applying every differential incremental backup taken since that base backup.
+Each differential incremental backup only contains the updates that occurred after the previous incremental backup. All changes since last incremental. A point-in-time recovery operation in this case would involve restoring the latest base backup, followed by applying every differential incremental backup taken since that base backup.
 
 #### Cumulative incremental backups
 
-Each cumulative incremental backup contains all changes since the last base backup. The timestamp of the last base backup is specified by the operator. In this case, the point-in-time restore operation involves restoring the latest base backup, followed by applying the latest cumulative incremental backup.
+Each cumulative incremental backup contains all changes since the last base backup. The timestamp of the last base backup is specified by the operator. In this case, the point-in-time recovery operation involves restoring the latest base backup, followed by applying the latest cumulative incremental backup.
 
 ## Use cases
 
@@ -120,8 +121,8 @@ This feature is in active development. YSQL and YCQL support different features,
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
 * Support for undoing YSQL metadata operations, such as CREATE, ALTER, TRUNCATE, or DROP TABLE
-* Options to restore with different granularities, such as a single YSQL database or the whole YCQL dataset.
 * YCQL roles and permissions
+* Automatic tablet splitting and point-in-time recovery do not yet work well together.
 
 ### YSQL limitations
 
@@ -133,5 +134,5 @@ Currently, you can recover from the following YCQL operations:
 
 * Data changes
 * CREATE and DROP TABLE
-* ALTER TABLE (including ADD and DROP COLUMN)
+* ALTER TABLE (including ADD, DROP, and RENAME COLUMN)
 * CREATE and DROP INDEX

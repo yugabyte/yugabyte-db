@@ -129,7 +129,6 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Get a timestamp. YCQL doesn't have a `now()` function, so use a command such as the following. You can also use a [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
 
     ```sh
-    # Python: remove the decimal point before using the timestamp
     $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
@@ -249,7 +248,7 @@ Relative times can be in any of the following formats (again, note that you can 
 1. At a terminal prompt, restore the snapshot you created earlier:
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca minus "5m"
+    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca minus 5m
     ```
 
     ```output

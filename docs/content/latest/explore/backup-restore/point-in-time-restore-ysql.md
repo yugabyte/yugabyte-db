@@ -33,7 +33,7 @@ The point-in-time restore feature allows you to restore the state of your cluste
 
 Refer to [Features](../../../manage/backup-restore/point-in-time-restore/#features), [Use cases](../../../manage/backup-restore/point-in-time-restore/#use-cases), and [Limitations](../../../manage/backup-restore/point-in-time-restore/#limitations) for details on this feature. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-You can try out the PITR feature by creating a database and populating it, creating a snapshot, and restoring ([data only](../../../manage/backup-restore/point-in-time-restore/#limitations)!) from that snapshot.
+You can try out the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring ([data only](../../../manage/backup-restore/point-in-time-restore/#ysql-limitations)!) from a snapshot on the schedule.
 
 {{< tip title="Examples are simplified" >}}
 
@@ -123,21 +123,14 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from an absolute time
 
-1. From the YSQL shell, get a timestamp. You can also use a [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
+1. From a command prompt, get a timestamp.
 
-    <br/>
-
-    Note: YSQL timestamps are in seconds, with 5 digits after the decimal point. You'll need to multiply the result by 1,000,000 (1 million) later, to use it with the yb-admin command-line tools.
-
-    ```sql
-    yugabyte=# select extract(epoch from now()) as current_timestamp;
+    ```sh
+    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
-    current_timestamp 
-    ------------------
-     1617670679.18510
-    (1 row)
+    1620418817729963
     ```
 
 1. Add a row for employee 9999 to the table:
@@ -161,11 +154,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (5 rows)
     ```
 
-1. Restore the snapshot schedule to the timestamp you obtained before you deleted the data, at a terminal prompt.
-
-    <br/>
-
-    Multiply the timestamp you obtained earlier by 1,000,000 (1 million). A shortcut is to remove the decimal point, and add a zero (0) to the end. So, the example earlier of `1617670679.18510` becomes `1617670679185100`.
+1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt.
 
     ```sh
     $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1617670679185100
@@ -215,91 +204,10 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from a relative time
 
-In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago". In this example, you'll delete some data from the existing `employees` table, then restore the state of the database to what it was five minutes prior.
+In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago".
 
-When you specify a relative time, you can specify any or all of _days_, _hours_, _minutes_, and _seconds_. For example:
+When you specify a relative time, you can specify any or all of _days_, _hours_, _minutes_, and _seconds_.
 
-* `"5m"` to restore from five minutes ago
-* `"1h"` to restore from one hour ago
-* `"3d"` to restore from three days ago
-* `"1h 5m"` to restore from one hour and five minutes ago
+**Careful!** If you specify a time prior to when you created the table, the restore will _leave the table intact, but empty_.
 
-Relative times can be in any of the following formats (again, note that you can specify any or all of days, hours, minutes, and seconds):
-
-* ISO 8601: `3d 4h 5m 6s`
-* Abbreviated PostgreSQL: `3 d 4 hrs 5 mins 6 secs`
-* Traditional PostgreSQL: `3 days 4 hours 5 minutes 6 seconds`
-* SQL standard: `D H:M:S`
-
-**Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
-
-1. Wait at least five minutes after you complete the steps in the previous section. This is so that you can use a known relative time for the restore.
-
-1. In the YSQL shell, remove employee 1223 from the table:
-
-    ```sql
-    yugabyte=# delete from employees where employee_no=1223;
-
-    yugabyte=# select * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary 
-    -------------+----------------+------------+--------
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-    (3 rows)
-    ```
-
-1. At a terminal prompt, restore the snapshot you created earlier:
-
-    ```sh
-    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca minus "5m"
-    ```
-
-    ```output
-    {
-        "snapshot_id": "6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30",
-        "restoration_id": "f4256380-4f63-4937-830f-5be135d97717"
-    }
-    ```
-
-1. Verify the restoration is in `RESTORED` state:
-
-    ```sh
-    $ bin/yb-admin list_snapshots
-    ```
-
-    ```output
-    Snapshot UUID                         State
-    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
-    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
-    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
-    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
-    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
-    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
-    04b1e139-2c78-411d-bf0d-f8ee81263912  COMPLETE
-    6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30  COMPLETE
-    42e84f67-d517-4ed6-b571-d3b11059cfa6  COMPLETE
-    395e3e97-c259-46dd-a3ef-1b5441c6de10  COMPLETE
-    Restoration UUID                      State
-    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
-    f4256380-4f63-4937-830f-5be135d97717  RESTORED
-    ```
-
-1. Verify the data is restored, with a row for employee 1223:
-
-    ```sql
-    yugabyte=# select * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary 
-    -------------+----------------+------------+--------
-            1223 | Lucille Ball   | Operations |  70000
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-    (4 rows)
-    ```
+Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-admin/#restore-snapshot-schedule) for more details.
