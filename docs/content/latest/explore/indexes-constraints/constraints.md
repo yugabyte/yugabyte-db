@@ -17,11 +17,11 @@ YSQL allows you to define primary and foreign keys, as well as check values base
 
 ## Primary Key
 
-A primary key is a means to identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../using-the-unique-index/) applied to the table columns. 
+A primary key is a means to identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns. 
 
 Most commonly, the primary key is added to the table when the table is created, as demonstrated by the following syntax:
 
-```
+```sql
 CREATE TABLE (
   column1 data_type PRIMARY KEY,
   column2 data_type,
@@ -44,7 +44,7 @@ The primary key of the `employees` table is `employee_no`, which uniquely identi
 
 The following syntax the primary key definition for more than one column:
 
-```
+```sql
 CREATE TABLE (
   column1 data_type,
   column2 data_type,
@@ -67,31 +67,31 @@ CREATE TABLE employees (
 
 YSQL assigns a default name in the format `tablename_pkey` to the primary key constraint. In the preceding example, it is `employees_pkey`. If you need a different name, you can specify it using the `CONSTRAINT` clause, as per the following syntax:
 
-```
+```sql
 CONSTRAINT constraint_name PRIMARY KEY(column1, column2, ...);
 ```
 
 In some cases you might decide to define a primary key for an existing table. To do this, you use the `ALTER TABLE` statement, as per the following syntax:
 
-```
+```sql
 ALTER TABLE table_name ADD PRIMARY KEY (column1, column2);
 ```
 
 The `ALTER TABLE` statement also allows you to add an auto-incremented primary key to an existing table by using the [SERIAL type](https://docs.yugabyte.com/latest/explore/ysql-language-features/data-types/#serial-pseudotype), as per the following syntax:
 
-```
+```sql
 ALTER TABLE table_name ADD COLUMN ID SERIAL PRIMARY KEY;
 ```
 
 You can remove a primary key constraint by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
 
-```
+```sql
 ALTER TABLE table_name DROP CONSTRAINT primary_key_constraint;
 ```
 
 The following example shows how to remove the primary key constraint from the `employees` table:
 
-```
+```sql
 ALTER TABLE employees DROP CONSTRAINT employees_pkey;
 ```
 
@@ -114,7 +114,7 @@ You use a foreign key constraint to maintain the referential integrity of data b
 
 You define the foreign key constraint using the following syntax:
 
-```
+```sql
 [CONSTRAINT fk_name] 
   FOREIGN KEY(fk_columns) 
     REFERENCES parent_table(parent_key_columns)
@@ -167,7 +167,7 @@ CREATE TABLE contacts(
 
 YSQL enables you to ads a foreign key constraint to an existing table by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
 
-```
+```sql
 ALTER TABLE child_table 
   ADD CONSTRAINT constraint_name 
     FOREIGN KEY (fk_columns) 
@@ -176,14 +176,14 @@ ALTER TABLE child_table
 
 Before altering a table with a foreign key constraint, you need to remove the existing foreign key constraint, as per the following syntax:
 
-```
+```sql
 ALTER TABLE child_table
   DROP CONSTRAINT constraint_fkey;
 ```
 
 The next step is to add a new foreign key constraint, possibly including an action, as demonstrated by the following syntax:
 
-```
+```sql
 ALTER TABLE child_table
   ADD CONSTRAINT constraint_fk
     FOREIGN KEY (fk_columns)
@@ -222,7 +222,7 @@ INSERT INTO employees (employee_no, name, department, birth, salary)
 
 The following output shows that the execution of the `INSERT` statement failed because of the `CHECK` constraint on the `salary` column which only accepts values greater than 10:
 
-```
+```output
 ERROR: new row for relation "employees" violates check constraint "employees_salary_check"
 DETAIL: Failing row contains (2001, Hugh Grant, Sales, 1963-05-05, 0).
 ```
@@ -298,4 +298,3 @@ For additional information and examples, see the following:
 
 - [Defining NOT NULL Constraint](../../ysql-language-features/data-manipulation/#defining-not-null-constraint)
 - [Not-Null Constraints in PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-constraints.html#id-1.5.4.5.6)
-
