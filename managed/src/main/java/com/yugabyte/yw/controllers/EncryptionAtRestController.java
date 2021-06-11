@@ -31,11 +31,9 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.Objects;
@@ -45,7 +43,8 @@ import java.util.stream.Collectors;
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
-  private static Set<String> API_URL =  ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
+  private static Set<String> API_URL =
+      ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
 
   @Inject EncryptionAtRestManager keyManager;
 
@@ -58,7 +57,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         && (formData.get("AWS_ACCESS_KEY_ID") != null
             || formData.get("AWS_SECRET_ACCESS_KEY") != null)) {
       CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
-      Map<String, String> config = new HashMap<String, String>();
+      Map<String, String> config = new HashMap<>();
       config.put("AWS_ACCESS_KEY_ID", formData.get("AWS_ACCESS_KEY_ID").textValue());
       config.put("AWS_SECRET_ACCESS_KEY", formData.get("AWS_SECRET_ACCESS_KEY").textValue());
       if (cloudAPI != null
