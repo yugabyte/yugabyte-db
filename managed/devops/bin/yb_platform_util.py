@@ -9,6 +9,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+import enum
 import json
 import os
 import copy
@@ -19,8 +20,8 @@ import textwrap
 import time
 from argparse import RawDescriptionHelpFormatter
 
-python_version = sys.version_info[0]
-if python_version == 2:
+PYTHON_VERSION = sys.version_info[0]
+if PYTHON_VERSION == 2:
     import urllib2
     from urllib2 import HTTPError, urlopen
 else:
@@ -31,7 +32,19 @@ else:
 SUCCESS = "success"
 FAIL = "failed"
 PROGRESS_BAR = 100
-script_path = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
+
+class HelpMessage(enum.Enum):
+    action = 'Universe actions to perform'
+    customer_uuid = 'Mandatory if multiple customer uuids present.'
+    universe_name = 'Universe name'
+    universe_uuid = 'Universe UUID'
+    file = 'Json input file for creating universe. Relative path.'
+    task = 'Task UUID to get task status'
+    yes = 'Input yes for all confirmation prompts'
+    interval = 'Set interval time to get status update'
+    no_wait = 'To run command in background and do not wait for task completion task'
+    force = 'Force delete universe'
 
 
 def exception_handling(func):
@@ -62,7 +75,7 @@ def convert_unicode_json(data):
     :param data: Unicode json data.
     :return: Converted data
     """
-    if python_version == 2:
+    if PYTHON_VERSION == 2:
         if isinstance(data, basestring):
             return str(data)
         elif isinstance(data, collections.Mapping):
@@ -86,7 +99,7 @@ def check_positive(value):
 
 
 def get_input_from_user(message):
-    if python_version == 2:
+    if PYTHON_VERSION == 2:
         return raw_input(message)
     return input(message)
 
@@ -108,7 +121,7 @@ class YBUniverse():
         :param is_delete: To identify the delete call.
         :return: Response of the API call.
         """
-        if python_version == 2:
+        if PYTHON_VERSION == 2:
             request = urllib2.Request(url)
             if is_delete:
                 request.get_method = lambda: 'DELETE'
@@ -147,6 +160,7 @@ class YBUniverse():
         """
         Create the universe config data from the json file. 
         Remove extra fields from universe details before saving to the file.
+        User will use this file to create new universe, We need to remove all feild which are not required while create.
 
         :param universe_data: Stored universe data.
         :return: Configured universe json.
@@ -180,6 +194,7 @@ class YBUniverse():
         """
         Method to modify payload for create API. Modify user Intent inside cluster list.
         Remove extra fields from clusters_list before saving to the file.
+        User will use this config to create new universe, We need to remove all feild which are not required while create.
 
         :param clusters: List of clusters.
         :param excluded_keys: Keys to be excluded
@@ -194,7 +209,7 @@ class YBUniverse():
                     if key == 'userIntent':
                         for key1, val1 in val.items():
                             if key1 not in excluded_keys:
-                                # Remove unnecessary deviceinfo from create API payload.
+                                # diskIops and storageType are extra field for create payload.
                                 if key1 == 'deviceInfo':
                                     val1.pop('diskIops')
                                     val1.pop('storageType')
@@ -289,7 +304,7 @@ class YBUniverse():
         if universe:
             configure_json = self.__create_universe_config(universe)
             file_name = '{0}.json'.format(universe_name)
-            file_path = os.path.join(script_path, file_name)
+            file_path = os.path.join(SCRIPT_PATH, file_name)
             with open(file_path, 'w') as file_obj:
                 json.dump(configure_json, file_obj)
             
@@ -310,7 +325,7 @@ class YBUniverse():
             configure_json = self.__create_universe_config(universe)
             name = universe.get("name")
             file_name = '{0}.json'.format(name)
-            file_path = os.path.join(script_path, file_name)
+            file_path = os.path.join(SCRIPT_PATH, file_name)
             with open(file_path, 'w') as file_obj:
                 json.dump(configure_json, file_obj)
             print('Detail of universe have been saved to {0}'.format(str(file_path)))
@@ -424,7 +439,7 @@ class YBUniverse():
         if not self.args.file:
             sys.stderr.write("Input json file required. Use '-f|--file <file_path>' to pass json input file.")
             exit(1)
-        input_file = os.path.join(script_path , self.args.file)
+        input_file = os.path.join(SCRIPT_PATH , self.args.file)
         universe_name = self.args.universe_name
 
         data = {}
@@ -512,10 +527,11 @@ class YBUniverse():
 
         :return: None
         """
-        confirmation = self.args.yes and 'y'
+        confirmation = self.args.yes
         if not confirmation:
-            confirmation = get_input_from_user("Continue with deleting universe(y/n)?: ")
-        if confirmation.lower()[0] == 'y':
+            user_input = get_input_from_user("Continue with deleting universe(y/n)?: ")
+            confirmation = user_input.lower()[0] == 'y'
+        if confirmation:
             if not self.args.force:
                 print('\nNote:- Universe deletion can fail due to errors, Use `--force` to ignore errors and force delete.\n')
             name = self.args.universe_name
@@ -628,18 +644,17 @@ class YBUniverse():
                 python yb_platform_util.py get_region
         ''')
         )
-        parser.add_argument('actions', type=str, nargs=1, help='Universe actions to perform')
-        parser.add_argument('-c', '--customer_uuid', help='Mandatory if multiple customer uuids present.')
-        parser.add_argument('-n', '--universe_name', help='Universe name')
-        parser.add_argument('-u', '--universe_uuid', help='Universe UUID')
-        parser.add_argument('-f', '--file', help='Json input file for creating universe. Relative path.', metavar='INPUT_FILE_PATH')
-        parser.add_argument('-t', '--task', help='Task UUID to get task status', metavar='TASK_ID')
-        parser.add_argument('-y', '--yes', action='store_true', help='Input yes for all confirmation prompts')
-        parser.add_argument('--interval', type=check_positive, default=20, 
-            help='Set interval time to get status update', metavar='INTEGER_INTERVAL')
-        parser.add_argument('--no_wait', action='store_true', 
-            help='To run command in background and do not wait for task completion task')
-        parser.add_argument('--force', action='store_true', help='Force delete universe')
+        parser.add_argument('actions', type=str, nargs=1, help=HelpMessage['action'].value)
+        parser.add_argument('-c', '--customer_uuid', help=HelpMessage['customer_uuid'].value)
+        parser.add_argument('-n', '--universe_name', help=HelpMessage['universe_name'].value)
+        parser.add_argument('-u', '--universe_uuid', help=HelpMessage['universe_uuid'].value)
+        parser.add_argument('-f', '--file', help=HelpMessage['file'].value, metavar='INPUT_FILE_PATH')
+        parser.add_argument('-t', '--task', help=HelpMessage['task'].value, metavar='TASK_ID')
+        parser.add_argument('-y', '--yes', action='store_true', help=HelpMessage['yes'].value)
+        parser.add_argument('--interval', type=check_positive, default=20, help=HelpMessage['interval'].value,
+            metavar='INTEGER_INTERVAL')
+        parser.add_argument('--no_wait', action='store_true', help=HelpMessage['no_wait'].value)
+        parser.add_argument('--force', action='store_true', help=HelpMessage['force'].value)
         self.args = parser.parse_args()
         self.parser = parser
     
