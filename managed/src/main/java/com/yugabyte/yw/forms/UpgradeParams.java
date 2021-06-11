@@ -18,6 +18,9 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   // The software version to install. Do not set this value if no software needs to be installed.
   public String ybSoftwareVersion = null;
 
+  public final Map<UUID, String> machineImages = new HashMap<>();
+  public boolean forceVMImageUpgrade;
+
   // The certificate that needs to be used.
   public UUID certUUID = null;
   // If the root certificate needs to be rotated.
