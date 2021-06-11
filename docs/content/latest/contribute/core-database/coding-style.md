@@ -44,7 +44,7 @@ Use one of the following formatting styles for function declarations and definit
 
 #### All arguments on one line
 
-```c++
+```cpp
 ReturnType ClassName::FunctionName(Type par_name1, Type par_name2) {
   DoSomething();
   ...
@@ -54,7 +54,7 @@ ReturnType ClassName::FunctionName(Type par_name1, Type par_name2) {
 
 All arguments aligned with the opening parenthesis, one argument per line.
 
-```c++
+```cpp
 ReturnType ShortClassName::ShortFunctionName(Type par_name1,
                                              Type par_name2,
                                              Type par_name3) {
@@ -67,7 +67,7 @@ ReturnType ShortClassName::ShortFunctionName(Type par_name1,
 
 One argument per line with four space indentation for each argument.
 
-```c++
+```cpp
 ReturnType SomeClassName::ReallyLongFunctionName(
     Type par_name1,  // 4-space indentation
     Type par_name2,
@@ -82,7 +82,7 @@ ReturnType SomeClassName::ReallyLongFunctionName(
 Arguments are packed into the fewest number of lines not exceeding the maximum line width, with four-space indentation for each line.
 Do not break the argument list arbitrarily, but only break it when the next argument would not fit into the line length limit if left on the same line as the previous argument.
 
-```c++
+```cpp
 ReturnType SomeClassName::ReallyLongFunctionName(
     Type par_name1, Type par_name2, Type par_name3, Type par_name4, Type par_name5,
     Type par_name6, Type par_name7) {
@@ -97,7 +97,7 @@ Use one of the formatting styles below for functions calls and macro invocations
 
 #### All arguments on one line {#func-call-all-args-one-line}
 
-```c++
+```cpp
 bool result = DoSomething(argument1, argument2, argument3);
 ```
 
@@ -105,7 +105,7 @@ bool result = DoSomething(argument1, argument2, argument3);
 
 All arguments aligned with the opening parenthesis, one argument per line.
 
-```c++
+```cpp
 bool result = DoSomething(very_very_very_very_long_argument,
                           argument2,
                           argument3);
@@ -113,7 +113,7 @@ bool result = DoSomething(very_very_very_very_long_argument,
 
 #### One argument per line with four-space indentation
 
-```c++
+```cpp
     bool result = DoSomething(
         argument1,  // 4-space indentation
         argument2,
@@ -135,7 +135,7 @@ Start a new line after the opening parenthesis, with a four-space indentation, a
 
 The above formatting styles apply naturally to function calls appearing within function calls.
 
-```c++
+```cpp
     bool result = DoSomething(
         argument1,
         argument2,
@@ -152,7 +152,7 @@ The above formatting styles apply naturally to function calls appearing within f
 For string substitution and formatting functions (`Format`, `Substitute`, `StringPrintf`, etc.) it is better to avoid putting substitution parameters on the same line as the format string, unless the entire function call fits on one line.
 Prefer the following style for multi-line substitution/formatting function calls:
 
-```c++
+```cpp
   // Suppose this is the right margin -----------------------------------------------------------> |
   //                                                                                               |
   //                                                                                               |
@@ -172,7 +172,7 @@ Prefer the following style for multi-line substitution/formatting function calls
 
 Multi-line expressions should be indented as follows:
 
-```c++
+```cpp
 const bool is_fixed_point_get = !lower_doc_key.empty() &&
                                 upper_doc_key.HashedComponentsEqual(lower_doc_key);
 const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
@@ -181,7 +181,7 @@ const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
 
 Or as follows:
 
-```c++
+```cpp
 const bool is_fixed_point_get =
     !lower_doc_key.empty() &&
     upper_doc_key.HashedComponentsEqual(lower_doc_key);
@@ -193,7 +193,7 @@ const auto mode =
 The following style is also [widely used](https://gist.github.com/ttyusupov/fea3736f0265c11c4b1e8bc4d1e69f93) in our codebase, so it is acceptable to leave it as is when modifying the surrounding code,
 but the two options described above are preferable for new code.
 
-```c++
+```cpp
 const bool is_fixed_point_get = !lower_doc_key.empty() &&
     upper_doc_key.HashedComponentsEqual(lower_doc_key);
 const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
@@ -205,7 +205,7 @@ const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
 Prefer putting the flag name on the same line with `DEFINE_...` to make the code more "greppable".
 Follow function-like macro invocation styles with [all arguments on one line]({{< relref "#func-call-all-args-one-line" >}}) or with [aligned arguments]({{< relref "#func-call-aligned-args" >}}) defined above, depending on whether all three arguments of the gflag definition fit on one line.
 
-```c++
+```cpp
 DEFINE_bool(create_table,
             true,
             "Whether the table should be created. Its made false when either "
@@ -239,22 +239,22 @@ void Tablet::EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_sta
 In C++ style guides frequently there is a debate about which side of `*` and `&` to put spaces on.
 In our coding style, we can put a space on either side of `*` and `&` (but not on both sides), so both of the following examples are correct:
 
-```c++
+```cpp
   Status GetSockAddrorTS(const std::string& ts_uuid, Sockaddr* ts_addr);
 ```
 and
 
-```c++
+```cpp
   Status GetSockAddrForTS(const std::string &ts_uuid, Sockaddr *ts_addr);
 ```
 
 Similarly, for variable declarations and definitions:
 
-```c++
+```cpp
   int* a = nullptr;
 ```
 
-```c++
+```cpp
   int *a = nullptr;
 ```
 
@@ -274,7 +274,7 @@ We should always try to reduce code duplication by extracting repeated code into
 
 If we don't use the default statement in a switch over an enum, the compiler will warn us if some values are not handled (and we make that warning an error). This allows to enforce that all enum values are being handled by a switch over an enum, if that's our intention. This complicates default case handling a bit, though. If every case is followed by a return, we can simply move the default handler to right after the end of the switch statement, e.g:
 
-```c++
+```cpp
   switch (operation_type) {
     case OperationType::kInsert:
       ...
@@ -289,7 +289,7 @@ If we don't use the default statement in a switch over an enum, the compiler wil
 In this case, when someone adds a new request type, e.g. OperationType::kUpdate, we'll get a compile error asking us to add it to the switch statement.
 In case there is no return following each case handler, we can still detect the default case by e.g. setting a boolean flag.
 
-```c++
+```cpp
   boolean handled = false;
   switch (operation_type) {
     case OperationType::kInsert:
@@ -313,7 +313,7 @@ Note that `FATAL_INVALID_ENUM_VALUE` will terminate the process, so for function
 Avoid using const in function (including member function) declarations when the argument is passed by value. Use const in function (including member function) definitions wherever appropriate to indicate enforce that the object is not modified inside the function body.
 
 In `widget.h`:
-```c++
+```cpp
 
 class Widget {
  public:
@@ -322,7 +322,7 @@ class Widget {
 ```
 
 In `widget.cc`:
-```c++
+```cpp
 void Widget::Say(const Phrase p) {
   . . .
 }
@@ -330,7 +330,7 @@ void Widget::Say(const Phrase p) {
 
 Or in `widget.h`:
 
-```c++
+```cpp
 void ProcessWidget(WidgetType widget_type,
                    int widget_cost,
                    const Widget& widget);
@@ -338,7 +338,7 @@ void ProcessWidget(WidgetType widget_type,
 
 And in `widget.cc`:
 
-```c++
+```cpp
 void ProcessWidget(const WidgetType widget_type,
                    const int widget_cost.
                    const Widget& widget) {
@@ -348,7 +348,7 @@ void ProcessWidget(const WidgetType widget_type,
 
 Here is an example of what not to do (in `widget.h`):
 
-```c++
+```cpp
 void ProcessWidget(const WidgetType widget_type,  // BAD: "const" should be removed!
                    const int widget_cost.         // BAD: "const" should be removed!
                    const Widget& widget);         // OK: "const" is part of const reference.
@@ -383,7 +383,7 @@ If you are adding new static objects, you need to remember:
 * Local static objects are constructed on the first coming to the variable scope (that’s why this option is better than global static).
 * There is a [locking mechanism](http://stackoverflow.com/questions/8102125/is-local-static-variable-initialization-thread-safe-in-c11) needed so that a concurrent execution waits for initialization completion if the static variable is already being initialized by an earlier thread. E.g. for a simple static variable defined in a function
 
-```c++
+```cpp
 void f() {
     static string s = "asdf";
 }
@@ -426,7 +426,7 @@ Multiple inheritance is ALLOWED in general with a few limitations regarding its 
 
 It is OK to use implicit bool conversion for raw / unique / shared pointers:
 
-```c++
+```cpp
 if (p) {
   p->DoSomething();
 } else {
@@ -472,13 +472,13 @@ Do not use these macros unless proven that they improve performance.
 Much of our code is wired to return `Status`, so we are able to get a sense of if the function completed successfully (OK), or if there was some kind of an error.
 However, we sometimes want to also get legitimate output from these functions. We used to do this by using function signatures such as
 
-```c++
+```cpp
 Status foo(int* return_variable);
 ```
 
 However, now we have a better way to achieve the same goal, the `Result` type, which can encapsulate both an output parameter (in the successful case) and a `Status` (in case of an error):
 
-```c++
+```cpp
 Result<int> foo();
 ```
 

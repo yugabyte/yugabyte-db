@@ -23,7 +23,8 @@ There are two options for build systems that you can use with YugabyteDB, `cmake
 ### Configure a CLion project for YugabyteDB
 
 1. Click **File > Open…** to open the project root directory.
-2. Select `build/debug-clang-dynamic` (or `build/debug-clang-dynamic-ninja` if you want to use `ninja`) as the **Generation path** in **Preferences > Build, Execution, Deployment/CMake”**:
+
+1. Select `build/debug-clang-dynamic` (or `build/debug-clang-dynamic-ninja` if you want to use `ninja`) as the **Generation path** in **Preferences > Build, Execution, Deployment/CMake”**:
 
     If you want to build with ninja, put `build/debug-clang-dynamic-ninja` in **Generation path** and add `-G Ninja` into **“CMake options”**:
 
@@ -33,10 +34,14 @@ There are two options for build systems that you can use with YugabyteDB, `cmake
 
     ![Clion ninja options](/images/contribute/clion-cmake-options-ninja.png)
 
-3. Use **“File / Reload CMake Project"** - it should start building third party dependencies for YugabyteDB.
-Building a third party can take tens of minutes and then CLion will start updating symbols which also can take a while.
-4. Run from the command line inside project root (omit `YB_USE_NINJA=0` if you want to use ninja):
+1. Use **“File / Reload CMake Project"** - it should start building third party dependencies for YugabyteDB.
 
-```YB_USE_NINJA=0 ./yb_build.sh```
+    Building a third party can take tens of minutes and then CLion will start updating symbols which also can take a while.
 
-Subsequent builds can be launched also from CLion.
+1. Run from the command line inside project root (omit `YB_USE_NINJA=0` if you want to use ninja):
+
+    ```sh
+    YB_USE_NINJA=0 ./yb_build.sh
+    ```
+
+    Subsequent builds can be launched also from CLion.
