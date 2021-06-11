@@ -515,6 +515,8 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--gflags_to_remove");
             expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
           }
+          expectedCommand.add("--tags");
+          expectedCommand.add("override_gflags");
         } else if (configureParams.type == ToggleTls) {
           String nodeToNodeString = String.valueOf(configureParams.enableNodeToNodeEncrypt);
           String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
