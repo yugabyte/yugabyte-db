@@ -127,7 +127,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
 ### Restore from an absolute time
 
-1. Get a timestamp. YCQL doesn't have a `now()` function, so use a command such as the following. You can also use a [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
+1. Get a timestamp.
 
     ```sh
     $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
