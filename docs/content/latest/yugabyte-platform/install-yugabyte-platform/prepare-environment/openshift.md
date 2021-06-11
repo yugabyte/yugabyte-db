@@ -81,4 +81,3 @@ For testing purposes, you may configure an HTPasswd provider, as described in [C
 [^1]: This user is referred to as *admin user* in this documentation.
 [^2]: This user is referred to as *normal user*, *non admin*, or *user* in this documentation.
 [^3]: By default, the authenticated users have the [self-provisioning](https://docs.openshift.com/container-platform/4.6/authentication/using-rbac.html#default-roles_using-rbac) ClusterRole bound to them, which enables them to create new projects.
-
