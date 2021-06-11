@@ -17,10 +17,10 @@ showAsideToc: true
 
 YugabyteDB supports the following types of reads: 
 
-- [Follower reads](../../follower-reads/macos/) that enable spreading the read workload across all data-hosting replicas.
+- [Follower reads](../../follower-reads/macos/) that enable spreading the read workload across all replicas in the primary cluster.
 - Observer reads that use read replicas. The latter obtain their data via [asynchronous replication](../asynchronous-replication-ycql) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads. 
 
-A universe can have one primary cluster that uses follower reads and several read replica clusters that use observer reads.
+A universe can have one primary cluster and several read replica clusters.
 
 Stale reads are possible with an upper bound on the amount of staleness. Reads are guaranteed to be timeline-consistent. You need to set the consistency level to `ONE` in your application to get reads. In addition, you have to set the application’s local universe to the read replica cluster’s region.
 
@@ -34,9 +34,7 @@ This document uses a client application based on the [yb-sample-apps](https://gi
 
 {{< /note >}}
 
-Since you cannot use read replicas without a primary cluster, ensure that you have the latter available.
-
-The following command sets up a primary cluster of three nodes in cloud `c`, region `r` and zones `z1`, `z2`, and `z3`: 
+Also, since you cannot use read replicas without a primary cluster, ensure that you have the latter available. The following command sets up a primary cluster of three nodes in cloud `c`, region `r` and zones `z1`, `z2`, and `z3`: 
 
 ```shell
 $ ./bin/yb-ctl create --rf 3 --placement_info "c.r.z1,c.r.z2,c.r.z3" --tserver_flags "placement_uuid=live,max_stale_read_bound_time_ms=60000000”
