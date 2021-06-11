@@ -157,6 +157,10 @@ Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
   return GetClusterReplicationInfo();
 }
 
+void ClusterLoadBalancer::InitTablespaceManager() {
+  tablespace_manager_ = catalog_manager_->GetTablespaceManager();
+}
+
 Status ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
   if (state_->options_->type == LIVE) {
     const auto& replication_info = VERIFY_RESULT(GetTableReplicationInfo(tablet->table()));
@@ -267,7 +271,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     options = options_unique_ptr.get();
   }
 
-  tablespace_manager_ = catalog_manager_->GetTablespaceManager();
+  InitTablespaceManager();
 
   // Lock the CatalogManager maps for the duration of the load balancer run.
   CatalogManager::SharedLock lock(catalog_manager_->mutex_);

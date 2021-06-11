@@ -208,6 +208,8 @@ class ClusterLoadBalancer {
   // Methods for load preparation, called by ClusterLoadBalancer while analyzing tablets and
   // building the initial state.
 
+  virtual void InitTablespaceManager();
+
   // Return the replication info for 'table'.
   Result<ReplicationInfoPB> GetTableReplicationInfo(const scoped_refptr<TableInfo>& table) const;
 
@@ -352,6 +354,8 @@ class ClusterLoadBalancer {
   // managed by this class, but by the Master's unique_ptr.
   CatalogManager* catalog_manager_;
 
+  std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
+
   template <class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
 
  private:
@@ -411,8 +415,6 @@ class ClusterLoadBalancer {
   // skipped_tables_ is set at the end of each LB run using
   // skipped_tables_per_run_.
   vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
-
-  std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };
