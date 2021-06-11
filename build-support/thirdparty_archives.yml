@@ -1,62 +1,69 @@
-sha_for_local_checkout: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+sha_for_local_checkout: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
 archives:
   - os_type: centos7
     compiler_type: clang11
-    tag: v20210520175409-8aebe87f79-centos7-clang11
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151605-82ad1fb3bb-centos7-clang11
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: centos7
     compiler_type: clang12
-    tag: v20210520175436-8aebe87f79-centos7-clang12
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151613-82ad1fb3bb-centos7-clang12
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: centos7
     compiler_type: clang7
-    tag: v20210520175411-8aebe87f79-centos7-clang7
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151621-82ad1fb3bb-centos7-clang7
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: centos7
     compiler_type: gcc5
-    tag: v20210520175408-8aebe87f79-centos7-linuxbrew-gcc5
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151620-82ad1fb3bb-centos7-linuxbrew-gcc5
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: centos7
     compiler_type: gcc8
-    tag: v20210520175423-8aebe87f79-centos7-gcc8
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151613-82ad1fb3bb-centos7-gcc8
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: centos7
     compiler_type: gcc9
-    tag: v20210520175418-8aebe87f79-centos7-gcc9
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151614-82ad1fb3bb-centos7-gcc9
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
+  - os_type: centos8
+    compiler_type: gcc8
+    tag: v20210611151618-82ad1fb3bb-centos8-gcc8
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
+  - os_type: centos8
+    compiler_type: gcc9
+    tag: v20210611151611-82ad1fb3bb-centos8-gcc9
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: macos
     compiler_type: clang
-    tag: v20210520175419-8aebe87f79-macos
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151608-82ad1fb3bb-macos
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: ubuntu18.04
     compiler_type: clang10
-    tag: v20210520175438-8aebe87f79-ubuntu1804-clang10
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151649-82ad1fb3bb-ubuntu1804-clang10
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: ubuntu18.04
     compiler_type: clang11
-    tag: v20210520175434-8aebe87f79-ubuntu1804-clang11
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151618-82ad1fb3bb-ubuntu1804-clang11
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   - os_type: ubuntu18.04
     compiler_type: gcc7
-    tag: v20210520175530-8aebe87f79-ubuntu1804-gcc7
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
-  - os_type: ubuntu18.04
-    compiler_type: gcc8
-    tag: v20210520175516-8aebe87f79-ubuntu1804-gcc8
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
-  - os_type: ubuntu20.04
-    compiler_type: clang11
-    tag: v20210520175442-8aebe87f79-ubuntu2004-clang11
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
-  - os_type: ubuntu20.04
-    compiler_type: gcc9
-    tag: v20210520175444-8aebe87f79-ubuntu2004-gcc9
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
-
+    tag: v20210611151617-82ad1fb3bb-ubuntu1804-gcc7
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
   # Added manually to un-break the Ubuntu build on Jenkins. Instead of this, if the compiler type
   # does not specify a version, we should detect the actual compiler version and match based on
   # its major version.
   - os_type: ubuntu18.04
     compiler_type: gcc
-    tag: v20210520175530-8aebe87f79-ubuntu1804-gcc7
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    tag: v20210611151617-82ad1fb3bb-ubuntu1804-gcc7
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
+  - os_type: ubuntu18.04
+    compiler_type: gcc8
+    tag: v20210611151614-82ad1fb3bb-ubuntu1804-gcc8
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
+  - os_type: ubuntu20.04
+    compiler_type: clang11
+    tag: v20210611151625-82ad1fb3bb-ubuntu2004-clang11
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
+  - os_type: ubuntu20.04
+    compiler_type: gcc9
+    tag: v20210611151635-82ad1fb3bb-ubuntu2004-gcc9
+    sha: 82ad1fb3bbce67d4e582bc46703bcb19768b5e46
