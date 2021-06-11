@@ -457,7 +457,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       String roleName = row.getString("role");
       if (!DEFAULT_ROLE.equals(roleName)) {
         LOG.info("Dropping role " + roleName);
-        session.execute("DROP ROLE " + roleName);
+        session.execute("DROP ROLE '" + roleName + "'");
       }
     }
   }
