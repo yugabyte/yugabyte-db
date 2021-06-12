@@ -22,6 +22,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -32,6 +33,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.Base64;
+import java.util.function.Function;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
@@ -69,6 +71,15 @@ public class EncryptionAtRestController extends AuthenticatedController {
       if (formData.get("base_url") == null
           || !EncryptionAtRestController.API_URL.contains(formData.get("base_url").textValue())) {
         throw new YWServiceException(BAD_REQUEST, "Invalid API URL.");
+      }
+      if (formData.get("api_key") != null) {
+        try {
+          Function<ObjectNode, String> token =
+              new SmartKeyEARService()::retrieveSessionAuthorization;
+          token.apply(formData);
+        } catch (Exception e) {
+          throw new YWServiceException(BAD_REQUEST, "Invalid API Key.");
+        }
       }
     }
   }

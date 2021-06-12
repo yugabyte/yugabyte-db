@@ -205,19 +205,19 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateSMARTKEYKmsProviderWithValidAPIUrl() {
+  public void testCreateSMARTKEYKmsProviderWithValidAPIUrlButInvalidAPIKey() {
     String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
     ObjectNode kmsConfigReq =
         Json.newObject()
             .put("base_url", "api.amer.smartkey.io")
             .put("api_key", "some_api_token")
             .put("name", "test");
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
     Result createKMSResult =
-        doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq);
-    assertOk(createKMSResult);
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq))
+            .getResult();
+    assertBadRequest(createKMSResult, "Invalid API Key.");
   }
 
   @Test
