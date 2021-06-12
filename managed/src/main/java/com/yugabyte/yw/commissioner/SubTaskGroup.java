@@ -192,9 +192,9 @@ public class SubTaskGroup implements Runnable {
       } catch (Exception e) {
         errorString =
             "Failed to execute task "
-                + StringUtils.abbreviate(taskInfo.getTaskDetails().toString(), 200)
+                + StringUtils.abbreviate(taskInfo.getTaskDetails().toString(), 500)
                 + ", hit error "
-                + StringUtils.abbreviate(e.getMessage(), 2000)
+                + StringUtils.abbreviateMiddle(e.getMessage(), "...", 3000)
                 + ".";
         LOG.error(
             "Failed to execute task type {} UUID {} details {}, hit error.",

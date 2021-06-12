@@ -39,6 +39,7 @@ import java.util.*;
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -209,7 +210,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
-    Result result = createProvider(bodyJson);
+    Result result =
+        assertThrows(YWServiceException.class, () -> createProvider(bodyJson)).getResult();
     assertBadRequest(result, "Provider with the name Amazon already exists");
   }
 
@@ -227,7 +229,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateProviderWithDifferentCustomer() {
+  public void testCreateProviderSameNameDiffCustomer() {
     Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
@@ -471,7 +473,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
 
     if (noPullSecret) {
-      assertTrue(json.path("config").isNull());
+      assertTrue(Json.fromJson(json.path("config"), Map.class).isEmpty());
     } else {
       String parsedSecret =
           "{\"metadata\":{"
@@ -774,7 +776,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 1);
-    Result result = createProvider(bodyJson);
+    Result result =
+        assertThrows(YWServiceException.class, () -> createProvider(bodyJson)).getResult();
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
     assertAuditEntry(0, customer.uuid);
