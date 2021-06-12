@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.yugabyte.yw.commissioner.Common;
 import play.data.validation.Constraints;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -19,7 +20,7 @@ public class CloudProviderFormData {
 
   // We would store credentials and other environment
   // settings specific to the provider as a key-value map.
-  public Map<String, String> config;
+  public Map<String, String> config = new HashMap<>();
 
   public String region = null;
 }
