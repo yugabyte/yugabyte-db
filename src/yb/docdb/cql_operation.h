@@ -44,7 +44,7 @@ class QLWriteOperation :
     public DocExprExecutor {
  public:
   QLWriteOperation(std::shared_ptr<const Schema> schema,
-                   const IndexMap& index_map,
+                   std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContextOpt& txn_op_context);
 

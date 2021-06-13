@@ -468,7 +468,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       pending_op_(pending_op_counter),
       done_(false) {
   projection_subkeys_.reserve(projection.num_columns() + 1);
-  projection_subkeys_.push_back(PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+  projection_subkeys_.push_back(PrimitiveValue::kLivenessColumn);
   for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
     projection_subkeys_.emplace_back(projection.column_id(i));
   }
@@ -821,8 +821,7 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
 }
 
 bool DocRowwiseIterator::LivenessColumnExists() const {
-  const SubDocument* subdoc = row_.GetChild(
-      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+  const SubDocument* subdoc = row_.GetChild(PrimitiveValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != ValueType::kInvalid;
 }
 

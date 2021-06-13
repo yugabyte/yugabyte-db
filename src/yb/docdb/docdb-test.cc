@@ -2106,9 +2106,8 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   HybridTime t4 = server::HybridClock::AddPhysicalTimeToHybridTime(t3, one_ms);
   KeyBytes encoded_doc_key(doc_key.Encode());
   // First row.
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
-      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
-      Value(PrimitiveValue(), 1ms), t0));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue::kLivenessColumn),
+                         Value(PrimitiveValue(), 1ms), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(0))),
       Value(PrimitiveValue("v1"), 2ms), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
@@ -2120,9 +2119,8 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   // Second row.
   const DocKey doc_key_row2(PrimitiveValues("k2"));
   KeyBytes encoded_doc_key_row2(doc_key_row2.Encode());
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2,
-      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
-      Value(PrimitiveValue(), 3ms), t0));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue::kLivenessColumn),
+                         Value(PrimitiveValue(), 3ms), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue(ColumnId(0))),
       Value(PrimitiveValue("v1"), 2ms), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue(ColumnId(1))),
@@ -2270,7 +2268,7 @@ TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
-        DocPath(doc_key.Encode(), PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+        DocPath(doc_key.Encode(), PrimitiveValue::kLivenessColumn),
         Value(PrimitiveValue()),
         t));
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
@@ -2310,7 +2308,7 @@ SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical:
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
-        DocPath(doc_key.Encode(), PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+        DocPath(doc_key.Encode(), PrimitiveValue::kLivenessColumn),
         Value(PrimitiveValue()),
         t));
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);

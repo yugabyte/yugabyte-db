@@ -621,9 +621,7 @@ TEST_F(DocRowwiseIteratorTest, ColocatedTableTombstoneTest) {
   encoded_1_with_tableid.set_pgtable_id(pgtable_id);
 
   ASSERT_OK(dwb.SetPrimitive(
-      DocPath(
-        encoded_1_with_tableid.Encode(),
-        PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+      DocPath(encoded_1_with_tableid.Encode(), PrimitiveValue::kLivenessColumn),
       PrimitiveValue(ValueType::kNullLow)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 

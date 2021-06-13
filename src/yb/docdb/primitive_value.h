@@ -59,6 +59,8 @@ class PrimitiveValue {
   static const PrimitiveValue kInvalid;
   static const PrimitiveValue kTombstone;
   static const PrimitiveValue kObject;
+  static const PrimitiveValue kLivenessColumn;
+
   // Flags for jsonb.
   // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
   static constexpr int64_t kCompleteJsonb = 1;

@@ -90,8 +90,15 @@ CassError GetCassandraValue<CassInet>::Apply(const CassValue* val, CassInet* v) 
   return cass_value_get_inet(val, v);
 }
 
+bool CassandraValue::IsNull() const {
+  return cass_value_is_null(value_);
+}
+
 std::string CassandraValue::ToString() const {
   auto value_type = cass_value_type(value_);
+  if (IsNull()) {
+    return "NULL";
+  }
   switch (value_type) {
     case CASS_VALUE_TYPE_BLOB:
       return As<Slice>().ToDebugHexString();

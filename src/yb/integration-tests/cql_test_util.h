@@ -58,6 +58,8 @@ class CassandraValue {
     return result;
   }
 
+  bool IsNull() const;
+
   std::string ToString() const;
 
  private:
