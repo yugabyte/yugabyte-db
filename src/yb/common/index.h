@@ -42,6 +42,8 @@ class IndexInfo {
     IndexColumn() {}
 
     void ToPB(IndexInfoPB::IndexColumnPB* pb) const;
+
+    std::string ToString() const;
   };
 
   explicit IndexInfo(const IndexInfoPB& pb);
