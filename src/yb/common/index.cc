@@ -42,6 +42,10 @@ void IndexInfo::IndexColumn::ToPB(IndexInfoPB::IndexColumnPB* pb) const {
   pb->mutable_colexpr()->CopyFrom(colexpr);
 }
 
+std::string IndexInfo::IndexColumn::ToString() const {
+  return YB_STRUCT_TO_STRING(column_id, column_name, indexed_column_id, colexpr);
+}
+
 namespace {
 
 vector<IndexInfo::IndexColumn> IndexColumnFromPB(
