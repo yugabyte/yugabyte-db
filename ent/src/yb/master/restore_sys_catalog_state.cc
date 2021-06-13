@@ -37,7 +37,8 @@ CHECKED_STATUS ApplyWriteRequest(
     docdb::DocWriteBatch* write_batch) {
   std::shared_ptr<const Schema> schema_ptr(&schema, [](const Schema* schema){});
   docdb::DocOperationApplyData apply_data{.doc_write_batch = write_batch};
-  docdb::QLWriteOperation operation(schema_ptr, IndexMap(), nullptr, boost::none);
+  IndexMap index_map;
+  docdb::QLWriteOperation operation(schema_ptr, index_map, nullptr, boost::none);
   QLResponsePB response;
   RETURN_NOT_OK(operation.Init(write_request, &response));
   return operation.Apply(apply_data);

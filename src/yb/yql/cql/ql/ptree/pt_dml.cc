@@ -27,12 +27,11 @@
 #include "yb/common/schema.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+DECLARE_bool(allow_index_table_read_write);
 DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {
 namespace ql {
-
-DECLARE_bool(allow_index_table_read_write);
 
 using strings::Substitute;
 
