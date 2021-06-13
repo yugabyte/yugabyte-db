@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@Api("Region")
+@Api(value = "Region", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RegionController extends AuthenticatedController {
   @Inject FormFactory formFactory;
 
