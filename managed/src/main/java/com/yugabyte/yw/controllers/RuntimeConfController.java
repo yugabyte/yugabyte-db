@@ -23,10 +23,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
@@ -34,7 +31,9 @@ import play.mvc.Result;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Api("RuntimeConfig")
+@Api(
+    value = "RuntimeConfig",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RuntimeConfController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfController.class);
   private final SettableRuntimeConfigFactory settableRuntimeConfigFactory;
@@ -152,7 +151,7 @@ public class RuntimeConfController extends AuthenticatedController {
     return ApiResponse.success(optScopedConfig.get());
   }
 
-  @ApiOperation(value = "getKey", response = String.class)
+  @ApiOperation(value = "getKey", produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
