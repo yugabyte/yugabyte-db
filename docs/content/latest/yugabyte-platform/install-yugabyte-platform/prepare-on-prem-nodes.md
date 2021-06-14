@@ -20,15 +20,15 @@ The following ports must be opened for intra-cluster communication (they do not 
 
 * 7100 - Master RPC
 * 9100 - TServer RPC
-* 11000 - YEDIS API
-* 12000 - YCQL API
-* 13000 - YSQL API
 
 The following ports must be exposed for intra-cluster communication, and you should additionally expose these ports to administrators or users monitoring the system, as these ports provide valuable diagnostic troubleshooting and metrics:
 
 * 9300 - Prometheus metrics
 * 7000 - Master HTTP endpoint
 * 9000 - TServer HTTP endpoint
+* 11000 - YEDIS API
+* 12000 - YCQL API
+* 13000 - YSQL API
 
 The following nodes must be available to your application or any user attempting to connect to the YugabyteDB, in addition to intra-node communication:
 
