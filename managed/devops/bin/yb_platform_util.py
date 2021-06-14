@@ -9,6 +9,9 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+"""
+Python script to perfrom Universe operations.
+"""
 import enum
 import json
 import os
@@ -18,7 +21,6 @@ import sys
 import argparse
 import textwrap
 import time
-from argparse import RawDescriptionHelpFormatter
 
 PYTHON_VERSION = sys.version_info[0]
 if PYTHON_VERSION == 2:
@@ -35,35 +37,45 @@ PROGRESS_BAR = 100
 SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 
 class HelpMessage(enum.Enum):
-    action = 'Universe actions to perform'
-    customer_uuid = 'Mandatory if multiple customer uuids present.'
-    universe_name = 'Universe name'
-    universe_uuid = 'Universe UUID'
-    file = 'Json input file for creating universe. Relative path.'
-    task = 'Task UUID to get task status'
-    yes = 'Input yes for all confirmation prompts'
-    interval = 'Set interval time to get status update'
-    no_wait = 'To run command in background and do not wait for task completion task'
-    force = 'Force delete universe'
+    """
+    Enum for Help messages.
+    """
+    ACTION = 'Universe actions to perform'
+    CUSTOMER_UUID = 'Mandatory if multiple customer uuids present.'
+    UNIVERSE_NAME = 'Universe name'
+    UNIVERSE_UUID = 'Universe UUID'
+    FILE = 'Json input file for creating universe. Relative path.'
+    TASK = 'Task UUID to get task status'
+    YES = 'Input yes for all confirmation prompts'
+    INTERVAL = 'Set interval time to get status update'
+    NO_WAIT = 'To run command in background and do not wait for task completion task'
+    FORCE = 'Force delete universe'
 
 
 def exception_handling(func):
+    """
+    General exception handling for all actions
+    """
     def inner_function(*args, **kwargs):
+        """
+        Wrape fucn with try and catch
+        """
         try:
             return func(*args, **kwargs)
-        except HTTPError as e:
+        except HTTPError as exception:
             try:
-                content = e.read().decode('utf-8')
+                content = exception.read().decode('utf-8')
                 json.loads(content)
                 sys.stderr.write(content)
-            except ValueError as e:
+            except ValueError as exception:
                 message = 'Invalid YB_PLATFORM_URL URL or params.'
                 sys.stderr.write(message)
-                sys.stderr.write(str(e))
-        except ValueError as e:
-            sys.stderr.write(str(e))
-        except Exception as e:
-            sys.stderr.write(str(e))
+                sys.stderr.write(str(exception))
+        except ValueError as exception:
+            sys.stderr.write(str(exception))
+        except Exception as exception:
+            sys.stderr.write(str(exception))
+        return None
     return inner_function
 
 
@@ -71,16 +83,16 @@ def convert_unicode_json(data):
     """
     Function to convert unicode json to dictionary
     {u"name": u"universe"} => {"name": "universe"}
-    
+
     :param data: Unicode json data.
     :return: Converted data
     """
     if PYTHON_VERSION == 2:
         if isinstance(data, basestring):
             return str(data)
-        elif isinstance(data, collections.Mapping):
+        if isinstance(data, collections.Mapping):
             return dict(map(convert_unicode_json, data.iteritems()))
-        elif isinstance(data, collections.Iterable):
+        if isinstance(data, collections.Iterable):
             return type(data)(map(convert_unicode_json, data))
     return data
 
@@ -99,13 +111,22 @@ def check_positive(value):
 
 
 def get_input_from_user(message):
+    """
+    Function to get input from the user
+    """
     if PYTHON_VERSION == 2:
         return raw_input(message)
     return input(message)
 
 
 class YBUniverse():
+    """
+    Class to perform all UI opperation
+    """
     def __init__(self):
+        """
+        Initialized initial values of class.
+        """
         self.__parse_arguments()
         self.base_url = os.getenv('YB_PLATFORM_URL')
         self.customer_uuid = None
@@ -130,7 +151,7 @@ class YBUniverse():
                 request = urllib.request.Request(url, method='DELETE')
             else:
                 request = urllib.request.Request(url)
-            
+
         request.add_header('X-AUTH-YW-API-TOKEN', self.api_token)
         request.add_header('Content-Type', 'application/json; charset=utf-8')
         if data:
@@ -139,28 +160,31 @@ class YBUniverse():
         else:
             response = urlopen(request)
         return convert_unicode_json(json.load(response))
-    
+
 
     def __get_universe_by_name(self, universe_name):
         """
         Get universe data by name of the universe.
 
         :param universe_name: Universe name.
-        :return: None
+        :return: None or universe object
         """
-        universe_url = '{0}/api/v1/customers/{1}/universes'.format(self.base_url, self.customer_uuid)
+        universe_url = '{0}/api/v1/customers/{1}/universes'.format(
+            self.base_url, self.customer_uuid)
         data = self.__call_api(universe_url)
         for universe in data:
             if universe.get('name') == universe_name:
                 del universe['pricePerHour']
                 return universe
-    
-    
+        return None
+
+
     def __create_universe_config(self, universe_data):
         """
-        Create the universe config data from the json file. 
+        Create the universe config data from the json file.
         Remove extra fields from universe details before saving to the file.
-        User will use this file to create new universe, We need to remove all feild which are not required while create.
+        User will use this file to create new universe,
+        We need to remove all feild which are not required while create.
 
         :param universe_data: Stored universe data.
         :return: Configured universe json.
@@ -171,7 +195,6 @@ class YBUniverse():
 
         excluded_keys = [
             'uuid',
-            'storageType',
             'awsArnString',
             'useHostname',
             'preferredRegion',
@@ -187,14 +210,15 @@ class YBUniverse():
         configure_json['currentClusterType'] = 'PRIMARY'
 
         return configure_json
-    
+
 
     @staticmethod
     def __get_cluster_list(clusters, excluded_keys):
         """
         Method to modify payload for create API. Modify user Intent inside cluster list.
         Remove extra fields from clusters_list before saving to the file.
-        User will use this config to create new universe, We need to remove all feild which are not required while create.
+        User will use this config to create new universe,
+        We need to remove all feild which are not required while create.
 
         :param clusters: List of clusters.
         :param excluded_keys: Keys to be excluded
@@ -209,10 +233,6 @@ class YBUniverse():
                     if key == 'userIntent':
                         for key1, val1 in val.items():
                             if key1 not in excluded_keys:
-                                # diskIops and storageType are extra field for create payload.
-                                if key1 == 'deviceInfo':
-                                    val1.pop('diskIops')
-                                    val1.pop('storageType')
                                 user_intent[key1] = val1
                         cluster[key] = user_intent
                     else:
@@ -231,7 +251,7 @@ class YBUniverse():
         universe_config_url = '{0}/api/v1/customers/{1}/universes/{2}'.format(
             self.base_url, self.customer_uuid, universe_uuid)
         return self.__call_api(universe_config_url)
-    
+
 
     def __create_universe_from_config(self, universe_config):
         """
@@ -240,12 +260,14 @@ class YBUniverse():
         :param universe_config: Universe config data.
         :return: None
         """
-        universe_create_url = '{0}/api/v1/customers/{1}/universes'.format(self.base_url, self.customer_uuid)
+        universe_create_url = '{0}/api/v1/customers/{1}/universes'.format(
+            self.base_url, self.customer_uuid)
         universe_json = self.__call_api(universe_create_url, universe_config)
         return universe_json['taskUUID']
 
 
-    def __modify_universe_config(self, data, universe_name=''):
+    @staticmethod
+    def __modify_universe_config(data, universe_name=''):
         """
         Modify the universe json with new name.
 
@@ -278,20 +300,21 @@ class YBUniverse():
 
     def __get_universe_list(self):
         """
-        Get list of universe name and UUID.
+        Print list of universe names and UUID's.
 
-        :return: List of universe name and UUID
+        :return: None
         """
-        universe_url = '{0}/api/v1/customers/{1}/universes'.format(self.base_url, self.customer_uuid)
+        universe_url = '{0}/api/v1/customers/{1}/universes'.format(
+            self.base_url, self.customer_uuid)
         universe_data = self.__call_api(universe_url)
         universes = []
-        for each_universe in universe_data: 
+        for each_universe in universe_data:
             universes.append({
                 'name': each_universe.get('name'),
                 'universeUUID': each_universe.get('universeUUID')
             })
         print(json.dumps(universes))
-    
+
 
     def __save_universe_details_to_file(self, universe_name):
         """
@@ -307,7 +330,7 @@ class YBUniverse():
             file_path = os.path.join(SCRIPT_PATH, file_name)
             with open(file_path, 'w') as file_obj:
                 json.dump(configure_json, file_obj)
-            
+
             print('Detail of universe have been saved to {0}'.format(str(file_path)))
         else:
             sys.stderr.write('Universe with {0} is not found.'.format(universe_name))
@@ -331,8 +354,8 @@ class YBUniverse():
             print('Detail of universe have been saved to {0}'.format(str(file_path)))
         else:
             sys.stderr.write('Universe with {0} is not found.'.format(universe_uuid))
-        
-    
+
+
     def __task_progress_bar(self, task_id):
         """
         Show the task bar to the user according to task completion.
@@ -346,17 +369,17 @@ class YBUniverse():
             # return to start of line
             sys.stdout.write("\r")
             sys.stdout.flush()
-            #Overwrite over the existing text from the start 
+            #Overwrite over the existing text from the start
             sys.stdout.write("[")
             # number of # denotes the progress completed
             sys.stdout.write("#"*(progress))
             sys.stdout.write('\n')
             sys.stdout.flush()
             if progress >= 100:
-                exit()
+                sys.exit()
             time.sleep(self.args.interval)
 
-            
+
 
     def __get_task_details(self, task_id):
         """
@@ -365,21 +388,23 @@ class YBUniverse():
         :param task_id: Task UUID.
         :return: None
         """
-        task_url = '{0}/api/v1/customers/{1}/tasks/{2}'.format(self.base_url, self.customer_uuid, task_id)
+        task_url = '{0}/api/v1/customers/{1}/tasks/{2}'.format(
+            self.base_url, self.customer_uuid, task_id)
         task_json = self.__call_api(task_url)
         status = task_json.get('status')
         if status == 'Running':
             percentage = int(task_json.get('percent'))
             # If status is running and percentage 100 means task is not started yet.
             return 0 if percentage==100 else int(task_json.get('percent'))
-        elif status == 'Success':
+        if status == 'Success':
             return 100
-        elif status == 'Failure':
+        if status == 'Failure':
             content = {
                 'message': '{0} failed'.format(task_json.get("title")),
                 'details': task_json.get('details')
             }
             raise ValueError(content)
+        return 0
 
 
     def __get_universe_uuid_by_name(self, universe_name):
@@ -392,9 +417,8 @@ class YBUniverse():
         universe = self.__get_universe_by_name(universe_name)
         if universe and 'universeUUID' in universe:
             return universe.get('universeUUID')
-        else:
-            message = 'Universe with {0} not found'.format(universe_name)
-            raise ValueError(message)
+        message = 'Universe with {0} not found'.format(universe_name)
+        raise ValueError(message)
 
 
     def __delete_universe_by_uuid(self, universe_uuid):
@@ -412,9 +436,11 @@ class YBUniverse():
         universe_json = self.__call_api(universe_delete_url, is_delete=True)
         task_id = universe_json['taskUUID']
 
-        print('Universe delete requested successfully. Use {0} as task id to get status of universe.'.format(task_id))
+        print('Universe delete requested successfully. '\
+            'Use {0} as task id to get status of universe.'.format(task_id))
         if not self.args.no_wait:
             self.__task_progress_bar(task_id)
+
 
     def __validate_universe_name(self, universe_name):
         """
@@ -423,12 +449,13 @@ class YBUniverse():
         :param universe_name: Name of the universe to take a json data from.
         :return: None
         """
-        # TODO need to update API URL once PR:- https://github.com/yugabyte/yugabyte-db/pull/8367 get merged.
+        # TODO need to update API URL once
+        # PR:- https://github.com/yugabyte/yugabyte-db/pull/8367 get merged.
         find_universe_url = '{0}/api/v1/customers/{1}/universes/find/{2}'.format(
             self.base_url, self.customer_uuid, universe_name)
 
         self.__call_api(find_universe_url)
-        
+
 
     def create_universe(self):
         """
@@ -437,14 +464,15 @@ class YBUniverse():
         :return: None
         """
         if not self.args.file:
-            sys.stderr.write("Input json file required. Use '-f|--file <file_path>' to pass json input file.")
-            exit(1)
+            sys.stderr.write("Input json file required. Use " \
+                "'-f|--file <file_path>' to pass json input file.")
+            sys.exit(1)
         input_file = os.path.join(SCRIPT_PATH , self.args.file)
         universe_name = self.args.universe_name
 
         data = {}
-        with open(input_file) as f:
-            data = convert_unicode_json(json.loads(f.read()))
+        with open(input_file) as file_object:
+            data = convert_unicode_json(json.loads(file_object.read()))
 
         configure_json, universe_name = self.__modify_universe_config(data, universe_name)
 
@@ -457,14 +485,15 @@ class YBUniverse():
         # Call universe config api to get the update config data.
         universe_config_json = self.__post_universe_config(universe_config_json)
         task_id = self.__create_universe_from_config(universe_config_json)
-        print('Universe create requested successfully. Use {0} as task id to get status of universe.'.format(task_id))
+        print('Universe create requested successfully. '\
+            'Use {0} as task id to get status of universe.'.format(task_id))
         if not self.args.no_wait:
             self.__task_progress_bar(task_id)
 
 
     def get_single_customer_uuid(self):
         """
-        Get customer UUID. Raise error in case multiple customer is present. 
+        Get customer UUID. Raise error in case multiple customer is present.
 
         :return: None
         """
@@ -473,7 +502,7 @@ class YBUniverse():
         else:
             customer_url = '{0}/api/v1/customers'.format(self.base_url)
             data = self.__call_api(customer_url)
-            if (len(data) == 1):
+            if len(data) == 1:
                 self.customer_uuid = str(data[0])
             else:
                 raise ValueError('Muliple customer UUID present, Please provide customer UUID')
@@ -502,7 +531,7 @@ class YBUniverse():
                 'provider': each_region.get('provider').get('code')
             })
         print(json.dumps(regions))
-    
+
 
     def get_provider_data(self):
         """
@@ -510,7 +539,8 @@ class YBUniverse():
 
         :return: All available providers
         """
-        provider_url = '{0}/api/v1/customers/{1}/providers'.format(self.base_url, self.customer_uuid)
+        provider_url = '{0}/api/v1/customers/{1}/providers'.format(
+            self.base_url, self.customer_uuid)
         provider_data = self.__call_api(provider_url)
         providers = []
         for each_provider in provider_data:
@@ -533,21 +563,24 @@ class YBUniverse():
             confirmation = user_input.lower()[0] == 'y'
         if confirmation:
             if not self.args.force:
-                print('\nNote:- Universe deletion can fail due to errors, Use `--force` to ignore errors and force delete.\n')
+                print('\nNote:- Universe deletion can fail due to errors, '\
+                    'Use `--force` to ignore errors and force delete.\n')
             name = self.args.universe_name
             universe_uuid = self.args.universe_uuid
             if not (name or universe_uuid):
                 sys.stderr.write("Required universe name | uuid to delete universe.")
-                sys.stderr.write("\nUse '-n|--universe_name <universe_name>' to pass universe name.")
-                sys.stderr.write("\nUse '-u|--universe_uuid <universe_uuid>' to pass universe uuid.")
-                exit(1)
-        
+                sys.stderr.write("\nUse '-n|--universe_name <universe_name>' "\
+                    "to pass universe name.")
+                sys.stderr.write("\nUse '-u|--universe_uuid <universe_uuid>' "\
+                    "to pass universe uuid.")
+                sys.exit(1)
+
             if self.args.universe_name:
                 universe_uuid = self.__get_universe_uuid_by_name(self.args.universe_name)
             self.__delete_universe_by_uuid(universe_uuid)
         else:
             print("Aborted Delete universe")
-            exit()
+            sys.exit()
 
 
     def get_universe(self):
@@ -562,7 +595,7 @@ class YBUniverse():
             self.__save_universe_details_to_file_by_uuid(self.args.universe_uuid)
         else:
             self.__get_universe_list()
-    
+
 
     def task_status(self):
         """
@@ -571,10 +604,11 @@ class YBUniverse():
         :return: None
         """
         if not self.args.task:
-            sys.stderr.write("Task id required to get task status. Use '-t|--task <task_id>' to pass task_id.")
-            exit(1)
+            sys.stderr.write("Task id required to get task status. "\
+                "Use '-t|--task <task_id>' to pass task_id.")
+            sys.exit(1)
         self.__task_progress_bar(self.args.task)
-    
+
 
     def __parse_arguments(self):
         """
@@ -587,77 +621,79 @@ class YBUniverse():
         description = textwrap.dedent('''
         Script to perform universe actions.
         --------------------------------
-            1. Get existing universe list. 
+            1. Get existing universe list.
             2. Get existing universe details by universe name in json format.
             3. Get existing universe details by universe UUID in json format.
             4. Delete existing universe by universe name.
             5. Delete existing universe by universe UUID.
             6. Create a new universe from a json config file.
-            7. Get task progress. 
-            8. Get list of available regions with availability zones. 
-            9. Get list of available providers. 
+            7. Get task progress.
+            8. Get list of available regions with availability zones.
+            9. Get list of available providers.
 
         Required to export variable:
         --------------------------------
-            YB_PLATFORM_URL 
+            YB_PLATFORM_URL
                 API URL for yugabyte
-                Example: 
+                Example:
                     export YB_PLATFORM_URL=http://localhost:9000
-            YB_PLATFORM_API_TOKEN 
+            YB_PLATFORM_API_TOKEN
                 API token for Yugabyte API
-                Example: 
+                Example:
                     export YB_PLATFORM_API_TOKEN=e16d75cf-79af-4c57-8659-2f8c34223551
 
         Actions:
         --------------------------------
-        get_universe 
+        get_universe
             Get the details of an existing universe as a json file
-            Example: 
+            Example:
                 python yb_platform_util.py get_universe
 
-            Universe json with universe name: 
+            Universe json with universe name:
                 python yb_platform_util.py get_universe -n test-universe
 
         add_universe |  create_universe
             Create universe from json file
-            Example: 
+            Example:
                 python yb_platform_util.py create_universe -f test-universe.json -n test-universe-by-name
 
         del_universe |  delete_universe
             Delete an existing universe
-            Example: 
+            Example:
                 python yb_platform_util.py delete_universe -n test-universe
 
-        task_status 
+        task_status
             To get task status
-            Example: 
+            Example:
                 python yb_platform_util.py task_status -t f33e3c9b-75ab-4c30-80ad-cba85646ea39
 
-        get_provider 
+        get_provider
             To get list of available providers
-            Example: 
+            Example:
                 python yb_platform_util.py get_provider
 
-        get_region | get_az 
+        get_region | get_az
             List of available region with availability zones
-            Example: 
+            Example:
                 python yb_platform_util.py get_region
         ''')
         )
-        parser.add_argument('actions', type=str, nargs=1, help=HelpMessage['action'].value)
-        parser.add_argument('-c', '--customer_uuid', help=HelpMessage['customer_uuid'].value)
-        parser.add_argument('-n', '--universe_name', help=HelpMessage['universe_name'].value)
-        parser.add_argument('-u', '--universe_uuid', help=HelpMessage['universe_uuid'].value)
-        parser.add_argument('-f', '--file', help=HelpMessage['file'].value, metavar='INPUT_FILE_PATH')
-        parser.add_argument('-t', '--task', help=HelpMessage['task'].value, metavar='TASK_ID')
-        parser.add_argument('-y', '--yes', action='store_true', help=HelpMessage['yes'].value)
-        parser.add_argument('--interval', type=check_positive, default=20, help=HelpMessage['interval'].value,
-            metavar='INTEGER_INTERVAL')
-        parser.add_argument('--no_wait', action='store_true', help=HelpMessage['no_wait'].value)
-        parser.add_argument('--force', action='store_true', help=HelpMessage['force'].value)
+        parser.add_argument('actions', type=str, nargs=1, help=HelpMessage['ACTION'].value)
+        parser.add_argument('-c', '--customer_uuid', help=HelpMessage['CUSTOMER_UUID'].value)
+        parser.add_argument('-n', '--universe_name', help=HelpMessage['UNIVERSE_NAME'].value)
+        parser.add_argument('-u', '--universe_uuid', help=HelpMessage['UNIVERSE_UUID'].value)
+        parser.add_argument('-f', '--file', help=HelpMessage['FILE'].value,
+            metavar='INPUT_FILE_PATH')
+        parser.add_argument('-t', '--task', help=HelpMessage['TASK'].value,
+            metavar='TASK_ID')
+        parser.add_argument('-y', '--yes', action='store_true', help=HelpMessage['YES'].value)
+        parser.add_argument('--interval', type=check_positive, default=20,
+            help=HelpMessage['INTERVAL'].value, metavar='INTEGER_INTERVAL')
+        parser.add_argument('--no_wait', action='store_true', help=HelpMessage['NO_WAIT'].value)
+        parser.add_argument('--force', action='store_true', help=HelpMessage['FORCE'].value)
         self.args = parser.parse_args()
-        self.parser = parser
-    
+        self.__parser = parser
+
 
     def invalid_action(self):
         """
@@ -665,8 +701,8 @@ class YBUniverse():
 
         :return: None
         """
-        sys.stderr.write("Invalid action\n")
-        self.parser.print_help()
+        sys.stderr.write("Invalid action")
+        self.__parser.print_help()
 
 
     def validate_env_values(self):
@@ -676,15 +712,18 @@ class YBUniverse():
         :return: None
         """
         if not self.base_url:
-            sys.stderr.write("\n\nYB_PLATFORM_URL is not set. Set YB_PLATFORM_URL as env variable to proceed.")
+            sys.stderr.write("\n\nYB_PLATFORM_URL is not set. "\
+                "Set YB_PLATFORM_URL as env variable to proceed.")
             sys.stderr.write("\n\texport YB_PLATFORM_URL=<base_url_of_platform>\n\nExample:")
             sys.stderr.write("\n\texport YB_PLATFORM_URL=http://localhost:9000\n\n")
         if not self.api_token:
-            sys.stderr.write("YB_PLATFORM_API_TOKEN is not set. Set YB_PLATFORM_API_TOKEN as env variable to proceed.")
+            sys.stderr.write("YB_PLATFORM_API_TOKEN is not set. "\
+                "Set YB_PLATFORM_API_TOKEN as env variable to proceed.")
             sys.stderr.write("\n\texport YB_PLATFORM_API_TOKEN=<platform_api_token>\n\nExample:")
-            sys.stderr.write("\n\t export YB_PLATFORM_API_TOKEN=e16d75cf-79af-4c57-8659-2f8c34223551\n")
+            sys.stderr.write("\n\t export YB_PLATFORM_API_TOKEN="\
+                "e16d75cf-79af-4c57-8659-2f8c34223551\n")
         if not (self.base_url or self.api_token):
-            exit(1)
+            sys.exit(1)
 
 
     @exception_handling
