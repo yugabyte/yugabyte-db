@@ -10,13 +10,8 @@
 
 from __future__ import print_function
 
-import atexit
-import boto3
-import botocore
 import distro
 import datetime
-import glob
-import hashlib
 import json
 import logging
 import os
@@ -26,7 +21,6 @@ import platform
 import random
 import re
 import shutil
-import six
 import socket
 import string
 import stat
@@ -34,7 +28,6 @@ import subprocess
 import sys
 import time
 import tempfile
-import yaml
 
 from Crypto.PublicKey import RSA
 from enum import Enum
@@ -46,7 +39,7 @@ from ybops.utils.remote_shell import RemoteShell
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
-SSH_RETRY_LIMIT = 20
+SSH_RETRY_LIMIT = 60
 SSH_RETRY_LIMIT_PRECHECK = 4
 DEFAULT_SSH_PORT = 22
 # Timeout in seconds.
@@ -458,9 +451,9 @@ def format_rsa_key(key, public_key):
         key (str): Encoded key in OpenSSH or PEM format based on the flag (public key or not).
     """
     if public_key:
-        return str(key.publickey().exportKey("OpenSSH"))
+        return key.publickey().exportKey("OpenSSH").decode('utf-8')
     else:
-        return str(key.exportKey("PEM"))
+        return key.exportKey("PEM").decode('utf-8')
 
 
 def validated_key_file(key_file):
@@ -612,7 +605,7 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
 
         _, stdout, stderr = ssh_client.exec_command("crontab -l")
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
-        stdout = stdout.read()
+        stdout = stdout.read().decode('utf-8')
         return len(stderr.readlines()) == 0 and all(c in stdout for c in cronjobs)
     except (paramiko.ssh_exception.NoValidConnectionsError,
             paramiko.ssh_exception.AuthenticationException,

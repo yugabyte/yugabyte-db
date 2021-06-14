@@ -3,6 +3,9 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.common.YWServiceException;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class DeviceInfo {
 
@@ -42,5 +45,52 @@ public class DeviceInfo {
       }
     }
     return sb.toString();
+  }
+
+  public void validate() {
+    checkVolumeBaseInfo();
+    checkDiskIops();
+    checkThroughput();
+  }
+
+  private void checkVolumeBaseInfo() {
+    if (volumeSize == null) {
+      throw new YWServiceException(BAD_REQUEST, "Volume size field is mandatory");
+    } else if (volumeSize <= 0) {
+      throw new YWServiceException(BAD_REQUEST, "Volume size should be positive");
+    }
+    if (numVolumes == null) {
+      throw new YWServiceException(BAD_REQUEST, "Number of volumes field is mandatory");
+    } else if (numVolumes <= 0) {
+      throw new YWServiceException(BAD_REQUEST, "Number of volumes should be positive");
+    }
+  }
+
+  private void checkDiskIops() {
+    if (storageType == null) {
+      return;
+    }
+    if (diskIops == null) {
+      if (storageType.isIopsProvisioning()) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Disk IOPS is mandatory for " + storageType.name() + " storage");
+      }
+    } else if (diskIops <= 0) {
+      throw new YWServiceException(BAD_REQUEST, "Disk IOPS should be positive");
+    }
+  }
+
+  private void checkThroughput() {
+    if (storageType == null) {
+      return;
+    }
+    if (throughput == null) {
+      if (storageType.isThroughputProvisioning()) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Disk throughput is mandatory for " + storageType.name() + " storage");
+      }
+    } else if (throughput <= 0) {
+      throw new YWServiceException(BAD_REQUEST, "Disk throughput should be positive");
+    }
   }
 }

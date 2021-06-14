@@ -1,7 +1,7 @@
 ---
 title: Query Tuning
 headerTitle: Query Tuning
-linkTitle: Query Tuning
+linkTitle: Query tuning
 description: Tuning and optimizing query performance
 headcontent: Tuning and optimizing query performance
 image: /images/section_icons/index/develop.png
@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: query-tuning
     parent: explore
-    weight: 235
+    weight: 280
 ---
 
 <div class="row">
@@ -38,6 +38,19 @@ menu:
       </div>
       <div class="body">
         Control query execution plans with hinting phrases.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pg-stat-statements/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="articles">1 article</div>
+        <div class="title">Get query statistics using pg_stat_statements</div>
+      </div>
+      <div class="body">
+        Track planning and execution statistics for all SQL statements executed by a server.
       </div>
     </a>
   </div>

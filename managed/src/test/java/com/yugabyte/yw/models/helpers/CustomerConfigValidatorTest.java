@@ -96,6 +96,27 @@ public class CustomerConfigValidatorTest {
     assertEquals(expectedResult, result.size() == 0);
   }
 
+  @Parameters({
+    // Check invalid AWS Credentials -> disallowed
+    "s3://test, The AWS Access Key Id you provided does not exist in our records.",
+    // BACKUP_LOCATION - incorrect -> disallowed
+    "s://abc, Invalid s3UriPath format: s://abc",
+  })
+  @Test
+  public void testValidateDataContent_Storage_S3PreflightCheckValidator(
+      String backupLocation, String expectedMessage) {
+    ObjectNode data = Json.newObject();
+    data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, backupLocation);
+    data.put(CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    data.put(CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    ObjectNode result =
+        customerConfigValidator.validateDataContent(createFormData("STORAGE", "S3", data));
+    assertEquals(1, result.size());
+    assertEquals(
+        expectedMessage,
+        result.get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME).get(0).asText());
+  }
+
   private JsonNode createFormData(String type, String name, JsonNode data) {
     ObjectNode formData = Json.newObject();
     formData.put("type", type);

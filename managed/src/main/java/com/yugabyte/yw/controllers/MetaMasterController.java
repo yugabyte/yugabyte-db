@@ -69,10 +69,7 @@ public class MetaMasterController extends Controller {
 
   private Result getServerAddresses(UUID customerUUID, UUID universeUUID, ServerType type) {
     // Verify the customer with this universe is present.
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
     // Lookup the entry for the instanceUUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);

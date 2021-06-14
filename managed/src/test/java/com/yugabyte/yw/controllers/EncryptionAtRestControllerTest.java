@@ -154,53 +154,60 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.uuid);
   }
 
-    @Ignore("This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
-    @Test
-    public void testCreateAndRecoverKey() {
-        String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
-        ObjectNode kmsConfigReq = Json.newObject()
-                .put("base_url", "some_base_url")
-                .put("api_key", "some_api_token");
-        Result createKMSResult = assertThrows(YWServiceException.class,
-          () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq))
-          .getResult();
-        assertOk(createKMSResult);
-        String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
-                "/kms/SMARTKEY/create_key";
-        ObjectNode createPayload = Json.newObject()
-                .put("kms_provider", "SMARTKEY")
-                .put("algorithm", algorithm)
-                .put("key_size", Integer.toString(keySize));
-        Result createKeyResult = assertThrows(YWServiceException.class,
-          () -> doRequestWithAuthTokenAndBody("POST", url, authToken, createPayload))
-          .getResult();
-        assertOk(createKeyResult);
-        JsonNode json = Json.parse(contentAsString(createKeyResult));
-        String keyValue = json.get("value").asText();
-        assertEquals(keyValue, mockEncryptionKey);
-        assertAuditEntry(2, customer.uuid);
-    }
+  @Ignore(
+      "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
+  @Test
+  public void testCreateAndRecoverKey() {
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    ObjectNode kmsConfigReq =
+        Json.newObject().put("base_url", "some_base_url").put("api_key", "some_api_token");
+    Result createKMSResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq))
+            .getResult();
+    assertOk(createKMSResult);
+    String url =
+        "/api/customers/"
+            + customer.uuid
+            + "/universes/"
+            + universe.universeUUID
+            + "/kms/SMARTKEY/create_key";
+    ObjectNode createPayload =
+        Json.newObject()
+            .put("kms_provider", "SMARTKEY")
+            .put("algorithm", algorithm)
+            .put("key_size", Integer.toString(keySize));
+    Result createKeyResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, createPayload))
+            .getResult();
+    assertOk(createKeyResult);
+    JsonNode json = Json.parse(contentAsString(createKeyResult));
+    String keyValue = json.get("value").asText();
+    assertEquals(keyValue, mockEncryptionKey);
+    assertAuditEntry(2, customer.uuid);
+  }
 
-    @Test
-    public void testRecoverKeyNotFound() {
-        UUID configUUID = ModelFactory.createKMSConfig(
-                customer.uuid,
-                "SMARTKEY",
-                Json.newObject()
-        ).configUUID;
-        String url = "/api/customers/" + customer.uuid + "/universes/" +
-                universe.universeUUID + "/kms";
-        ObjectNode body = Json.newObject()
-                .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm")
-                .put("configUUID", configUUID.toString());
-        Result recoverKeyResult = assertThrows(YWServiceException.class,
-          () -> doRequestWithAuthTokenAndBody("POST", url, authToken, body)).getResult();
-        JsonNode json = Json.parse(contentAsString(recoverKeyResult));
-        String expectedErrorMsg = String.format(
-                "No universe key found for universe %s",
-                universe.universeUUID.toString()
-        );
-        assertErrorNodeValue(json, expectedErrorMsg);
-        assertAuditEntry(0, customer.uuid);
-    }
+  @Test
+  public void testRecoverKeyNotFound() {
+    UUID configUUID =
+        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject()).configUUID;
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/kms";
+    ObjectNode body =
+        Json.newObject()
+            .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm")
+            .put("configUUID", configUUID.toString());
+    Result recoverKeyResult =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, body))
+            .getResult();
+    JsonNode json = Json.parse(contentAsString(recoverKeyResult));
+    String expectedErrorMsg =
+        String.format("No universe key found for universe %s", universe.universeUUID.toString());
+    assertErrorNodeValue(json, expectedErrorMsg);
+    assertAuditEntry(0, customer.uuid);
+  }
 }

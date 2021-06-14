@@ -694,24 +694,22 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testCreateIndexWithWhereClause() throws Exception {
-    LOG.info("Start test: " + getCurrentTestMethodName());
+  public void testBlockCreateIndexWithWhereClause() throws Exception {
     destroyMiniCluster();
+
+    // cql_raise_index_where_clause_error=false by default.
     createMiniCluster(
-        Collections.emptyMap(),
-        Collections.singletonMap("cql_raise_index_where_clause_error", "false"));
+      Collections.emptyMap(),
+      Collections.singletonMap("cql_raise_index_where_clause_error", "true"));
     setUpCqlClient();
 
     // Create test table.
-    LOG.info("create test table");
     session.execute("create table test_create_index " +
-                    "(h1 int, h2 text, r1 int, r2 text, " +
-                    "c1 int, c2 text, c3 decimal, c4 timestamp, c5 boolean, " +
+                    "(h1 int, h2 text, r1 int, r2 text, c1 int, " +
                     "primary key ((h1, h2), r1, r2)) " +
                     "with transactions = {'enabled' : true};");
     LOG.info("create test index");
-    session.execute("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
-    LOG.info("End test: " + getCurrentTestMethodName());
+    runInvalidStmt("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
   }
 
   @Test
@@ -1625,7 +1623,10 @@ public class TestIndex extends BaseCQLTest {
       return null;
 
     if (value.charAt(0) == '\'')
-      if  (value.charAt(1) == '{') // JSONB
+      if (value.charAt(1) == '{') // JSONB
+        return value.substring(1, value.length() - 1);
+      else if (value.equals("'null'")) // JSONB null i.e., 'null'. Obviously assuming no other tests
+          // have a non-jsonb col = 'null' -> in which case we really want to include single quotes.
         return value.substring(1, value.length() - 1);
       else if (quoteStr)
         return value; // Text as "'str'"
@@ -1638,6 +1639,13 @@ public class TestIndex extends BaseCQLTest {
     if (!runPrepared) {
       LOG.info("Run query: " + query);
       return session.execute(query);
+    }
+
+    int idx_of_with = query.indexOf(" with");
+    String with_clause = "";
+    if (idx_of_with != -1) {
+      with_clause = query.substring(query.indexOf(" with"), query.length());
+      query = query.substring(0, query.indexOf(" with"));
     }
 
     query = query.replaceAll("=", " = ")
@@ -1687,7 +1695,10 @@ public class TestIndex extends BaseCQLTest {
       fail("Unknown statement type: " + command);
     }
 
-    LOG.info("Run prepared query: " + statement);
+    if (!with_clause.isEmpty())
+      statement += with_clause;
+
+    LOG.info("Run prepared query: " + statement + " with bind variables " + bindValues);
     assertFalse(statement.isEmpty());
     PreparedStatement prepared = session.prepare(statement);
     return session.execute(prepared.bind(bindValues.toArray()));
@@ -2033,11 +2044,217 @@ public class TestIndex extends BaseCQLTest {
     assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
         "delete c, j from test_update where h = 66 and r = 77");
 */
+
+    // Test cases involving different types of NULLs and ignore_null_jsonb_attributes=true/false.
+    //   There are two types of NULLs - the YCQL NULL and the jsonb 'null'.
+    //   1. Only the full jsonb col can be YCQL NULL - moreover this can't be done using an explicit
+    //      UPDATE/INSERT with NULL, but only by not specifying any value for the jsonb col.
+    //   2. Both the whole jsonb col or any internal json attribute can be the json 'null'
+
+    // Test for the case where the jsonb col is the YCQL NULL.
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update (h, r) values (1, 1);"
+      // not updated indexes:
+    );
+
+    // There are two operations to test for jsonb 'null's (msb in testcase description) -
+    //   1. Row insertion
+    //   2. Update on an existing row
+    //
+    // For both tests there 8 variations based on 0/1 for the following params (last 3 bits in
+    // testcase decription) -
+    //   1. ignore_null_jsonb_attributes=false/true if using UPDATE statement
+    //   2. j->'a' = 'null' (OR) j->'a'->'b' = 'null'
+    //      Note that the latter can't be done with UPDATE statement since we allow upsert only with
+    //      json nesting depth of 1.
+    //   3. Using an UPDATE/INSERT statement for the operation
+
+    // 0000
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};"
+      // not updated indexes:
+    );
+
+    // 0001
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');"
+      // not updated indexes:
+    );
+
+    // 0010 - not possible
+
+    // 0011
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');"
+      // not updated indexes:
+    );
+
+    // 0100
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // 0101 - not possible
+    // 0110 - not possible
+    // 0111 - not possible
+
+    // 1000
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // 1001
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, 'null')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // 1010 - not possible
+
+    // 1011
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, 'null')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 'b': null
+    session.execute("truncate table test_update");
+    session.execute(
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\": null}}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\":null}}');",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 'b': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\": 1}}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // 1100
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // 1101 - not possible
+    // 1110 - not possible
+    // 1111 - not possible
   }
 
   @Test
   public void testOptimizedJsonIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL));
+    doTestOptimizedJsonIndexUpdate(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL));
   }
 
   @Test
@@ -2047,7 +2264,7 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testPreparedOptimizedJsonIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperties(
+    doTestOptimizedJsonIndexUpdate(new TableProperties(
         TableProperties.TP_NON_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
   }
 
@@ -2090,15 +2307,12 @@ public class TestIndex extends BaseCQLTest {
 
     // Cannot pass NULL into IN-list via PreparedStatement API.
     if (!tp.usePreparedQueries()) {
-      assertQuery(tp, "SELECT * FROM test_in WHERE name IN (null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a80310, NULL, NULL]");
-
-      assertQuery(tp, "SELECT * FROM test_in WHERE name NOT IN ('', null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]");
-
-      assertQuery(tp, "SELECT * FROM test_in WHERE name NOT IN (null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e3, , ]" +
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]");
+      runInvalidStmt("SELECT * FROM test_in WHERE name IN (null)",
+                     "null is not supported inside collections");
+      runInvalidStmt("SELECT * FROM test_in WHERE name NOT IN ('', null)",
+                     "null is not supported inside collections");
+      runInvalidStmt("SELECT * FROM test_in WHERE name NOT IN (null)",
+                     "null is not supported inside collections");
     }
 
     // Create test table and index.

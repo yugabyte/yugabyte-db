@@ -20,6 +20,7 @@ add_library(ql_ptree
             pt_property.cc
             pt_keyspace_property.cc
             pt_table_property.cc
+            pt_dml_write_property.cc
             pt_create_keyspace.cc
             pt_use_keyspace.cc
             pt_alter_keyspace.cc
@@ -49,7 +50,8 @@ add_library(ql_ptree
             pt_option.cc
             process_context.cc
             sem_context.cc
-            sem_state.cc)
+            sem_state.cc
+            ycql_predtest.cc)
 
 target_link_libraries(ql_ptree ql_util yb_client yb_util yb_bfql yb_common)
 add_dependencies(ql_ptree yb_bfql)

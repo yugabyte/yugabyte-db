@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
@@ -17,6 +18,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class Audit extends Model {
@@ -132,6 +135,17 @@ public class Audit extends Model {
 
   public static Audit getFromTaskUUID(UUID taskUUID) {
     return find.query().where().eq("task_uuid", taskUUID).findOne();
+  }
+
+  public static Audit getOrBadRequest(UUID customerUUID, UUID taskUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Audit entry =
+        find.query().where().eq("task_uuid", taskUUID).eq("customer_uuid", customerUUID).findOne();
+    if (entry == null) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Task " + taskUUID + " does not belong to customer " + customerUUID);
+    }
+    return entry;
   }
 
   public static List<Audit> getAllUserEntries(UUID userUUID) {

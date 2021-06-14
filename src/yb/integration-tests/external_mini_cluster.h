@@ -440,6 +440,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   string data_root() const { return data_root_; }
 
+  // Return true if the tserver has been marked as DEAD by master leader.
+  Result<bool> is_ts_stale(int ts_idx);
+
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 

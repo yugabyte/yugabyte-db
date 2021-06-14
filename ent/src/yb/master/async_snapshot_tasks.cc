@@ -133,6 +133,8 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
       }
       return;
     }
+    case tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED:
+      return;
     case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG: FALLTHROUGH_INTENDED;
@@ -152,6 +154,9 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   req.set_operation(operation_);
   if (snapshot_schedule_id_) {
     req.set_schedule_id(snapshot_schedule_id_.data(), snapshot_schedule_id_.size());
+  }
+  if (restoration_id_) {
+    req.set_restoration_id(restoration_id_.data(), restoration_id_.size());
   }
   if (snapshot_hybrid_time_) {
     req.set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());

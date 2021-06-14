@@ -529,14 +529,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
-  Result<bool> StillHasParentDataAfterSplit();
+  Result<bool> StillHasOrphanedPostSplitData();
 
-  // Wrapper for StillHasParentDataAfterSplit. Conservatively returns true if
-  // StillHasParentDataAfterSplit failed, otherwise returns the result value.
-  bool MightStillHaveParentDataAfterSplit();
+  // Wrapper for StillHasOrphanedPostSplitData. Conservatively returns true if
+  // StillHasOrphanedPostSplitData failed, otherwise returns the result value.
+  bool MayHaveOrphanedPostSplitData();
 
   // If true, we should report, in our heartbeat to the master, that loadbalancer moves should be
-  // disabled. We do so, for example, when StillHasParentDataAfterSplit() returns true.
+  // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
   bool ShouldDisableLbMove();
 
   void ForceRocksDBCompactInTest();
@@ -673,6 +673,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilter(OperationFilter* filter);
 
   void SplitDone();
+  CHECKED_STATUS RestoreStarted(const TxnSnapshotRestorationId& restoration_id);
+  CHECKED_STATUS RestoreFinished(const TxnSnapshotRestorationId& restoration_id);
 
  private:
   friend class Iterator;
@@ -740,6 +742,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   CHECKED_STATUS OpenDbAndCheckIntegrity(const std::string& db_dir);
+
+  // Add or remove restoring operation filter if necessary.
+  void SyncRestoringOperationFilter();
 
   const Schema key_schema_;
 
@@ -926,9 +931,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   boost::intrusive::list<OperationFilter> operation_filters_;
 
-  class CompletedSplitOperationFilter;
-  std::unique_ptr<CompletedSplitOperationFilter> completed_split_operation_filter_;
+  std::unique_ptr<OperationFilter> completed_split_operation_filter_;
   std::unique_ptr<log::LogAnchor> completed_split_log_anchor_;
+
+  std::unique_ptr<OperationFilter> restoring_operation_filter_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

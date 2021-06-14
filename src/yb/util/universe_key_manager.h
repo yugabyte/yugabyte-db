@@ -19,7 +19,6 @@
 #include "yb/util/result.h"
 
 namespace yb {
-namespace enterprise {
 
 // Class is responsible for saving the universe key registry from master on heartbeat for use
 // in creating new files and reading exising files.
@@ -50,7 +49,6 @@ class UniverseKeyManager {
   bool received_registry_ = false;
 };
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_UNIVERSE_KEY_MANAGER_H

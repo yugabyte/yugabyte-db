@@ -1,43 +1,37 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.mockito.Matchers.any;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.contentAsString;
-
-import java.util.Set;
-import java.util.LinkedList;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-
 import org.mockito.Mockito;
 import play.libs.Json;
 import play.mvc.Result;
+
+import java.util.LinkedList;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
 
 public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
@@ -58,7 +52,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     user = ModelFactory.testUser(customer);
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-    zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
 
     taskType = ArgumentCaptor.forClass(TaskType.class);
     taskParams = ArgumentCaptor.forClass(NodeTaskParams.class);
@@ -180,8 +174,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetNodeWithInvalidUuid() {
-    Result r = getNode(UUID.randomUUID());
-    checkNotOk(r, "Null content"); // TODO(API): This should cause 4XX not 500
+    UUID uuid = UUID.randomUUID();
+    Result r = assertThrows(YWServiceException.class, () -> getNode(uuid)).getResult();
+    String expectedError = "Invalid Node UUID: " + uuid;
+    assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -257,7 +253,9 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateFailureDuplicateIp() {
-    Result failedReq = createNode(zone.uuid, node.getDetails());
+    Result failedReq =
+        assertThrows(YWServiceException.class, () -> createNode(zone.uuid, node.getDetails()))
+            .getResult();
     checkNotOk(failedReq, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -284,14 +282,21 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstanceWithInvalidProviderValidInstanceIP() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result r = deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP);
-    assertBadRequest(r, "Invalid Provider UUID: " + invalidProviderUUID);
+    Result r =
+        assertThrows(
+                YWServiceException.class,
+                () -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP))
+            .getResult();
+    assertBadRequest(r, "Cannot find universe " + invalidProviderUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteInstanceWithValidProviderInvalidInstanceIP() {
-    Result r = deleteInstance(customer.uuid, provider.uuid, "abc");
+    Result r =
+        assertThrows(
+                YWServiceException.class, () -> deleteInstance(customer.uuid, provider.uuid, "abc"))
+            .getResult();
     assertBadRequest(r, "Node Not Found");
     assertAuditEntry(0, customer.uuid);
   }
@@ -317,12 +322,21 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testMissingNodeActionParam() {
     verify(mockCommissioner, times(0)).submit(any(), any());
-    Universe u = ModelFactory.createUniverse();
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(u.universeUUID);
+    final Universe u = ModelFactory.createUniverse();
+    Universe universe = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(universe.universeUUID);
     customer.save();
     Result r =
-        performNodeAction(customer.uuid, u.universeUUID, "host-n1", NodeActionType.DELETE, true);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    performNodeAction(
+                        customer.uuid,
+                        universe.universeUUID,
+                        "host-n1",
+                        NodeActionType.DELETE,
+                        true))
+            .getResult();
     assertBadRequest(r, "{\"nodeAction\":[\"This field is required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
@@ -382,8 +396,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
-    Universe u = ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId());
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    Universe u =
+        Universe.saveDetails(
+            ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId())
+                .universeUUID,
+            ApiUtils.mockUniverseUpdater());
     setInTransitNode(u.universeUUID);
 
     Set<NodeDetails> nodes =
@@ -394,18 +411,38 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
     NodeDetails curNode = nodes.iterator().next();
     Result invalidRemove =
-        performNodeAction(
-            customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REMOVE, false);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    performNodeAction(
+                        customer.uuid,
+                        u.universeUUID,
+                        curNode.nodeName,
+                        NodeActionType.REMOVE,
+                        false))
+            .getResult();
     assertBadRequest(
         invalidRemove,
-        "Cannot REMOVE " + curNode.nodeName + " as it will under replicate the masters.");
+        "Cannot REMOVE "
+            + curNode.nodeName
+            + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
 
     Result invalidStop =
-        performNodeAction(
-            customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.STOP, false);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    performNodeAction(
+                        customer.uuid,
+                        u.universeUUID,
+                        curNode.nodeName,
+                        NodeActionType.STOP,
+                        false))
+            .getResult();
     assertBadRequest(
         invalidStop,
-        "Cannot STOP " + curNode.nodeName + " as it will under replicate the masters.");
+        "Cannot STOP "
+            + curNode.nodeName
+            + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
     assertAuditEntry(0, customer.uuid);
   }
 

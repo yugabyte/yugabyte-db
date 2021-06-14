@@ -10,10 +10,10 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
@@ -23,15 +23,17 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.*;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
+@Api(
+    value = "RuntimeConfig",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RuntimeConfController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfController.class);
   private final SettableRuntimeConfigFactory settableRuntimeConfigFactory;
@@ -58,7 +60,8 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   private static Optional<ScopedConfig> getScopedConfigInternal(UUID customerUUID, UUID scopeUUID) {
-    RuntimeConfigFormData runtimeConfigFormData = listScopesInternal(Customer.get(customerUUID));
+    RuntimeConfigFormData runtimeConfigFormData =
+        listScopesInternal(Customer.getOrBadRequest(customerUUID));
     return runtimeConfigFormData
         .scopedConfigList
         .stream()
@@ -67,12 +70,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   private Result buildCachedResult() {
-    ArrayNode list =
-        mutableKeys
-            .stream()
-            .sorted()
-            .collect(Collector.of(Json::newArray, ArrayNode::add, ArrayNode::addAll));
-    return ok(list);
+    return ApiResponse.success(mutableKeys);
   }
 
   private Set<String> buildMutableKeysSet() {
@@ -90,15 +88,35 @@ public class RuntimeConfController extends AuthenticatedController {
         .collect(Collectors.toSet());
   }
 
+  @ApiOperation(
+      value = "listKeys",
+      response = String.class,
+      responseContainer = "List",
+      notes = "List all the mutable runtime config keys")
   public Result listKeys() {
     return mutableKeysResult;
   }
 
+  @ApiOperation(
+      value = "listScopes",
+      response = RuntimeConfigFormData.class,
+      notes =
+          "Lists all (including empty scopes) runtime config scopes for current customer. "
+              + "List includes the Global scope that spans multiple customers, scope for customer "
+              + "specific overrides for current customer and one scope each for each universe and "
+              + "provider.")
   public Result listScopes(UUID customerUUID) {
-    RuntimeConfigFormData formData = listScopesInternal(Customer.get(customerUUID));
-    return ApiResponse.success(formData);
+    return ApiResponse.success(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
   }
 
+  @ApiOperation(
+      value = "listScopes",
+      response = RuntimeConfigFormData.class,
+      notes =
+          "Lists all (including empty scopes) runtime config scopes for current customer. "
+              + "List includes the Global scope that spans multiple customers, scope for customer "
+              + "specific overrides for current customer and one scope each for each universe and "
+              + "provider.")
   public Result getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
     LOG.trace(
         "customerUUID: {} scopeUUID: {} includeInherited: {}",
@@ -109,7 +127,7 @@ public class RuntimeConfController extends AuthenticatedController {
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
 
     if (!optScopedConfig.isPresent()) {
-      return ApiResponse.error(
+      throw new YWServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
@@ -133,38 +151,53 @@ public class RuntimeConfController extends AuthenticatedController {
     return ApiResponse.success(optScopedConfig.get());
   }
 
+  @ApiOperation(value = "getKey", produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
-      return ApiResponse.error(NOT_FOUND, "No mutable key found: " + path);
+      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     Optional<ScopedConfig> scopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
 
     if (!scopedConfig.isPresent()) {
-      return ApiResponse.error(
+      throw new YWServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
-    RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.get(scopeUUID, path);
-    if (runtimeConfigEntry == null)
-      return ApiResponse.error(
-          NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
+    RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.getOrBadRequest(scopeUUID, path);
     return ok(runtimeConfigEntry.getValue());
   }
 
+  @ApiOperation(value = "setKey", consumes = "text/plain")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "newValue",
+          value = "new value for config key",
+          paramType = "body",
+          dataType = "java.lang.String",
+          required = true))
   public Result setKey(UUID customerUUID, UUID scopeUUID, String path) {
+    String contentType = request().contentType().orElse("UNKNOWN");
+    if (!contentType.equals("text/plain")) {
+      throw new YWServiceException(
+          UNSUPPORTED_MEDIA_TYPE, "Accepts: text/plain but content-type: " + contentType);
+    }
     String newValue = request().body().asText();
+    if (newValue == null) {
+      throw new YWServiceException(BAD_REQUEST, "Cannot set null value");
+    }
+
     if (!mutableKeys.contains(path)) {
-      return ApiResponse.error(NOT_FOUND, "No mutable key found: " + path);
+      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
 
     if (!optScopedConfig.isPresent()) {
-      return ApiResponse.error(
+      throw new YWServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
     if (!optScopedConfig.get().mutableScope)
-      return ApiResponse.error(
+      throw new YWServiceException(
           FORBIDDEN,
           "Customer "
               + customerUUID
@@ -179,18 +212,19 @@ public class RuntimeConfController extends AuthenticatedController {
     return ok();
   }
 
+  @ApiOperation(value = "deleteKey", response = Void.class)
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
-      return ApiResponse.error(NOT_FOUND, "No mutable key found: " + path);
+      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
     if (!optScopedConfig.isPresent()) {
-      return ApiResponse.error(
+      throw new YWServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
     if (!optScopedConfig.get().mutableScope)
-      return ApiResponse.error(
+      throw new YWServiceException(
           FORBIDDEN,
           "Customer "
               + customerUUID

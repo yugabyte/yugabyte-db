@@ -327,6 +327,21 @@ public class Util {
     Files.move(source, destination, REPLACE_EXISTING);
   }
 
+  public static void writeJsonFile(String filePath, ArrayNode json) {
+    writeFile(filePath, Json.prettyPrint(json));
+  }
+
+  public static void writeFile(String filePath, String contents) {
+    try (FileWriter file = new FileWriter(filePath)) {
+      file.write(contents);
+      file.flush();
+      LOG.info("Written: {}", filePath);
+    } catch (IOException e) {
+      LOG.error("Unable to write: {}", filePath);
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
   public static ArrayNode getUniverseDetails(Set<Universe> universes) {
     ArrayNode details = Json.newArray();
     for (Universe universe : universes) {

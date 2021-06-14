@@ -35,7 +35,8 @@ class PTCreateIndex : public PTCreateTable {
                 const PTListNode::SharedPtr& columns,
                 bool create_if_not_exists,
                 const PTTablePropertyListNode::SharedPtr& ordering_list,
-                const PTListNode::SharedPtr& covering);
+                const PTListNode::SharedPtr& covering,
+                const PTExpr::SharedPtr& where_clause);
   virtual ~PTCreateIndex();
 
   // Node type.
@@ -88,6 +89,10 @@ class PTCreateIndex : public PTCreateTable {
     return column_descs_;
   }
 
+  const PTExpr::SharedPtr& where_clause() const {
+    return where_clause_;
+  }
+
   CHECKED_STATUS AppendIndexColumn(SemContext *sem_context, PTColumnDefinition *column);
 
   virtual CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const override;
@@ -95,6 +100,10 @@ class PTCreateIndex : public PTCreateTable {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
+
+  const std::shared_ptr<std::set<uint32>>& where_clause_column_refs() const {
+    return where_clause_column_refs_;
+  }
 
  private:
   // Is it a unique index?
@@ -114,6 +123,38 @@ class PTCreateIndex : public PTCreateTable {
   // Auto-include columns are primary-key columns in the data-table being indexed that are not yet
   // declared as part of the INDEX.
   MCList<PTIndexColumn::SharedPtr> auto_includes_;
+
+  // Where clause is specified for partial indexes.
+  PTExpr::SharedPtr where_clause_;
+
+  // Columns that are being referenced by the index predicate. There are populated in
+  // IdxPredicateState during semantic analysis. We use this as a variable to pass them on to
+  // the execution phase (since object of IdxPredicateState lives only till semantic analysis).
+  std::shared_ptr<std::set<uint32>> where_clause_column_refs_;
+};
+
+class IdxPredicateState {
+ public:
+  explicit IdxPredicateState(MemoryContext *memctx, TreeNodeOpcode statement_type)
+    : column_refs_(std::make_shared<std::set<uint32>>()) {
+  }
+
+  CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
+                                 const PTRelationExpr *expr,
+                                 const ColumnDesc *col_desc,
+                                 PTExpr::SharedPtr value,
+                                 PTExprListNode::SharedPtr args = nullptr);
+
+  std::shared_ptr<std::set<uint32>>& column_refs() {
+    return column_refs_;
+  }
+
+ private:
+  // Columns that are being referenced by the index predicate. These will later be stored in
+  // IndexInfoPB so that other queries can use the column ids later when interacting with the
+  // index.
+  // TODO(Piyush): Use MCSet. Tried it, there were some issues when iterating over an MCSet.
+  std::shared_ptr<std::set<uint32>> column_refs_;
 };
 
 }  // namespace ql

@@ -32,6 +32,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static play.mvc.Http.Status.*;
+
 @Singleton
 public class AccessManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
@@ -110,35 +112,33 @@ public class AccessManager extends DevopsBase {
       String sshUser,
       Integer sshPort,
       boolean airGapInstall,
-      boolean skipProvisioning) {
+      boolean skipProvisioning)
+      throws IOException {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     // Removing paths from keyCode.
     keyCode = Util.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
-      throw new RuntimeException("Duplicate Access KeyCode: " + keyCode);
+      throw new YWServiceException(BAD_REQUEST, "Duplicate Access KeyCode: " + keyCode);
     }
     Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
     if (!Files.exists(source)) {
-      throw new RuntimeException("Key file " + source.getFileName() + " not found.");
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Key file " + source.getFileName() + " not found.");
     }
     if (Files.exists(destination)) {
-      throw new RuntimeException("File " + destination.getFileName() + " already exists.");
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "File " + destination.getFileName() + " already exists.");
     }
 
-    try {
-      Files.move(source, destination);
-      Set<PosixFilePermission> permissions = PosixFilePermissions.fromString(PEM_PERMISSIONS);
-      if (keyType == AccessManager.KeyType.PUBLIC) {
-        permissions = PosixFilePermissions.fromString(PUB_PERMISSIONS);
-      }
-      Files.setPosixFilePermissions(destination, permissions);
-    } catch (IOException e) {
-      LOG.error(e.getMessage(), e);
-      throw new RuntimeException("Unable to upload key file " + source.getFileName());
+    Files.move(source, destination);
+    Set<PosixFilePermission> permissions = PosixFilePermissions.fromString(PEM_PERMISSIONS);
+    if (keyType == AccessManager.KeyType.PUBLIC) {
+      permissions = PosixFilePermissions.fromString(PUB_PERMISSIONS);
     }
+    Files.setPosixFilePermissions(destination, permissions);
 
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     if (keyType == AccessManager.KeyType.PUBLIC) {
@@ -148,7 +148,9 @@ public class AccessManager extends DevopsBase {
     }
     JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
     if (vaultResponse.has("error")) {
-      throw new RuntimeException(vaultResponse.get("error").asText());
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Vault Creation failed with : " + vaultResponse.get("error").asText());
     }
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
@@ -259,7 +261,9 @@ public class AccessManager extends DevopsBase {
 
     JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
     if (response.has("error")) {
-      throw new RuntimeException(response.get("error").asText());
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Parsing of Region failed with : " + response.get("error").asText());
     }
 
     if (accessKey == null) {
@@ -268,7 +272,9 @@ public class AccessManager extends DevopsBase {
       keyInfo.privateKey = response.get("private_key").asText();
       JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
       if (response.has("error")) {
-        throw new RuntimeException(response.get("error").asText());
+        throw new YWServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Vault Creation failed with : " + response.get("error").asText());
       }
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();

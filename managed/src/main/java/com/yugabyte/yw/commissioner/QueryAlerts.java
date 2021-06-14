@@ -16,11 +16,11 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
-import com.yugabyte.yw.common.config.ConfigSubstitutor;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.DataConverters;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
@@ -47,9 +47,9 @@ public class QueryAlerts {
 
   private final AlertManager alertManager;
 
-  private final int YB_QUERY_ALERTS_INTERVAL = 1;
+  private final AlertDefinitionService alertDefinitionService;
 
-  private final RuntimeConfigFactory configFactory;
+  private final int YB_QUERY_ALERTS_INTERVAL = 1;
 
   @Inject
   public QueryAlerts(
@@ -57,24 +57,20 @@ public class QueryAlerts {
       ActorSystem actorSystem,
       AlertManager alertManager,
       MetricQueryHelper queryHelper,
-      RuntimeConfigFactory configFactory) {
+      AlertDefinitionService alertDefinitionService) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.queryHelper = queryHelper;
     this.alertManager = alertManager;
-    this.configFactory = configFactory;
+    this.alertDefinitionService = alertDefinitionService;
     this.initialize();
-  }
-
-  public void setRunningState(AtomicBoolean state) {
-    this.running = state;
   }
 
   private void initialize() {
     this.actorSystem
         .scheduler()
         .schedule(
-            Duration.create(0, TimeUnit.MINUTES),
+            Duration.Zero(),
             Duration.create(YB_QUERY_ALERTS_INTERVAL, TimeUnit.MINUTES),
             this::scheduleRunner,
             this.executionContext);
@@ -82,27 +78,16 @@ public class QueryAlerts {
 
   public Set<Alert> processAlertDefinitions(UUID customerUUID) {
     Set<Alert> alertsStillActive = new HashSet<>();
-    AlertDefinition.listActive(customerUUID)
+    AlertDefinitionFilter filter =
+        new AlertDefinitionFilter().setCustomerUuid(customerUUID).setActive(true);
+    alertDefinitionService
+        .list(filter)
         .forEach(
             definition -> {
               try {
-                String query;
-                // TODO Need to store threshold and duration in definition itself - this way custom
-                // logic will not be needed for each definition target type
-                switch (definition.targetType) {
-                  case Universe:
-                    Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
-                    query =
-                        new ConfigSubstitutor(configFactory.forUniverse(universe))
-                            .replace(definition.query);
-                    break;
-                  default:
-                    throw new IllegalStateException(
-                        "Unexpected definition type " + definition.targetType.name());
-                }
-                if (!queryHelper.queryDirect(query).isEmpty()) {
+                if (!queryHelper.queryDirect(definition.getQueryWithThreshold()).isEmpty()) {
                   List<Alert> existingAlerts =
-                      Alert.getActiveCustomerAlerts(customerUUID, definition.uuid);
+                      Alert.getActiveCustomerAlerts(customerUUID, definition.getUuid());
                   // Create an alert to activate if it doesn't exist already.
                   if (CollectionUtils.isEmpty(existingAlerts)) {
                     // For now - copy labels from definition to alert. Later, alert will also
@@ -116,26 +101,28 @@ public class QueryAlerts {
 
                     UUID targetUUID = definition.getTargetUUID();
                     Alert.TargetType targetType =
-                        DataConverters.definitionToAlertTargetType(definition.targetType);
-                    AlertTemplateSubstitutor substitutor = new AlertTemplateSubstitutor(definition);
-                    String message = substitutor.replace(definition.getMessageTemplate());
+                        DataConverters.definitionToAlertTargetType(definition.getTargetType());
+                    Alert alert =
+                        Alert.create(
+                            customerUUID,
+                            targetUUID,
+                            targetType,
+                            "CUSTOMER_ALERT",
+                            "Error",
+                            "" /* Will be set later. */,
+                            definition.isActive(),
+                            definition.getUuid(),
+                            labels);
 
-                    Alert.create(
-                        customerUUID,
-                        targetUUID,
-                        targetType,
-                        "CUSTOMER_ALERT",
-                        "Error",
-                        message,
-                        definition.isActive,
-                        definition.uuid,
-                        labels);
+                    AlertTemplateSubstitutor<Alert> substitutor =
+                        new AlertTemplateSubstitutor<>(alert);
+                    alert.update(substitutor.replace(definition.getMessageTemplate()));
                   } else {
                     alertsStillActive.addAll(existingAlerts);
                   }
                 }
               } catch (Exception e) {
-                LOG.error("Error processing alert definition '{}'", definition.name, e);
+                LOG.error("Error processing alert definition '{}'", definition.getName(), e);
               }
             });
 
