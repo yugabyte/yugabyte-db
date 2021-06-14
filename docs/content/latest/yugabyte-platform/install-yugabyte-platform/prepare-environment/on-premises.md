@@ -74,5 +74,7 @@ The platform node has the following requirements:
   * 443 - HTTPs access to the Yugabyte Platform console
   * 22 – SSH
   * 9090 - Prometheus metrics
+  
   For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+
 * Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes.

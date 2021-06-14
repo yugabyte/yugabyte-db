@@ -80,6 +80,7 @@ For any 3rd party cron scheduling tools, you can add these cron entries and disa
 # Ansible: Check liveness of tserver
 */1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
 ```
+
 {{< /tip >}}
 
 * Verify that Python 2.7 is installed.
@@ -92,8 +93,8 @@ For any 3rd party cron scheduling tools, you can add these cron entries and disa
 
 * Configure SSH as follows:
 
-    * Disable `sshguard`.
-    * Set `UseDNS no` in `/etc/ssh/sshd_config` (disables reverse lookup, which is used for auth; DNS is still useable).
+  * Disable `sshguard`.
+  * Set `UseDNS no` in `/etc/ssh/sshd_config` (disables reverse lookup, which is used for auth; DNS is still useable).
 
 * Set `vm.swappiness` to 0.
 * Set `mount` path permissions to 0755.
