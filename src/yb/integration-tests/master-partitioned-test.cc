@@ -239,4 +239,104 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
   }
 }
 
+TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
+  // Partition away the old master leader from the cluster.
+  int old_leader_idx = cluster_->LeaderMasterIdx();
+  LOG(INFO) << "Old leader master: " << old_leader_idx;
+
+  int new_cohort_peer1 = -1, new_cohort_peer2 = -1;
+  for (int i = 0; i < cluster_->num_masters(); i++) {
+    if (i == old_leader_idx) {
+      continue;
+    }
+    if (new_cohort_peer1 == -1) {
+      new_cohort_peer1 = i;
+    } else if (new_cohort_peer2 == -1) {
+      new_cohort_peer2 = i;
+    }
+    LOG(INFO) << "Breaking connectivity between " << i << " and " << old_leader_idx;
+    BreakMasterConnectivityTo(old_leader_idx, i);
+    BreakMasterConnectivityTo(i, old_leader_idx);
+  }
+
+  LOG(INFO) << "Introduced a network split. Cohort#1 masters: " << old_leader_idx
+            << ", cohort#2 masters: " << new_cohort_peer1 << ", " << new_cohort_peer2;
+
+  // Wait for a master leader in the new cohort.
+  ASSERT_OK(WaitFor(
+    [&]() -> Result<bool> {
+      // Get the config of the old leader.
+      consensus::ConsensusStatePB cbp, cbp1, cbp2;
+      RETURN_NOT_OK(cluster_->mini_master(old_leader_idx)
+                            ->master()
+                            ->catalog_manager()
+                            ->GetCurrentConfig(&cbp));
+
+      // Get the config of the new cluster.
+      RETURN_NOT_OK(cluster_->mini_master(new_cohort_peer1)
+                            ->master()
+                            ->catalog_manager()
+                            ->GetCurrentConfig(&cbp1));
+
+      RETURN_NOT_OK(cluster_->mini_master(new_cohort_peer2)
+                            ->master()
+                            ->catalog_manager()
+                            ->GetCurrentConfig(&cbp2));
+
+      // Term number of the new cohort's config should increase.
+      // Leader should not be the same as the old leader.
+      return cbp1.current_term() == cbp2.current_term() &&
+             cbp1.current_term() > cbp.current_term() &&
+             cbp1.has_leader_uuid() && cbp1.leader_uuid() != cbp.leader_uuid() &&
+             cbp2.has_leader_uuid() && cbp2.leader_uuid() == cbp1.leader_uuid();
+    },
+    100s,
+    "Waiting for a leader on the new cohort."
+  ));
+
+  // Get the index of the new leader.
+  string uuid1 = cluster_->mini_master(new_cohort_peer1)->master()->fs_manager()->uuid();
+  string uuid2 = cluster_->mini_master(new_cohort_peer2)->master()->fs_manager()->uuid();
+
+  consensus::ConsensusStatePB cbp1;
+  ASSERT_OK(cluster_->mini_master(new_cohort_peer1)
+                    ->master()
+                    ->catalog_manager()
+                    ->GetCurrentConfig(&cbp1));
+
+  int new_leader_idx = -1;
+  if (cbp1.leader_uuid() == uuid1) {
+    new_leader_idx = new_cohort_peer1;
+  } else if (cbp1.leader_uuid() == uuid2) {
+    new_leader_idx = new_cohort_peer2;
+  }
+  LOG(INFO) << "Leader of the new cohort " << new_leader_idx;
+
+  // Wait for the leader lease to expire on the new master.
+  ASSERT_OK(cluster_->mini_master(new_leader_idx)
+                    ->master()
+                    ->catalog_manager()
+                    ->WaitUntilCaughtUpAsLeader(MonoDelta::FromSeconds(100)));
+
+  // Now perform an RPC that involves a SHARED_LEADER_LOCK and confirm that it fails.
+  yb::master::Master* m = cluster_->mini_master(old_leader_idx)->master();
+  MasterServiceProxy proxy(&(m->proxy_cache()), m->rpc_server()->GetRpcHostPort()[0]);
+
+  RpcController controller;
+  controller.Reset();
+  master::ListTabletServersRequestPB req;
+  master::ListTabletServersResponsePB resp;
+
+  ASSERT_OK(proxy.ListTabletServers(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_EQ(resp.error().code(), master::MasterErrorPB::NOT_THE_LEADER);
+  ASSERT_EQ(resp.error().status().code(), AppStatusPB::LEADER_HAS_NO_LEASE);
+
+  // Restore connectivity.
+  RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer1);
+  RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer2);
+  RestoreMasterConnectivityTo(new_cohort_peer1, old_leader_idx);
+  RestoreMasterConnectivityTo(new_cohort_peer2, old_leader_idx);
+}
+
 }  // namespace yb
