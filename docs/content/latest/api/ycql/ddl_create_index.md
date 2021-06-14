@@ -127,6 +127,8 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 - Currently, valid mathematical implications are not taken into account when checking for logical implication. For example, even if `where_expression = x > 5` and `index_predicate = x > 4`, the `SELECT` query will not use the index for scanning. This is because the two sub-expressions `x > 5` and `x > 4` differ.
 
+{{< /note >}}
+
 - When using a prepared statement, the logical implication check (to decide if a partial index is usable), will only consider those sub-expressions of `where_expression` that don't have a bind variable. This is because the query plan is decided before execution (i.e., when a statement is prepared).
 
 ```sql
@@ -139,22 +141,50 @@ ycqlsh:example> CREATE TABLE orders (customer_id INT,
                 WITH transactions = { 'enabled' : true };
 ycqlsh:example> CREATE INDEX idx on orders (warehouse_id) where warehouse_id < 100;
 ycqlsh:example> EXPLAIN SELECT product from orders where warehouse_id < 100 and order_date >= ?; // Idx can be used
+```
 
+```output
  QUERY PLAN
 ------------------------------------------
  Index Scan using temp.idx on temp.orders
    Filter: (order_date >= :order_date)
+```
 
+```sql
 ycqlsh:example> EXPLAIN SELECT product from orders where warehouse_id < ? and order_date >= ?; // Idx cannot be used
+```
 
+```output
  QUERY PLAN
 --------------------------------------------------------------------------
  Seq Scan on temp.orders
    Filter: (warehouse_id < :warehouse_id) AND (order_date >= :order_date)
-
 ```
 
-{{< /note >}}
+- Without partial indexes, we do not allow many combinations of operators together on the same column in a `SELECT`'s where expression e.g.: `WHERE v1 != NULL and v1 = 5`. But if there was a partial index that subsumes some clauses of the `SELECT`'s where expression, two or more operators otherwise not supported together, might be supported.
+
+```sql
+ycqlsh:example> EXPLAIN SELECT product from orders where warehouse_id != NULL and warehouse_id = ?;
+```
+
+```output
+SyntaxException: Invalid CQL Statement. Illogical condition for where clause
+EXPLAIN SELECT product from orders where warehouse_id != NULL and warehouse_id = ?;
+                                                                  ^^^^^^^^^^^^
+ (ql error -12)
+```
+
+```sql
+ycqlsh:example> CREATE INDEX warehouse_idx on orders (warehouse_id) where warehouse_id != NULL;
+ycqlsh:example> EXPLAIN SELECT product from orders where warehouse_id != NULL and warehouse_id = ?; // warehouse_idx can be used
+```
+
+```output
+ QUERY PLAN
+----------------------------------------------------
+ Index Scan using temp.warehouse_idx on temp.orders
+   Key Conditions: (warehouse_id = :warehouse_id)
+```
 
 ## Examples
 
