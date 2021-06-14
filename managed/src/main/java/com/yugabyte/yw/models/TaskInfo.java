@@ -4,10 +4,12 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
@@ -18,6 +20,7 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import play.data.validation.Constraints;
+import play.libs.Json;
 
 import javax.persistence.*;
 import java.util.*;
@@ -129,6 +132,22 @@ public class TaskInfo extends Model {
   @JsonIgnore
   public JsonNode getTaskDetails() {
     return details;
+  }
+
+  public String getErrorString() {
+    if (details == null) return null;
+    ITaskParams taskParams = Json.fromJson(details, ITaskParams.class);
+    return taskParams.getErrorString();
+  }
+
+  @JsonIgnore
+  public void onUnexpectedFailure(String msg) {
+    String errorString = getErrorString();
+    if (errorString == null || errorString.isEmpty()) {
+      ((ObjectNode) details).put("errorString", msg);
+    }
+    setTaskState(State.Failure);
+    save();
   }
 
   public State getTaskState() {
