@@ -55,7 +55,7 @@ Once you know the entire cluster is running correctly, you can move to statement
 
 ## Tuning in YSQL
 
-To investigate a specific apparently slow running query, you first need to determine which node the query is running on. 
+To investigate a specific apparently slow running query, you first need to determine which node the query is running on. To identify the node on which the query is running, log on to the nodes and use the `pg_stat_activity` view to see running queries.
 
 {{< note title="Note" >}}
 
