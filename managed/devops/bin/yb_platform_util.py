@@ -194,7 +194,6 @@ class YBUniverse():
         # All excluded_keys will be populated by universe_config api.
         excluded_keys = [
             'uuid',
-            'storageType'
             'awsArnString',
             'useHostname',
             'preferredRegion',
