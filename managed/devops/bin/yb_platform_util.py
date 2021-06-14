@@ -193,8 +193,10 @@ class YBUniverse():
         clusters = copy.deepcopy(universe_data['universeDetails']['clusters'])
         user_az_selected = universe_data['universeDetails']['userAZSelected']
 
+        # All excluded_keys will be populated by universe_config api.
         excluded_keys = [
             'uuid',
+            'storageType'
             'awsArnString',
             'useHostname',
             'preferredRegion',
@@ -226,18 +228,12 @@ class YBUniverse():
         """
         clusters_list = []
         for each_cluster in clusters:
-            cluster = {}
-            for key, val in each_cluster.items():
-                if key not in excluded_keys:
-                    user_intent = {}
-                    if key == 'userIntent':
-                        for key1, val1 in val.items():
-                            if key1 not in excluded_keys:
-                                user_intent[key1] = val1
-                        cluster[key] = user_intent
-                    else:
-                        cluster[key] = val
-            clusters_list.append(cluster)
+            user_intent = each_cluster.get('userIntent', {})
+            for key in excluded_keys:
+                each_cluster.pop(key, None)
+                user_intent.pop(key, None)
+            user_intent.get('deviceInfo', {}).pop('diskIops', None)
+            clusters_list.append(each_cluster)
         return clusters_list
 
 
