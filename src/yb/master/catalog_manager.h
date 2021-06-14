@@ -95,15 +95,15 @@ class ThreadPool;
 template<class T>
 class AtomicGauge;
 
-namespace pgwrapper {
-
 #define CALL_GTEST_TEST_CLASS_NAME_(...) GTEST_TEST_CLASS_NAME_(__VA_ARGS__)
+namespace pgwrapper {
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables));
-#undef CALL_GTEST_TEST_CLASS_NAME_
-
 }
+
+class CALL_GTEST_TEST_CLASS_NAME_(MasterPartitionedTest, VerifyOldLeaderStepsDown);
+#undef CALL_GTEST_TEST_CLASS_NAME_
 
 namespace tablet {
 
@@ -838,6 +838,7 @@ class CatalogManager :
   FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
 
   FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
+  FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
