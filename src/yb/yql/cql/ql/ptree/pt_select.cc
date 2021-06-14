@@ -1191,10 +1191,8 @@ Status SelectScanInfo::AddWhereExpr(SemContext *sem_context,
   RETURN_NOT_OK(AddFilteringExpr(sem_context, expr));
 
   // Append operator to appropriate list.
-  ColumnOpCounter& counter = col_op_counters_[col_desc->index()];
   switch (expr->ql_op()) {
     case QL_OP_EQUAL: {
-      counter.increase_eq(col_args != nullptr);
       if (!col_args) {
         col_ops_.emplace_back(col_desc, value, QLOperator::QL_OP_EQUAL);
 
@@ -1211,15 +1209,8 @@ Status SelectScanInfo::AddWhereExpr(SemContext *sem_context,
     case QL_OP_LESS_THAN_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN: {
-      // Check for illogical conditions.
       if (!col_args) {
-        if (expr->ql_op() == QL_OP_LESS_THAN || expr->ql_op() == QL_OP_LESS_THAN_EQUAL) {
-          counter.increase_lt(col_args != nullptr);
-        } else {
-          counter.increase_gt(col_args != nullptr);
-        }
         col_ops_.emplace_back(col_desc, value, expr->ql_op());
-
       } else if (col_desc->ql_type()->IsJson()) {
         col_json_ops_.emplace_back(col_desc, col_args, value, expr->ql_op());
 
@@ -1234,7 +1225,6 @@ Status SelectScanInfo::AddWhereExpr(SemContext *sem_context,
     case QL_OP_IN: {
       if (!col_args) {
         col_ops_.emplace_back(col_desc, value, expr->ql_op());
-        counter.increase_in(col_args != nullptr);
       }
       break;
     }
@@ -1244,13 +1234,6 @@ Status SelectScanInfo::AddWhereExpr(SemContext *sem_context,
       // definitely does not allow this operator, just raise error right away.
       return sem_context->Error(expr, "Operator is not supported in where clause",
                                 ErrorCode::CQL_STATEMENT_INVALID);
-  }
-
-  if (!counter.isValid()) {
-    // This function only needs to check for references and collects them. However, since CQL
-    // definitely does not allow two different conditions on the same column, just raise the error.
-    return sem_context->Error(expr, "Illogical condition for where clause",
-                              ErrorCode::CQL_STATEMENT_INVALID);
   }
 
   return Status::OK();

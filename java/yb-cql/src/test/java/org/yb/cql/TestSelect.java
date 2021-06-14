@@ -303,28 +303,46 @@ public class TestSelect extends BaseCQLTest {
       "Row[1, h1, 1, r1, 1, v11, {\"key\":\"val\"}, [1], {1=1}, [1]]");
 
     // Negative tests below.
+    String illogicalConditionErrString = "Illogical condition for where clause";
+
     if (!use_if_clause) {
       // Test with more than one "!=" operator on one column.
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 != 1 AND v1 != 2", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 <> 1 AND v1 != 2", clause_type));
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 != 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 <> 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
 
       // Test with "!=" operator with other operators - <, >, <=, >=, =, IN, NOT IN.
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 < 1 AND v1 != 2", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 > 1 AND v1 != 2", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 <= 1 AND v1 != 2", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 >= 1 AND v1 != 2", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 = 1 AND v1 != 2", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 IN (1) AND v1 != 2", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 NOT IN (1) AND v1 != 2", clause_type));
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 < 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 > 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 <= 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 >= 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 = 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(
+        String.format("SELECT * FROM test_select %s v1 IN (1) AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(
+        String.format("SELECT * FROM test_select %s v1 NOT IN (1) AND v1 != 2", clause_type),
+        illogicalConditionErrString);
 
       // Test with "!=" operator on json/collection subscripted column.
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v_json->>'key' != ''", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v_map[1] != null", clause_type));
-      runInvalidQuery(String.format("SELECT * FROM test_select %s v_list[1] != null", clause_type));
+      runInvalidStmt(
+        String.format("SELECT * FROM test_select %s v_json->>'key' != ''", clause_type),
+        "Invalid CQL Statement. Operator not supported for subscripted column");
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v_map[1] != null", clause_type),
+        "Invalid CQL Statement. Operator not supported for subscripted column");
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v_list[1] != null", clause_type),
+        "Invalid CQL Statement. Operator not supported for subscripted column");
     }
 
     // Test with incomparable data type.
-    runInvalidQuery(String.format("SELECT * FROM test_select %s v1 != ''", clause_type));
+    runInvalidStmt(String.format("SELECT * FROM test_select %s v1 != ''", clause_type),
+      "Datatype Mismatch");
   }
 
   @Test
