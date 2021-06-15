@@ -249,7 +249,7 @@ public class CustomerConfigValidator {
 
     @Override
     public void doValidate(JsonNode data, ObjectNode errorJson) {
-      if (this.name.equals("GCS") && data.get(GCS_CREDENTIALS_JSON_FIELDNAME) != null) {
+      if (this.name.equals(NAME_GCS) && data.get(GCS_CREDENTIALS_JSON_FIELDNAME) != null) {
         String gsUriPath = data.get(BACKUP_LOCATION_FIELDNAME).asText();
         String gsUri = gsUriPath;
         // Assuming bucket name will always start with gs:// otherwise that will be invalid
