@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -16,6 +18,7 @@ import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.forms.CloudProviderFormData;
@@ -25,12 +28,7 @@ import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData.ZoneData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiOperation;
-import org.apache.commons.collections4.MultiValuedMap;
-import org.apache.commons.collections4.multimap.HashSetValuedHashMap;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -45,7 +43,7 @@ import java.util.*;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
 
-@Api("Provider")
+@Api(value = "Provider", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderController extends AuthenticatedController {
   private final Config config;
 
@@ -105,7 +103,7 @@ public class CloudProviderController extends AuthenticatedController {
 
   // This endpoint we are using only for deleting provider for integration test purpose. our
   // UI should call cleanup endpoint.
-  @ApiOperation(value = "deleteProvider")
+  @ApiOperation(value = "deleteProvider", response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -406,7 +404,7 @@ public class CloudProviderController extends AuthenticatedController {
       response = KubernetesProviderFormData.class)
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
     try {
-      MultiValuedMap<String, String> regionToAZ = getKubernetesRegionToZoneInfo();
+      SetMultimap<String, String> regionToAZ = getKubernetesRegionToZoneInfo();
       if (regionToAZ.isEmpty()) {
         LOG.info(
             "No regions and zones found, check if the region and zone labels are present on the nodes. https://k8s.io/docs/reference/labels-annotations-taints/");
@@ -454,9 +452,9 @@ public class CloudProviderController extends AuthenticatedController {
 
   // Performs region and zone discovery based on
   // topology/failure-domain labels from the Kubernetes nodes.
-  private MultiValuedMap<String, String> getKubernetesRegionToZoneInfo() {
+  private SetMultimap<String, String> getKubernetesRegionToZoneInfo() {
     JsonNode nodeInfos = kubernetesManager.getNodeInfos(null);
-    MultiValuedMap<String, String> regionToAZ = new HashSetValuedHashMap<>();
+    SetMultimap<String, String> regionToAZ = HashMultimap.create();
     for (JsonNode nodeInfo : nodeInfos.path("items")) {
       JsonNode nodeLabels = nodeInfo.path("metadata").path("labels");
       // failure-domain.beta.k8s.io is deprecated as of 1.17

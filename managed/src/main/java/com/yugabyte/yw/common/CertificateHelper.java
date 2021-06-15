@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -63,8 +66,7 @@ import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 /** Helper class for Certificates */
 public class CertificateHelper {
 
@@ -75,6 +77,7 @@ public class CertificateHelper {
   public static final String DEFAULT_CLIENT = "yugabyte";
   public static final String CERT_PATH = "%s/certs/%s/%s";
   public static final String ROOT_CERT = "root.crt";
+  public static final String CLIENT_NODE_SUFFIX = "-client";
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
     try {
@@ -145,15 +148,19 @@ public class CertificateHelper {
               certPath,
               certType);
 
-      LOG.info("Created Root CA for {}.", nodePrefix);
+      LOG.info("Created Root CA for universe {}.", nodePrefix);
       return cert.uuid;
     } catch (NoSuchAlgorithmException
         | IOException
         | OperatorCreationException
         | CertificateException e) {
-      LOG.error("Unable to create RootCA for universe " + nodePrefix, e);
+      LOG.error("Unable to create RootCA for universe {}", nodePrefix, e);
       return null;
     }
+  }
+
+  public static UUID createClientRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
+    return createRootCA(nodePrefix + CLIENT_NODE_SUFFIX, customerUUID, storagePath);
   }
 
   public static JsonNode createClientCertificate(
@@ -286,6 +293,7 @@ public class CertificateHelper {
       Date certExpiry,
       CertificateInfo.Type certType,
       CertificateParams.CustomCertInfo customCertInfo) {
+    LOG.debug("uploadRootCA: Label: {}, customerUUID: {}", label, customerUUID.toString());
     try {
       if (certContent == null) {
         throw new YWServiceException(BAD_REQUEST, "Certfile can't be null");
@@ -330,13 +338,7 @@ public class CertificateHelper {
               storagePath, customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
 
       writeCertFileContentToCertPath(getX509CertificateCertObject(certContent), certPath);
-      LOG.info(
-          "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
-          label,
-          rootCA_UUID,
-          certType,
-          certPath,
-          ((keyPath == null) ? "no private key" : keyPath));
+
       CertificateInfo cert;
       if (certType == CertificateInfo.Type.SelfSigned) {
         writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
@@ -355,10 +357,23 @@ public class CertificateHelper {
             CertificateInfo.create(
                 rootCA_UUID, customerUUID, label, certStart, certExpiry, certPath, customCertInfo);
       }
+      LOG.info(
+          "Uploaded cert label {} (uuid {}) of type {} at paths"
+              + " '{}', '{}' with custom cert info {}",
+          label,
+          rootCA_UUID,
+          certType,
+          certPath,
+          String.valueOf(keyPath),
+          Json.toJson(customCertInfo));
       return cert.uuid;
     } catch (IOException | NoSuchAlgorithmException e) {
-      LOG.error("Could not generate checksum for cert");
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Checksum generation failed.");
+      LOG.error(
+          "uploadRootCA: Could not generate checksum for cert {} for customer {}",
+          label,
+          customerUUID.toString());
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "uploadRootCA: Checksum generation failed.");
     }
   }
 

@@ -1333,11 +1333,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return false;
     }
 
-    return !(task.getTarget().equals(CustomerTask.TargetType.Universe)
-        && (task.getType().equals(CustomerTask.TaskType.Create)
-            || task.getType().equals(CustomerTask.TaskType.Delete)
-            || task.getType().equals(CustomerTask.TaskType.Pause)
-            || task.getType().equals(CustomerTask.TaskType.Resume)));
+    return !((task.getTarget() == CustomerTask.TargetType.Universe)
+        && (task.getType() == CustomerTask.TaskType.Create
+            || task.getType() == CustomerTask.TaskType.UpgradeVMImage
+            || task.getType() == CustomerTask.TaskType.Delete
+            || task.getType() == CustomerTask.TaskType.Pause
+            || task.getType() == CustomerTask.TaskType.Resume));
   }
 
   // TODO: Use of synchronized in static scope! Looks suspicious.

@@ -25,9 +25,6 @@ namespace yb {
 
 class EncryptionParamsPB;
 class RandomAccessFile;
-
-namespace enterprise {
-
 class HeaderManager;
 class BlockAccessCipherStream;
 class OpenSSLInitializer;
@@ -188,7 +185,6 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 
 OpenSSLInitializer& InitOpenSSL();
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_ENCRYPTION_UTIL_H

@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
@@ -12,63 +13,25 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
-import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
-import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
-import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.commissioner.tasks.*;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.NodeUniverseManager;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.AlertConfigFormData;
-import com.yugabyte.yw.forms.DatabaseSecurityFormData;
-import com.yugabyte.yw.forms.DatabaseUserFormData;
-import com.yugabyte.yw.forms.DiskIncreaseFormData;
-import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.RunQueryFormData;
-import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.ToggleTlsParams;
-import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.forms.YWError;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.YWResults.YWSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.HealthCheck;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.queries.QueryHelper;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.*;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yaml.snakeyaml.Yaml;
 import org.yb.client.YBClient;
-import play.Play;
 import play.data.Form;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
@@ -82,30 +45,22 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.stream.Stream;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
 import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFormDataToTaskParams;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.*;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.empty;
 import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
 
-@Api("Universe")
+@Api(value = "Universe", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
 
@@ -399,6 +354,12 @@ public class UniverseController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
 
+    if (!taskParams.rootAndClientRootCASame
+        && taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
+      throw new YWServiceException(
+          BAD_REQUEST, "root and clientRootCA cannot be different for Kubernetes env.");
+    }
+
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
@@ -483,49 +444,87 @@ public class UniverseController extends AuthenticatedController {
               BAD_REQUEST, "IPV6 not supported for platform deployed VMs.");
         }
       }
-      if (primaryCluster.userIntent.enableNodeToNodeEncrypt
-          || primaryCluster.userIntent.enableClientToNodeEncrypt) {
+      if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
+        // create self signed rootCA in case it is not provided by the user.
         if (taskParams.rootCA == null) {
           taskParams.rootCA =
               CertificateHelper.createRootCA(
                   taskParams.nodePrefix, customerUUID, appConfig.getString("yb.storage.path"));
         }
-        // If client encryption is enabled, generate the client cert file for each node.
-        if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
-          CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
-          if (cert.certType == CertificateInfo.Type.SelfSigned) {
-            CertificateHelper.createClientCertificate(
-                taskParams.rootCA,
+        CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+        if (cert.certType != CertificateInfo.Type.SelfSigned) {
+          if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
+            throw new YWServiceException(
+                BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
+          }
+          if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
+            String errMsg =
                 String.format(
-                    CertificateHelper.CERT_PATH,
-                    appConfig.getString("yb.storage.path"),
-                    customerUUID.toString(),
-                    taskParams.rootCA.toString()),
-                CertificateHelper.DEFAULT_CLIENT,
-                null,
-                null);
-          } else {
-            if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
-              throw new YWServiceException(
-                  BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
-            }
-            if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
-              String errMsg =
-                  String.format(
-                      "The certificate %s needs info. Update the cert" + " and retry.",
-                      CertificateInfo.get(taskParams.rootCA).label);
-              LOG.error(errMsg);
-              throw new YWServiceException(BAD_REQUEST, errMsg);
-            }
-            LOG.info(
-                "Skipping client certificate creation for universe {} ({}) "
-                    + "because cert {} (type {})is not a self-signed cert.",
-                universe.name,
-                universe.universeUUID,
-                taskParams.rootCA,
-                cert.certType);
+                    "The certificate %s needs info. Update the cert" + " and retry.",
+                    CertificateInfo.get(taskParams.rootCA).label);
+            LOG.error(errMsg);
+            throw new YWServiceException(BAD_REQUEST, errMsg);
           }
         }
+      }
+      if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
+        if (taskParams.clientRootCA == null) {
+          if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
+            taskParams.clientRootCA = taskParams.rootCA;
+          } else {
+            // create self signed clientRootCA in case it is not provided by the user
+            // and root and clientRoot CA needs to be different
+            taskParams.clientRootCA =
+                CertificateHelper.createClientRootCA(
+                    taskParams.nodePrefix, customerUUID, appConfig.getString("yb.storage.path"));
+          }
+        }
+
+        // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
+        // This is necessary to set to ensure backward compatibity as existing parts of
+        // codebase (kubernetes) uses rootCA for Client to Node Encryption
+        if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
+          taskParams.rootCA = taskParams.clientRootCA;
+        }
+
+        // If client encryption is enabled, generate the client cert file for each node.
+        CertificateInfo cert = CertificateInfo.get(taskParams.clientRootCA);
+        if (cert.certType == CertificateInfo.Type.SelfSigned) {
+          CertificateHelper.createClientCertificate(
+              taskParams.clientRootCA,
+              String.format(
+                  CertificateHelper.CERT_PATH,
+                  appConfig.getString("yb.storage.path"),
+                  customerUUID.toString(),
+                  taskParams.clientRootCA.toString()),
+              CertificateHelper.DEFAULT_CLIENT,
+              null,
+              null);
+        } else {
+          if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
+            throw new YWServiceException(
+                BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
+          }
+          if (!CertificateInfo.isCertificateValid(taskParams.clientRootCA)) {
+            String errMsg =
+                String.format(
+                    "The certificate %s needs info. Update the cert" + " and retry.",
+                    CertificateInfo.get(taskParams.clientRootCA).label);
+            LOG.error(errMsg);
+            throw new YWServiceException(BAD_REQUEST, errMsg);
+          }
+          LOG.info(
+              "Skipping client certificate creation for universe {} ({}) "
+                  + "because cert {} (type {})is not a self-signed cert.",
+              universe.name,
+              universe.universeUUID,
+              taskParams.clientRootCA,
+              cert.certType);
+        }
+      }
+
+      if (primaryCluster.userIntent.enableNodeToNodeEncrypt
+          || primaryCluster.userIntent.enableClientToNodeEncrypt) {
         // Set the flag to mark the universe as using TLS enabled and therefore not allowing
         // insecure connections.
         taskParams.allowInsecure = false;
@@ -773,6 +772,16 @@ public class UniverseController extends AuthenticatedController {
     taskParams.enableClientToNodeEncrypt = requestParams.enableClientToNodeEncrypt;
     taskParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
+
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      throw new YWServiceException(BAD_REQUEST, "Kubernetes Upgrade is not supported.");
+    }
+
+    if (!universeDetails.rootAndClientRootCASame
+        || (universeDetails.rootCA != universeDetails.clientRootCA)) {
+      throw new YWServiceException(
+          BAD_REQUEST, "RootCA and ClientRootCA cannot be different for Upgrade.");
+    }
 
     // Create root certificate if not exist
     taskParams.rootCA = universeDetails.rootCA;
@@ -1472,6 +1481,41 @@ public class UniverseController extends AuthenticatedController {
     CustomerTask.TaskType customerTaskType;
     // Validate if any required params are missed based on the taskType
     switch (taskParams.taskType) {
+      case VMImage:
+        if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+          throw new YWServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled");
+        }
+
+        CloudType provider = primaryIntent.providerType;
+        if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
+          throw new YWServiceException(
+              BAD_REQUEST,
+              "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
+        }
+
+        boolean hasEphemeralStorage = false;
+        if (provider == CloudType.gcp) {
+          if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
+            hasEphemeralStorage = true;
+          }
+        } else {
+          if (taskParams.getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
+            hasEphemeralStorage = true;
+          }
+        }
+
+        if (hasEphemeralStorage) {
+          throw new YWServiceException(
+              BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage");
+        }
+
+        if (taskParams.machineImages.isEmpty()) {
+          throw new YWServiceException(
+              BAD_REQUEST, "machineImages param is required for taskType: " + taskParams.taskType);
+        }
+
+        customerTaskType = CustomerTask.TaskType.UpgradeVMImage;
+        break;
       case Software:
         customerTaskType = CustomerTask.TaskType.UpgradeSoftware;
         if (taskParams.ybSoftwareVersion == null || taskParams.ybSoftwareVersion.isEmpty()) {

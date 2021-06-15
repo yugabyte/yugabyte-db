@@ -89,7 +89,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     // Use a high enough initial sequence number.
     FLAGS_initial_seqno = 1 << 20;
 
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client_ = ASSERT_RESULT(YBClientBuilder()
