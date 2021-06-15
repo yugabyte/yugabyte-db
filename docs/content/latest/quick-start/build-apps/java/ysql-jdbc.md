@@ -60,7 +60,7 @@ This tutorial assumes that:
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
-## Create the sample Java application
+## Create and configure the Java project
 
 1. Create a project called "MySample".
 
@@ -134,6 +134,8 @@ This tutorial assumes that:
     ```sh
     $ mvn install
     ```
+
+## Create the sample Java application
 
 1. Copy the following Java code to a new file named `src/main/java/com/yugabyte/HelloSqlApp.java`:
 

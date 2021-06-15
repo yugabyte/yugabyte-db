@@ -1,8 +1,8 @@
 ---
-title: Build a Java application that uses YSQL
+title: Build a Java application that uses YSQL over SSL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a sample Java application with the PostgreSQL JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
+description: Build a sample Java application with the PostgreSQL JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB via SSL/TLS.
 menu:
   latest:
     parent: build-apps
@@ -58,9 +58,11 @@ This tutorial assumes that:
 
 ## Set up SSL certificates for Java applications
 
-1. Download YSQL certificates `yugabytedb.crt`, `yugabytedb.key`, and `ca.crt`. Follow the instructions [here](../../../yugabyte-platform/security/enable-encryption-in-transit/#how-to-connect-to-a-ysql-endpoint-with-tls).
+To build a Java application that connects to YugabyteDB over an SSL connection, you need the root certificate (`ca.crt`), and node certificate (`yugabytedb.crt`) and key (`yugabytedb.key`) files. If you have not generated these files, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-1. If you do not have access to the system cacerts truststore you can create your own truststore.
+1. Download the certificate (`yugabytedb.crt`, `yugabytedb.key`, and `ca.crt`) files (see [Copy configuration files to the nodes](../../../../secure/tls-encryption/server-certificates/#copy-configuration-files-to-the-nodes)).
+
+1. If you do not have access to the system `cacerts` Java truststore you can create your own truststore.
 
     ```sh
     $ keytool -keystore ybtruststore -alias ybtruststore -import -file ca.crt
@@ -84,7 +86,7 @@ This tutorial assumes that:
     $ openssl pkcs8 -topk8 -inform PEM -in yugabytedb.key -outform DER -nocrypt -out yugabytedb.key.pk8
     ```
 
-## Create the sample Java application with TLS connection
+## Create and configure the Java project
 
 1. Create a project called "MySample".
 
@@ -153,13 +155,15 @@ This tutorial assumes that:
 
 1. Save and close `pom.xml`.
 
-1. Create an ssl resource folder.
+1. Create an ssl resource directory.
 
     ```sh
     $ mkdir -p src/main/resources/ssl
     ```
 
-1. Copy the `yugabytedb.crt.der` and `yugabytedb.key.pk8` certificates into the folder created in the previous step.
+1. Copy the `yugabytedb.crt.der` and `yugabytedb.key.pk8` certificates into the `ssl` directory created in the previous step.
+
+## Create the sample Java application with TLS connection
 
 1. Copy the following Java code to a new file named `src/main/java/com/yugabyte/HelloSqlSslApp.java`:
 
