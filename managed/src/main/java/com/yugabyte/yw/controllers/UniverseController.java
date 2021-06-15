@@ -49,6 +49,8 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.stream.Stream;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
@@ -95,38 +97,25 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /**
-   * API that checks if a Universe with a given name already exists.
+   * Find universe with name filter.
    *
-   * @return true if universe already exists, false otherwise
+   * @return List of Universe UUID
    */
-  // TODO(.*endra):  This method is buggy. The javadoc does not match impl.
-  //  Replace findByName with findByName_Corrected when UI is fixed to expect opposite.
-  @Deprecated
-  public Result findByName(UUID customerUUID, String universeName) {
+  public Result find(UUID customerUUID) {
     // Verify the customer with this universe is present.
-    Customer.getOrBadRequest(customerUUID);
-    LOG.info("Finding Universe with name {}.", universeName);
-    if (Universe.checkIfUniverseExists(universeName)) {
-      throw new YWServiceException(BAD_REQUEST, "Universe already exists");
-    } else {
-      return withMessage("Universe does not Exist");
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    String universeName = request().getQueryString("name");
+    if (universeName != null) {
+      LOG.info("Finding Universe with name {}.", universeName);
+      Optional<Universe> universe = Universe.maybeGetUniverseByName(universeName);
+      if (universe.isPresent()) {
+        return Results.status(OK, Json.toJson(Arrays.asList(universe.get().universeUUID)));
+      }
+      return Results.status(OK, Json.toJson(Collections.emptyList()));
     }
-  }
-
-  /**
-   * Find universe by name
-   *
-   * @return UUID of universe looked up by name or else NOT_FOUND error
-   */
-  public Result findByName_Corrected(UUID customerUUID, String universeName) {
-    // Verify the customer with this universe is present.
-    Customer.getOrBadRequest(customerUUID);
-    LOG.info("Finding Universe with name {}.", universeName);
-    Universe universe = Universe.getUniverseByName(universeName);
-    if (universe == null) {
-      throw new YWServiceException(NOT_FOUND, "Universe does not Exist");
-    }
-    return Results.status(OK, Json.toJson(universe.universeUUID));
+    LOG.info("Fetching All Universes.");
+    Set<UUID> result = Universe.getAllUUIDs(customer);
+    return Results.status(OK, Json.toJson(result));
   }
 
   @ApiOperation(value = "setDatabaseCredentials", response = YWSuccess.class)
