@@ -48,6 +48,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
   private static Set<String> API_URL =
       ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
 
+  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+  public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
+
   @Inject EncryptionAtRestManager keyManager;
 
   @Inject Commissioner commissioner;
@@ -56,14 +60,17 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   private void validateKMSProviderConfigFormData(ObjectNode formData, String keyProvider) {
     if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())
-        && (formData.get("AWS_ACCESS_KEY_ID") != null
-            || formData.get("AWS_SECRET_ACCESS_KEY") != null)) {
+        && (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null
+            || formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null)) {
       CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
       Map<String, String> config = new HashMap<>();
-      config.put("AWS_ACCESS_KEY_ID", formData.get("AWS_ACCESS_KEY_ID").textValue());
-      config.put("AWS_SECRET_ACCESS_KEY", formData.get("AWS_SECRET_ACCESS_KEY").textValue());
+      config.put(
+          AWS_ACCESS_KEY_ID_FIELDNAME, formData.get(AWS_ACCESS_KEY_ID_FIELDNAME).textValue());
+      config.put(
+          AWS_SECRET_ACCESS_KEY_FIELDNAME,
+          formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).textValue());
       if (cloudAPI != null
-          && !cloudAPI.isValidCreds(config, formData.get("AWS_REGION").textValue())) {
+          && !cloudAPI.isValidCreds(config, formData.get(AWS_REGION_FIELDNAME).textValue())) {
         throw new YWServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
       }
     }

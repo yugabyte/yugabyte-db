@@ -225,9 +225,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
     ObjectNode kmsConfigReq =
         Json.newObject()
-            .put("AWS_ACCESS_KEY_ID", "aws_accesscode")
-            .put("AWS_REGION", "ap-south-1")
-            .put("AWS_SECRET_ACCESS_KEY", "aws_secretKey")
+            .put(EncryptionAtRestController.AWS_ACCESS_KEY_ID_FIELDNAME, "aws_accesscode")
+            .put(EncryptionAtRestController.AWS_REGION_FIELDNAME, "ap-south-1")
+            .put(EncryptionAtRestController.AWS_SECRET_ACCESS_KEY_FIELDNAME, "aws_secretKey")
             .put("name", "test");
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
@@ -244,9 +244,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
     ObjectNode kmsConfigReq =
         Json.newObject()
-            .put("AWS_ACCESS_KEY_ID", "valid_accessKey")
-            .put("AWS_REGION", "ap-south-1")
-            .put("AWS_SECRET_ACCESS_KEY", "valid_secretKey")
+            .put(EncryptionAtRestController.AWS_ACCESS_KEY_ID_FIELDNAME, "valid_accessKey")
+            .put(EncryptionAtRestController.AWS_REGION_FIELDNAME, "ap-south-1")
+            .put(EncryptionAtRestController.AWS_SECRET_ACCESS_KEY_FIELDNAME, "valid_secretKey")
             .put("name", "test");
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
