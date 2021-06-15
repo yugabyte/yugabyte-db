@@ -918,7 +918,6 @@ export default class ClusterFields extends Component {
       formValues,
       clusterType
     } = this.props;
-
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
     const verifyIntentConditions = function () {
@@ -946,7 +945,7 @@ export default class ClusterFields extends Component {
         ) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
-          this.props.submitConfigureUniverse(universeTaskParams);
+          this.props.submitConfigureUniverse(universeTaskParams, currentUniverse.data.universeUUID);
         }
       } else {
         // Create flow
