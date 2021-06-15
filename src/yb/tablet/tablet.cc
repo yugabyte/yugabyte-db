@@ -2225,7 +2225,8 @@ Status Tablet::BackfillIndexes(
     const CoarseTimePoint deadline,
     const HybridTime read_time,
     std::string* backfilled_until,
-    std::unordered_set<TableId>* failed_indexes) {
+    std::unordered_set<TableId>* failed_indexes,
+    int* number_of_rows_processed = nullptr) {
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
@@ -2317,7 +2318,7 @@ Status Tablet::BackfillIndexes(
         (FLAGS_TEST_backfill_paging_size > 0 &&
          num_rows_processed == FLAGS_TEST_backfill_paging_size)) {
       resume_backfill_from = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
-      break;
+      break;.
     }
 
     RETURN_NOT_OK(iter->NextRow(&row));
@@ -2330,6 +2331,7 @@ Status Tablet::BackfillIndexes(
   }
 
   VLOG(1) << "Processed " << num_rows_processed << " rows";
+  *number_rows_processed = num_rows_processed;
   RETURN_NOT_OK(FlushIndexBatchIfRequired(
       &index_requests, /* forced */ true, read_time, &last_flushed_at, failed_indexes));
   *backfilled_until = resume_backfill_from;
