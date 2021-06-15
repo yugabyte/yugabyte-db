@@ -2509,6 +2509,43 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
+  {
+    auto l = cluster_config_->LockForRead();
+    if (l->pb.cluster_uuid() == req->producer_id()) {
+      return STATUS(InvalidArgument, "The request UUID and cluster UUID are identical.",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+  }
+
+  {
+    auto request_master_addresses = req->producer_master_addresses();
+    std::vector<ServerEntryPB> cluster_master_addresses;
+    RETURN_NOT_OK(master_->ListMasters(&cluster_master_addresses));
+    for (const auto &req_elem : request_master_addresses) {
+      for (const auto &cluster_elem : cluster_master_addresses) {
+        if (cluster_elem.has_registration()) {
+          auto p_rpc_addresses = cluster_elem.registration().private_rpc_addresses();
+          for (const auto &p_rpc_elem : p_rpc_addresses) {
+            if (req_elem.host() == p_rpc_elem.host() && req_elem.port() == p_rpc_elem.port()) {
+              return STATUS(InvalidArgument,
+                "Duplicate between request master addresses and private RPC addresses",
+                req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+            }
+          }
+
+          auto broadcast_addresses = cluster_elem.registration().broadcast_addresses();
+          for (const auto &bc_elem : broadcast_addresses) {
+            if (req_elem.host() == bc_elem.host() && req_elem.port() == bc_elem.port()) {
+              return STATUS(InvalidArgument,
+                "Duplicate between request master addresses and broadcast addresses",
+                req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+            }
+          }
+        }
+      }
+    }
+  }
+
   std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;
 
   if (req->producer_bootstrap_ids_size() > 0) {
