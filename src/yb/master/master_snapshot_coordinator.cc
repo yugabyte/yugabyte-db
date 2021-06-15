@@ -357,7 +357,7 @@ class MasterSnapshotCoordinator::Impl {
       .snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(state.request()->snapshot_id())),
       .restore_at = HybridTime::FromPB(state.request()->snapshot_hybrid_time()),
       .restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(
-        state.request()->restoration_id())),
+          state.request()->restoration_id())),
       .op_id = state.op_id(),
       .write_time = state.hybrid_time(),
       .term = leader_term,
@@ -907,6 +907,7 @@ class MasterSnapshotCoordinator::Impl {
           tablet, std::string(), tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED,
           /* callback= */ nullptr);
       task->SetRestorationId(restoration->restoration_id());
+      task->SetRestorationTime(context_.Clock()->Now());
       context_.ScheduleTabletSnapshotOp(task);
     }
   }
@@ -1006,12 +1007,11 @@ class MasterSnapshotCoordinator::Impl {
             MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id(),
                              std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
         task->SetSnapshotHybridTime(restore_at);
-        if (restoration_id) {
-          task->SetRestorationId(restoration_id);
-        }
+        task->SetRestorationId(restoration_id);
         if (send_metadata) {
           task->SetMetadata(tablet->table()->LockForRead()->pb);
         }
+
         context_.ScheduleTabletSnapshotOp(task);
       }
     }

@@ -57,6 +57,8 @@ message TabletSnapshotOpRequestPB {
 
   fixed64 snapshot_hybrid_time = 7;
 
+  fixed64 restoration_hybrid_time = 17;
+
   // Extra data assigned for this snapshot request, so instance it could contain SysRowEntries.
   google.protobuf.Any extra_data = 8;
 
