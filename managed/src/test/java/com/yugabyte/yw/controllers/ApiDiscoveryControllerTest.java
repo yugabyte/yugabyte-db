@@ -53,18 +53,20 @@ public class ApiDiscoveryControllerTest extends FakeDBApplication {
 
   @Test
   public void testApiIndexWithAuthGoodRoute() {
-    Arrays.asList("/api/index", "/api/v1/index").forEach(endPoint -> {
-        Result result = route(fakeRequest("GET", endPoint).cookie(validCookie));
-        assertEquals(OK, result.status());
-    });
+    Arrays.asList("/api/index", "/api/v1/index")
+        .forEach(
+            endPoint -> {
+              Result result = route(fakeRequest("GET", endPoint).cookie(validCookie));
+              assertEquals(OK, result.status());
+            });
   }
 
   @Test
   public void testApiIndexWithAuthGoodRouteHasKeys() {
     Result result = route(fakeRequest("GET", "/api/index").cookie(validCookie));
     assertEquals(OK, result.status());
-    ArrayNode json = (ArrayNode)Json.parse(contentAsString(result));
-    ObjectNode sampleEndpoint = (ObjectNode)json.get(0);
+    ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
+    ObjectNode sampleEndpoint = (ObjectNode) json.get(0);
     assertThat(sampleEndpoint.get("method"), notNullValue());
     assertThat(sampleEndpoint.get("path_pattern"), notNullValue());
     assertThat(sampleEndpoint.get("controller_method_invocation"), notNullValue());
@@ -74,18 +76,19 @@ public class ApiDiscoveryControllerTest extends FakeDBApplication {
   public void testApiIndexWithAuthGoodRouteHasSelfDescription() {
     Result result = route(fakeRequest("GET", "/api/v1/index").cookie(validCookie));
     assertEquals(OK, result.status());
-    ArrayNode json = (ArrayNode)Json.parse(contentAsString(result));
+    ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
     boolean endPointFound = false;
-    for (JsonNode n: json) {
-        if (n.get("path_pattern").textValue().equals("/api/v1/index")) {
-            endPointFound = true;
-            assertTrue(n.get("method").textValue().equals("GET"));
-            assertTrue(n.get("controller_method_invocation").textValue().equals(
-                "com.yugabyte.yw.controllers.ApiDiscoveryController.index()"));
-            break;
-        }
+    for (JsonNode n : json) {
+      if (n.get("path_pattern").textValue().equals("/api/v1/index")) {
+        endPointFound = true;
+        assertTrue(n.get("method").textValue().equals("GET"));
+        assertTrue(
+            n.get("controller_method_invocation")
+                .textValue()
+                .equals("com.yugabyte.yw.controllers.ApiDiscoveryController.index()"));
+        break;
+      }
     }
     assertTrue(endPointFound);
   }
-
 }

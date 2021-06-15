@@ -111,6 +111,9 @@ enum class ErrorCode : int64_t {
   INCOMPATIBLE_COPARTITION_SCHEMA = -221,
   INVALID_ROLE_DEFINITION = -222,
   DUPLICATE_ROLE = -223,
+  NULL_IN_COLLECTIONS = -224,
+  DUPLICATE_UPDATE_PROPERTY = -225,
+  INVALID_UPDATE_PROPERTY = -226,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

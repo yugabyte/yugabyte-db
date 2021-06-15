@@ -35,7 +35,9 @@
 #include <string>
 #include <unordered_map>
 
+#include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_util.h"
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -46,10 +48,6 @@ namespace yb {
 
 class MemTracker;
 class ThreadPoolToken;
-
-namespace log {
-class Log;
-} // namespace log
 
 namespace consensus {
 
@@ -70,7 +68,7 @@ class PeerManager {
               PeerProxyFactory* peer_proxy_factory,
               PeerMessageQueue* queue,
               ThreadPoolToken* raft_pool_token,
-              const scoped_refptr<log::Log>& log);
+              const log::LogPtr& log);
 
   virtual ~PeerManager();
 
@@ -97,7 +95,7 @@ class PeerManager {
   PeerProxyFactory* peer_proxy_factory_;
   PeerMessageQueue* queue_;
   ThreadPoolToken* raft_pool_token_;
-  scoped_refptr<log::Log> log_;
+  log::LogPtr log_;
   PeersMap peers_;
   Consensus* consensus_ = nullptr;
   mutable simple_spinlock lock_;

@@ -29,7 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
-public class DeleteBackupTest  extends FakeDBApplication {
+public class DeleteBackupTest extends FakeDBApplication {
 
   private Customer defaultCustomer;
   private Backup backup;
@@ -39,8 +39,8 @@ public class DeleteBackupTest  extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     defaultCustomer = ModelFactory.testCustomer();
     CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
-    backup = ModelFactory.createBackup(defaultCustomer.uuid,
-      universeUUID, s3StorageConfig.configUUID);
+    backup =
+        ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
   }
 
   // Test that only backups in Complete state can be deleted.
@@ -67,7 +67,7 @@ public class DeleteBackupTest  extends FakeDBApplication {
     params.backupUUID = backup.backupUUID;
     params.customerUUID = defaultCustomer.uuid;
 
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
@@ -88,7 +88,7 @@ public class DeleteBackupTest  extends FakeDBApplication {
     params.backupUUID = backup.backupUUID;
     params.customerUUID = defaultCustomer.uuid;
 
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"success\": false}";
     shellResponse.code = 22;
     when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
@@ -109,7 +109,7 @@ public class DeleteBackupTest  extends FakeDBApplication {
     params.backupUUID = backup.backupUUID;
     params.customerUUID = defaultCustomer.uuid;
 
-    ShellResponse shellResponse =  new ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"success\": false}";
     shellResponse.code = 22;
     when(mockTableManager.deleteBackup(any())).thenThrow(new RuntimeException("expected"));

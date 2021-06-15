@@ -26,11 +26,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
 
-
 import play.data.validation.Constraints;
 import play.libs.Json;
 import static play.mvc.Http.Status.BAD_REQUEST;
-
 
 @Entity
 public class Users extends Model {
@@ -38,9 +36,7 @@ public class Users extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
   // A globally unique UUID for the Users.
 
-  /**
-   * These are the various states of the task and taskgroup.
-   */
+  /** These are the various states of the task and taskgroup. */
   public enum Role {
     @EnumValue("Admin")
     Admin,
@@ -69,7 +65,6 @@ public class Users extends Model {
       }
     }
   }
-
 
   @Id
   @Column(nullable = false, unique = true)
@@ -119,18 +114,22 @@ public class Users extends Model {
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private Role role;
+
   public Role getRole() {
     return this.role;
   }
+
   public void setRole(Role role) {
     this.role = role;
   }
 
   @Column(nullable = false)
   private boolean isPrimary;
+
   public boolean getIsPrimary() {
     return this.isPrimary;
   }
+
   public void setIsPrimary(boolean isPrimary) {
     this.isPrimary = isPrimary;
   }
@@ -139,8 +138,7 @@ public class Users extends Model {
     return this.authTokenIssueDate;
   }
 
-  public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {
-  };
+  public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
 
   @Deprecated
   public static Users get(UUID userUUID) {
@@ -175,8 +173,8 @@ public class Users extends Model {
    * @param password
    * @return Newly Created Users
    */
-  public static Users create(String email, String password, Role role, UUID customerUUID,
-                             boolean isPrimary) {
+  public static Users create(
+      String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
     Users users = new Users();
     users.email = email.toLowerCase();
     users.setPassword(password);
@@ -189,8 +187,7 @@ public class Users extends Model {
   }
 
   /**
-   * Validate if the email and password combination is valid, we use this to authenticate
-   * the Users.
+   * Validate if the email and password combination is valid, we use this to authenticate the Users.
    *
    * @param email
    * @param password
@@ -207,8 +204,7 @@ public class Users extends Model {
   }
 
   /**
-   * Validate if the email and password combination is valid, we use this to authenticate
-   * the Users.
+   * Validate if the email and password combination is valid, we use this to authenticate the Users.
    *
    * @param email
    * @return Authenticated Users Info
@@ -301,32 +297,26 @@ public class Users extends Model {
     }
   }
 
-  /**
-   * Delete authToken for the Users.
-   */
+  /** Delete authToken for the Users. */
   public void deleteAuthToken() {
     authToken = null;
     authTokenIssueDate = null;
     save();
   }
 
-  /**
-   * Get features for this Users.
-   */
+  /** Get features for this Users. */
   public JsonNode getFeatures() {
     return features == null ? Json.newObject() : features;
   }
 
-  /**
-   * Set features for this User.
-   */
+  /** Set features for this User. */
   public void setFeatures(JsonNode input) {
     this.features = input;
   }
 
   /**
-   * Upserts features for this Users. If updating a feature, only specified features will
-   * be updated.
+   * Upserts features for this Users. If updating a feature, only specified features will be
+   * updated.
    */
   public void upsertFeatures(JsonNode input) {
     if (features == null) {

@@ -31,14 +31,11 @@ public class TokenAuthenticator extends Action.Simple {
   public static final String API_TOKEN_HEADER = "X-AUTH-YW-API-TOKEN";
   public static final String COOKIE_PLAY_SESSION = "PLAY_SESSION";
 
-  @Inject
-  ConfigHelper configHelper;
+  @Inject ConfigHelper configHelper;
 
-  @Inject
-  RuntimeConfigFactory runtimeConfigFactory;
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject
-  private PlaySessionStore playSessionStore;
+  @Inject private PlaySessionStore playSessionStore;
 
   private Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
@@ -50,8 +47,8 @@ public class TokenAuthenticator extends Action.Simple {
       final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
       final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
       if (profileManager.isAuthenticated()) {
-        String emailAttr = runtimeConfigFactory.globalRuntimeConf().
-          getString("yb.security.oidcEmailAttribute");
+        String emailAttr =
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
         String email = "";
         if (emailAttr.equals("")) {
           email = profileManager.get(true).get().getEmail();
@@ -81,16 +78,20 @@ public class TokenAuthenticator extends Action.Simple {
     Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
     Matcher matcher = pattern.matcher(path);
     UUID custUUID = null;
-    String patternForUUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" +
-              "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+    String patternForUUID =
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
     String patternForHost = ".+:[0-9]{4,5}";
 
     // Allow for disabling authentication on proxy endpoint so that
     // Prometheus can scrape database nodes.
-    if (Pattern.matches(String.format("^.*/universes/%s/proxy/%s/(metrics|prometheus-metrics)$",
-          patternForUUID, patternForHost), path) &&
-      !runtimeConfigFactory.globalRuntimeConf()
-                           .getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
+    if (Pattern.matches(
+            String.format(
+                "^.*/universes/%s/proxy/%s/(metrics|prometheus-metrics)$",
+                patternForUUID, patternForHost),
+            path)
+        && !runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
       return delegate.call(ctx);
     }
 
@@ -170,8 +171,7 @@ public class TokenAuthenticator extends Action.Simple {
     }
 
     // All users have access to get, metrics and setting an API token.
-    if (requestType.equals("GET") || endPoint.equals("/metrics") ||
-      endPoint.equals("/api_token")) {
+    if (requestType.equals("GET") || endPoint.equals("/metrics") || endPoint.equals("/api_token")) {
       return true;
     }
     // If the user is readonly, then don't get any further access.
@@ -179,8 +179,9 @@ public class TokenAuthenticator extends Action.Simple {
       return false;
     }
     // All users other than read only get access to backup endpoints.
-    if (endPoint.endsWith("/create_backup") || endPoint.endsWith("/multi_table_backup") ||
-      endPoint.endsWith("/restore")) {
+    if (endPoint.endsWith("/create_backup")
+        || endPoint.endsWith("/multi_table_backup")
+        || endPoint.endsWith("/restore")) {
       return true;
     }
     // If the user is backupAdmin, they don't get further access.

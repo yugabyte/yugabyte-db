@@ -44,7 +44,7 @@ public class WaitForServerReady extends ServerSubTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   private void sleepFor(int waitTimeMs) {
@@ -69,8 +69,10 @@ public class WaitForServerReady extends ServerSubTaskBase {
     checkParams();
 
     int numIters = 0;
-    int userWaitTimeMs = taskParams().waitTimeMs != 0 ?
-            taskParams().waitTimeMs : UpgradeParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
+    int userWaitTimeMs =
+        taskParams().waitTimeMs != 0
+            ? taskParams().waitTimeMs
+            : UpgradeParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
 
     YBClient client = getClient();
     HostAndPort hp = getHostPort();
@@ -83,27 +85,36 @@ public class WaitForServerReady extends ServerSubTaskBase {
         response = client.isServerReady(hp, isTserverTask);
 
         if (response.hasError()) {
-          LOG.info("Response has error {} after iters={}.",
-                   response.errorMessage(), numIters);
+          LOG.info("Response has error {} after iters={}.", response.errorMessage(), numIters);
           break;
         }
 
         if (response.getNumNotRunningTablets() == 0) {
-          LOG.info("{} on node {} ready after iters={}.",
-                   taskParams().serverType, taskParams().nodeName, numIters);
+          LOG.info(
+              "{} on node {} ready after iters={}.",
+              taskParams().serverType,
+              taskParams().nodeName,
+              numIters);
           break;
         }
 
         if (numIters > (MAX_TOTAL_WAIT_MS / WAIT_EACH_ATTEMPT_MS)) {
-          LOG.info("Timing out after iters={}. {} tablets not running, out of {}.",
-                   numIters, response.getNumNotRunningTablets(), response.getTotalTablets());
+          LOG.info(
+              "Timing out after iters={}. {} tablets not running, out of {}.",
+              numIters,
+              response.getNumNotRunningTablets(),
+              response.getTotalTablets());
           break;
         }
 
         if (numIters % LOG_EVERY_NUM_ITERS == 0) {
-          LOG.info("{} on node {} not ready after iters={}, {} tablets not running out of {}.",
-                   taskParams().serverType, taskParams().nodeName, numIters,
-                   response.getNumNotRunningTablets(), response.getTotalTablets());
+          LOG.info(
+              "{} on node {} not ready after iters={}, {} tablets not running out of {}.",
+              taskParams().serverType,
+              taskParams().nodeName,
+              numIters,
+              response.getNumNotRunningTablets(),
+              response.getTotalTablets());
         }
 
         sleepFor(WAIT_EACH_ATTEMPT_MS);

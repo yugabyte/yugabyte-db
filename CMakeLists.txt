@@ -220,15 +220,7 @@ endif()
 if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "${YB_BUILD_TYPE}")
 elseif ("${COMPILER_FAMILY}" STREQUAL "clang")
-  if(NOT APPLE AND
-     (NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx" OR
-      "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0"))
-    # This must be a Clang third-party build where we use "uninstrumented" instead of
-    # "clang_uninstrumented" because everything is built with Clang.
-    set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
-  else()
-    set(THIRDPARTY_INSTRUMENTATION_TYPE "clang_uninstrumented")
-  endif()
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
 elseif ("${COMPILER_FAMILY}" STREQUAL "gcc")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
 else()
@@ -507,14 +499,7 @@ set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
 if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   YB_SETUP_SANITIZER()
 elseif (NOT APPLE AND IS_CLANG)
-  # Special setup for Clang on Linux. This is not needed on macOS.
-  if (EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
-    YB_SETUP_CLANG("clang_uninstrumented")
-  else()
-    # Going forward, for third-party dependency builds where we are only using Clang to build
-   # everything, we will simply use the "uninstrumented" path instead.
-    YB_SETUP_CLANG("uninstrumented")
-  endif()
+  YB_SETUP_CLANG()
 endif()
 
 if (USING_LINUXBREW)

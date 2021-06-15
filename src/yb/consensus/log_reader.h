@@ -55,9 +55,6 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 }
 
 namespace log {
-class Log;
-class LogIndex;
-struct LogIndexEntry;
 
 // Reads a set of segments from a given path. Segment headers and footers
 // are read and parsed, but entries are not.

@@ -172,7 +172,7 @@ This tutorial assumes that:
 1. Run your new program.
 
     ```sh
-    $ mvn -q exec:java -Dexec.mainClass=com.yugabyte.HelloSqlApp
+    $ mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.HelloSqlApp
     ```
 
     You should see the following as the output:

@@ -49,10 +49,6 @@
 namespace yb {
 class FsManager;
 
-namespace log {
-class ReadableLogSegment;
-} // namespace log
-
 namespace tserver {
 
 class TabletPeerLookupIf;

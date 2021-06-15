@@ -288,7 +288,7 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
     return STATUS(Corruption, "remote_method in request header is not initialized",
         header_.remote_method().InitializationErrorString());
   }
-  remote_method_.FromPB(header_.remote_method());
+  remote_method_ = header_.remote_method();
 
   return Status::OK();
 }
@@ -586,7 +586,7 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
     if (now > deadline) {
       auto passed = now - last_read_time_;
       const auto status = STATUS_FORMAT(
-          NetworkError, "Read timeout, passed: $0, timeout: $1, now: $2, last_read_time_: $3",
+          NetworkError, "Rpc timeout, passed: $0, timeout: $1, now: $2, last_read_time_: $3",
           passed, timeout, now, last_read_time_);
       LOG(WARNING) << connection->ToString() << ": " << status;
       connection->reactor()->DestroyConnection(connection.get(), status);

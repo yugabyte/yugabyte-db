@@ -115,6 +115,7 @@ set(CONSENSUS_SRCS
   consensus_meta.cc
   consensus_peers.cc
   consensus_queue.cc
+  consensus_round.cc
   leader_election.cc
   log_cache.cc
   peer_manager.cc

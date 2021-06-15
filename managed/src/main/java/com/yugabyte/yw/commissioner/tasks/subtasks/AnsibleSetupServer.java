@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
@@ -22,7 +21,6 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 
 import java.util.List;
-
 
 public class AnsibleSetupServer extends NodeTaskBase {
 
@@ -45,11 +43,13 @@ public class AnsibleSetupServer extends NodeTaskBase {
     // If set, we will use this Amazon Resource Name of the user's
     // instance profile instead of an access key id and secret
     public String ipArnString;
+    public String machineImage;
+    public boolean reprovision;
   }
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -67,8 +67,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
       LOG.info("Skipping ansible provision.");
     } else {
       // Execute the ansible command.
-      ShellResponse response = getNodeManager().nodeCommand(
-          NodeManager.NodeCommandType.Provision, taskParams());
+      ShellResponse response =
+          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Provision, taskParams());
       processShellResponse(response);
     }
   }

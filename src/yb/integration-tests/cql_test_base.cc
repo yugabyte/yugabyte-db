@@ -25,7 +25,7 @@ void CqlTestBase::SetUp() {
 
   MiniClusterOptions options;
   options.num_tablet_servers = 3;
-  cluster_ = std::make_unique<MiniCluster>(env_.get(), options);
+  cluster_ = std::make_unique<MiniCluster>(options);
   ASSERT_OK(cluster_->Start());
 
   ASSERT_OK(CreateClient());
@@ -49,7 +49,7 @@ void CqlTestBase::SetUp() {
   ASSERT_OK(cql_server_->Start());
 
   driver_ = std::make_unique<CppCassandraDriver>(
-      std::vector<std::string>{ cql_host }, cql_port, false);
+      std::vector<std::string>{ cql_host }, cql_port, UsePartitionAwareRouting::kTrue);
 }
 
 void CqlTestBase::DoTearDown() {

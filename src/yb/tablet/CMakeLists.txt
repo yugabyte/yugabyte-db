@@ -49,7 +49,6 @@ set(TABLET_SRCS
   transaction_loader.cc
   transaction_participant.cc
   transaction_status_resolver.cc
-  operation_order_verifier.cc
   operations/operation.cc
   operations/change_metadata_operation.cc
   operations/history_cutoff_operation.cc

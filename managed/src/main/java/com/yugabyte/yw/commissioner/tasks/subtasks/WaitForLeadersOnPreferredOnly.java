@@ -37,7 +37,7 @@ public class WaitForLeadersOnPreferredOnly extends AbstractTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -55,7 +55,7 @@ public class WaitForLeadersOnPreferredOnly extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     boolean ret = false;
     YBClient client = null;
     try {

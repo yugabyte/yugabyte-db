@@ -120,20 +120,43 @@ Status CreateTabletServerMap(master::MasterServiceProxy* master_proxy,
                              rpc::ProxyCache* proxy_cache,
                              TabletServerMap* ts_map);
 
+template <class Getter>
+auto GetForEachReplica(const std::vector<TServerDetails*>& replicas,
+                       const MonoDelta& timeout,
+                       const Getter& getter)
+    -> Result<std::vector<typename decltype(getter(nullptr, nullptr))::ValueType>> {
+  std::vector<typename decltype(getter(nullptr, nullptr))::ValueType> result;
+  auto deadline = CoarseMonoClock::now() + timeout;
+  rpc::RpcController controller;
+
+  for (TServerDetails* ts : replicas) {
+    controller.Reset();
+    controller.set_deadline(deadline);
+    result.push_back(VERIFY_RESULT_PREPEND(
+        getter(ts, &controller),
+        Format("Failed to fetch last op id from $0", ts->instance_id)));
+  }
+
+  return result;
+}
+
 // Gets a vector containing the latest OpId for each of the given replicas.
 // Returns a bad Status if any replica cannot be reached.
-Status GetLastOpIdForEachReplica(const TabletId& tablet_id,
-                                 const std::vector<TServerDetails*>& replicas,
-                                 consensus::OpIdType opid_type,
-                                 const MonoDelta& timeout,
-                                 std::vector<OpIdPB>* op_ids);
+Result<std::vector<OpId>> GetLastOpIdForEachReplica(
+    const TabletId& tablet_id,
+    const std::vector<TServerDetails*>& replicas,
+    consensus::OpIdType opid_type,
+    const MonoDelta& timeout,
+    consensus::OperationType op_type = consensus::OperationType::UNKNOWN_OP);
 
 // Like the above, but for a single replica.
-Status GetLastOpIdForReplica(const TabletId& tablet_id,
-                             TServerDetails* replica,
-                             consensus::OpIdType opid_type,
-                             const MonoDelta& timeout,
-                             OpIdPB* op_id);
+inline Result<OpId> GetLastOpIdForReplica(
+    const TabletId& tablet_id,
+    TServerDetails* replica,
+    consensus::OpIdType opid_type,
+    const MonoDelta& timeout) {
+  return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
+}
 
 // Creates server vector from map.
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);

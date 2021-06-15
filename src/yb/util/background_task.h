@@ -22,13 +22,15 @@ namespace yb {
 // Executions of RunTask are serialized. If interval_msec is 0, the task only runs when explicitly
 // woken up.
 // TODO(bojanserafimov): Use in CatalogManagerBgTasks
-// TODO(bojanserafimov): Add unit tests
 class BackgroundTask {
  public:
-  explicit BackgroundTask(std::function<void()> task, std::string category,
-                          const std::string& name, std::chrono::milliseconds interval_msec)
-    : task_(std::move(task)), category_(category),
-    name_(std::move(name)), interval_(interval_msec) { }
+  BackgroundTask(
+      std::function<void()> task, std::string category, const std::string& name,
+      std::chrono::milliseconds interval_msec = std::chrono::milliseconds(0)):
+      task_(std::move(task)),
+      category_(category),
+      name_(std::move(name)),
+      interval_(interval_msec) {}
 
   CHECKED_STATUS Init() {
     RETURN_NOT_OK(yb::Thread::Create(category_, name_, &BackgroundTask::Run, this, &thread_));
@@ -84,6 +86,10 @@ class BackgroundTask {
       // Wait
       if (interval_ != std::chrono::milliseconds::zero()) {
         cond_.wait_for(lock, interval_);
+        // If we wake here from the interval_ timeout, then we should behave as if we have a job. If
+        // we wake from an explicit notify from a Wake() call, we should still behave as if we have
+        // a job.
+        have_job_ = true;
       } else {
         cond_.wait(lock);
       }

@@ -50,7 +50,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -61,8 +61,12 @@ public class ChangeMasterConfig extends AbstractTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().nodeName +
-           ", " + taskParams().opType.toString() + ")";
+    return super.getName()
+        + "("
+        + taskParams().nodeName
+        + ", "
+        + taskParams().opType.toString()
+        + ")";
   }
 
   @Override
@@ -75,30 +79,46 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     // Get the master addresses.
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
-             taskParams().universeUUID, masterAddresses);
+    LOG.info(
+        "Running {}: universe = {}, masterAddress = {}",
+        getName(),
+        taskParams().universeUUID,
+        masterAddresses);
     if (masterAddresses == null || masterAddresses.isEmpty()) {
-      throw new IllegalStateException("No master host/ports for a change config op in " +
-          taskParams().universeUUID);
+      throw new IllegalStateException(
+          "No master host/ports for a change config op in " + taskParams().universeUUID);
     }
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client;
     client = ybService.getClient(masterAddresses, certificate);
 
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
     boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
-    LOG.info("Starting changeMasterConfig({}:{}, op={}, useHost={})",
-             node.cloudInfo.private_ip, node.masterRpcPort, taskParams().opType.toString(),
-             taskParams().useHostPort);
+    LOG.info(
+        "Starting changeMasterConfig({}:{}, op={}, useHost={})",
+        node.cloudInfo.private_ip,
+        node.masterRpcPort,
+        taskParams().opType.toString(),
+        taskParams().useHostPort);
     ChangeConfigResponse response = null;
     try {
-      response = client.changeMasterConfig(
-          node.cloudInfo.private_ip, node.masterRpcPort, isAddMasterOp, taskParams().useHostPort);
+      response =
+          client.changeMasterConfig(
+              node.cloudInfo.private_ip,
+              node.masterRpcPort,
+              isAddMasterOp,
+              taskParams().useHostPort);
     } catch (Exception e) {
-      String msg = "Error " + e.getMessage() + " while performing change config on node " +
-                   node.nodeName + ", host:port = " + node.cloudInfo.private_ip + ":" +
-                   node.masterRpcPort;
+      String msg =
+          "Error "
+              + e.getMessage()
+              + " while performing change config on node "
+              + node.nodeName
+              + ", host:port = "
+              + node.cloudInfo.private_ip
+              + ":"
+              + node.masterRpcPort;
       LOG.error(msg, e);
       if (!taskParams().useHostPort) {
         throw new RuntimeException(msg);

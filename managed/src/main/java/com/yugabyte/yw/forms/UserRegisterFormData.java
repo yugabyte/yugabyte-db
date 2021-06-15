@@ -2,20 +2,14 @@
 
 package com.yugabyte.yw.forms;
 
-
 import play.data.validation.Constraints;
 import java.util.Map;
 
 import static com.yugabyte.yw.models.Users.Role;
 
-
-/**
- * This class will be used by the API and UI Form Elements to validate constraints are met
- */
+/** This class will be used by the API and UI Form Elements to validate constraints are met */
 public class UserRegisterFormData {
-  @Constraints.Required()
-  @Constraints.Email
-  private String email;
+  @Constraints.Required() @Constraints.Email private String email;
 
   private String password;
 
@@ -23,8 +17,7 @@ public class UserRegisterFormData {
 
   private Map features;
 
-  @Constraints.Required()
-  private Role role;
+  @Constraints.Required() private Role role;
 
   public String getEmail() {
     return email;

@@ -21,9 +21,10 @@ class PasswordComplexityValidator implements PasswordValidator {
   private final Predicate<Character> characterTypePredicate;
   private final String characterTypeName;
 
-  PasswordComplexityValidator(Function<PasswordPolicyFormData, Integer> characterNumberExtractor,
-                              Predicate<Character> characterTypePredicate,
-                              String characterTypeName) {
+  PasswordComplexityValidator(
+      Function<PasswordPolicyFormData, Integer> characterNumberExtractor,
+      Predicate<Character> characterTypePredicate,
+      String characterTypeName) {
     this.characterNumberExtractor = characterNumberExtractor;
     this.characterTypePredicate = characterTypePredicate;
     this.characterTypeName = characterTypeName;
@@ -40,8 +41,9 @@ class PasswordComplexityValidator implements PasswordValidator {
     }
 
     if (foundCharacters < requiredCharacters) {
-      return new ValidationError(PASSWORD_FIELD, "Password should contain at least "
-        + requiredCharacters + " " + characterTypeName);
+      return new ValidationError(
+          PASSWORD_FIELD,
+          "Password should contain at least " + requiredCharacters + " " + characterTypeName);
     }
     return null;
   }

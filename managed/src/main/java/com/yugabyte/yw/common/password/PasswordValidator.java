@@ -15,5 +15,6 @@ import play.data.validation.ValidationError;
 
 interface PasswordValidator {
   String PASSWORD_FIELD = "password";
+
   ValidationError validate(String password, PasswordPolicyFormData passwordPolicy);
 }

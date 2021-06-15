@@ -26,6 +26,7 @@ IGW_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-igw"
 ROUTE_TABLE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-rt"
 SG_YUGABYTE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-sg"
 PEER_CONN_FORMAT = "yb-peer-conn-{}-to-{}"
+ROOT_VOLUME_LABEL = "/dev/sda1"
 
 
 class AwsBootstrapRegion():
@@ -210,7 +211,7 @@ class AwsBootstrapClient():
         self._validate_cidr_overlap()
 
     def _validate_cidr_overlap(self):
-        region_networks = [ip_network(cidr.decode('utf-8')) for cidr in self.region_cidrs.values()]
+        region_networks = [ip_network(cidr) for cidr in self.region_cidrs.values()]
         all_networks = region_networks
         for i in range(len(all_networks)):
             for j in range(i + 1, len(all_networks)):
@@ -883,9 +884,8 @@ def create_instance(args):
     # Volume setup.
     volumes = []
     ebs = {
-        "DeleteOnTermination": True,
-        # TODO: constant
-        "VolumeSize": 40,
+        "DeleteOnTermination": args.auto_delete_boot_disk,
+        "VolumeSize": args.boot_disk_size_gb,
         "VolumeType": "gp2"
     }
 
@@ -898,7 +898,7 @@ def create_instance(args):
             "Arn": args.iam_profile_arn
         }
     volumes.append({
-        "DeviceName": "/dev/sda1",
+        "DeviceName": ROOT_VOLUME_LABEL,
         "Ebs": ebs
     })
 
@@ -930,6 +930,10 @@ def create_instance(args):
             }
         volumes.append(volume)
     vars["BlockDeviceMappings"] = volumes
+
+    if args.boot_script:
+        with open(args.boot_script, 'r') as script:
+            vars["UserData"] = script.read()
 
     # Tag setup.
     def __create_tag(k, v):

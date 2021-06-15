@@ -3,10 +3,10 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.YWServiceException;
@@ -22,15 +22,15 @@ import javax.persistence.*;
 import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name", "code"}))
 @Entity
 public class Provider extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Provider.class);
 
-  @Id
-  public UUID uuid;
+  @Id public UUID uuid;
 
   @Column(nullable = false)
   public String code;
@@ -40,15 +40,21 @@ public class Provider extends Model {
 
   @Column(nullable = false, columnDefinition = "boolean default true")
   public Boolean active = true;
-  public Boolean isActive() { return active; }
-  public void setActiveFlag(Boolean active) { this.active = active; }
+
+  public Boolean isActive() {
+    return active;
+  }
+
+  public void setActiveFlag(Boolean active) {
+    this.active = active;
+  }
 
   @Column(nullable = false)
   public UUID customerUUID;
 
   public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
-  public static final Set<Common.CloudType> InstanceTagsEnabledProviders = ImmutableSet.of(
-    Common.CloudType.aws, Common.CloudType.azu);
+  public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
+      ImmutableSet.of(Common.CloudType.aws, Common.CloudType.azu);
 
   public void setCustomerUuid(UUID id) {
     this.customerUUID = id;
@@ -59,16 +65,16 @@ public class Provider extends Model {
   @DbJson
   private JsonNode config;
 
-  @OneToMany(cascade=CascadeType.ALL)
-  @JsonBackReference(value="regions")
+  @OneToMany(cascade = CascadeType.ALL)
+  @JsonBackReference(value = "regions")
   public Set<Region> regions;
 
   @JsonIgnore
-  @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
+  @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
   public Set<InstanceType> instanceTypes;
 
   @JsonIgnore
-  @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
+  @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
   public Set<PriceComponent> priceComponents;
 
   public void setConfig(Map<String, String> configMap) {
@@ -80,13 +86,9 @@ public class Provider extends Model {
     this.save();
   }
 
-  @JsonIgnore
-  public JsonNode getMaskedConfig() {
-    if (this.config == null) {
-      return Json.newObject();
-    } else {
-      return maskConfig(this.config);
-    }
+  @JsonProperty("config")
+  public Map<String, String> getMaskedConfig() {
+    return maskConfigNew(this.getConfig());
   }
 
   @JsonIgnore
@@ -107,13 +109,12 @@ public class Provider extends Model {
     return ybHomeDir;
   }
 
-  /**
-   * Query Helper for Provider with uuid
-   */
-  public static final Finder<UUID, Provider> find = new Finder<UUID, Provider>(Provider.class){};
+  /** Query Helper for Provider with uuid */
+  public static final Finder<UUID, Provider> find = new Finder<UUID, Provider>(Provider.class) {};
 
   /**
    * Create a new Cloud Provider
+   *
    * @param customerUUID, customer uuid
    * @param code, code of cloud provider
    * @param name, name of cloud provider
@@ -125,18 +126,24 @@ public class Provider extends Model {
 
   /**
    * Create a new Cloud Provider
+   *
    * @param customerUUID, customer uuid
    * @param code, code of cloud provider
    * @param name, name of cloud provider
    * @param config, Map of cloud provider configuration
    * @return instance of cloud provider
    */
-  public static Provider create(UUID customerUUID, Common.CloudType code, String name, Map<String, String> config) {
+  public static Provider create(
+      UUID customerUUID, Common.CloudType code, String name, Map<String, String> config) {
     return create(customerUUID, null, code, name, config);
   }
 
-  public static Provider create(UUID customerUUID, UUID providerUUID,
-                                Common.CloudType code, String name, Map<String, String> config) {
+  public static Provider create(
+      UUID customerUUID,
+      UUID providerUUID,
+      Common.CloudType code,
+      String name,
+      Map<String, String> config) {
     Provider provider = new Provider();
     provider.customerUUID = customerUUID;
     provider.uuid = providerUUID;
@@ -149,6 +156,7 @@ public class Provider extends Model {
 
   /**
    * Query provider based on customer uuid and provider uuid
+   *
    * @param customerUUID, customer uuid
    * @param providerUUID, cloud provider uuid
    * @return instance of cloud provider.
@@ -167,6 +175,7 @@ public class Provider extends Model {
 
   /**
    * Get all the providers for a given customer uuid
+   *
    * @param customerUUID, customer uuid
    * @return list of cloud providers.
    */
@@ -175,15 +184,37 @@ public class Provider extends Model {
   }
 
   /**
-   * Get Provider by code for a given customer uuid. If there is multiple
-   * providers with the same name, it will raise a exception.
+   * Get Provider by code for a given customer uuid. If there is multiple providers with the same
+   * name, it will raise a exception.
+   *
    * @param customerUUID
    * @param code
    * @return
    */
   public static List<Provider> get(UUID customerUUID, Common.CloudType code) {
-    return find.query().where().eq("customer_uuid", customerUUID)
-            .eq("code", code.toString()).findList();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("code", code.toString())
+        .findList();
+  }
+
+  /**
+   * Get Provider by name, cloud for a given customer uuid. If there is multiple providers with the
+   * same name, cloud will raise a exception.
+   *
+   * @param customerUUID
+   * @param name
+   * @param code
+   * @return
+   */
+  public static Provider get(UUID customerUUID, String name, Common.CloudType code) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("name", name)
+        .eq("code", code.toString())
+        .findOne();
   }
 
   // Use get Or bad request
@@ -209,6 +240,7 @@ public class Provider extends Model {
 
   /**
    * Get all Providers by code without customer uuid.
+   *
    * @param code
    * @return
    */
@@ -240,7 +272,7 @@ public class Provider extends Model {
       return newParams;
     }
 
-    for (Region r: regions) {
+    for (Region r : regions) {
       List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(r.uuid);
       if (zones == null || zones.isEmpty()) {
         continue;

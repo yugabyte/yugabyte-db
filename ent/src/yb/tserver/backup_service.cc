@@ -23,6 +23,13 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/flag_tags.h"
+#include "yb/util/random_util.h"
+
+using namespace std::literals;
+
+DEFINE_test_flag(int32, tablet_delay_restore_ms, 0, "Delay restore on tablet");
+
 namespace yb {
 namespace tserver {
 
@@ -59,7 +66,8 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   TRACE_EVENT1("tserver", "TabletSnapshotOp", "tablet_id: ", tablet_id);
 
   LOG(INFO) << "Processing TabletSnapshotOp for tablet " << tablet_id << " from "
-            << context.requestor_string() << ": " << req->operation();
+            << context.requestor_string() << ": "
+            << TabletSnapshotOpRequestPB::Operation_Name(req->operation());
   VLOG(1) << "Full request: " << req->DebugString();
 
   auto tablet = LookupLeaderTabletOrRespond(tablet_manager_, tablet_id, resp, &context);
@@ -99,6 +107,10 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   auto clock = tablet_manager_->server()->Clock();
   tx_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
+
+  if (tx_state->request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+    AtomicFlagRandomSleepMs(&FLAGS_TEST_tablet_delay_restore_ms);
+  }
 
   if (!tx_state->CheckOperationRequirements()) {
     return;

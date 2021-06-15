@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -94,8 +95,10 @@ public class AuditControllerTest extends FakeDBApplication {
   public void testGetAuditListByUser() {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     String route = "/api/customers/%s/users/%s/audit_trail";
-    Result result = route(fakeRequest("GET",
-        String.format(route, customer1.uuid, user1.uuid)).cookie(validCookie));
+    Result result =
+        route(
+            fakeRequest("GET", String.format(route, customer1.uuid, user1.uuid))
+                .cookie(validCookie));
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.size(), 2);
@@ -105,8 +108,10 @@ public class AuditControllerTest extends FakeDBApplication {
   public void testGetListFailureIncorrectCustomer() {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     String route = "/api/customers/%s/users/%s/audit_trail";
-    Result result = route(fakeRequest("GET",
-        String.format(route, customer2.uuid, user1.uuid)).cookie(validCookie));
+    Result result =
+        route(
+            fakeRequest("GET", String.format(route, customer2.uuid, user1.uuid))
+                .cookie(validCookie));
     assertEquals(FORBIDDEN, result.status());
   }
 
@@ -114,8 +119,10 @@ public class AuditControllerTest extends FakeDBApplication {
   public void testGetTaskInfo() throws IOException {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_info";
-    Result result = route(fakeRequest("GET",
-        String.format(route, customer2.uuid, taskUUID2)).cookie(validCookie));
+    Result result =
+        route(
+            fakeRequest("GET", String.format(route, customer2.uuid, taskUUID2))
+                .cookie(validCookie));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.path("auditID").asLong() == audit3.getAuditID());
@@ -125,8 +132,14 @@ public class AuditControllerTest extends FakeDBApplication {
   public void testGetTaskInfoInvalidCustomer() throws IOException {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_info";
-    Result result = route(fakeRequest("GET",
-        String.format(route, customer2.uuid, taskUUID1)).cookie(validCookie));
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    route(
+                        fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
+                            .cookie(validCookie)))
+            .getResult();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }
@@ -135,8 +148,10 @@ public class AuditControllerTest extends FakeDBApplication {
   public void testUserFromTask() throws IOException {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_user";
-    Result result = route(fakeRequest("GET",
-        String.format(route, customer2.uuid, taskUUID2)).cookie(validCookie));
+    Result result =
+        route(
+            fakeRequest("GET", String.format(route, customer2.uuid, taskUUID2))
+                .cookie(validCookie));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.path("uuid").asText().equals(user2.uuid.toString()));
@@ -146,8 +161,14 @@ public class AuditControllerTest extends FakeDBApplication {
   public void testGetUserFromTaskInvalidCustomer() throws IOException {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_user";
-    Result result = route(fakeRequest("GET",
-        String.format(route, customer2.uuid, taskUUID1)).cookie(validCookie));
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    route(
+                        fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
+                            .cookie(validCookie)))
+            .getResult();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }

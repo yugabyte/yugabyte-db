@@ -27,7 +27,7 @@ public class WaitForServer extends ServerSubTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -53,9 +53,8 @@ public class WaitForServer extends ServerSubTaskBase {
       throw new RuntimeException(getName() + " did not respond to pings in the set time.");
     }
     LOG.info(
-      "Server {} responded to RPC calls in {} ms",
-      (taskParams().nodeName != null) ? taskParams().nodeName : "unknown",
-      (System.currentTimeMillis() - startMs)
-    );
+        "Server {} responded to RPC calls in {} ms",
+        (taskParams().nodeName != null) ? taskParams().nodeName : "unknown",
+        (System.currentTimeMillis() - startMs));
   }
 }

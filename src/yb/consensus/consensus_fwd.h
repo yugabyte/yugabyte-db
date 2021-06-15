@@ -19,17 +19,11 @@
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-
-namespace log {
-
-class Log;
-
-} // namespace log
-
 namespace consensus {
 
 class Consensus;
 class ConsensusContext;
+class ConsensusRoundCallback;
 class PeerProxyFactory;
 class PeerMessageQueue;
 class RaftConfigPB;

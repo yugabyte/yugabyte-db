@@ -21,7 +21,9 @@ public class NetworkManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "network";
 
   @Override
-  protected String getCommandType() { return YB_CLOUD_COMMAND_TYPE; }
+  protected String getCommandType() {
+    return YB_CLOUD_COMMAND_TYPE;
+  }
 
   public JsonNode bootstrap(UUID regionUUID, UUID providerUUID, String customPayload) {
     List<String> commandArgs = new ArrayList();

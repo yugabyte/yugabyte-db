@@ -4,20 +4,35 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -39,40 +54,60 @@ import play.libs.Json;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.*;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.ToggleTls;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
 
-  @Rule
-  public MockitoRule rule = MockitoJUnit.rule();
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @Mock
-  play.Configuration mockAppConfig;
+  @Mock play.Configuration mockAppConfig;
 
-  @Mock
-  ShellProcessHandler shellProcessHandler;
+  @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock
-  ReleaseManager releaseManager;
+  @Mock ReleaseManager releaseManager;
 
-  @InjectMocks
-  NodeManager nodeManager;
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock Config mockConfig;
+
+  @InjectMocks NodeManager nodeManager;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "host-n1:7100,host-n2:7100,host-n3:7100";
@@ -90,13 +125,15 @@ public class NodeManagerTest extends FakeDBApplication {
     public final NodeInstance node;
     public String privateKey = "/path/to/private.key";
     public final List<String> baseCommand = new ArrayList<>();
+    public final String replacementVolume = "test-volume";
 
-    public TestData(Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
+    public TestData(
+        Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
       cloudType = cloud;
       this.storageType = storageType;
       provider = p;
       region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-      zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+      zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
 
       NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
       nodeData.ip = "fake_ip";
@@ -134,8 +171,7 @@ public class NodeManagerTest extends FakeDBApplication {
     Provider provider = ModelFactory.newProvider(customer, cloud);
     if (cloud.equals(Common.CloudType.aws)) {
       testDataList.add(new TestData(provider, cloud, PublicCloudConstants.StorageType.GP2, 1));
-    }
-    else if (cloud.equals(Common.CloudType.gcp)) {
+    } else if (cloud.equals(Common.CloudType.gcp)) {
       testDataList.add(new TestData(provider, cloud, PublicCloudConstants.StorageType.IO1, 2));
     } else {
       testDataList.add(new TestData(provider, cloud, null, 3));
@@ -154,6 +190,7 @@ public class NodeManagerTest extends FakeDBApplication {
     params.nodeName = testData.node.getNodeName();
     params.universeUUID = universe.universeUUID;
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    params.currentClusterType = ClusterType.PRIMARY;
   }
 
   private void addValidDeviceInfo(TestData testData, NodeTaskParams params) {
@@ -190,7 +227,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private UUID createUniverseWithCert(TestData t, AnsibleConfigureServers.Params params)
-  throws IOException, NoSuchAlgorithmException {
+      throws IOException, NoSuchAlgorithmException {
     Calendar cal = Calendar.getInstance();
     Date today = cal.getTime();
     cal.add(Calendar.YEAR, 1); // to get previous year add -1
@@ -202,20 +239,32 @@ public class NodeManagerTest extends FakeDBApplication {
     customCertInfo.nodeCertPath = "/path/to/rootcert.crt";
     customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
     if (t.privateKey == null) {
-      cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID, params.nodePrefix,
-                                    today, nextYear, TestHelper.TMP_PATH + "/ca.crt",
-                                    customCertInfo);
+      cert =
+          CertificateInfo.create(
+              rootCAuuid,
+              t.provider.customerUUID,
+              params.nodePrefix,
+              today,
+              nextYear,
+              TestHelper.TMP_PATH + "/ca.crt",
+              customCertInfo);
     } else {
-      cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID,
-                                    params.nodePrefix, today, nextYear, t.privateKey,
-                                    TestHelper.TMP_PATH + "/ca.crt",
-                                    CertificateInfo.Type.SelfSigned);
+      cert =
+          CertificateInfo.create(
+              rootCAuuid,
+              t.provider.customerUUID,
+              params.nodePrefix,
+              today,
+              nextYear,
+              t.privateKey,
+              TestHelper.TMP_PATH + "/ca.crt",
+              CertificateInfo.Type.SelfSigned);
     }
 
     Universe u = createUniverse();
     u.getUniverseDetails().rootCA = cert.uuid;
-    buildValidParams(t, params, Universe.saveDetails(u.universeUUID,
-      ApiUtils.mockUniverseUpdater(t.cloudType)));
+    buildValidParams(
+        t, params, Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
     return cert.uuid;
   }
 
@@ -229,6 +278,8 @@ public class NodeManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    when(mockConfig.hasPath(NodeManager.BOOT_SCRIPT_PATH)).thenReturn(false);
+    when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
   }
@@ -239,7 +290,9 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private List<String> nodeCommand(
-      NodeManager.NodeCommandType type, NodeTaskParams params, TestData testData,
+      NodeManager.NodeCommandType type,
+      NodeTaskParams params,
+      TestData testData,
       UserIntent userIntent) {
     Common.CloudType cloud = testData.cloudType;
     List<String> expectedCommand = new ArrayList<>();
@@ -255,6 +308,15 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add(ctlParams.process);
         expectedCommand.add(ctlParams.command);
         break;
+      case Replace_Root_Volume:
+        expectedCommand.add("--replacement_disk");
+        expectedCommand.add(String.valueOf(testData.replacementVolume));
+        break;
+      case Create_Root_Volumes:
+        CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) params;
+        expectedCommand.add("--num_disks");
+        expectedCommand.add(String.valueOf(crvParams.numVolumes));
+        // intentional fall-thru
       case Provision:
         AnsibleSetupServer.Params setupParams = (AnsibleSetupServer.Params) params;
         if (!cloud.equals(Common.CloudType.onprem)) {
@@ -278,7 +340,8 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (cloud.equals(Common.CloudType.aws)) {
-          if (!setupParams.clusters.isEmpty() && setupParams.clusters.get(0) != null
+          if (!setupParams.clusters.isEmpty()
+              && setupParams.clusters.get(0) != null
               && !setupParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
             expectedCommand.add("--instance_tags");
             expectedCommand.add(
@@ -317,11 +380,12 @@ public class NodeManagerTest extends FakeDBApplication {
 
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeUniverse.UpgradeTaskSubType taskSubType =
-              UpgradeUniverse.UpgradeTaskSubType.valueOf(configureParams.getProperty("taskSubType"));
+              UpgradeUniverse.UpgradeTaskSubType.valueOf(
+                  configureParams.getProperty("taskSubType"));
           String processType = configureParams.getProperty("processType");
           expectedCommand.add("--yb_process_type");
           expectedCommand.add(processType.toLowerCase());
-          switch(taskSubType) {
+          switch (taskSubType) {
             case Download:
               expectedCommand.add("--tags");
               expectedCommand.add("download-software");
@@ -355,14 +419,21 @@ public class NodeManagerTest extends FakeDBApplication {
           gflags.put("undefok", "enable_ysql");
           if (configureParams.enableYSQL) {
             gflags.put("enable_ysql", "true");
-            gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", configureParams.nodeName,
-              Universe.getOrBadRequest(configureParams.universeUUID)
-                .getNode(configureParams.nodeName).ysqlServerRpcPort));
+            gflags.put(
+                "pgsql_proxy_bind_address",
+                String.format(
+                    "%s:%s",
+                    configureParams.nodeName,
+                    Universe.getOrBadRequest(configureParams.universeUUID)
+                        .getNode(configureParams.nodeName)
+                        .ysqlServerRpcPort));
           } else {
             gflags.put("enable_ysql", "false");
           }
           if (configureParams.callhomeLevel != null) {
-            gflags.put("callhome_collection_level", configureParams.callhomeLevel.toString().toLowerCase());
+            gflags.put(
+                "callhome_collection_level",
+                configureParams.callhomeLevel.toString().toLowerCase());
             if (configureParams.callhomeLevel.toString() == "NONE") {
               gflags.put("callhome_enabled", "false");
             }
@@ -371,10 +442,13 @@ public class NodeManagerTest extends FakeDBApplication {
               && configureParams.setTxnTableWaitCountFlag) {
             gflags.put("txn_table_wait_min_ts_count", Integer.toString(userIntent.numNodes));
           }
-          if (configureParams.enableNodeToNodeEncrypt || configureParams.enableClientToNodeEncrypt) {
+          if (configureParams.enableNodeToNodeEncrypt
+              || configureParams.enableClientToNodeEncrypt) {
+
             CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
-            if (cert == null) {
-              throw new RuntimeException("No valid rootCA found for " + configureParams.universeUUID);
+            if (configureParams.rootAndClientRootCASame && cert == null) {
+              throw new RuntimeException(
+                  "No valid rootCA found for " + configureParams.universeUUID);
             }
             if (configureParams.enableNodeToNodeEncrypt) {
               gflags.put("use_node_to_node_encryption", "true");
@@ -383,13 +457,155 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("use_client_to_server_encryption", "true");
             }
             gflags.put(
-              "allow_insecure_connections",
-              configureParams.allowInsecure ? "true" : "false"
-            );
-            gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+                "allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
             gflags.put("cert_node_filename", params.nodeName);
+
+            if (configureParams.rootAndClientRootCASame) {
+              gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+              expectedCommand.add("--certs_node_dir");
+              expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
+
+              CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
+              if (rootCert == null) {
+                throw new RuntimeException(
+                    "No valid rootCA found for " + configureParams.universeUUID);
+              }
+
+              if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+                expectedCommand.add("--rootCA_cert");
+                expectedCommand.add(rootCert.certificate);
+                expectedCommand.add("--rootCA_key");
+                expectedCommand.add(rootCert.privateKey);
+              } else {
+                CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                expectedCommand.add("--use_custom_certs");
+                expectedCommand.add("--root_cert_path");
+                expectedCommand.add(customCertInfo.rootCertPath);
+                expectedCommand.add("--node_cert_path");
+                expectedCommand.add(customCertInfo.nodeCertPath);
+                expectedCommand.add("--node_key_path");
+                expectedCommand.add(customCertInfo.nodeKeyPath);
+                if (customCertInfo.clientCertPath != null) {
+                  expectedCommand.add("--client_cert_path");
+                  expectedCommand.add(customCertInfo.clientCertPath);
+                  expectedCommand.add("--client_key_path");
+                  expectedCommand.add(customCertInfo.clientKeyPath);
+                }
+              }
+            } else {
+              if (configureParams.enableNodeToNodeEncrypt) {
+                gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+                expectedCommand.add("--certs_node_dir");
+                expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
+
+                CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
+                if (rootCert == null) {
+                  throw new RuntimeException(
+                      "No valid rootCA found for " + configureParams.universeUUID);
+                }
+
+                if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+                  expectedCommand.add("--rootCA_cert");
+                  expectedCommand.add(rootCert.certificate);
+                  expectedCommand.add("--rootCA_key");
+                  expectedCommand.add(rootCert.privateKey);
+                } else {
+                  CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                  expectedCommand.add("--use_custom_certs");
+                  expectedCommand.add("--root_cert_path");
+                  expectedCommand.add(customCertInfo.rootCertPath);
+                  expectedCommand.add("--node_cert_path");
+                  expectedCommand.add(customCertInfo.nodeCertPath);
+                  expectedCommand.add("--node_key_path");
+                  expectedCommand.add(customCertInfo.nodeKeyPath);
+                }
+              }
+              if (configureParams.enableClientToNodeEncrypt) {
+                gflags.put("certs_for_client_dir", "/home/yugabyte/yugabyte-client-tls-config");
+                expectedCommand.add("--certs_client_dir");
+                expectedCommand.add("/home/yugabyte/yugabyte-client-tls-config");
+
+                CertificateInfo clientRootCert = CertificateInfo.get(configureParams.clientRootCA);
+                if (clientRootCert == null) {
+                  throw new RuntimeException(
+                      "No valid clientRootCA found for " + configureParams.universeUUID);
+                }
+
+                if (clientRootCert.certType == CertificateInfo.Type.SelfSigned) {
+                  expectedCommand.add("--clientRootCA_cert");
+                  expectedCommand.add(clientRootCert.certificate);
+                  expectedCommand.add("--clientRootCA_key");
+                  expectedCommand.add(clientRootCert.privateKey);
+                } else {
+                  CertificateParams.CustomCertInfo customCertInfo =
+                      clientRootCert.getCustomCertInfo();
+                  expectedCommand.add("--use_custom_client_certs");
+                  expectedCommand.add("--client_root_cert_path");
+                  expectedCommand.add(customCertInfo.rootCertPath);
+                  expectedCommand.add("--client_node_cert_path");
+                  expectedCommand.add(customCertInfo.nodeCertPath);
+                  expectedCommand.add("--client_node_key_path");
+                  expectedCommand.add(customCertInfo.nodeKeyPath);
+                }
+
+                expectedCommand.add("--client_cert");
+                expectedCommand.add(
+                    CertificateHelper.getClientCertFile(configureParams.clientRootCA));
+                expectedCommand.add("--client_key");
+                expectedCommand.add(
+                    CertificateHelper.getClientKeyFile(configureParams.clientRootCA));
+              }
+            }
+          }
+          expectedCommand.add("--extra_gflags");
+          expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+        } else if (configureParams.type == GFlags) {
+          String processType = configureParams.getProperty("processType");
+          expectedCommand.add("--yb_process_type");
+          expectedCommand.add(processType.toLowerCase());
+
+          if (configureParams.updateMasterAddrsOnly) {
+            String masterAddresses =
+                Universe.getOrBadRequest(configureParams.universeUUID).getMasterAddresses(false);
+            if (configureParams.isMasterInShellMode) {
+              masterAddresses = "";
+            }
+            if (processType.equals(ServerType.MASTER.name())) {
+              gflags.put("master_addresses", masterAddresses);
+            } else {
+              gflags.put("tserver_master_addrs", masterAddresses);
+            }
+          } else {
+            gflags.put("placement_uuid", String.valueOf(configureParams.placementUuid));
+            gflags.put("metric_node_name", configureParams.nodeName);
+          }
+
+          String gflagsJson = Json.stringify(Json.toJson(gflags));
+          expectedCommand.add("--replace_gflags");
+          expectedCommand.add("--gflags");
+          expectedCommand.add(gflagsJson);
+          if (configureParams.gflagsToRemove != null && !configureParams.gflagsToRemove.isEmpty()) {
+            expectedCommand.add("--gflags_to_remove");
+            expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
+          }
+          expectedCommand.add("--tags");
+          expectedCommand.add("override_gflags");
+        } else if (configureParams.type == ToggleTls) {
+          String nodeToNodeString = String.valueOf(configureParams.enableNodeToNodeEncrypt);
+          String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
+          String allowInsecureString = String.valueOf(configureParams.allowInsecure);
+
+          String certsNodeDir =
+              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome()
+                  + "/yugabyte-tls-config";
+
+          String subType = configureParams.getProperty("taskSubType");
+          if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+            CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
+
+            expectedCommand.add("--adding_certs");
             expectedCommand.add("--certs_node_dir");
-            expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
+            expectedCommand.add(certsNodeDir);
 
             if (cert.certType == CertificateInfo.Type.SelfSigned) {
               expectedCommand.add("--rootCA_cert");
@@ -411,38 +627,46 @@ public class NodeManagerTest extends FakeDBApplication {
               expectedCommand.add(customCertInfo.nodeCertPath);
               expectedCommand.add("--node_key_path");
               expectedCommand.add(customCertInfo.nodeKeyPath);
+              if (customCertInfo.clientCertPath != null) {
+                expectedCommand.add("--client_cert_path");
+                expectedCommand.add(customCertInfo.clientCertPath);
+                expectedCommand.add("--client_key_path");
+                expectedCommand.add(customCertInfo.clientKeyPath);
+              }
             }
-          }
-          expectedCommand.add("--extra_gflags");
-          expectedCommand.add(Json.stringify(Json.toJson(gflags)));
-        } else if (configureParams.type == GFlags) {
-          String processType = configureParams.getProperty("processType");
-          expectedCommand.add("--yb_process_type");
-          expectedCommand.add(processType.toLowerCase());
-
-          if (configureParams.updateMasterAddrsOnly) {
-            String masterAddresses = Universe.getOrBadRequest(configureParams.universeUUID)
-                .getMasterAddresses(false);
-            if (configureParams.isMasterInShellMode) {
-              masterAddresses = "";
-            }
-            if (processType.equals(ServerType.MASTER.name())) {
-              gflags.put("master_addresses", masterAddresses);
+          } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+            gflags = new HashMap<>();
+            if (configureParams.nodeToNodeChange > 0) {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", "true");
+              gflags.put("certs_dir", certsNodeDir);
+            } else if (configureParams.nodeToNodeChange < 0) {
+              gflags.put("allow_insecure_connections", "true");
             } else {
-              gflags.put("tserver_master_addrs", masterAddresses);
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", allowInsecureString);
+              gflags.put("certs_dir", certsNodeDir);
             }
-          } else {
-            gflags.put("placement_uuid", String.valueOf(configureParams.placementUuid));
-            gflags.put("metric_node_name", configureParams.nodeName);
-          }
 
-          String gflagsJson =  Json.stringify(Json.toJson(gflags));
-          expectedCommand.add("--replace_gflags");
-          expectedCommand.add("--gflags");
-          expectedCommand.add(gflagsJson);
-          if (configureParams.gflagsToRemove != null && !configureParams.gflagsToRemove.isEmpty()) {
-            expectedCommand.add("--gflags_to_remove");
-            expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
+            expectedCommand.add("--replace_gflags");
+            expectedCommand.add("--gflags");
+            expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+          } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+            gflags = new HashMap<>();
+            if (configureParams.nodeToNodeChange > 0) {
+              gflags.put("allow_insecure_connections", allowInsecureString);
+            } else if (configureParams.nodeToNodeChange < 0) {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", allowInsecureString);
+              gflags.put("certs_dir", certsNodeDir);
+            }
+
+            expectedCommand.add("--replace_gflags");
+            expectedCommand.add("--gflags");
+            expectedCommand.add(Json.stringify(Json.toJson(gflags)));
           }
         } else {
           expectedCommand.add("--extra_gflags");
@@ -458,7 +682,7 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add("1.1.1.1");
         break;
       case Tags:
-        InstanceActions.Params tagsParams = (InstanceActions.Params)params;
+        InstanceActions.Params tagsParams = (InstanceActions.Params) params;
         if (Provider.InstanceTagsEnabledProviders.contains(cloud)) {
           expectedCommand.add("--instance_tags");
           // The quotes in format is needed here, so cannot use instanceTags.toString().
@@ -477,34 +701,41 @@ public class NodeManagerTest extends FakeDBApplication {
     }
     if (params.deviceInfo != null) {
       DeviceInfo deviceInfo = params.deviceInfo;
-      if (deviceInfo.numVolumes != null && !cloud.equals(Common.CloudType.onprem)) {
-        expectedCommand.add("--num_volumes");
-        expectedCommand.add(Integer.toString(deviceInfo.numVolumes));
-      } else if (deviceInfo.mountPoints != null) {
-        expectedCommand.add("--mount_points");
-        expectedCommand.add(fakeMountPaths);
-      }
-      if (deviceInfo.volumeSize != null) {
-        expectedCommand.add("--volume_size");
-        expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
-      }
-      if (type == NodeManager.NodeCommandType.Provision && deviceInfo.storageType != null) {
-        expectedCommand.add("--volume_type");
-        expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
-        if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
-          expectedCommand.add("--disk_iops");
-          expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+
+      if (type != NodeManager.NodeCommandType.Replace_Root_Volume) {
+        if (deviceInfo.numVolumes != null && !cloud.equals(Common.CloudType.onprem)) {
+          expectedCommand.add("--num_volumes");
+          expectedCommand.add(Integer.toString(deviceInfo.numVolumes));
+        } else if (deviceInfo.mountPoints != null) {
+          expectedCommand.add("--mount_points");
+          expectedCommand.add(fakeMountPaths);
         }
-        if (deviceInfo.storageType.isThroughputProvisioning() && deviceInfo.throughput != null) {
-          expectedCommand.add("--disk_throughput");
-          expectedCommand.add(Integer.toString(deviceInfo.throughput));
+        if (deviceInfo.volumeSize != null) {
+          expectedCommand.add("--volume_size");
+          expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
         }
       }
 
-      String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
-      if (type == NodeManager.NodeCommandType.Provision && packagePath != null) {
-        expectedCommand.add("--local_package_path");
-        expectedCommand.add(packagePath);
+      if (type == NodeManager.NodeCommandType.Provision
+          || type == NodeManager.NodeCommandType.Create_Root_Volumes) {
+        if (deviceInfo.storageType != null) {
+          expectedCommand.add("--volume_type");
+          expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
+          if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
+            expectedCommand.add("--disk_iops");
+            expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+          }
+          if (deviceInfo.storageType.isThroughputProvisioning() && deviceInfo.throughput != null) {
+            expectedCommand.add("--disk_throughput");
+            expectedCommand.add(Integer.toString(deviceInfo.throughput));
+          }
+        }
+
+        String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
+        if (packagePath != null) {
+          expectedCommand.add("--local_package_path");
+          expectedCommand.add(packagePath);
+        }
       }
     }
 
@@ -512,12 +743,58 @@ public class NodeManagerTest extends FakeDBApplication {
     return expectedCommand;
   }
 
+  private void runAndVerifyNodeCommand(
+      TestData t, NodeTaskParams params, NodeManager.NodeCommandType cmdType) {
+    List<String> expectedCommand = t.baseCommand;
+    expectedCommand.addAll(nodeCommand(cmdType, params, t));
+
+    nodeManager.nodeCommand(cmdType, params);
+    verify(shellProcessHandler, times(1))
+        .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+  }
+
+  @Test
+  public void testCreateRootVolumesCommand() {
+    for (TestData t : testData) {
+      CreateRootVolumes.Params params = new CreateRootVolumes.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      params.numVolumes = 1;
+
+      runAndVerifyNodeCommand(t, params, NodeManager.NodeCommandType.Create_Root_Volumes);
+    }
+  }
+
+  @Test
+  public void testReplaceRootVolumeCommand() {
+    for (TestData t : testData) {
+      ReplaceRootVolume.Params params = new ReplaceRootVolume.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.replacementDisk = t.replacementVolume;
+
+      runAndVerifyNodeCommand(t, params, NodeManager.NodeCommandType.Replace_Root_Volume);
+    }
+  }
+
   @Test
   public void testProvisionNodeCommand() {
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.subnetId = t.zone.subnet;
 
@@ -525,7 +802,8 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -533,8 +811,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testProvisionNodeCommandWithoutAssignPublicIP() {
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-              ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.subnetId = t.zone.subnet;
       if (t.cloudType.equals(Common.CloudType.aws)) {
@@ -548,7 +829,8 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.removeIf(stringPredicate);
       }
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -560,8 +842,11 @@ public class NodeManagerTest extends FakeDBApplication {
 
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.subnetId = t.zone.subnet;
 
@@ -569,7 +854,8 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
 
     File file = new File(packagePath);
@@ -584,8 +870,11 @@ public class NodeManagerTest extends FakeDBApplication {
         // Bump up the iteration, for use in the verify call and getting the correct capture.
         ++iteration;
         AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-            ApiUtils.mockUniverseUpdater(t.cloudType)));
+        buildValidParams(
+            t,
+            params,
+            Universe.saveDetails(
+                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
         addValidDeviceInfo(t, params);
         params.useTimeSync = useTimeSync;
 
@@ -596,9 +885,10 @@ public class NodeManagerTest extends FakeDBApplication {
         List<String> cmdArgs = arg.getAllValues().get(iteration - 1);
         assertNotNull(cmdArgs);
         assertTrue(
-            cmdArgs.contains("--use_chrony") ==
-            ((t.cloudType.equals(Common.CloudType.aws) ||
-              t.cloudType.equals(Common.CloudType.gcp)) && useTimeSync));
+            cmdArgs.contains("--use_chrony")
+                == ((t.cloudType.equals(Common.CloudType.aws)
+                        || t.cloudType.equals(Common.CloudType.gcp))
+                    && useTimeSync));
       }
     }
   }
@@ -608,7 +898,7 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       addValidDeviceInfo(t, params);
       if (t.cloudType.equals(Common.CloudType.aws)) {
@@ -618,15 +908,12 @@ public class NodeManagerTest extends FakeDBApplication {
 
       ArrayList<String> expectedCommandArrayList = new ArrayList();
       expectedCommandArrayList.addAll(t.baseCommand);
-      expectedCommandArrayList.addAll(nodeCommand(
-        NodeManager.NodeCommandType.Provision,
-        params,
-        t
-      ));
+      expectedCommandArrayList.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1))
-        .run(eq(expectedCommandArrayList), eq(t.region.provider.getConfig()), anyString());
+          .run(eq(expectedCommandArrayList), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -658,8 +945,11 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.regionList.add(t.region.uuid);
       userIntent.providerType = t.cloudType;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(userIntent)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(userIntent)));
       addValidDeviceInfo(t, params);
 
       // Set up expected command
@@ -673,9 +963,15 @@ public class NodeManagerTest extends FakeDBApplication {
 
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
-      List<String> accessKeyCommands = new ArrayList<String>(ImmutableList.of("--vars_file", "/path/to/vault_file",
-          "--vault_password_file", "/path/to/vault_password", "--private_key_file",
-          "/path/to/private.key"));
+      List<String> accessKeyCommands =
+          new ArrayList<String>(
+              ImmutableList.of(
+                  "--vars_file",
+                  "/path/to/vault_file",
+                  "--vault_password_file",
+                  "/path/to/vault_password",
+                  "--private_key_file",
+                  "/path/to/private.key"));
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyCommands.add("--key_pair_name");
         accessKeyCommands.add(userIntent.accessKeyCode);
@@ -696,7 +992,8 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommands);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -717,8 +1014,11 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       try {
         NodeTaskParams params = new NodeTaskParams();
-        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-            ApiUtils.mockUniverseUpdater(t.cloudType)));
+        buildValidParams(
+            t,
+            params,
+            Universe.saveDetails(
+                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
         fail();
       } catch (RuntimeException re) {
@@ -732,8 +1032,11 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       try {
         NodeTaskParams params = new NodeTaskParams();
-        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-            ApiUtils.mockUniverseUpdater(t.cloudType)));
+        buildValidParams(
+            t,
+            params,
+            Universe.saveDetails(
+                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
       } catch (RuntimeException re) {
@@ -746,8 +1049,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testConfigureNodeCommand() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
@@ -755,8 +1061,8 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand),
-          eq(t.region.provider.getConfig()), any());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), any());
     }
   }
 
@@ -764,8 +1070,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testConfigureNodeCommandWithRf1() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
@@ -773,10 +1082,11 @@ public class NodeManagerTest extends FakeDBApplication {
       UserIntent userIntent = new UserIntent();
       userIntent.replicationFactor = 1;
       expectedCommand.addAll(
-        nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent));
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -784,16 +1094,20 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testConfigureNodeCommandWithoutReleasePackage() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.isMasterInShellMode = false;
       params.ybSoftwareVersion = "0.0.2";
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
       } catch (RuntimeException re) {
-        assertThat(re.getMessage(), allOf(notNullValue(),
-            is("Unable to fetch yugabyte release for version: 0.0.2")));
+        assertThat(
+            re.getMessage(),
+            allOf(notNullValue(), is("Unable to fetch yugabyte release for version: 0.0.2")));
       }
     }
   }
@@ -819,8 +1133,12 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.regionList.add(t.region.uuid);
       userIntent.providerType = t.cloudType;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID,
+              ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */)));
       addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
@@ -828,13 +1146,21 @@ public class NodeManagerTest extends FakeDBApplication {
       // Set up expected command
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
-      List<String> accessKeyCommand = ImmutableList.of(
-          "--vars_file", "/path/to/vault_file", "--vault_password_file", "/path/to/vault_password",
-          "--private_key_file", "/path/to/private.key", "--custom_ssh_port", "3333");
+      List<String> accessKeyCommand =
+          ImmutableList.of(
+              "--vars_file",
+              "/path/to/vault_file",
+              "--vault_password_file",
+              "/path/to/vault_password",
+              "--private_key_file",
+              "/path/to/private.key",
+              "--custom_ssh_port",
+              "3333");
       expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -842,15 +1168,19 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testConfigureNodeCommandInShellMode() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.isMasterInShellMode = false;
       params.ybSoftwareVersion = "0.0.1";
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -886,8 +1216,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testSoftwareUpgradeWithoutProcessType() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
 
@@ -904,22 +1237,27 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testSoftwareUpgradeWithInvalidProcessType() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
 
-      for (UniverseDefinitionTaskBase.ServerType type : UniverseDefinitionTaskBase.ServerType.values()) {
+      for (UniverseDefinitionTaskBase.ServerType type :
+          UniverseDefinitionTaskBase.ServerType.values()) {
         try {
-            // master and tserver are valid process types.
-            if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
-              continue;
-            }
-            params.setProperty("processType", type.toString());
-            nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-            fail();
+          // master and tserver are valid process types.
+          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+            continue;
+          }
+          params.setProperty("processType", type.toString());
+          nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+          fail();
         } catch (RuntimeException re) {
-          assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType: " + type.name())));
+          assertThat(
+              re.getMessage(), allOf(notNullValue(), is("Invalid processType: " + type.name())));
         }
       }
     }
@@ -929,8 +1267,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testSoftwareUpgradeWithoutTaskType() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
       params.setProperty("processType", MASTER.toString());
@@ -939,28 +1280,31 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
       } catch (RuntimeException re) {
-        assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid taskSubType property: null")));
+        assertThat(
+            re.getMessage(), allOf(notNullValue(), is("Invalid taskSubType property: null")));
       }
     }
   }
-
 
   @Test
   public void testSoftwareUpgradeWithDownloadNodeCommand() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Download.toString());
       params.setProperty("processType", MASTER.toString());
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -968,8 +1312,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testSoftwareUpgradeWithInstallNodeCommand() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
@@ -979,7 +1326,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -987,8 +1335,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testSoftwareUpgradeWithoutReleasePackage() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.2";
       params.isMasterInShellMode = true;
@@ -998,8 +1349,9 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
       } catch (RuntimeException re) {
-        assertThat(re.getMessage(), allOf(notNullValue(),
-            is("Unable to fetch yugabyte release for version: 0.0.2")));
+        assertThat(
+            re.getMessage(),
+            allOf(notNullValue(), is("Unable to fetch yugabyte release for version: 0.0.2")));
       }
     }
   }
@@ -1009,8 +1361,11 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       for (String serverType : ImmutableList.of(MASTER.toString(), TSERVER.toString())) {
         AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-                ApiUtils.mockUniverseUpdater(t.cloudType)));
+        buildValidParams(
+            t,
+            params,
+            Universe.saveDetails(
+                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
         Set<String> gflagsToRemove = new HashSet<>();
         gflagsToRemove.add("flag1");
         gflagsToRemove.add("flag2");
@@ -1022,7 +1377,8 @@ public class NodeManagerTest extends FakeDBApplication {
         List<String> expectedCommand = new ArrayList<>(t.baseCommand);
         expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-        verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+        verify(shellProcessHandler, times(1))
+            .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
       }
     }
   }
@@ -1031,8 +1387,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testGFlagsUpgradeNullProcessType() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       HashMap<String, String> gflags = new HashMap<>();
       gflags.put("gflagName", "gflagValue");
       params.gflags = gflags;
@@ -1052,15 +1411,19 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testGFlagsUpgradeInvalidProcessType() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       HashMap<String, String> gflags = new HashMap<>();
       gflags.put("gflagName", "gflagValue");
       params.gflags = gflags;
       params.type = GFlags;
       params.isMasterInShellMode = true;
 
-      for (UniverseDefinitionTaskBase.ServerType type : UniverseDefinitionTaskBase.ServerType.values()) {
+      for (UniverseDefinitionTaskBase.ServerType type :
+          UniverseDefinitionTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
           if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
@@ -1070,7 +1433,8 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
           fail();
         } catch (RuntimeException re) {
-          assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType: " + type.name())));
+          assertThat(
+              re.getMessage(), allOf(notNullValue(), is("Invalid processType: " + type.name())));
         }
       }
     }
@@ -1080,8 +1444,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testGFlagsUpgradeWithEmptyGFlagsNodeCommand() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = GFlags;
 
       try {
@@ -1097,8 +1464,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testGFlagsUpgradeForMasterNodeCommand() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       HashMap<String, String> gflags = new HashMap<>();
       gflags.put("gflagName", "gflagValue");
       params.gflags = gflags;
@@ -1109,7 +1479,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1117,21 +1488,24 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testEnableYSQLNodeCommand() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-        ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableYSQL = true;
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
   @Test
-  public void testEnableNodeToNodeTLSNodeCommand()
-  throws IOException, NoSuchAlgorithmException {
+  public void testEnableNodeToNodeTLSNodeCommand() throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       params.nodeName = t.node.getNodeName();
@@ -1143,14 +1517,13 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
-
   @Test
-  public void testCustomCertNodeCommand()
-  throws IOException, NoSuchAlgorithmException {
+  public void testCustomCertNodeCommand() throws IOException, NoSuchAlgorithmException {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     for (TestData t : testData) {
@@ -1167,17 +1540,20 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
   @Test
-  public void testEnableClientToNodeTLSNodeCommand()
-  throws IOException, NoSuchAlgorithmException {
+  public void testEnableClientToNodeTLSNodeCommand() throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-        ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableClientToNodeEncrypt = true;
@@ -1186,17 +1562,20 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
   @Test
-  public void testEnableAllTLSNodeCommand()
-  throws IOException, NoSuchAlgorithmException {
+  public void testEnableAllTLSNodeCommand() throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-        ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
@@ -1206,7 +1585,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1214,26 +1594,32 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testGlobalDefaultCallhome() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-              ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.callhomeLevel = CallHomeManager.CollectionLevel.valueOf("NONE");
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
-
 
   @Test
   public void testDestroyNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
       try {
         NodeTaskParams params = new NodeTaskParams();
-        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-            ApiUtils.mockUniverseUpdater(t.cloudType)));
+        buildValidParams(
+            t,
+            params,
+            Universe.saveDetails(
+                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
         fail();
       } catch (RuntimeException re) {
@@ -1247,14 +1633,18 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       buildValidParams(t, params, createUniverse());
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.nodeIP = "1.1.1.1";
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1262,13 +1652,17 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testListNodeCommand() {
     for (TestData t : testData) {
       NodeTaskParams params = new NodeTaskParams();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1277,8 +1671,11 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       try {
         NodeTaskParams params = new NodeTaskParams();
-        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-            ApiUtils.mockUniverseUpdater(t.cloudType)));
+        buildValidParams(
+            t,
+            params,
+            Universe.saveDetails(
+                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, params);
         fail();
       } catch (RuntimeException re) {
@@ -1291,15 +1688,19 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testControlNodeCommand() {
     for (TestData t : testData) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.process = "master";
       params.command = "create";
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Control, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1314,7 +1715,8 @@ public class NodeManagerTest extends FakeDBApplication {
       } catch (RuntimeException re) {
         if (t.cloudType == Common.CloudType.docker) {
           assertThat(
-              re.getMessage(), allOf(notNullValue(), is("yb.docker.network is not set in application.conf")));
+              re.getMessage(),
+              allOf(notNullValue(), is("yb.docker.network is not set in application.conf")));
         }
       }
     }
@@ -1324,13 +1726,17 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testDockerNodeCommandWithDockerNetwork() {
     for (TestData t : testData) {
       NodeTaskParams params = new NodeTaskParams();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1339,7 +1745,7 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
       UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       if (Provider.InstanceTagsEnabledProviders.contains(t.cloudType)) {
         ApiUtils.insertInstanceTags(univUUID);
@@ -1348,7 +1754,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1357,7 +1764,7 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
       UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       if (Provider.InstanceTagsEnabledProviders.contains(t.cloudType)) {
         ApiUtils.insertInstanceTags(univUUID);
@@ -1367,7 +1774,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1376,19 +1784,18 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
       UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
       try {
-          nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-          assertNotEquals(t.cloudType, Common.CloudType.aws);
-        } catch (RuntimeException re) {
-          if (t.cloudType == Common.CloudType.aws) {
-            assertThat(
-                re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
-          }
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
+        assertNotEquals(t.cloudType, Common.CloudType.aws);
+      } catch (RuntimeException re) {
+        if (t.cloudType == Common.CloudType.aws) {
+          assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
         }
+      }
     }
   }
 
@@ -1397,30 +1804,35 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
       UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       addValidDeviceInfo(t, params);
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Disk_Update, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Disk_Update, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
   @Test
-  @Parameters({ "true", "false" })
+  @Parameters({"true", "false"})
   public void testYEDISNodeCommand(boolean enableYEDIS) {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableYEDIS = enableYEDIS;
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1435,7 +1847,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  @Parameters({ "MASTER, true", "MASTER, false", "TSERVER, true", "TSERVER, false" })
+  @Parameters({"MASTER, true", "MASTER, false", "TSERVER, true", "TSERVER, false"})
   @TestCaseName("testGFlagsEraseMastersWhenInShell_Type:{0}_InShell:{1}")
   public void testGFlagsEraseMastersWhenInShell(String serverType, boolean isMasterInShellMode) {
     for (TestData t : testData) {
@@ -1445,7 +1857,9 @@ public class NodeManagerTest extends FakeDBApplication {
       universe.getUniverseDetails().nodeDetailsSet.add(createNode(true));
       assertFalse(StringUtils.isEmpty(universe.getMasterAddresses()));
 
-      buildValidParams(t, params,
+      buildValidParams(
+          t,
+          params,
           Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.type = GFlags;
@@ -1458,17 +1872,226 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       testGFlagsInCommand(expectedCommand, params.isMaster, isMasterInShellMode);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
-  private void testGFlagsInCommand(List<String> command, boolean isMaster,
-      boolean isMasterInShellMode) {
+  private void testGFlagsInCommand(
+      List<String> command, boolean isMaster, boolean isMasterInShellMode) {
     int gflagsIndex = command.indexOf("--gflags");
     assertNotEquals(-1, gflagsIndex);
 
     JsonNode obj = Json.parse(command.get(gflagsIndex + 1));
-    assertEquals(isMasterInShellMode, StringUtils
-        .isEmpty(obj.get(isMaster ? "master_addresses" : "tserver_master_addrs").asText()));
+    assertEquals(
+        isMasterInShellMode,
+        StringUtils.isEmpty(
+            obj.get(isMaster ? "master_addresses" : "tserver_master_addrs").asText()));
+  }
+
+  @Test
+  public void testToggleTlsWithoutProcessType() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType: null")));
+      }
+    }
+  }
+
+  @Test
+  public void testToggleTlsWithInvalidProcessType() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+
+      for (UniverseDefinitionTaskBase.ServerType type :
+          UniverseDefinitionTaskBase.ServerType.values()) {
+        try {
+          // Master and TServer are valid process types
+          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+            continue;
+          }
+          params.setProperty("processType", type.toString());
+          nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+          fail();
+        } catch (RuntimeException re) {
+          assertThat(
+              re.getMessage(), allOf(notNullValue(), is("Invalid processType: " + type.name())));
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testToggleTlsWithoutTaskType() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(
+            re.getMessage(), allOf(notNullValue(), is("Invalid taskSubType property: null")));
+      }
+    }
+  }
+
+  @Test
+  public void testToggleTlsCopyCertsWithInvalidRootCa() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.enableNodeToNodeEncrypt = true;
+      params.enableClientToNodeEncrypt = true;
+      params.rootCA = UUID.randomUUID();
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(), containsString("No valid rootCA")));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"true, true", "true, false", "false, true", "false, false"})
+  @TestCaseName("testToggleTlsCopyCertsWhenNodeToNode:{0}_ClientToNode:{1}")
+  public void testToggleTlsCopyCertsWithParams(
+      boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt)
+      throws IOException, NoSuchAlgorithmException {
+    for (TestData data : testData) {
+      if (data.cloudType == Common.CloudType.gcp) {
+        data.privateKey = null;
+      }
+
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.getOrBadRequest(universeUuid)
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+      params.rootCA = createUniverseWithCert(data, params);
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        if (!enableNodeToNodeEncrypt && !enableClientToNodeEncrypt) {
+          fail();
+        }
+        List<String> expectedCommand = data.baseCommand;
+        expectedCommand.addAll(
+            nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+        verify(shellProcessHandler, times(1))
+            .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(), containsString("No changes needed")));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"0", "-1", "1"})
+  @TestCaseName("testToggleTlsRound1GFlagsUpdateWhenNodeToNodeChange:{0}")
+  public void testToggleTlsRound1GFlagsUpdate(int nodeToNodeChange) {
+    for (TestData data : testData) {
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.getOrBadRequest(universeUuid)
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+      params.setProperty(
+          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name());
+      params.nodeToNodeChange = nodeToNodeChange;
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      List<String> expectedCommand = data.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  @Parameters({"0", "-1", "1"})
+  @TestCaseName("testToggleTlsRound2GFlagsUpdateWhenNodeToNodeChange:{0}")
+  public void testToggleTlsRound2GFlagsUpdate(int nodeToNodeChange) {
+    for (TestData data : testData) {
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.getOrBadRequest(universeUuid)
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = ToggleTls;
+      params.setProperty("processType", MASTER.toString());
+      params.setProperty(
+          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name());
+      params.nodeToNodeChange = nodeToNodeChange;
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      List<String> expectedCommand = data.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+    }
   }
 }

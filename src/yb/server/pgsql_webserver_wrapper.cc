@@ -243,12 +243,14 @@ static void PgPrometheusMetricsHandler(const Webserver::WebRequest& req,
     snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_count");
     WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr,
                                         copied_name,
-                                        ybpgm_table[i].calls),
+                                        ybpgm_table[i].calls,
+                                        yb::AggregationFunction::kSum),
                                         "Couldn't write text metrics for Prometheus");
     snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_sum");
     WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr,
                                         copied_name,
-                                        ybpgm_table[i].total_time),
+                                        ybpgm_table[i].total_time,
+                                        yb::AggregationFunction::kSum),
                                         "Couldn't write text metrics for Prometheus");
   }
 }

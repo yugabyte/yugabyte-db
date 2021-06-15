@@ -138,6 +138,9 @@ message MasterErrorPB {
     REACHED_SPLIT_LIMIT = 36;
 
     SPLIT_OR_BACKFILL_IN_PROGRESS = 37;
+
+    // Error in case a tablet-level operation was attempted on a tablet which is not running.
+    TABLET_NOT_RUNNING = 38;
   }
 
   // The error code.
@@ -258,6 +261,7 @@ message SysRowEntry {
     CDC_STREAM = 10;
     UNIVERSE_REPLICATION = 11;
     SNAPSHOT_SCHEDULE = 12;
+    DDL_LOG_ENTRY = 13;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -773,6 +777,7 @@ message ListTabletsOnPathPB {
     optional uint64 sst_file_size = 2;
     optional uint64 wal_file_size = 3;
     optional uint64 uncompressed_sst_file_size = 4;
+    optional bool may_have_orphaned_post_split_data = 5 [default = true];
   }
   repeated TabletOnPath tablet = 2;
 }
@@ -879,11 +884,11 @@ message TSHeartbeatResponsePB {
 
   optional int32 cluster_config_version = 13;
 
-  optional int64 tablet_split_size_threshold_bytes = 14;
-
   optional int32 tablet_report_limit = 16;
 
   optional TSSnapshotSchedulesInfoPB snapshot_schedules = 17;
+
+  optional int64 DEPRECATED_tablet_split_size_threshold_bytes = 14;
 }
 
 message TSInformationPB {
@@ -2076,6 +2081,24 @@ message DeleteTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message DdlLogRequestPB {
+}
+
+message DdlLogEntryPB {
+  optional TableType table_type = 1;
+  optional string namespace_name = 2;
+  optional string namespace_id = 3;
+  optional string table_name = 4;
+  optional string table_id = 5;
+  optional string action = 6;
+  optional fixed64 time = 7;
+}
+
+message DdlLogResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated DdlLogEntryPB entries = 2;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -2215,4 +2238,6 @@ service MasterService {
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
   rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
+
+  rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 }

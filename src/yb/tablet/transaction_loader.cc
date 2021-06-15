@@ -128,6 +128,23 @@ class TransactionLoader::Executor {
     context().CompleteLoad([this] {
       loader_.all_loaded_.store(true, std::memory_order_release);
     });
+    {
+      // We need to lock and unlock the mutex here to avoid missing a notification in WaitLoaded
+      // and WaitAllLoaded. The waiting loop in those functions is equivalent to the following,
+      // after locking the mutex (and of course wait(...) releases the mutex while waiting):
+      //
+      // 1 while (!all_loaded_.load(std::memory_order_acquire)) {
+      // 2   load_cond_.wait(lock);
+      // 3 }
+      //
+      // If we did not have the lock/unlock here, it would be possible that all_loaded_ would be set
+      // to true and notify_all() would be called between lines 1 and 2, and we would miss the
+      // notification and wait indefinitely at line 2. With lock/unlock this is no longer possible
+      // because if we set all_loaded_ to true between lines 1 and 2, the only time we would be able
+      // to send a notification at line 2 as wait(...) releases the mutex, but then we would check
+      // all_loaded_ and exit the loop at line 1.
+      std::lock_guard<std::mutex> lock(loader_.mutex_);
+    }
     loader_.load_cond_.notify_all();
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
   }
@@ -323,16 +340,25 @@ void TransactionLoader::Start(RWOperationCounter* pending_op_counter, const docd
   }
 }
 
+namespace {
+
+// Waiting threads will only wake up on a timeout if there is still an uncaught race condition that
+// causes us to miss a notification on the condition variable.
+constexpr auto kWaitLoadedWakeUpInterval = 10s;
+
+}  // namespace
+
 void TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANALYSIS {
   if (all_loaded_.load(std::memory_order_acquire)) {
     return;
   }
   std::unique_lock<std::mutex> lock(mutex_);
+  // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
   while (!all_loaded_.load(std::memory_order_acquire)) {
     if (last_loaded_ >= id) {
       break;
     }
-    load_cond_.wait(lock);
+    load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
   }
 }
 
@@ -341,10 +367,11 @@ void TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
   if (all_loaded_.load(std::memory_order_acquire)) {
     return;
   }
+  // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
   std::unique_lock<std::mutex> lock(mutex_);
-  load_cond_.wait(lock, [this] {
-    return all_loaded_.load(std::memory_order_acquire);
-  });
+  while (!all_loaded_.load(std::memory_order_acquire)) {
+    load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
+  }
 }
 
 void TransactionLoader::Shutdown() {

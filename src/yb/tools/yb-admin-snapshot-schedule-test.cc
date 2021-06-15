@@ -24,6 +24,8 @@
 
 #include "yb/util/date_time.h"
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -31,22 +33,6 @@ namespace yb {
 namespace tools {
 
 namespace {
-
-Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name) {
-  auto it = value.FindMember(name);
-  if (it == value.MemberEnd()) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
-
-Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
-  auto it = value->FindMember(name);
-  if (it == value->MemberEnd()) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
 
 const std::string kClusterName = "yugacluster";
 
@@ -88,7 +74,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     std::string restoration_id = VERIFY_RESULT(Get(out, "restoration_id")).get().GetString();
     LOG(INFO) << "Restoration id: " << restoration_id;
 
-    return WaitRestorationDone(restoration_id, 20s);
+    return WaitRestorationDone(restoration_id, 40s);
   }
 
   CHECKED_STATUS WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
@@ -124,7 +110,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return Status::OK();
   }
 
-  std::vector<std::string> ExtraTSFlags() {
+  virtual std::vector<std::string> ExtraTSFlags() {
     return {};
   }
 
@@ -182,22 +168,6 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         "ycql." + client::kTableName.namespace_name(), kRetention);
   }
 
-  Result<CassandraSession> CqlConnect(const std::string& db_name = std::string()) {
-    if (!cql_driver_) {
-      std::vector<std::string> hosts;
-      for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
-        hosts.push_back(cluster_->tablet_server(i)->bind_host());
-      }
-      cql_driver_ = std::make_unique<CppCassandraDriver>(
-          hosts, cluster_->tablet_server(0)->cql_rpc_port(), true);
-    }
-    auto result = VERIFY_RESULT(cql_driver_->CreateSession());
-    if (!db_name.empty()) {
-      RETURN_NOT_OK(result.ExecuteQuery(Format("USE $0", client::kTableName.namespace_name())));
-    }
-    return result;
-  }
-
   template <class... Args>
   Result<std::string> CreateSnapshotSchedule(
       MonoDelta interval, MonoDelta retention, Args&&... args) {
@@ -211,6 +181,11 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   void TestUndeleteTable(bool restart_masters);
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->bind_to_unique_loopback_addresses = true;
+    options->use_same_ts_ports = true;
+  }
 
   std::unique_ptr<CppCassandraDriver> cql_driver_;
 };
@@ -243,10 +218,10 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
     std::string last_snapshot_time_str;
     for (const auto& snapshot : snapshots) {
       std::string snapshot_time = VERIFY_RESULT(
-          Get(snapshot, "snapshot_time_utc")).get().GetString();
+          Get(snapshot, "snapshot_time")).get().GetString();
       if (!last_snapshot_time_str.empty()) {
         std::string previous_snapshot_time = VERIFY_RESULT(
-            Get(snapshot, "previous_snapshot_time_utc")).get().GetString();
+            Get(snapshot, "previous_snapshot_time")).get().GetString();
         SCHECK_EQ(previous_snapshot_time, last_snapshot_time_str, IllegalState,
                   "Wrong previous_snapshot_hybrid_time");
       }
@@ -428,6 +403,283 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
       "SELECT key FROM test_table WHERE value = 'value'"));
 
   ASSERT_EQ(res, 1);
+}
+
+// This test is for schema version patching after restore.
+// Consider the following scenario, w/o patching:
+//
+// 1) Create table.
+// 2) Add text column to table. Schema version - 1.
+// 3) Insert values into table. Each CQL proxy suppose schema version 1 for this table.
+// 4) Restore to time between (1) and (2). Schema version - 0.
+// 5) Add int column to table. Schema version - 1.
+// 6) Try insert values with wrong type into table.
+//
+// So table has schema version 1, but new column is INT.
+// CQL proxy suppose schema version is also 1, but the last column is TEXT.
+TEST_F(YbAdminSnapshotScheduleTest, AlterTable) {
+  const auto kKeys = Range(10);
+
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+
+  for (auto key : kKeys) {
+    ASSERT_OK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value) VALUES ($0, 'A')", key)));
+  }
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "ALTER TABLE test_table ADD value2 TEXT"));
+
+  for (auto key : kKeys) {
+    ASSERT_OK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value, value2) VALUES ($0, 'B', 'X')", key)));
+  }
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "ALTER TABLE test_table ADD value2 INT"));
+
+  for (auto key : kKeys) {
+    // It would succeed on some TServers if we would not refresh metadata after restore.
+    // But it should not succeed because of last column type.
+    ASSERT_NOK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value, value2) VALUES ($0, 'D', 'Y')", key)));
+  }
+}
+
+class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
+ public:
+  virtual std::vector<std::string> ExtraTSFlags() {
+    return { "--consistent_restore=true", "--TEST_tablet_delay_restore_ms=400" };
+  }
+};
+
+CHECKED_STATUS WaitWrites(int num, std::atomic<int>* current) {
+  auto stop = current->load() + num;
+  return WaitFor([current, stop] { return current->load() >= stop; },
+                 20s, Format("Wait $0 ($1) writes", stop, num));
+}
+
+YB_DEFINE_ENUM(KeyState, (kNone)(kMissing)(kBeforeMissing)(kAfterMissing));
+
+// Check that restoration is consistent across tablets.
+// Concurrently write keys and store event stream, i.e when we started or finished to write key.
+// After restore we fetch all keys and see what keys were removed during restore.
+// So for each such key we could find what keys were written strictly before it,
+// i.e. before restore. Or strictly after, i.e. after restore.
+// Then we check that key is not marked as before and after restore simultaneously.
+TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestore, YbAdminSnapshotConsistentRestoreTest) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"));
+
+  struct EventData {
+    int key;
+    bool finished;
+  };
+
+  std::atomic<int> written{0};
+  TestThreadHolder thread_holder;
+
+  std::vector<EventData> events;
+
+  thread_holder.AddThreadFunctor([&conn, &written, &events, &stop = thread_holder.stop_flag()] {
+    auto prepared = ASSERT_RESULT(conn.Prepare("INSERT INTO test_table (k1) VALUES (?)"));
+    std::vector<std::pair<int, CassandraFuture>> futures;
+    int key = 0;
+    constexpr int kBlock = 10;
+    while (!stop.load() || !futures.empty()) {
+      auto filter = [&events, &written](auto& key_and_future) {
+        if (!key_and_future.second.Ready()) {
+          return false;
+        }
+        auto write_status = key_and_future.second.Wait();
+        if (write_status.ok()) {
+          events.push_back(EventData{.key = key_and_future.first, .finished = true});
+          ++written;
+        } else {
+          LOG(WARNING) << "Write failed: " << write_status;
+        }
+        return true;
+      };
+      ASSERT_NO_FATALS(EraseIf(filter, &futures));
+      if (futures.size() < kBlock && !stop.load()) {
+        auto write_key = ++key;
+        auto stmt = prepared.Bind();
+        stmt.Bind(0, write_key);
+        futures.emplace_back(write_key, conn.ExecuteGetFuture(stmt));
+        events.push_back(EventData{.key = write_key, .finished = false});
+      }
+      std::this_thread::sleep_for(10ms);
+    }
+  });
+
+  {
+    auto se = ScopeExit([&thread_holder] {
+      thread_holder.Stop();
+    });
+    ASSERT_OK(WaitWrites(50, &written));
+
+    Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+    ASSERT_OK(WaitWrites(10, &written));
+
+    ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+    ASSERT_OK(WaitWrites(10, &written));
+  }
+
+  struct KeyData {
+    KeyState state;
+    int start = -1;
+    int finish = -1;
+    int set_by = -1;
+  };
+
+  std::vector<KeyData> keys;
+
+  for (;;) {
+    keys.clear();
+    auto result = conn.ExecuteWithResult("SELECT * FROM test_table");
+    if (!result.ok()) {
+      LOG(WARNING) << "Select failed: " << result.status();
+      continue;
+    }
+
+    auto iter = result->CreateIterator();
+    while (iter.Next()) {
+      auto row = iter.Row();
+      int key = row.Value(0).As<int32_t>();
+      keys.resize(std::max<size_t>(keys.size(), key + 1), {.state = KeyState::kMissing});
+      keys[key].state = KeyState::kNone;
+    }
+    break;
+  }
+
+  for (size_t i = 0; i != events.size(); ++i) {
+    auto& event = events[i];
+    auto& key_data = keys[event.key];
+    if (key_data.state == KeyState::kMissing) {
+      (event.finished ? key_data.finish : key_data.start) = i;
+    }
+  }
+
+  for (int key = 1; key != keys.size(); ++key) {
+    if (keys[key].state != KeyState::kMissing || keys[key].finish == -1) {
+      continue;
+    }
+    for (auto set_state : {KeyState::kBeforeMissing, KeyState::kAfterMissing}) {
+      int begin = set_state == KeyState::kBeforeMissing ? 0 : keys[key].finish + 1;
+      int end = set_state == KeyState::kBeforeMissing ? keys[key].start : events.size();
+      for (int i = begin; i != end; ++i) {
+        auto& event = events[i];
+        if (keys[event.key].state == KeyState::kMissing ||
+            (event.finished != (set_state == KeyState::kBeforeMissing))) {
+          continue;
+        }
+        if (keys[event.key].state == KeyState::kNone) {
+          keys[event.key].state = set_state;
+          keys[event.key].set_by = key;
+        } else if (keys[event.key].state != set_state) {
+          FAIL() << "Key " << event.key << " already marked as " << keys[event.key].state
+                 << ", while trying to set: " << set_state << " with " << key << ", prev set: "
+                 << keys[event.key].set_by;
+        }
+      }
+    }
+  }
+}
+
+// Write multiple transactions and restore.
+// Then check that we don't have partially applied transaction.
+TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotConsistentRestoreTest) {
+  constexpr int kBatchSize = 10;
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"
+                              "WITH transactions = { 'enabled' : true }"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), &conn] {
+    const int kConcurrency = 10;
+    std::string expr = "BEGIN TRANSACTION ";
+    for (ATTRIBUTE_UNUSED int i : Range(kBatchSize)) {
+      expr += "INSERT INTO test_table (k1) VALUES (?); ";
+    }
+    expr += "END TRANSACTION;";
+    auto prepared = ASSERT_RESULT(conn.Prepare(expr));
+    int base = 0;
+    std::vector<CassandraFuture> futures;
+    while (!stop.load(std::memory_order_acquire)) {
+      auto filter = [](CassandraFuture& future) {
+        if (!future.Ready()) {
+          return false;
+        }
+        auto status = future.Wait();
+        if (!status.ok() && !status.IsTimedOut()) {
+          EXPECT_OK(status);
+        }
+        return true;
+      };
+      ASSERT_NO_FATALS(EraseIf(filter, &futures));
+      if (futures.size() < kConcurrency) {
+        auto stmt = prepared.Bind();
+        for (int i : Range(kBatchSize)) {
+          stmt.Bind(i, base + i);
+        }
+        base += kBatchSize;
+        futures.push_back(conn.ExecuteGetFuture(stmt));
+      }
+    }
+  });
+
+  std::this_thread::sleep_for(250ms);
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  std::this_thread::sleep_for(250ms);
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  thread_holder.WaitAndStop(250ms);
+
+  std::vector<int> keys;
+  for (;;) {
+    keys.clear();
+    auto result = conn.ExecuteWithResult("SELECT * FROM test_table");
+    if (!result.ok()) {
+      LOG(WARNING) << "Select failed: " << result.status();
+      continue;
+    }
+
+    auto iter = result->CreateIterator();
+    while (iter.Next()) {
+      auto row = iter.Row();
+      int key = row.Value(0).As<int32_t>();
+      keys.push_back(key);
+    }
+    break;
+  }
+
+  std::sort(keys.begin(), keys.end());
+  // Check that we have whole batches only.
+  // Actually this check is little bit relaxed, but it is enough to catch the bug.
+  for (size_t i : Range(keys.size())) {
+    ASSERT_EQ(keys[i] % kBatchSize, i % kBatchSize)
+        << "i: " << i << ", key: " << keys[i] << ", batch: "
+        << AsString(RangeOfSize<size_t>((i / kBatchSize - 1) * kBatchSize, kBatchSize * 3)[keys]);
+  }
 }
 
 }  // namespace tools

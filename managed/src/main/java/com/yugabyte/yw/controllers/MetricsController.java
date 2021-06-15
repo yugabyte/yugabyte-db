@@ -16,7 +16,6 @@ import java.io.OutputStreamWriter;
 
 import com.yugabyte.yw.common.ApiResponse;
 
-
 public class MetricsController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetricsController.class);
@@ -36,5 +35,4 @@ public class MetricsController extends Controller {
 
     return Results.status(OK, response.toString());
   }
-
 }

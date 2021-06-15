@@ -24,11 +24,11 @@
 
 DECLARE_bool(use_cassandra_authentication);
 
-namespace yb {
-namespace ql {
-
 DEFINE_bool(allow_index_table_read_write, false, "Allow direct read and write of index tables");
 TAG_FLAG(allow_index_table_read_write, hidden);
+
+namespace yb {
+namespace ql {
 
 using std::shared_ptr;
 using client::YBTable;
@@ -255,6 +255,11 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
   // Setup the column to which the INDEX column is referencing.
   if (sem_state_ && sem_state_->is_processing_index_column()) {
     sem_state_->add_index_column_ref(entry->column_desc_->id());
+  }
+
+  if (sem_state_ && sem_state_->idx_predicate_state()) {
+    // We are in CREATE INDEX path of a partial index. Save column ids referenced in the predicate.
+    sem_state_->idx_predicate_state()->column_refs()->insert(entry->column_desc_->id());
   }
 
   return entry->column_desc_;

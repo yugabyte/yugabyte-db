@@ -8,27 +8,23 @@ import java.util.Date;
 import com.yugabyte.yw.models.CertificateInfo;
 
 /**
- * This class will be used by the API and UI Form Elements to validate constraints for
- * the custom certificate Data.
+ * This class will be used by the API and UI Form Elements to validate constraints for the custom
+ * certificate Data.
  */
 public class CertificateParams {
-  @Constraints.Required()
-  public String label;
+  @Constraints.Required() public String label;
 
-  @Constraints.Required()
-  public long certStart;
+  @Constraints.Required() public long certStart;
 
-  @Constraints.Required()
-  public long certExpiry;
+  @Constraints.Required() public long certExpiry;
 
-  @Constraints.Required()
-  public String certContent;
+  @Constraints.Required() public String certContent;
 
   public String keyContent;
 
   public CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
 
-  static public class CustomCertInfo {
+  public static class CustomCertInfo {
     public String nodeCertPath;
     public String nodeKeyPath;
     public String rootCertPath;

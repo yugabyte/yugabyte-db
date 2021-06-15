@@ -181,11 +181,6 @@ struct ReplayState {
 
   void UpdateCommittedOpId(const OpId& id);
 
-  // Updates split_op_id. Expects msg to be SPLIT_OP.
-  // tablet_id is ID of the tablet being bootstrapped.
-  // Return error if it catches inconsistency between split operations.
-  CHECKED_STATUS UpdateSplitOpId(const ReplicateMsg& msg, const TabletId& tablet_id);
-
   // half_limit is half the limit on the number of entries added
   void AddEntriesToStrings(
       const OpIndexToEntryMap& entries, std::vector<std::string>* strings, int half_limit) const;
@@ -213,10 +208,6 @@ struct ReplayState {
   // The last operation known to be committed. All other operations with lower IDs are also
   // committed.
   OpId committed_op_id;
-
-  // Parameters of the split operation added to Raft log and designated for this tablet .
-  // See comments for ReplicateState::split_op_info_.
-  consensus::SplitOpInfo split_op_info;
 
   // All REPLICATE entries that have not been applied to RocksDB yet. We decide what entries are
   // safe to apply and delete from this map based on the commit index included into each REPLICATE
@@ -292,40 +283,6 @@ void ReplayState::UpdateCommittedOpId(const OpId& id) {
     VLOG_WITH_PREFIX(1) << "Updating committed op id to " << id;
     committed_op_id = id;
   }
-}
-
-Status ReplayState::UpdateSplitOpId(const ReplicateMsg& msg, const TabletId& tablet_id) {
-  SCHECK_EQ(
-      msg.op_type(), consensus::SPLIT_OP, IllegalState,
-      Format("Unexpected operation $0 instead of SPLIT_OP", msg));
-  const auto tablet_id_to_split = msg.split_request().tablet_id();
-
-  if (!split_op_info.op_id.empty()) {
-    if (tablet_id_to_split == tablet_id) {
-      return STATUS_FORMAT(
-          IllegalState,
-          "There should be at most one SPLIT_OP designated for tablet $0 but we got two: "
-          "$1, $2",
-          tablet_id, split_op_info.op_id, msg.id());
-    }
-
-    return STATUS_FORMAT(
-        IllegalState,
-        "Unexpected SPLIT_OP $0 designated for another tablet $1 after we've already "
-        "replayed SPLIT_OP $2 for this tablet $3",
-        msg.id(), tablet_id_to_split, split_op_info.op_id, tablet_id);
-  }
-
-  if (tablet_id_to_split == tablet_id) {
-    // We might be asked to replay SPLIT_OP designated for a different (ancestor) tablet, will
-    // just ignore it in this case.
-    const auto& split_request = msg.split_request();
-    split_op_info = {
-      .op_id = OpId::FromPB(msg.id()),
-      .child_tablet_ids = { split_request.new_tablet1_id(), split_request.new_tablet2_id() }
-    };
-  }
-  return Status::OK();
 }
 
 void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
@@ -952,12 +909,11 @@ class TabletBootstrap {
     HistoryCutoffOperationState state(
         tablet_.get(), replicate_msg->mutable_history_cutoff());
 
-    return state.Replicated(/* leader_term= */ yb::OpId::kUnknownTerm);
+    return state.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
 
   CHECKED_STATUS PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
     tserver::SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
-    RETURN_NOT_OK(replay_state_->UpdateSplitOpId(*replicate_msg, tablet_->tablet_id()));
     // We might be asked to replay SPLIT_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set.
     if (split_request->tablet_id() != tablet_->tablet_id()) {
@@ -970,9 +926,7 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    SplitOperationState state(
-        tablet_.get(), nullptr /* consensus_for_abort */, data_.tablet_init_data.tablet_splitter,
-        split_request);
+    SplitOperationState state(tablet_.get(), data_.tablet_init_data.tablet_splitter, split_request);
     state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
     return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(&state, log_.get());
 
@@ -1357,7 +1311,6 @@ class TabletBootstrap {
     tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
     consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
     consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
-    consensus_info->split_op_info = replay_state_->split_op_info;
 
     if (data_.retryable_requests) {
       data_.retryable_requests->Clock().Adjust(last_entry_time);

@@ -49,6 +49,7 @@
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
@@ -71,7 +72,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_error.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -115,6 +117,7 @@
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/bloom_filter.h"
@@ -235,6 +238,10 @@ DEFINE_test_flag(bool, export_intentdb_metrics, false,
 DEFINE_test_flag(bool, pause_before_post_split_compation, false,
                  "Pause before triggering post split compaction.");
 
+DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
+                 "Prevents adding the UserFrontier to SST file in order to mimic older files.");
+
+DECLARE_bool(consistent_restore);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -298,6 +305,32 @@ docdb::PartialRangeKeyIntents UsePartialRangeKeyIntents(const RaftGroupMetadata&
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
   return Format("T $0$1: ", tablet_id, log_prefix_suffix);
+}
+
+docdb::ConsensusFrontiers* InitFrontiers(
+    const OpId op_id,
+    const HybridTime log_ht,
+    docdb::ConsensusFrontiers* frontiers) {
+  if (FLAGS_TEST_disable_adding_user_frontier_to_sst) {
+    return nullptr;
+  }
+  set_op_id(op_id, frontiers);
+  set_hybrid_time(log_ht, frontiers);
+  return frontiers;
+}
+
+template <class Data>
+docdb::ConsensusFrontiers* InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
+  return InitFrontiers(data.op_id, data.log_ht, frontiers);
+}
+
+rocksdb::UserFrontierPtr MemTableFrontierFromDb(
+    rocksdb::DB* db,
+    rocksdb::UpdateUserValueType type) {
+  if (FLAGS_TEST_disable_adding_user_frontier_to_sst) {
+    return nullptr;
+  }
+  return db->GetMutableMemTableFrontier(type);
 }
 
 } // namespace
@@ -415,6 +448,15 @@ Tablet::Tablet(const TabletInitData& data)
   snapshots_ = std::make_unique<TabletSnapshots>(this);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
+
+  if (metadata_->tablet_data_state() == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    SplitDone();
+  }
+  auto restoration_hybrid_time = metadata_->restoration_hybrid_time();
+  if (restoration_hybrid_time && transaction_participant_ && FLAGS_consistent_restore) {
+    transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
+  }
+  SyncRestoringOperationFilter();
 }
 
 Tablet::~Tablet() {
@@ -721,8 +763,12 @@ void Tablet::DoCleanupIntentFiles() {
     for (const auto& file : files) {
       if (file.largest.seqno < min_largest_seq_no) {
         min_largest_seq_no = file.largest.seqno;
-        auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
-        best_file_max_ht = frontier.hybrid_time();
+        if (file.largest.user_frontier) {
+          auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
+          best_file_max_ht = frontier.hybrid_time();
+        } else {
+          best_file_max_ht = HybridTime::kMax;
+        }
         best_file = &file;
       }
     }
@@ -780,7 +826,7 @@ Status Tablet::DoEnableCompactions() {
   };
   if (regular_db_) {
     WARN_WITH_PREFIX_NOT_OK(
-        regular_db_->SetOptions(new_options),
+        regular_db_->SetOptions(new_options, /* dump_options= */ false),
         "Failed to set options on regular DB");
     regular_db_status =
         regular_db_->EnableAutoCompaction({regular_db_->DefaultColumnFamily()});
@@ -791,7 +837,7 @@ Status Tablet::DoEnableCompactions() {
   }
   if (intents_db_) {
     WARN_WITH_PREFIX_NOT_OK(
-        intents_db_->SetOptions(new_options),
+        intents_db_->SetOptions(new_options, /* dump_options= */ false),
         "Failed to set options on provisional records DB");
     Status intents_db_status =
         intents_db_->EnableAutoCompaction({intents_db_->DefaultColumnFamily()});
@@ -858,6 +904,19 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
 
   if (transaction_participant_) {
     transaction_participant_->CompleteShutdown();
+  }
+
+  if (completed_split_log_anchor_) {
+    WARN_NOT_OK(log_anchor_registry_->Unregister(completed_split_log_anchor_.get()),
+                "Unregister split anchor");
+  }
+
+  if (completed_split_operation_filter_) {
+    UnregisterOperationFilter(completed_split_operation_filter_.get());
+  }
+
+  if (restoring_operation_filter_) {
+    UnregisterOperationFilter(restoring_operation_filter_.get());
   }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
@@ -973,16 +1032,15 @@ Status Tablet::ApplyOperationState(
     const OperationState& operation_state, int64_t batch_idx,
     const docdb::KeyValueWriteBatchPB& write_batch,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
-  docdb::ConsensusFrontiers frontiers;
-  set_op_id(operation_state.op_id(), &frontiers);
-
   auto hybrid_time = operation_state.WriteHybridTime();
 
+  docdb::ConsensusFrontiers frontiers;
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
-  set_hybrid_time(operation_state.hybrid_time(), &frontiers);
+  auto frontiers_ptr =
+      InitFrontiers(operation_state.op_id(), operation_state.hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, &frontiers, hybrid_time, already_applied_to_regular_db);
+      batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
@@ -1208,7 +1266,7 @@ bool IsSchemaVersionCompatible(uint32_t current_version, const Request& request)
   if (request.is_compatible_with_previous_version() &&
       request.schema_version() == current_version + 1) {
     DVLOG(1) << (FLAGS_yql_allow_compatible_schema_versions ? " " : "Not ")
-             << " Accepting request that is ahead of us by 1 version " << yb::ToString(request);
+             << " Accepting request that is ahead of us by 1 version " << AsString(request);
     return FLAGS_yql_allow_compatible_schema_versions;
   }
 
@@ -1322,7 +1380,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
                << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
                << table_info->schema_version << " vs req's : " << req->schema_version()
                << " is req compatible with prev version: "
-               << req->is_compatible_with_previous_version() << " for " << yb::ToString(req);
+               << req->is_compatible_with_previous_version() << " for " << AsString(req);
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
       resp->set_error_message(Format(
           "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
@@ -1331,7 +1389,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
           req->is_compatible_with_previous_version()));
     } else {
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
-               << yb::ToString(req);
+               << AsString(req);
       auto write_op = std::make_unique<QLWriteOperation>(
           std::shared_ptr<Schema>(table_info, &table_info->schema),
           table_info->index_map, unique_index_key_schema_.get_ptr(),
@@ -1382,8 +1440,8 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
       ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
       ql_write_op->response()->set_error_message(
           Format("Duplicate value disallowed by unique index $0", metadata_->table_name()));
-      DVLOG(1) << "Could not apply the given operation " << yb::ToString(ql_write_op->request())
-               << " due to " << yb::ToString(ql_write_op->response());
+      DVLOG(1) << "Could not apply the given operation " << AsString(ql_write_op->request())
+               << " due to " << AsString(ql_write_op->response());
     } else if (ql_write_op->rowblock() != nullptr) {
       // If the QL write op returns a rowblock, move the op to the transaction state to return the
       // rows data as a sidecar after the transaction completes.
@@ -1517,7 +1575,7 @@ void Tablet::UpdateQLIndexesFlushed(
     auto* index_response = index_op->mutable_response();
 
     if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
-      DVLOG(1) << "Got status " << index_response->status() << " for " << yb::ToString(index_op);
+      DVLOG(1) << "Got status " << index_response->status() << " for " << AsString(index_op);
       response->set_status(index_response->status());
       response->set_error_message(std::move(*index_response->mutable_error_message()));
     }
@@ -1850,12 +1908,6 @@ Status Tablet::ImportData(const std::string& source_dir) {
   return regular_db_->Import(source_dir);
 }
 
-template <class Data>
-void InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
-  set_op_id(data.op_id, frontiers);
-  set_hybrid_time(data.log_ht, frontiers);
-}
-
 // We apply intents by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
@@ -1870,11 +1922,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
-  docdb::ConsensusFrontiers* frontiers_ptr = nullptr;
-  if (!data.op_id.empty()) {
-    InitFrontiers(data, &frontiers);
-    frontiers_ptr = &frontiers;
-  }
+  auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
   WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
   return new_apply_state;
 }
@@ -1896,8 +1944,8 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
       }
 
       docdb::ConsensusFrontiers frontiers;
-      InitFrontiers(data, &frontiers);
-      WriteToRocksDB(&frontiers, &intents_write_batch, StorageDbType::kIntents);
+      auto frontiers_ptr = InitFrontiers(data, &frontiers);
+      WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
 
       apply_state = std::move(new_apply_state);
       intents_write_batch.Clear();
@@ -1907,8 +1955,8 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
   }
 
   docdb::ConsensusFrontiers frontiers;
-  InitFrontiers(data, &frontiers);
-  WriteToRocksDB(&frontiers, &intents_write_batch, StorageDbType::kIntents);
+  auto frontiers_ptr = InitFrontiers(data, &frontiers);
+  WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
   return Status::OK();
 }
 
@@ -2079,7 +2127,7 @@ Status Tablet::BackfillIndexesForYsql(
   }
   LOG(INFO) << "Begin " << __func__
             << " at " << read_time
-            << " for " << yb::ToString(indexes);
+            << " for " << AsString(indexes);
 
   if (!backfill_from.empty()) {
     return STATUS(
@@ -2188,7 +2236,7 @@ Status Tablet::BackfillIndexes(
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
   }
   LOG(INFO) << "Begin BackfillIndexes at " << read_time << " for "
-            << yb::ToString(indexes);
+            << AsString(indexes);
 
   // For the specific index that we are interested in, set up a scan job to scan all the
   // rows in this tablet and update the index accordingly.
@@ -2222,7 +2270,23 @@ Status Tablet::BackfillIndexes(
         }
       }
     }
+    if (idx.where_predicate_spec()) {
+      for (const auto col_in_pred : idx.where_predicate_spec()->column_ids()) {
+        ColumnId col_id_in_pred(col_in_pred);
+        if (col_ids_set.find(col_id_in_pred) == col_ids_set.end()) {
+          col_ids_set.insert(col_id_in_pred);
+          auto res = schema()->column_by_id(col_id_in_pred);
+          if (res) {
+            columns.push_back(*res);
+          } else {
+            LOG(DFATAL) << "Unexpected: cannot find the column in the main table for " <<
+              col_id_in_pred;
+          }
+        }
+      }
+    }
   }
+
   Schema projection(columns, {}, schema()->num_key_columns());
   auto iter =
       VERIFY_RESULT(NewRowIterator(projection, boost::none, ReadHybridTime::SingleTime(read_time)));
@@ -2274,7 +2338,7 @@ Status Tablet::BackfillIndexes(
   RETURN_NOT_OK(FlushIndexBatchIfRequired(
       &index_requests, /* forced */ true, read_time, &last_flushed_at, failed_indexes));
   *backfilled_until = resume_backfill_from;
-  LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << yb::ToString(index_ids)
+  LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << AsString(index_ids)
             << " until "
             << (backfilled_until->empty() ? "<end of the tablet>" : b2a_hex(*backfilled_until));
   return Status::OK();
@@ -2295,7 +2359,8 @@ Status Tablet::UpdateIndexInBatches(
         docdb::CreateAndSetupIndexInsertRequest(
             &expr_executor, /* index_has_write_permission */ true,
             kEmptyRow, row, &index, index_requests));
-    index_request->set_is_backfill(true);
+    if (index_request)
+      index_request->set_is_backfill(true);
   }
 
   // Update the index write op.
@@ -2396,8 +2461,8 @@ Status Tablet::FlushWithRetries(
         continue;
       }
 
-      VLOG(2) << "Got response " << yb::ToString(write_op->response())
-              << " for " << yb::ToString(write_op->request());
+      VLOG(2) << "Got response " << AsString(write_op->response())
+              << " for " << AsString(write_op->request());
       if (write_op->response().status() !=
           QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
         failed_indexes->insert(write_op->table()->id());
@@ -2419,7 +2484,7 @@ Status Tablet::FlushWithRetries(
   } while (!pending_ops.empty() && --retries_left > 0);
 
   if (!failed_indexes->empty()) {
-    VLOG_WITH_PREFIX(1) << "Failed due to non-retryable errors " << yb::ToString(*failed_indexes);
+    VLOG_WITH_PREFIX(1) << "Failed due to non-retryable errors " << AsString(*failed_indexes);
   }
   if (!pending_ops.empty()) {
     for (auto write_op : pending_ops) {
@@ -2428,7 +2493,7 @@ Status Tablet::FlushWithRetries(
       error_msg_cnts[error_message]++;
     }
     VLOG_WITH_PREFIX(1) << "Failed indexes including retryable and non-retryable errors are "
-                        << yb::ToString(*failed_indexes);
+                        << AsString(*failed_indexes);
   }
   return (
       failed_indexes->empty()
@@ -2436,7 +2501,7 @@ Status Tablet::FlushWithRetries(
           : STATUS_SUBSTITUTE(
                 IllegalState,
                 "Backfilling op failed for $0 requests after $1 retries with errors: $2",
-                pending_ops.size(), num_retries, yb::ToString(error_msg_cnts)));
+                pending_ops.size(), num_retries, AsString(error_msg_cnts)));
 }
 
 ScopedRWOperationPause Tablet::PauseReadWriteOperations(Stop stop) {
@@ -2622,7 +2687,7 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
   }
 
   auto intents_frontier = intents_db_
-      ? intents_db_->GetMutableMemTableFrontier(rocksdb::UpdateUserValueType::kLargest) : nullptr;
+      ? MemTableFrontierFromDb(intents_db_.get(), rocksdb::UpdateUserValueType::kLargest) : nullptr;
   if (intents_frontier) {
     auto index_delta =
         lastest_log_entry_op_id.index -
@@ -2678,7 +2743,7 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   HybridTime result = HybridTime::kMax;
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
-      auto mem_frontier = db->GetMutableMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+      auto mem_frontier = MemTableFrontierFromDb(db, rocksdb::UpdateUserValueType::kSmallest);
       if (mem_frontier) {
         const auto hybrid_time =
             static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();
@@ -3013,23 +3078,23 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
-Result<bool> Tablet::StillHasParentDataAfterSplit() {
+Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   ScopedRWOperation scoped_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_operation);
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
 }
 
-bool Tablet::MightStillHaveParentDataAfterSplit() {
-  auto res = StillHasParentDataAfterSplit();
+bool Tablet::MayHaveOrphanedPostSplitData() {
+  auto res = StillHasOrphanedPostSplitData();
   if (!res.ok()) {
-    LOG(WARNING) << "Failed to call StillHasParentDataAfterSplit: " << res.ToString();
+    LOG(WARNING) << "Failed to call StillHasOrphanedPostSplitData: " << res.ToString();
     return true;
   }
   return res.get();
 }
 
 bool Tablet::ShouldDisableLbMove() {
-  auto still_has_parent_data_result = StillHasParentDataAfterSplit();
+  auto still_has_parent_data_result = StillHasOrphanedPostSplitData();
   if (still_has_parent_data_result.ok()) {
     return still_has_parent_data_result.get();
   }
@@ -3350,7 +3415,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
     return STATUS(
         IllegalState, "Already triggered post split compaction for this tablet instance.");
   }
-  if (VERIFY_RESULT(StillHasParentDataAfterSplit())) {
+  if (VERIFY_RESULT(StillHasOrphanedPostSplitData())) {
     post_split_compaction_task_pool_token_ = get_token_for_compaction();
     return post_split_compaction_task_pool_token_->SubmitFunc(
         std::bind(&Tablet::TriggerPostSplitCompactionSync, this));
@@ -3410,6 +3475,94 @@ Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
   // TODO: we can add more checks here to verify block contents/checksums
 
   return Status::OK();
+}
+
+void Tablet::SplitDone() {
+  if (completed_split_operation_filter_) {
+    LOG_WITH_PREFIX(DFATAL) << "Already have split operation filter";
+    return;
+  }
+
+  completed_split_operation_filter_ = MakeFunctorOperationFilter(
+      [this](const OpId& op_id, consensus::OperationType op_type) -> Status {
+    if (SplitOperationState::ShouldAllowOpAfterSplitTablet(op_type)) {
+      return Status::OK();
+    }
+
+    auto children = metadata_->split_child_tablet_ids();
+    return SplitOperationState::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
+  });
+  operation_filters_.push_back(*completed_split_operation_filter_);
+
+  completed_split_log_anchor_ = std::make_unique<log::LogAnchor>();
+
+  log_anchor_registry_->Register(
+      metadata_->split_op_id().index, "Splitted tablet", completed_split_log_anchor_.get());
+}
+
+void Tablet::SyncRestoringOperationFilter() {
+  if (metadata_->has_active_restoration()) {
+    if (restoring_operation_filter_) {
+      return;
+    }
+    restoring_operation_filter_ = MakeFunctorOperationFilter(
+        [](const OpId& op_id, consensus::OperationType op_type) -> Status {
+      if (SnapshotOperationState::ShouldAllowOpDuringRestore(op_type)) {
+        return Status::OK();
+      }
+
+      return SnapshotOperationState::RejectionStatus(op_id, op_type);
+    });
+    operation_filters_.push_back(*restoring_operation_filter_);
+  } else {
+    if (!restoring_operation_filter_) {
+      return;
+    }
+
+    UnregisterOperationFilter(restoring_operation_filter_.get());
+    restoring_operation_filter_ = nullptr;
+  }
+}
+
+Status Tablet::RestoreStarted(const TxnSnapshotRestorationId& restoration_id) {
+  metadata_->RegisterRestoration(restoration_id);
+  RETURN_NOT_OK(metadata_->Flush());
+
+  SyncRestoringOperationFilter();
+
+  return Status::OK();
+}
+
+Status Tablet::RestoreFinished(
+    const TxnSnapshotRestorationId& restoration_id, HybridTime restoration_hybrid_time) {
+  metadata_->UnregisterRestoration(restoration_id);
+  if (restoration_hybrid_time) {
+    metadata_->SetRestorationHybridTime(restoration_hybrid_time);
+    if (transaction_participant_ && FLAGS_consistent_restore) {
+      transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
+    }
+  }
+  RETURN_NOT_OK(metadata_->Flush());
+
+  SyncRestoringOperationFilter();
+
+  return Status::OK();
+}
+
+Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
+  for (const auto& filter : operation_filters_) {
+    RETURN_NOT_OK(filter.CheckOperationAllowed(op_id, op_type));
+  }
+
+  return Status::OK();
+}
+
+void Tablet::RegisterOperationFilter(OperationFilter* filter) {
+  operation_filters_.push_back(*filter);
+}
+
+void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
+  operation_filters_.erase(operation_filters_.iterator_to(*filter));
 }
 
 // ------------------------------------------------------------------------------------------------

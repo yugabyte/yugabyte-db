@@ -76,6 +76,9 @@ METRIC_DECLARE_histogram(handler_latency_yb_client_read_remote);
 METRIC_DECLARE_histogram(handler_latency_yb_client_write_local);
 METRIC_DECLARE_histogram(handler_latency_yb_client_read_local);
 
+METRIC_DECLARE_histogram(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt);
+METRIC_DECLARE_histogram(handler_latency_yb_cqlserver_SQLProcessor_UseStmt);
+
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
 namespace yb {
@@ -111,7 +114,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
       hosts.push_back(cluster_->tablet_server(i)->bind_host());
     }
     driver_.reset(new CppCassandraDriver(
-        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting()));
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kTrue));
 
     // Create and use default keyspace.
     auto deadline = CoarseMonoClock::now() + 15s;
@@ -153,20 +156,24 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     return 1;
   }
 
-  virtual bool UsePartitionAwareRouting() {
-    return true;
-  }
-
  protected:
   Result<CassandraSession> EstablishSession() {
     auto session = VERIFY_RESULT(driver_->CreateSession());
+    RETURN_NOT_OK(SetupSession(&session));
+    return session;
+  }
+
+  CHECKED_STATUS CreateDefaultKeyspace(CassandraSession* session) {
     if (!keyspace_created_.load(std::memory_order_acquire)) {
-      RETURN_NOT_OK(session.ExecuteQuery("CREATE KEYSPACE IF NOT EXISTS test"));
+      RETURN_NOT_OK(session->ExecuteQuery("CREATE KEYSPACE IF NOT EXISTS test"));
       keyspace_created_.store(true, std::memory_order_release);
     }
+    return Status::OK();
+  }
 
-    RETURN_NOT_OK(session.ExecuteQuery("USE test"));
-    return session;
+  virtual CHECKED_STATUS SetupSession(CassandraSession* session) {
+    RETURN_NOT_OK(CreateDefaultKeyspace(session));
+    return session->ExecuteQuery("USE test");
   }
 
   unique_ptr<CppCassandraDriver> driver_;
@@ -201,12 +208,6 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
         "--retrying_ts_rpc_max_delay_ms=1000",
         "--unresponsive_ts_rpc_retry_limit=10",
     };
-  }
-
-  bool UsePartitionAwareRouting() override {
-    // Disable partition aware routing in this test because of TSAN issue (#1837).
-    // Should be reenabled when issue is fixed.
-    return false;
   }
 
  protected:
@@ -266,6 +267,49 @@ class CppCassandraDriverTestIndexMultipleChunks : public CppCassandraDriverTestI
   }
 };
 
+class CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves
+    : public CppCassandraDriverTestIndexMultipleChunks {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
+    flags.push_back("--enable_load_balancing=true");
+    flags.push_back("--index_backfill_rpc_max_retries=0");
+    // We do not want backfill to fail because of any throttling.
+    flags.push_back("--index_backfill_rpc_timeout_ms=180000");
+    return flags;
+  }
+
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
+    flags.push_back("--backfill_index_rate_rows_per_sec=10");
+    flags.push_back("--backfill_index_write_batch_size=2");
+    return flags;
+  }
+
+  void SetUp() override {
+    CppCassandraDriverTestIndex::SetUp();
+    thread_holder_.AddThreadFunctor([this] {
+      const auto kNumTServers = cluster_->num_tablet_servers();
+      constexpr auto kSleepTimeMs = 5000;
+      for (int i = 0; !thread_holder_.stop_flag(); i++) {
+        const auto tserver_id = i % kNumTServers;
+        ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+            cluster_->master(), cluster_->tablet_server(tserver_id)));
+        SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+        ASSERT_OK(cluster_->EmptyBlacklist(cluster_->master()));
+      }
+    });
+  }
+
+  void TearDown() override {
+    thread_holder_.Stop();
+    CppCassandraDriverTestIndex::TearDown();
+  }
+
+ private:
+  TestThreadHolder thread_holder_;
+};
+
 class CppCassandraDriverTestIndexSlowBackfill : public CppCassandraDriverTestIndex {
  public:
   std::vector<std::string> ExtraMasterFlags() override {
@@ -312,6 +356,133 @@ class CppCassandraDriverTestIndexNonResponsiveTServers : public CppCassandraDriv
         "--index_backfill_rpc_max_retries=1",
         "--index_backfill_rpc_timeout_ms=1",
         "--index_backfill_rpc_max_delay_ms=1"};
+  }
+};
+
+//------------------------------------------------------------------------------
+
+class Metrics {
+ public:
+  Metrics(const Metrics&) = default;
+
+  explicit Metrics(const ExternalMiniCluster& cluster, bool cql_metrics)
+      : cluster_(cluster), cql_metrics_(cql_metrics) {}
+
+  void reset() {
+    for (auto& elem : values_) {
+      elem.second = 0;
+    }
+  }
+
+  void load() {
+    reset();
+    for (int i = 0; i < cluster_.num_tablet_servers(); ++i) {
+      for (auto& proto : prototypes_) {
+        int64_t metric = 0;
+        load_value(cluster_, cql_metrics_, i, proto.second, &metric);
+        values_[proto.first] += metric;
+      }
+    }
+  }
+
+  int64_t get(const string& name) const {
+    auto it = values_.find(name);
+    DCHECK(it != values_.end());
+    return it->second;
+  }
+
+  Metrics& operator +=(const Metrics& m) {
+    for (auto& elem : values_) {
+      auto it = m.values_.find(elem.first);
+      DCHECK(it != m.values_.end());
+      elem.second += it->second;
+    }
+    return *this;
+  }
+
+  Metrics operator -() const {
+    Metrics m(*this);
+    for (auto& elem : m.values_) {
+      elem.second = -elem.second;
+    }
+    return m;
+  }
+
+  Metrics& operator -=(const Metrics& m) {
+    return *this += -m;
+  }
+
+  Metrics operator +(const Metrics& m) const {
+    return Metrics(*this) += m;
+  }
+
+  Metrics operator -(const Metrics& m) const {
+    return Metrics(*this) += -m;
+  }
+
+  string ToString() const {
+    string s;
+    for (auto& elem : values_) {
+      s += (s.empty() ? "" : ", ") + Format("$0=$1", elem.first, elem.second);
+    }
+    return s;
+  }
+
+  static void load_value(
+      const ExternalMiniCluster& cluster, bool cql_metric, int ts_index,
+      const MetricPrototype* metric_proto, int64_t* value) {
+    const ExternalTabletServer& ts = *CHECK_NOTNULL(cluster.tablet_server(ts_index));
+    const HostPort host_port = cql_metric ?
+        HostPort(ts.bind_host(), ts.cql_http_port()) : ts.bound_http_hostport();
+    const char* entity_id = cql_metric ? "yb.cqlserver" : "yb.tabletserver";
+    const auto result = ts.GetInt64MetricFromHost(
+        host_port, &METRIC_ENTITY_server, entity_id, CHECK_NOTNULL(metric_proto), "total_count");
+
+    if (!result.ok()) {
+      LOG(ERROR) << "Failed to get metric " << metric_proto->name() << " from TS"
+          << ts_index << ": " << host_port << " with error " << result.status();
+    }
+    ASSERT_OK(result);
+    *CHECK_NOTNULL(value) = *result;
+  }
+
+ protected:
+  void add_proto(const string& name, const MetricPrototype* proto) {
+    prototypes_[name] = proto;
+    values_[name] = 0;
+  }
+
+ private:
+  const ExternalMiniCluster& cluster_;
+  const bool cql_metrics_;
+
+  map<string, const MetricPrototype*> prototypes_;
+  map<string, int64_t> values_;
+};
+
+std::ostream& operator <<(std::ostream& s, const Metrics& m) {
+  return s << m.ToString();
+}
+
+struct IOMetrics : public Metrics {
+  explicit IOMetrics(const Metrics& m) : Metrics(m) {}
+
+  explicit IOMetrics(const ExternalMiniCluster& cluster) : Metrics(cluster, false) {
+    add_proto("remote_write", &METRIC_handler_latency_yb_client_write_remote);
+    add_proto("remote_read", &METRIC_handler_latency_yb_client_read_remote);
+    add_proto("local_write", &METRIC_handler_latency_yb_client_write_local);
+    add_proto("local_read", &METRIC_handler_latency_yb_client_read_local);
+    load();
+  }
+};
+
+struct CQLMetrics : public Metrics {
+  explicit CQLMetrics(const Metrics& m) : Metrics(m) {}
+
+  explicit CQLMetrics(const ExternalMiniCluster& cluster) : Metrics(cluster, true) {
+    add_proto("insert_count", &METRIC_handler_latency_yb_cqlserver_SQLProcessor_InsertStmt);
+    add_proto("use_count", &METRIC_handler_latency_yb_cqlserver_SQLProcessor_UseStmt);
+    load();
   }
 };
 
@@ -377,9 +548,11 @@ class TestTable {
     ASSERT_OK(session->Execute(statement));
   }
 
-  Result<CassandraPrepared> PrepareInsert(
-      CassandraSession* session, MonoDelta timeout = MonoDelta::kZero) const {
-    return session->Prepare(insert_with_bindings_str(table_name_, column_names_), timeout);
+  Result<CassandraPrepared> PrepareInsert(CassandraSession* session,
+                                          MonoDelta timeout = MonoDelta::kZero,
+                                          const string& local_keyspace = string()) const {
+    return session->Prepare(
+        insert_with_bindings_str(table_name_, column_names_), timeout, local_keyspace);
   }
 
   void Update(CassandraSession* session, const ColumnsTuple& data) const {
@@ -1406,7 +1579,7 @@ TEST_F_EX(
 // This test is for issue #5811.
 TEST_F_EX(
     CppCassandraDriverTest,
-    CreateUniqueIndexWriteAfterSafeTime,
+    YB_DISABLE_TEST_IN_SANITIZERS(CreateUniqueIndexWriteAfterSafeTime),
     CppCassandraDriverTestIndexSlower) {
   TestTable<cass_int32_t, string> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
@@ -1862,6 +2035,13 @@ TEST_F_EX(CppCassandraDriverTest, TestTableBackfillInChunks,
                          IncludeAllColumns::kTrue, UserEnforced::kFalse);
 }
 
+TEST_F_EX(
+    CppCassandraDriverTest, TestTableBackfillWithLeaderMoves,
+    CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves) {
+  TestBackfillIndexTable(
+      this, PKOnlyIndex::kFalse, IsUnique::kFalse, IncludeAllColumns::kTrue, UserEnforced::kFalse);
+}
+
 TEST_F_EX(CppCassandraDriverTest, TestTableBackfillUniqueInChunks,
           CppCassandraDriverTestIndexMultipleChunks) {
   TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
@@ -2027,7 +2207,7 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
   }
   for (int i = 0; i <= kNumLoops; i++) {
     drivers.emplace_back(new CppCassandraDriver(
-        hosts, cluster_->tablet_server(0)->cql_rpc_port(), false /*UsePartitionAwareRouting()*/));
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kTrue));
   }
 
   for (int i = 0; i <= kNumLoops; i++) {
@@ -2206,28 +2386,79 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
   }
 }
 
-TEST_F(CppCassandraDriverTest, TestPrepare) {
+YB_STRONGLY_TYPED_BOOL(RestartTS);
+
+CQLMetrics TestPrepareWithTSRestart(const gscoped_ptr<ExternalMiniCluster>& cluster,
+                                    CassandraSession* session,
+                                    RestartTS restart_ts,
+                                    const string& local_keyspace = string()) {
+  CQLMetrics pre_metrics(*cluster);
   typedef TestTable<cass_bool_t, cass_int32_t, string, cass_int32_t, string> MyTable;
   MyTable table;
-  ASSERT_OK(table.CreateTable(
-      &session_, "test.basic", {"b", "val", "key", "int_key", "str"}, {"key", "int_key"}));
+  CHECK_OK(table.CreateTable(
+      session, "test.basic", {"b", "val", "key", "int_key", "str"}, {"key", "int_key"}));
 
   const MyTable::ColumnsTuple input(cass_true, 0xAABBCCDD, "key1test", 0xDEADBEAF, "mystr");
   {
-    auto prepared = ASSERT_RESULT(table.PrepareInsert(&session_));
+    auto prepared = CHECK_RESULT(table.PrepareInsert(session, MonoDelta::kZero, local_keyspace));
+
+    if (restart_ts) {
+      LOG(INFO) << "Restart TS...";
+      cluster->tablet_server(0)->Shutdown(); // Restart first TS.
+      CHECK_OK(cluster->tablet_server(0)->Restart());
+      LOG(INFO) << "Restart TS - DONE";
+    }
+
     auto statement = prepared.Bind();
     // Prepared object can now be used to create new statement.
-
     table.Print("Execute prepared INSERT with INPUT", input);
     table.BindInsert(&statement, input);
-    ASSERT_OK(session_.Execute(statement));
+    CHECK_OK(session->Execute(statement));
   }
 
   MyTable::ColumnsTuple output(cass_false, 0, "key1test", 0xDEADBEAF, "");
-  table.SelectOneRow(&session_, &output);
+  table.SelectOneRow(session, &output);
   table.Print("RESULT OUTPUT", output);
   LOG(INFO) << "Checking selected values...";
   ExpectEqualTuples(input, output);
+
+  SleepFor(MonoDelta::FromSeconds(2)); // Let the metrics to be updated.
+  const auto metrics = CQLMetrics(*cluster) - pre_metrics;
+  LOG(INFO) << "DELTA Metrics: " << metrics;
+  EXPECT_EQ(1, metrics.get("insert_count"));
+  return CQLMetrics(metrics);
+}
+
+TEST_F(CppCassandraDriverTest, TestPrepare) {
+  CQLMetrics metrics = TestPrepareWithTSRestart(cluster_, &session_, RestartTS::kFalse);
+  EXPECT_EQ(2, metrics.get("use_count"));
+}
+
+TEST_F(CppCassandraDriverTest, TestPrepareWithLocalKeyspace) {
+  CQLMetrics metrics = TestPrepareWithTSRestart(
+      cluster_, &session_, RestartTS::kFalse, "ANY_KEYSPACE");
+  EXPECT_EQ(2, metrics.get("use_count"));
+}
+
+class CppCassandraDriverTestWithoutUse : public CppCassandraDriverTest {
+ protected:
+  CHECKED_STATUS SetupSession(CassandraSession* session) override {
+    LOG(INFO) << "Skipping 'USE test'";
+    return CreateDefaultKeyspace(session);
+  }
+};
+
+TEST_F_EX(CppCassandraDriverTest, TestPrepareWithRestart, CppCassandraDriverTestWithoutUse) {
+  CQLMetrics metrics = TestPrepareWithTSRestart(cluster_, &session_, RestartTS::kTrue);
+  EXPECT_EQ(0, metrics.get("use_count"));
+}
+
+TEST_F_EX(CppCassandraDriverTest,
+          TestPrepareWithRestartAndLocalKeyspace,
+          CppCassandraDriverTestWithoutUse) {
+  CQLMetrics metrics = TestPrepareWithTSRestart(
+      cluster_, &session_, RestartTS::kTrue, "ANY_KEYSPACE");
+  EXPECT_EQ(0, metrics.get("use_count"));
 }
 
 template <typename... ColumnsTypes>
@@ -2325,80 +2556,6 @@ TEST_F(CppCassandraDriverTest, TestTokenForDoubleKey) {
 }
 
 //------------------------------------------------------------------------------
-
-struct IOMetrics {
-  IOMetrics() = default;
-  IOMetrics(const IOMetrics&) = default;
-
-  explicit IOMetrics(const ExternalMiniCluster& cluster) : IOMetrics() {
-    load(cluster);
-  }
-
-  static void load_value(
-      const ExternalMiniCluster& cluster, int ts_index,
-      const MetricPrototype* metric_proto, int64_t* value) {
-    const ExternalTabletServer& ts = *CHECK_NOTNULL(cluster.tablet_server(ts_index));
-    const auto result = ts.GetInt64Metric(
-        &METRIC_ENTITY_server, "yb.tabletserver", CHECK_NOTNULL(metric_proto),
-        "total_count");
-
-    if (!result.ok()) {
-      LOG(ERROR) << "Failed to get metric " << metric_proto->name() << " from TS"
-          << ts_index << ": " << ts.bind_host() << ":" << ts.cql_http_port()
-          << " with error " << result.status();
-    }
-    ASSERT_OK(result);
-    *CHECK_NOTNULL(value) = *result;
-  }
-
-  void load(const ExternalMiniCluster& cluster) {
-    *this = IOMetrics();
-    for (int i = 0; i < cluster.num_tablet_servers(); ++i) {
-      IOMetrics m;
-      load_value(cluster, i, &METRIC_handler_latency_yb_client_write_remote, &m.remote_write);
-      load_value(cluster, i, &METRIC_handler_latency_yb_client_read_remote, &m.remote_read);
-      load_value(cluster, i, &METRIC_handler_latency_yb_client_write_local, &m.local_write);
-      load_value(cluster, i, &METRIC_handler_latency_yb_client_read_local, &m.local_read);
-      *this += m;
-    }
-  }
-
-  IOMetrics& operator +=(const IOMetrics& m) {
-    local_read += m.local_read;
-    local_write += m.local_write;
-    remote_read += m.remote_read;
-    remote_write += m.remote_write;
-    return *this;
-  }
-
-  IOMetrics& operator -=(const IOMetrics& m) {
-    local_read -= m.local_read;
-    local_write -= m.local_write;
-    remote_read -= m.remote_read;
-    remote_write -= m.remote_write;
-    return *this;
-  }
-
-  IOMetrics operator +(const IOMetrics& m) const {
-    return IOMetrics(*this) += m;
-  }
-
-  IOMetrics operator -(const IOMetrics& m) const {
-    return IOMetrics(*this) -= m;
-  }
-
-  int64_t local_read = 0;
-  int64_t local_write = 0;
-  int64_t remote_read = 0;
-  int64_t remote_write = 0;
-};
-
-std::ostream& operator <<(std::ostream& s, const IOMetrics& m) {
-  return s << "LocalRead=" << m.local_read << " LocalWrite=" << m.local_write
-      << " RemoteRead=" << m.remote_read << " RemoteWrite=" << m.remote_write;
-}
-
-//------------------------------------------------------------------------------
 class CppCassandraDriverTestNoPartitionBgRefresh : public CppCassandraDriverTest {
  private:
   std::vector<std::string> ExtraMasterFlags() override {
@@ -2434,11 +2591,11 @@ TEST_F_EX(CppCassandraDriverTest, TestInsertLocality, CppCassandraDriverTestNoPa
   }
 
   IOMetrics post_metrics(*cluster_);
-  const IOMetrics delta_metrics = post_metrics - pre_metrics;
+  const auto delta_metrics = post_metrics - pre_metrics;
   LOG(INFO) << "DELTA Metrics: " << delta_metrics;
 
   // Expect minimum 70% of all requests to be local.
-  ASSERT_GT(delta_metrics.local_write*10, total_keys*7);
+  ASSERT_GT(delta_metrics.get("local_write")*10, total_keys*7);
 }
 
 class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
@@ -2512,12 +2669,6 @@ class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {
   std::vector<std::string> ExtraTServerFlags() override {
     return {"--tablet_server_svc_queue_length=10"s, "--max_time_in_queue_ms=-1"s};
   }
-
-  bool UsePartitionAwareRouting() override {
-    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
-    // Should be reenabled when issue is fixed.
-    return false;
-  }
 };
 
 TEST_F_EX(CppCassandraDriverTest, LocalCallBackpressure, CppCassandraDriverBackpressureTest) {
@@ -2558,12 +2709,6 @@ class CppCassandraDriverTransactionalWriteTest : public CppCassandraDriverTest {
   std::vector<std::string> ExtraTServerFlags() override {
     return {"--TEST_transaction_inject_flushed_delay_ms=10"s};
   }
-
-  bool UsePartitionAwareRouting() override {
-    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
-    // Should be reenabled when issue is fixed.
-    return false;
-  }
 };
 
 TEST_F_EX(CppCassandraDriverTest, TransactionalWrite, CppCassandraDriverTransactionalWriteTest) {
@@ -2593,12 +2738,6 @@ class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTestNoPartit
  private:
   int NumMasters() override {
     return 3;
-  }
-
-  bool UsePartitionAwareRouting() override {
-    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
-    // Should be reenabled when issue is fixed.
-    return false;
   }
 };
 
@@ -2703,12 +2842,6 @@ class CppCassandraDriverTestPartitionsVtableCache : public CppCassandraDriverTes
     return flags;
   }
 
-  bool UsePartitionAwareRouting() override {
-    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
-    // Should be reenabled when issue is fixed.
-    return false;
-  }
-
   int table_idx_ = 0;
 };
 
@@ -2765,12 +2898,6 @@ class CppCassandraDriverRejectionTest : public CppCassandraDriverTest {
   std::vector<std::string> ExtraTServerFlags() override {
     return {"--TEST_write_rejection_percentage=15"s,
             "--linear_backoff_ms=10"};
-  }
-
-  bool UsePartitionAwareRouting() override {
-    // Disable partition aware routing in this test because of TSAN issue (#1837).
-    // Should be reenabled when issue is fixed.
-    return false;
   }
 };
 
@@ -2869,12 +2996,6 @@ class CppCassandraDriverSmallSoftLimitTest : public CppCassandraDriverTest {
         Format("--memory_limit_hard_bytes=$0", 100_MB),
         "--memory_limit_soft_percentage=10"
     };
-  }
-
-  bool UsePartitionAwareRouting() override {
-    // Disable partition aware routing in this test because of TSAN issue (#1837).
-    // Should be reenabled when issue is fixed.
-    return false;
   }
 };
 

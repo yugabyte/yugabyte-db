@@ -118,6 +118,8 @@ class RetryingTSRpcTask : public MonitoredTask {
                     gscoped_ptr<TSPicker> replica_picker,
                     const scoped_refptr<TableInfo>& table);
 
+  ~RetryingTSRpcTask();
+
   // Send the subclass RPC request.
   CHECKED_STATUS Run();
 
@@ -152,7 +154,7 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Overridable log prefix with reasonable default.
   std::string LogPrefix() const {
-    return strings::Substitute("$0 (task=$1, state=$2): ", description(), this, ToString(state()));
+    return strings::Substitute("$0 (task=$1, state=$2): ", description(), this, AsString(state()));
   }
 
   bool PerformStateTransition(MonitoredTaskState expected, MonitoredTaskState new_state)
@@ -200,7 +202,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   MonoTime end_ts_;
   MonoTime deadline_;
 
-  int attempt_;
+  int attempt_ = 0;
   rpc::RpcController rpc_;
   TSDescriptor* target_ts_desc_ = nullptr;
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
@@ -247,7 +249,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   virtual int max_delay_ms();
 
   // Use state() and MarkX() accessors.
-  std::atomic<MonitoredTaskState> state_;
+  std::atomic<MonitoredTaskState> state_{MonitoredTaskState::kWaiting};
 };
 
 // RetryingTSRpcTask subclass which always retries the same tablet server,
