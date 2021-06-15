@@ -674,7 +674,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void SplitDone();
   CHECKED_STATUS RestoreStarted(const TxnSnapshotRestorationId& restoration_id);
-  CHECKED_STATUS RestoreFinished(const TxnSnapshotRestorationId& restoration_id);
+  CHECKED_STATUS RestoreFinished(
+      const TxnSnapshotRestorationId& restoration_id, HybridTime restoration_hybrid_time);
 
  private:
   friend class Iterator;

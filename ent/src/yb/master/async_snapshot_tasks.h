@@ -54,6 +54,10 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
     restoration_id_ = id;
   }
 
+  void SetRestorationTime(HybridTime value) {
+    restoration_hybrid_time_ = value;
+  }
+
   void SetCallback(TabletSnapshotOperationCallback callback) {
     callback_ = std::move(callback);
   }
@@ -71,8 +75,9 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   const std::string snapshot_id_;
   tserver::TabletSnapshotOpRequestPB::Operation operation_;
   SnapshotScheduleId snapshot_schedule_id_ = SnapshotScheduleId::Nil();
-  TxnSnapshotRestorationId restoration_id_ = TxnSnapshotRestorationId::Nil();
   HybridTime snapshot_hybrid_time_;
+  TxnSnapshotRestorationId restoration_id_ = TxnSnapshotRestorationId::Nil();
+  HybridTime restoration_hybrid_time_;
   tserver::TabletSnapshotOpResponsePB resp_;
   TabletSnapshotOperationCallback callback_;
   bool has_metadata_ = false;

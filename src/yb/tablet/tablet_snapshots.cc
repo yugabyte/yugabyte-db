@@ -291,7 +291,8 @@ Status TabletSnapshots::RestoreCheckpoint(
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
         restore_metadata.schema_version);
-    RETURN_NOT_OK(tablet().metadata()->SetHiddenAndFlush(restore_metadata.hide));
+    tablet().metadata()->SetHidden(restore_metadata.hide);
+    RETURN_NOT_OK(tablet().metadata()->Flush());
     RefreshYBMetaDataCache();
   }
 
@@ -427,8 +428,9 @@ Status TabletSnapshots::CreateDirectories(const string& rocksdb_dir, FsManager* 
 }
 
 Status TabletSnapshots::RestoreFinished(SnapshotOperationState* tx_state) {
-  return tablet().RestoreFinished(VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(
-      tx_state->request()->restoration_id())));
+  return tablet().RestoreFinished(
+      VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(tx_state->request()->restoration_id())),
+      HybridTime::FromPB(tx_state->request()->restoration_hybrid_time()));
 }
 
 } // namespace tablet

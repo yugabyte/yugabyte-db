@@ -915,6 +915,12 @@ class TransactionParticipant::Impl
     return participant_context_.WaitForSafeTime(safe_time, deadline);
   }
 
+  void IgnoreAllTransactionsStartedBefore(HybridTime limit) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ignore_all_transactions_started_before_ =
+        std::max(ignore_all_transactions_started_before_, limit);
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -1158,6 +1164,12 @@ class TransactionParticipant::Impl
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
+        if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
+          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
+              << "Ignore transaction for '" << reason << "' because of limit: "
+              << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
+          return LockAndFindResult{};
+        }
         return LockAndFindResult{ std::move(lock), it };
       }
       recently_removed = WasTransactionRecentlyRemoved(id);
@@ -1489,6 +1501,8 @@ class TransactionParticipant::Impl
   // Guarded by RunningTransactionContext::mutex_
   HybridTime last_safe_time_ = HybridTime::kMin;
 
+  HybridTime ignore_all_transactions_started_before_ GUARDED_BY(mutex_) = HybridTime::kMin;
+
   std::unordered_set<TransactionId, TransactionIdHash> recently_removed_transactions_;
   struct RecentlyRemovedTransaction {
     TransactionId id;
@@ -1663,6 +1677,10 @@ Status TransactionParticipant::StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTi
 Result<HybridTime> TransactionParticipant::WaitForSafeTime(
     HybridTime safe_time, CoarseTimePoint deadline) {
   return impl_->WaitForSafeTime(safe_time, deadline);
+}
+
+void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit) {
+  impl_->IgnoreAllTransactionsStartedBefore(limit);
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {

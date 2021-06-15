@@ -241,6 +241,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // started before cutoff which is active on this tablet.
   CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline);
 
+  void IgnoreAllTransactionsStartedBefore(HybridTime limit);
+
   std::string DumpTransactions() const;
 
   size_t TEST_GetNumRunningTransactions() const;

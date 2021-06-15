@@ -600,5 +600,87 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestore, YbAdminSnapshotConsist
   }
 }
 
+// Write multiple transactions and restore.
+// Then check that we don't have partially applied transaction.
+TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotConsistentRestoreTest) {
+  constexpr int kBatchSize = 10;
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"
+                              "WITH transactions = { 'enabled' : true }"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), &conn] {
+    const int kConcurrency = 10;
+    std::string expr = "BEGIN TRANSACTION ";
+    for (ATTRIBUTE_UNUSED int i : Range(kBatchSize)) {
+      expr += "INSERT INTO test_table (k1) VALUES (?); ";
+    }
+    expr += "END TRANSACTION;";
+    auto prepared = ASSERT_RESULT(conn.Prepare(expr));
+    int base = 0;
+    std::vector<CassandraFuture> futures;
+    while (!stop.load(std::memory_order_acquire)) {
+      auto filter = [](CassandraFuture& future) {
+        if (!future.Ready()) {
+          return false;
+        }
+        auto status = future.Wait();
+        if (!status.ok() && !status.IsTimedOut()) {
+          EXPECT_OK(status);
+        }
+        return true;
+      };
+      ASSERT_NO_FATALS(EraseIf(filter, &futures));
+      if (futures.size() < kConcurrency) {
+        auto stmt = prepared.Bind();
+        for (int i : Range(kBatchSize)) {
+          stmt.Bind(i, base + i);
+        }
+        base += kBatchSize;
+        futures.push_back(conn.ExecuteGetFuture(stmt));
+      }
+    }
+  });
+
+  std::this_thread::sleep_for(250ms);
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  std::this_thread::sleep_for(250ms);
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  thread_holder.WaitAndStop(250ms);
+
+  std::vector<int> keys;
+  for (;;) {
+    keys.clear();
+    auto result = conn.ExecuteWithResult("SELECT * FROM test_table");
+    if (!result.ok()) {
+      LOG(WARNING) << "Select failed: " << result.status();
+      continue;
+    }
+
+    auto iter = result->CreateIterator();
+    while (iter.Next()) {
+      auto row = iter.Row();
+      int key = row.Value(0).As<int32_t>();
+      keys.push_back(key);
+    }
+    break;
+  }
+
+  std::sort(keys.begin(), keys.end());
+  // Check that we have whole batches only.
+  // Actually this check is little bit relaxed, but it is enough to catch the bug.
+  for (size_t i : Range(keys.size())) {
+    ASSERT_EQ(keys[i] % kBatchSize, i % kBatchSize)
+        << "i: " << i << ", key: " << keys[i] << ", batch: "
+        << AsString(RangeOfSize<size_t>((i / kBatchSize - 1) * kBatchSize, kBatchSize * 3)[keys]);
+  }
+}
+
 }  // namespace tools
 }  // namespace yb
