@@ -115,9 +115,7 @@ def get_input_from_user(message):
     """
     Function to get input from the user
     """
-    if PYTHON_VERSION == 2:
-        return raw_input(message)
-    return input(message)
+    return raw_input(message) if PYTHON_VERSION == 2 else input(message)
 
 
 class YBUniverse():
@@ -429,12 +427,13 @@ class YBUniverse():
         :param universe_name: Name of the universe to take a json data from.
         :return: None
         """
-        # TODO need to update API URL once
-        # PR:- https://github.com/yugabyte/yugabyte-db/pull/8367 get merged.
-        find_universe_url = '{0}/api/v1/customers/{1}/universes/find/{2}'.format(
+        find_universe_url = '{0}/api/v1/customers/{1}/universes/find?name={2}'.format(
             self.base_url, self.customer_uuid, universe_name)
 
-        self.__call_api(find_universe_url)
+        response = self.__call_api(find_universe_url)
+        if len(response) > 0:
+            message = "Universe with name {0} already exists.".format(universe_name)
+            raise ValueError(message)
 
     def create_universe(self):
         """
