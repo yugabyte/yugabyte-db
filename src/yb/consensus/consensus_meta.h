@@ -37,7 +37,6 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 

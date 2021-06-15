@@ -47,7 +47,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional.hpp>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
