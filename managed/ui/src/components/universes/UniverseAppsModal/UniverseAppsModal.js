@@ -1,16 +1,13 @@
 // Copyright (c) YugaByte, Inc.
-
 import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';
-import { YBCodeBlock } from '../../common/descriptors';
+import { YBCodeBlock, YBCopyButton } from '../../common/descriptors';
 import { isValidObject, isEmptyObject } from '../../../utils/ObjectUtils';
 import { Tab, Tabs } from 'react-bootstrap';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
-
 import './UniverseAppsModal.scss';
-
 const appTypes = [
   {
     code: 'SqlInserts',
@@ -18,7 +15,7 @@ const appTypes = [
     title: 'YSQL',
     description:
       'This app writes out 2M unique string keys each with a string value. There are multiple ' +
-      'readers and writers that write 2M keys and read 1.5M keys . ' + 
+      'readers and writers that write 2M keys and read 1.5M keys . ' +
       'To write the keys and read them indefinitely set num_reads & num_writes to -1 . Note that the number of ' +
       'reads and writes to perform can be specified as a parameter.',
     options: [
@@ -36,8 +33,8 @@ const appTypes = [
     description:
       'This app writes out 2M unique string keys ' +
       'each with a string value. There are multiple readers and writers that update 2M ' +
-      'keys and read 1.5M keys. '  +
-      'To update the keys and read them indefinitely set num_reads & num_writes to -1 .' + 
+      'keys and read 1.5M keys. ' +
+      'To update the keys and read them indefinitely set num_reads & num_writes to -1 .' +
       'Note that the number of reads and writes to ' +
       'perform can be specified as a parameter.',
     options: [
@@ -50,17 +47,15 @@ const appTypes = [
     ]
   }
 ];
-
 export default class UniverseAppsModal extends Component {
   static propTypes = {
     currentUniverse: PropTypes.object.isRequired,
     button: PropTypes.node.isRequired,
     modal: PropTypes.object.isRequired
   };
-
   render() {
     const {
-      currentUniverse: { universeDetails },
+      currentUniverse: { universeDetails, sampleAppCommandTxt },
       button,
       closeModal,
       modal: { showModal, visibleModal }
@@ -70,11 +65,9 @@ export default class UniverseAppsModal extends Component {
     const nodeDetails = universeDetails.nodeDetailsSet
       ? universeDetails.nodeDetailsSet.filter((nodeDetails) => nodeDetails.isTserver)
       : [];
-
     const getHost = function (host) {
       return host !== '127.0.0.1' ? host : 'host.docker.internal';
     };
-
     const cassandraHosts = nodeDetails
       .map(function (nodeDetail) {
         if (
@@ -111,11 +104,9 @@ export default class UniverseAppsModal extends Component {
       })
       .filter(Boolean)
       .join(',');
-
     const appTabs = appTypes.map(function (appType, idx) {
       let hostPorts;
       let betaFeature = '';
-
       switch (appType.type) {
         case 'cassandra':
           hostPorts = cassandraHosts;
@@ -133,27 +124,29 @@ export default class UniverseAppsModal extends Component {
         default:
           break;
       }
-
       const appOptions = appType.options.map(function (option, idx) {
         const option_data = Array.shift(Object.entries(option));
         return <p key={idx}>--{option_data[0] + ' ' + option_data[1]}</p>;
       });
-
       const commandSyntax = isItKubernetesUniverse
-        ? 'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps --'
+        ? 'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps '
         : 'docker run -d yugabytedb/yb-sample-apps';
+      const command =
+        appType.title === 'YCQL'
+          ? sampleAppCommandTxt
+          : commandSyntax + ' --workload ' + appType.code + ' --nodes ' + hostPorts;
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>
           {betaFeature}
           <label className="app-description">{appType.description}</label>
           <YBCodeBlock label="Usage:">
-            {commandSyntax} --workload {appType.code} --nodes {hostPorts}
+            {command}
+            <YBCopyButton text={command} />
           </YBCodeBlock>
           <YBCodeBlock label="Other options (with default values):">{appOptions}</YBCodeBlock>
         </Tab>
       );
     });
-
     return (
       <Fragment>
         {isEmptyObject(button) ? (

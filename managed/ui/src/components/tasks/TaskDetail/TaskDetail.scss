@@ -119,14 +119,12 @@
 
 pre {
   margin: 15px 0 !important;
-  border: none !important;
+  border: 1px solid $YB_GRAY;
   padding: 0 !important;
-  background: transparent;
-  border: none;
+  background: #f7f8f9;
   font-family: inherit;
   position: relative;
   white-space: pre-wrap;
-
   code {
     height: auto !important;
     font-size: 12px !important;
@@ -136,11 +134,19 @@ pre {
     padding: 12px 15px !important;
     margin: 0;
     background: #f7f8f9;
-    border: 1px solid #dee0ea;
+    border: 0px;
     word-wrap: normal;
     word-break: keep-all;
     min-height: 46px;
     @include transition(0.3s);
+  }
+}
+// This is for sample command height to fit in modal
+#apps-modal {
+  pre {
+    code {
+      max-height: 200px;
+    }
   }
 }
 
