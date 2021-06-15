@@ -261,8 +261,8 @@ class MasterTestBase : public YBTest {
   }
 
   std::unique_ptr<Messenger> client_messenger_;
-  gscoped_ptr<MiniMaster> mini_master_;
-  gscoped_ptr<MasterServiceProxy> proxy_;
+  std::unique_ptr<MiniMaster> mini_master_;
+  std::unique_ptr<MasterServiceProxy> proxy_;
   shared_ptr<RpcController> controller_;
 };
 

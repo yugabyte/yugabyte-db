@@ -47,7 +47,6 @@
 #include <vector>
 #include <boost/optional/optional_fwd.hpp>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/common/entity_ids.h"
 #include "yb/consensus/consensus.h"
@@ -90,10 +89,10 @@ namespace itest {
 struct TServerDetails {
   NodeInstancePB instance_id;
   master::TSRegistrationPB registration;
-  gscoped_ptr<tserver::TabletServerServiceProxy> tserver_proxy;
-  gscoped_ptr<tserver::TabletServerAdminServiceProxy> tserver_admin_proxy;
-  gscoped_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
-  gscoped_ptr<server::GenericServiceProxy> generic_proxy;
+  std::unique_ptr<tserver::TabletServerServiceProxy> tserver_proxy;
+  std::unique_ptr<tserver::TabletServerAdminServiceProxy> tserver_admin_proxy;
+  std::unique_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
+  std::unique_ptr<server::GenericServiceProxy> generic_proxy;
 
   // Convenience function to get the UUID from the instance_id struct.
   const std::string& uuid() const;

@@ -149,9 +149,9 @@ class LogCacheTest : public YBTest {
   const Schema schema_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
-  gscoped_ptr<LogCache> cache_;
+  std::unique_ptr<LogCache> cache_;
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;
 };

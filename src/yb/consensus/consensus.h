@@ -48,7 +48,6 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/callback.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"

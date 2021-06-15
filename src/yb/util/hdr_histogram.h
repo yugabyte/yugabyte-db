@@ -60,7 +60,6 @@
 #include <iosfwd>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -226,7 +225,7 @@ class HdrHistogram {
   base::subtle::Atomic64 current_sum_;
   base::subtle::Atomic64 min_value_;
   base::subtle::Atomic64 max_value_;
-  gscoped_array<base::subtle::Atomic64> counts_;
+  std::unique_ptr<base::subtle::Atomic64[]> counts_;
 
   HdrHistogram& operator=(const HdrHistogram& other); // Disable assignment operator.
 };

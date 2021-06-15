@@ -42,7 +42,6 @@
 #include <google/protobuf/descriptor.pb.h>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/env_util.h"
 #include "yb/util/memenv/memenv.h"
 #include "yb/util/pb_util.h"

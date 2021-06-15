@@ -63,7 +63,7 @@ Status TimedFailureDetector::Track(const string& name,
                                    const MonoTime& now,
                                    const FailureDetectedCallback& callback) {
   std::lock_guard<simple_spinlock> lock(lock_);
-  gscoped_ptr<Node> node(new Node);
+  auto node = std::make_unique<Node>();
   node->permanent_name = name;
   node->callback = callback;
   node->last_heard_of = now;

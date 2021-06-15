@@ -62,7 +62,7 @@ class TestRaftGroupMetadata : public YBTabletTest {
                        QLWriteRequestPB* req);
 
  protected:
-  gscoped_ptr<LocalTabletWriter> writer_;
+  std::unique_ptr<LocalTabletWriter> writer_;
 };
 
 void TestRaftGroupMetadata::BuildPartialRow(int key, int intval, const char* strval,

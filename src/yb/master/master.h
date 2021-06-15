@@ -38,7 +38,6 @@
 #include <vector>
 
 #include "yb/consensus/consensus.pb.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
@@ -173,13 +172,13 @@ class Master : public server::RpcAndWebServerBase {
 
   MasterState state_;
 
-  gscoped_ptr<TSManager> ts_manager_;
-  gscoped_ptr<enterprise::CatalogManager> catalog_manager_;
-  gscoped_ptr<MasterPathHandlers> path_handlers_;
-  gscoped_ptr<FlushManager> flush_manager_;
+  std::unique_ptr<TSManager> ts_manager_;
+  std::unique_ptr<enterprise::CatalogManager> catalog_manager_;
+  std::unique_ptr<MasterPathHandlers> path_handlers_;
+  std::unique_ptr<FlushManager> flush_manager_;
 
   // For initializing the catalog manager.
-  gscoped_ptr<ThreadPool> init_pool_;
+  std::unique_ptr<ThreadPool> init_pool_;
 
   // The status of the master initialization. This is set
   // by the async initialization task.

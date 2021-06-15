@@ -24,7 +24,6 @@
 
 #include <glog/logging.h>
 #include "yb/gutil/logging-inl.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/stl_util.h"

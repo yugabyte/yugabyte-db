@@ -1290,11 +1290,11 @@ class PosixEnv : public Env {
 
     // FTS requires a non-const copy of the name. strdup it and free() when
     // we leave scope.
-    gscoped_ptr<char, FreeDeleter> name_dup(strdup(root.c_str()));
+    std::unique_ptr<char, FreeDeleter> name_dup(strdup(root.c_str()));
     char *paths[] = { name_dup.get(), nullptr };
 
     // FTS_NOCHDIR is important here to make this thread-safe.
-    gscoped_ptr<FTS, FtsCloser> tree(
+    std::unique_ptr<FTS, FtsCloser> tree(
         fts_open(paths, FTS_PHYSICAL | FTS_XDEV | FTS_NOCHDIR, nullptr));
     if (!tree.get()) {
       return STATUS_IO_ERROR(root, errno);
@@ -1351,7 +1351,7 @@ class PosixEnv : public Env {
   Status Canonicalize(const string& path, string* result) override {
     TRACE_EVENT1("io", "PosixEnv::Canonicalize", "path", path);
     ThreadRestrictions::AssertIOAllowed();
-    gscoped_ptr<char[], FreeDeleter> r(realpath(path.c_str(), nullptr));
+    std::unique_ptr<char[], FreeDeleter> r(realpath(path.c_str(), nullptr));
     if (!r) {
       return STATUS_IO_ERROR(path, errno);
     }
@@ -1451,7 +1451,7 @@ class PosixEnv : public Env {
   }
 
  private:
-  // gscoped_ptr Deleter implementation for fts_close
+  // std::unique_ptr Deleter implementation for fts_close
   struct FtsCloser {
     void operator()(FTS *fts) const {
       if (fts) { fts_close(fts); }

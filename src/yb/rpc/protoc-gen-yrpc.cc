@@ -51,7 +51,6 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/stubs/common.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
@@ -300,22 +299,22 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
     SubstitutionContext subs;
     subs.Push(name_info);
 
-    gscoped_ptr<google::protobuf::io::ZeroCopyOutputStream> ih_output(
+    std::unique_ptr<google::protobuf::io::ZeroCopyOutputStream> ih_output(
         gen_context->Open(name_info->service_header()));
     Printer ih_printer(ih_output.get(), '$');
     GenerateServiceIfHeader(&ih_printer, &subs, file);
 
-    gscoped_ptr<google::protobuf::io::ZeroCopyOutputStream> i_output(
+    std::unique_ptr<google::protobuf::io::ZeroCopyOutputStream> i_output(
         gen_context->Open(name_info->service()));
     Printer i_printer(i_output.get(), '$');
     GenerateServiceIf(&i_printer, &subs, file);
 
-    gscoped_ptr<google::protobuf::io::ZeroCopyOutputStream> ph_output(
+    std::unique_ptr<google::protobuf::io::ZeroCopyOutputStream> ph_output(
         gen_context->Open(name_info->proxy_header()));
     Printer ph_printer(ph_output.get(), '$');
     GenerateProxyHeader(&ph_printer, &subs, file);
 
-    gscoped_ptr<google::protobuf::io::ZeroCopyOutputStream> p_output(
+    std::unique_ptr<google::protobuf::io::ZeroCopyOutputStream> p_output(
         gen_context->Open(name_info->proxy()));
     Printer p_printer(p_output.get(), '$');
     GenerateProxy(&p_printer, &subs, file);

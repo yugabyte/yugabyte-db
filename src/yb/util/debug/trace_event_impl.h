@@ -215,7 +215,7 @@ class BASE_EXPORT TraceBufferChunk {
     return &chunk_[index];
   }
 
-  gscoped_ptr<TraceBufferChunk> Clone() const;
+  std::unique_ptr<TraceBufferChunk> Clone() const;
 
   static const size_t kTraceBufferChunkSize = 64;
 
@@ -230,9 +230,9 @@ class BASE_EXPORT TraceBuffer {
  public:
   virtual ~TraceBuffer() {}
 
-  virtual gscoped_ptr<TraceBufferChunk> GetChunk(size_t *index) = 0;
+  virtual std::unique_ptr<TraceBufferChunk> GetChunk(size_t *index) = 0;
   virtual void ReturnChunk(size_t index,
-                           gscoped_ptr<TraceBufferChunk> chunk) = 0;
+                           std::unique_ptr<TraceBufferChunk> chunk) = 0;
 
   virtual bool IsFull() const = 0;
   virtual size_t Size() const = 0;
@@ -242,7 +242,7 @@ class BASE_EXPORT TraceBuffer {
   // For iteration. Each TraceBuffer can only be iterated once.
   virtual const TraceBufferChunk* NextChunk() = 0;
 
-  virtual gscoped_ptr<TraceBuffer> CloneForIteration() const = 0;
+  virtual std::unique_ptr<TraceBuffer> CloneForIteration() const = 0;
 };
 
 // TraceResultBuffer collects and converts trace fragments returned by TraceLog
@@ -626,7 +626,7 @@ class BASE_EXPORT TraceLog {
   TraceEvent* GetEventByHandleInternal(TraceEventHandle handle,
                                        OptionalAutoLock* lock);
 
-  void ConvertTraceEventsToTraceFormat(gscoped_ptr<TraceBuffer> logged_events,
+  void ConvertTraceEventsToTraceFormat(std::unique_ptr<TraceBuffer> logged_events,
                                        const OutputCallback& flush_output_callback);
   void FinishFlush(int generation,
                    const OutputCallback& flush_output_callback);
@@ -662,7 +662,7 @@ class BASE_EXPORT TraceLog {
   int locked_line_;
   Mode mode_;
   int num_traces_recorded_;
-  gscoped_ptr<TraceBuffer> logged_events_;
+  std::unique_ptr<TraceBuffer> logged_events_;
   AtomicWord /* EventCallback */ event_callback_;
   bool dispatching_to_observer_list_;
   std::vector<EnabledStateObserver*> enabled_state_observer_list_;
@@ -692,7 +692,7 @@ class BASE_EXPORT TraceLog {
   AtomicWord /* Options */ trace_options_;
 
   // Sampling thread handles.
-  gscoped_ptr<TraceSamplingThread> sampling_thread_;
+  std::unique_ptr<TraceSamplingThread> sampling_thread_;
   scoped_refptr<yb::Thread> sampling_thread_handle_;
 
   CategoryFilter category_filter_;
@@ -716,7 +716,7 @@ class BASE_EXPORT TraceLog {
 
   // For events which can't be added into the thread local buffer, e.g. events
   // from threads without a message loop.
-  gscoped_ptr<TraceBufferChunk> thread_shared_chunk_;
+  std::unique_ptr<TraceBufferChunk> thread_shared_chunk_;
   size_t thread_shared_chunk_index_;
 
   // The generation is incremented whenever tracing is enabled, and incremented

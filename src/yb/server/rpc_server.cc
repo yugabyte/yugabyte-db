@@ -37,7 +37,6 @@
 #include <gflags/gflags.h>
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/messenger.h"

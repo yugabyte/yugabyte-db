@@ -40,7 +40,6 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/faststring.h"
 #include "yb/util/status.h"
 #include "yb/util/result.h"
@@ -309,7 +308,7 @@ class ReadablePBContainerFile {
   // The fully-qualified PB type name of the messages in the container.
   std::string pb_type_;
 
-  // Wrapped in a gscoped_ptr so that clients need not include PB headers.
+  // Wrapped in a std::unique_ptr so that clients need not include PB headers.
   std::unique_ptr<google::protobuf::FileDescriptorSet> protos_;
 
   std::unique_ptr<RandomAccessFile> reader_;

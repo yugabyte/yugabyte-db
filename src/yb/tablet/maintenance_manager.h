@@ -203,7 +203,7 @@ class MaintenanceOp {
   //
   // Note: 'cond_' is used with the MaintenanceManager's mutex. As such,
   // it only exists when the op is registered.
-  gscoped_ptr<ConditionVariable> cond_;
+  std::unique_ptr<ConditionVariable> cond_;
 
   // The MaintenanceManager with which this op is registered, or null
   // if it is not registered.
@@ -275,7 +275,7 @@ class MaintenanceManager : public std::enable_shared_from_this<MaintenanceManage
   OpMapTy ops_; // registered operations
   Mutex lock_;
   scoped_refptr<yb::Thread> monitor_thread_;
-  gscoped_ptr<ThreadPool> thread_pool_;
+  std::unique_ptr<ThreadPool> thread_pool_;
   ConditionVariable cond_;
   bool shutdown_;
   uint64_t running_ops_;

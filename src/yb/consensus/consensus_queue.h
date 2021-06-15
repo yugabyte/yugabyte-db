@@ -444,7 +444,7 @@ class PeerMessageQueue {
     Mode mode = Mode::NON_LEADER;
 
     // The currently-active raft config. Only set if in LEADER mode.
-    gscoped_ptr<RaftConfigPB> active_config;
+    std::unique_ptr<RaftConfigPB> active_config;
 
     std::string ToString() const;
   };

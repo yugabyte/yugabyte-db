@@ -141,7 +141,7 @@ class MiniTabletServer {
   int index_;
 
   std::unique_ptr<UniverseKeyManager> universe_key_manager_;
-  gscoped_ptr<TabletServer> server_;
+  std::unique_ptr<TabletServer> server_;
   std::unique_ptr<Tunnel> tunnel_;
 };
 

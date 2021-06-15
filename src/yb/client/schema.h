@@ -398,7 +398,7 @@ class YBSchema {
   // the YBSchema object.
   //
   // The caller takes ownership of the created row.
-  YBPartialRow* NewRow() const;
+  std::unique_ptr<YBPartialRow> NewRow() const;
 
   const std::vector<ColumnSchema>& columns() const;
 

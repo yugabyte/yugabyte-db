@@ -135,10 +135,10 @@ class TabletServerTestBase : public YBTest {
 
   std::unique_ptr<MiniTabletServer> mini_server_;
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
-  gscoped_ptr<TabletServerServiceProxy> proxy_;
-  gscoped_ptr<TabletServerAdminServiceProxy> admin_proxy_;
-  gscoped_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
-  gscoped_ptr<server::GenericServiceProxy> generic_proxy_;
+  std::unique_ptr<TabletServerServiceProxy> proxy_;
+  std::unique_ptr<TabletServerAdminServiceProxy> admin_proxy_;
+  std::unique_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
+  std::unique_ptr<server::GenericServiceProxy> generic_proxy_;
 
   MetricRegistry ts_test_metric_registry_;
   scoped_refptr<MetricEntity> ts_test_metric_entity_;

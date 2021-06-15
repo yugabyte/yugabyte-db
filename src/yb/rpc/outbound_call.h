@@ -38,7 +38,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"

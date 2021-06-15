@@ -44,7 +44,6 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/messenger.h"
 #include "yb/server/clock.h"
@@ -220,7 +219,7 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
-    gscoped_ptr<WriteResponsePB> resp(new WriteResponsePB());
+    std::unique_ptr<WriteResponsePB> resp(new WriteResponsePB());
     auto operation_state = std::make_unique<WriteOperationState>(
         tablet_peer->tablet(), &req, resp.get());
 

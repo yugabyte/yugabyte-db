@@ -22,7 +22,6 @@
 
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/server/server_base.h"
 #include "yb/tserver/tablet_server.h"

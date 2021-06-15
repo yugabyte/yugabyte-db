@@ -14,8 +14,6 @@
 #ifndef YB_CLIENT_IN_FLIGHT_OP_H
 #define YB_CLIENT_IN_FLIGHT_OP_H
 
-#include "yb/gutil/gscoped_ptr.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/enums.h"
 

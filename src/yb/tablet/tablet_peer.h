@@ -432,7 +432,7 @@ class TabletPeer : public consensus::ConsensusContext,
   TabletPtr tablet_;
   rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;
-  gscoped_ptr<TabletStatusListener> status_listener_;
+  std::unique_ptr<TabletStatusListener> status_listener_;
   simple_spinlock prepare_replicate_lock_;
 
   // Lock protecting state_ as well as smart pointers to collaborating

@@ -39,7 +39,6 @@ using std::string;
 #include "yb/gutil/integral_types.h"
 #include <glog/logging.h>
 #include "yb/gutil/logging-inl.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strtoint.h"
 #include "yb/gutil/strings/ascii_ctype.h"
@@ -94,7 +93,7 @@ static inline bool EatADouble(const char** text, int* len, bool allow_question,
     retval = strtod(pos, &end_nonconst);
   } else {
     // not '\0'-terminated & no obvious terminator found. must copy.
-    gscoped_array<char> buf(new char[rem + 1]);
+    std::unique_ptr<char[]> buf(new char[rem + 1]);
     memcpy(buf.get(), pos, rem);
     buf[rem] = '\0';
     retval = strtod(buf.get(), &end_nonconst);

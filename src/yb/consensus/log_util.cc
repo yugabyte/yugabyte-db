@@ -612,7 +612,7 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
   *has_valid_entries = false;
 
   const int kChunkSize = 1024 * 1024;
-  gscoped_ptr<uint8_t[]> buf(new uint8_t[kChunkSize]);
+  std::unique_ptr<uint8_t[]> buf(new uint8_t[kChunkSize]);
 
   // We overlap the reads by the size of the header, so that if a header
   // spans chunks, we don't miss it.

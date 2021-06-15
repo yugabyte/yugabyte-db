@@ -201,7 +201,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
     return data_id;
   }
 
-  gscoped_ptr<RemoteBootstrapServiceProxy> remote_bootstrap_proxy_;
+  std::unique_ptr<RemoteBootstrapServiceProxy> remote_bootstrap_proxy_;
 };
 
 // Test beginning and ending a remote bootstrap session.

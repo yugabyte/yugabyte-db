@@ -204,7 +204,7 @@ class MasterFailoverTest : public YBTest {
  protected:
   int num_masters_;
   ExternalMiniClusterOptions opts_;
-  gscoped_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
 };
 

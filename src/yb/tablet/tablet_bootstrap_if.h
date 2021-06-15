@@ -48,7 +48,6 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log.pb.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/server/clock.h"
 #include "yb/util/status.h"

@@ -35,7 +35,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/util/env.h"
@@ -108,7 +107,7 @@ class MiniMaster {
   const std::string fs_root_;
   const uint16_t rpc_port_, web_port_;
 
-  gscoped_ptr<Master> master_;
+  std::unique_ptr<Master> master_;
   int index_;
   std::unique_ptr<Tunnel> tunnel_;
   bool pass_master_addresses_ = true;

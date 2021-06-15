@@ -40,7 +40,6 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"

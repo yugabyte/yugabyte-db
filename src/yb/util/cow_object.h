@@ -36,7 +36,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/rwc_lock.h"
 #include "yb/util/logging.h"
@@ -131,7 +130,7 @@ class CowObject {
   mutable RWCLock lock_;
 
   State state_;
-  gscoped_ptr<State> dirty_state_;
+  std::unique_ptr<State> dirty_state_;
 
   // Set only when mutable_dirty() method is called. Unset whenever dirty_state_ is reset().
   bool is_dirty_ = false;

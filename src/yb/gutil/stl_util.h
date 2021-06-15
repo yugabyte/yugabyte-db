@@ -965,14 +965,14 @@ bool SortedRangesHaveIntersection(InputIterator1 begin1, InputIterator1 end1,
   return false;
 }
 
-// release_ptr is intended to help remove systematic use of gscoped_ptr
+// release_ptr is intended to help remove systematic use of std::unique_ptr
 // in cases like:
 //
 // vector<Foo *> v;
 // ElementDeleter d(&v);
 // ... {
 //   int remove_idx = f(v);
-//   gscoped_ptr<Foo> t(v[remove_idx]);
+//   std::unique_ptr<Foo> t(v[remove_idx]);
 //   v[remove_idx] = NULL;  // Save from deleter.
 //   return t.release();
 // }

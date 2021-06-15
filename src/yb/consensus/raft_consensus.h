@@ -60,7 +60,7 @@ DECLARE_int32(ht_lease_duration_ms);
 namespace yb {
 
 typedef std::lock_guard<simple_spinlock> Lock;
-typedef gscoped_ptr<Lock> ScopedLock;
+typedef std::unique_ptr<Lock> ScopedLock;
 
 class Counter;
 class HostPort;

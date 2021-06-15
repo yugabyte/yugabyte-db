@@ -84,8 +84,8 @@ class RaftConsensusStateTest : public YBTest {
  protected:
   FsManager fs_manager_;
   RaftConfigPB config_;
-  gscoped_ptr<MockOperationFactory> operation_factory_;
-  gscoped_ptr<ReplicaState> state_;
+  std::unique_ptr<MockOperationFactory> operation_factory_;
+  std::unique_ptr<ReplicaState> state_;
 };
 
 // Test that we can transition a new configuration from a pending state into a

@@ -104,13 +104,7 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_idle_timeout(const MonoDelta& idle_tim
   return *this;
 }
 
-Status ThreadPoolBuilder::Build(gscoped_ptr<ThreadPool>* pool) const {
-  pool->reset(new ThreadPool(*this));
-  RETURN_NOT_OK((*pool)->Init());
-  return Status::OK();
-}
-
-Status ThreadPoolBuilder::Build(unique_ptr<ThreadPool>* pool) const {
+Status ThreadPoolBuilder::Build(std::unique_ptr<ThreadPool>* pool) const {
   pool->reset(new ThreadPool(*this));
   RETURN_NOT_OK((*pool)->Init());
   return Status::OK();

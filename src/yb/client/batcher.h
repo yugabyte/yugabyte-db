@@ -43,7 +43,6 @@
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/transaction.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 

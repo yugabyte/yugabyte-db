@@ -77,7 +77,7 @@ class WebserverTest : public YBTest {
  protected:
   EasyCurl curl_;
   faststring buf_;
-  gscoped_ptr<Webserver> server_;
+  std::unique_ptr<Webserver> server_;
   Endpoint addr_;
 
   string static_dir_;

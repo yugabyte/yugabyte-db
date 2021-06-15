@@ -186,11 +186,11 @@ class TabletHarness {
  private:
   Options options_;
 
-  gscoped_ptr<MetricRegistry> metrics_registry_;
+  std::unique_ptr<MetricRegistry> metrics_registry_;
 
   scoped_refptr<server::Clock> clock_;
   Schema schema_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   TabletPtr tablet_;
 };
 

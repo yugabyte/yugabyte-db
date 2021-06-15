@@ -34,7 +34,6 @@
 
 #include <string>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/util/status.h"

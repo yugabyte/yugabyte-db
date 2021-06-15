@@ -41,7 +41,6 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -217,9 +216,9 @@ class RemoteBootstrapClient {
 
   tablet::TabletStatusListener* status_listener_ = nullptr;
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
-  gscoped_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
+  std::unique_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
   tablet::RaftGroupReplicaSuperBlockPB new_superblock_;
-  gscoped_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
+  std::unique_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
   tablet::TabletDataState remote_tablet_data_state_;
 
   std::vector<uint64_t> wal_seqnos_;

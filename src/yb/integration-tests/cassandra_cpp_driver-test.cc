@@ -2388,7 +2388,7 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
 
 YB_STRONGLY_TYPED_BOOL(RestartTS);
 
-CQLMetrics TestPrepareWithTSRestart(const gscoped_ptr<ExternalMiniCluster>& cluster,
+CQLMetrics TestPrepareWithTSRestart(const std::unique_ptr<ExternalMiniCluster>& cluster,
                                     CassandraSession* session,
                                     RestartTS restart_ts,
                                     const string& local_keyspace = string()) {

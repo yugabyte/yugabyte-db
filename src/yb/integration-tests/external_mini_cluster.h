@@ -42,7 +42,6 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -643,7 +642,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   const std::string full_data_dir_;
   std::vector<std::string> extra_flags_;
 
-  gscoped_ptr<Subprocess> process_;
+  std::unique_ptr<Subprocess> process_;
 
   std::unique_ptr<server::ServerStatusPB> status_;
 

@@ -34,7 +34,6 @@
 
 #include <memory>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/net/net_fwd.h"
 
@@ -55,10 +54,10 @@ class TabletServerServiceProxy;
 // Create tablet server client proxies for tests.
 void CreateTsClientProxies(const HostPort& addr,
                            rpc::ProxyCache* proxy_cache,
-                           gscoped_ptr<TabletServerServiceProxy>* proxy,
-                           gscoped_ptr<TabletServerAdminServiceProxy>* admin_proxy,
-                           gscoped_ptr<consensus::ConsensusServiceProxy>* consensus_proxy,
-                           gscoped_ptr<server::GenericServiceProxy>* generic_proxy);
+                           std::unique_ptr<TabletServerServiceProxy>* proxy,
+                           std::unique_ptr<TabletServerAdminServiceProxy>* admin_proxy,
+                           std::unique_ptr<consensus::ConsensusServiceProxy>* consensus_proxy,
+                           std::unique_ptr<server::GenericServiceProxy>* generic_proxy);
 
 } // namespace tserver
 } // namespace yb

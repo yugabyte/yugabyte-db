@@ -166,8 +166,8 @@ class RemoteBootstrapITest : public YBTest {
                                                            const MonoDelta& timeout,
                                                            vector<string>* tablet_ids);
 
-  gscoped_ptr<ExternalMiniCluster> cluster_;
-  gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   std::unique_ptr<YBClient> client_;
   itest::TabletServerMap ts_map_;
 
@@ -534,7 +534,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   opts.wal_paths.push_back(JoinPathSegments(testbase, "wals"));
   opts.data_paths.push_back(JoinPathSegments(testbase, "data-0"));
   opts.server_type = "tserver_test";
-  gscoped_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
+  std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
   ASSERT_OK(fs_manager->CreateInitialFileSystemLayout());
   ASSERT_OK(fs_manager->Open());
 
