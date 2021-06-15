@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.models;
 
-import java.util.Map;
-
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -46,10 +44,9 @@ public class YugawareProperty extends Model {
   // The property config.
   @Constraints.Required
   @Column(columnDefinition = "TEXT")
-  @DbJson
-  private Map<String, Object> value;
+  private JsonNode value;
 
-  public Map<String, Object> getValue() {
+  public JsonNode getValue() {
     return value;
   }
 
@@ -61,7 +58,7 @@ public class YugawareProperty extends Model {
       new Finder<String, YugawareProperty>(YugawareProperty.class) {};
 
   private YugawareProperty(
-      String name, PropertyEntryType type, Map<String, Object> value, String description) {
+      String name, PropertyEntryType type, JsonNode value, String description) {
     this.name = name;
     this.type = type;
     this.value = value;
@@ -81,7 +78,7 @@ public class YugawareProperty extends Model {
    * @param value is the property value as JsonNode
    * @param description is a description of the property
    */
-  public static void addConfigProperty(String name, Map<String, Object> value, String description) {
+  public static void addConfigProperty(String name, JsonNode value, String description) {
     YugawareProperty entry = find.byId(name);
     if (entry == null) {
       entry = new YugawareProperty(name, PropertyEntryType.Config, value, description);

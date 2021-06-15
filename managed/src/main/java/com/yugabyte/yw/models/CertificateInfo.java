@@ -83,13 +83,10 @@ public class CertificateInfo extends Model {
 
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
-  public CertificateParams.CustomCertInfo customCertInfo;
+  private CertificateParams.CustomCertInfo customCertInfo;
 
   public CertificateParams.CustomCertInfo getCustomCertInfo() {
-    if (this.customCertInfo != null) {
-      return this.customCertInfo;
-    }
-    return null;
+    return this.customCertInfo;
   }
 
   public void setCustomCertInfo(

@@ -35,9 +35,9 @@ public class MetricConfig extends Model {
   @Transient public String metric;
   @Transient public String function;
   @Transient public String range;
-  @Transient public Map<String, String> filters;
+  @Transient public Map<String, String> filters = new HashMap<>();
   @Transient public String group_by;
-  @Transient public Layout layout;
+  @Transient public Layout layout = new Layout();
   @Transient public String operator;
 
   @Id
@@ -69,17 +69,11 @@ public class MetricConfig extends Model {
   static final Pattern specialFilterPattern = Pattern.compile("[*|+$]");
 
   public Map<String, String> getFilters() {
-    if (this.getConfig().filters != null) {
-      return this.getConfig().filters;
-    }
-    return new HashMap<>();
+    return this.getConfig().filters;
   }
 
   public Layout getLayout() {
-    if (this.getConfig().layout != null) {
-      return this.getConfig().layout;
-    }
-    return new Layout();
+    return this.getConfig().layout;
   }
 
   public Map<String, String> getQueries(Map<String, String> additionalFilters, int queryRangeSecs) {

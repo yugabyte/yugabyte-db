@@ -16,7 +16,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -229,18 +228,7 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testCreateRegionWithMetadataValidVPCInfo() {
     YugawareProperty.addConfigProperty(
         ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
-        new HashMap<String, Object>() {
-          {
-            put(
-                "foo-region",
-                new HashMap<String, Object>() {
-                  {
-                    put("name", "Foo Region");
-                    put("ybImage", "yb image");
-                  }
-                });
-          }
-        },
+        Json.parse("{\"foo-region\": {\"name\": \"Foo Region\", \"ybImage\": \"yb image\"}}"),
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
@@ -267,18 +255,7 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testCreateRegionWithMetadataInvalidVPCInfo() {
     YugawareProperty.addConfigProperty(
         ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
-        new HashMap<String, Object>() {
-          {
-            put(
-                "foo-region",
-                new HashMap<String, Object>() {
-                  {
-                    put("name", "Foo Region");
-                    put("ybImage", "yb image");
-                  }
-                });
-          }
-        },
+        Json.parse("{\"foo-region\": {\"name\": \"Foo Region\", \"ybImage\": \"yb image\"}}"),
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");

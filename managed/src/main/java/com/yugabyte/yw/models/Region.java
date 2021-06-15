@@ -6,7 +6,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Query;
 import io.ebean.*;
@@ -86,21 +85,26 @@ public class Region extends Model {
     this.active = active;
   }
 
+  class RegionDetails {
+    public String sg_id; // Security group ID.
+    public String vet; // Vnet key.
+  }
+
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public Map<String, String> details;
+  public RegionDetails details;
 
   public void setSecurityGroupId(String securityGroupId) {
     if (details == null) {
-      details = new HashMap<String, String>();
+      details = new RegionDetails();
     }
-    details.put(SECURITY_GROUP_KEY, securityGroupId);
+    details.sg_id = securityGroupId;
     save();
   }
 
   public String getSecurityGroupId() {
     if (details != null) {
-      String sgNode = details.get(SECURITY_GROUP_KEY);
+      String sgNode = details.sg_id;
       return sgNode == null || sgNode.isEmpty() ? null : sgNode;
     }
     return null;
@@ -108,15 +112,15 @@ public class Region extends Model {
 
   public void setVnetName(String vnetName) {
     if (details == null) {
-      details = new HashMap<String, String>();
+      details = new RegionDetails();
     }
-    details.put(VNET_KEY, vnetName);
+    details.vet = vnetName;
     save();
   }
 
   public String getVnetName() {
     if (details != null) {
-      String vnetNode = details.get(VNET_KEY);
+      String vnetNode = details.vet;
       return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
     }
     return null;
