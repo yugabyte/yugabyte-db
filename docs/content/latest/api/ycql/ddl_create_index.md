@@ -57,7 +57,7 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 ### Grammar
 
-```
+```ebnf
 create_index ::= CREATE INDEX [ IF NOT EXISTS ] index_name
                      ON table_name ( partition_key_columns [ clustering_key_columns ] )  
                      [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate ]
@@ -75,7 +75,6 @@ jsonb_attribute ::= column_name [ -> 'attribute_name' [ ... ] ] ->> 'attribute_n
 covering_columns ::= { COVERING | INCLUDE } ( column_name [ , ... ] )
 
 index_predicate ::= where_expression
-
 ```
 
 Where
@@ -87,7 +86,6 @@ Where
 - An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed. This is because secondary indexes internally use distributed transactions to ensure ACID guarantees in the updates to the secondary index and the associated primary key. More details [here](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/).
 - An error is raised if `index_name` already exists in the associated keyspace unless the `IF NOT EXISTS` option is used.
 - Indexes do not support TTL. An error is raised if data is inserted with TTL into a table with indexes.
-
 
 {{< note title="Note" >}}
 
@@ -120,12 +118,14 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 - Partial indexes can be `UNIQUE`. A UNIQUE partial index enforces the constraint that for each possible tuple of indexed columns, only one row that satisfies the `index_predicate` is allowed in the table.
 - `SELECT` queries can use a partial index for scanning if the `SELECT` statement's `where_expression` => (logically implies) `index_predicate`.
 
-{{< note title="Note" >}}
+    {{< note title="Note" >}}
 
 - A partial index might not be chosen even if the implication holds in case there are better query plans.
 - The logical implication holds if all sub-expressions of the `index_predicate` are present as is in the `where_expression`. For example, assume `where_expression = A AND B AND C`, `index_predicate_1 = A AND B`, `index_predicate_2 = A AND B AND D`, `index_predicate_3 = A AND B AND C AND D`. Then `where_expression` only implies `index_predicate_1`
 
 - Currently, valid mathematical implications are not taken into account when checking for logical implication. For example, even if `where_expression = x > 5` and `index_predicate = x > 4`, the `SELECT` query will not use the index for scanning. This is because the two sub-expressions `x > 5` and `x > 4` differ.
+
+    {{< /note >}}
 
 - When using a prepared statement, the logical implication check (to decide if a partial index is usable), will only consider those sub-expressions of `where_expression` that don't have a bind variable. This is because the query plan is decided before execution (i.e., when a statement is prepared).
 
@@ -137,24 +137,60 @@ ycqlsh:example> CREATE TABLE orders (customer_id INT,
                                     amount DOUBLE,
                                     PRIMARY KEY ((customer_id), order_date))
                 WITH transactions = { 'enabled' : true };
-ycqlsh:example> CREATE INDEX idx on orders (warehouse_id) where warehouse_id < 100;
-ycqlsh:example> EXPLAIN SELECT product from orders where warehouse_id < 100 and order_date >= ?; // Idx can be used
 
+ycqlsh:example> CREATE INDEX idx ON orders (warehouse_id)
+                WHERE warehouse_id < 100;
+
+ycqlsh:example> EXPLAIN SELECT product FROM orders
+                WHERE warehouse_id < 100 AND order_date >= ?; // Idx can be used
+```
+
+```output
  QUERY PLAN
 ------------------------------------------
  Index Scan using temp.idx on temp.orders
    Filter: (order_date >= :order_date)
+```
 
-ycqlsh:example> EXPLAIN SELECT product from orders where warehouse_id < ? and order_date >= ?; // Idx cannot be used
+```sql
+ycqlsh:example> EXPLAIN SELECT product FROM orders
+                WHERE warehouse_id < ? and order_date >= ?; // Idx cannot be used
+```
 
+```output
  QUERY PLAN
 --------------------------------------------------------------------------
  Seq Scan on temp.orders
    Filter: (warehouse_id < :warehouse_id) AND (order_date >= :order_date)
-
 ```
 
-{{< /note >}}
+- Without partial indexes, we do not allow many combinations of operators together on the same column in a `SELECT`'s where expression e.g.: `WHERE v1 != NULL and v1 = 5`. But if there was a partial index that subsumes some clauses of the `SELECT`'s where expression, two or more operators otherwise not supported together, might be supported.
+
+```sql
+ycqlsh:example> EXPLAIN SELECT product FROM orders
+                WHERE warehouse_id != NULL AND warehouse_id = ?;
+```
+
+```output
+SyntaxException: Invalid CQL Statement. Illogical condition for where clause
+EXPLAIN SELECT product from orders where warehouse_id != NULL and warehouse_id = ?;
+                                                                  ^^^^^^^^^^^^
+ (ql error -12)
+```
+
+```sql
+ycqlsh:example> CREATE INDEX warehouse_idx ON orders (warehouse_id)
+                WHERE warehouse_id != NULL;
+ycqlsh:example> EXPLAIN SELECT product FROM orders
+                WHERE warehouse_id != NULL AND warehouse_id = ?; // warehouse_idx can be used
+```
+
+```output
+ QUERY PLAN
+----------------------------------------------------
+ Index Scan using temp.warehouse_idx on temp.orders
+   Key Conditions: (warehouse_id = :warehouse_id)
+```
 
 ## Examples
 
@@ -169,7 +205,7 @@ ycqlsh:example> CREATE TABLE orders (customer_id INT,
                                     warehouse_id INT,
                                     amount DOUBLE,
                                     PRIMARY KEY ((customer_id), order_date))
-               WITH transactions = { 'enabled' : true };
+                WITH transactions = { 'enabled' : true };
 ```
 
 ### Create an index for query by the `order_date` column
@@ -181,35 +217,38 @@ ycqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) INCLUDE (amou
 ### Create an index for query by the JSONB attribute `product->>'name'`
 
 ```sql
-ycqlsh:example> CREATE INDEX product_name ON orders (product->>'name') INCLUDE (amount);
+ycqlsh:example> CREATE INDEX product_name
+                ON orders (product->>'name') INCLUDE (amount);
 ```
 
 ### Create an index for query by the `warehouse_id` column
 
 ```sql
-ycqlsh:example> CREATE INDEX orders_by_warehouse ON orders (warehouse_id, order_date) INCLUDE (amount);
+ycqlsh:example> CREATE INDEX orders_by_warehouse
+                ON orders (warehouse_id, order_date) INCLUDE (amount);
 ```
 
 ### Insert some data
 
 ```sql
 ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
-               VALUES (1001, '2018-01-10', '{ "name":"desk" }', 107, 100.30);
+                VALUES (1001, '2018-01-10', '{ "name":"desk" }', 107, 100.30);
 ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
-               VALUES (1002, '2018-01-11', '{ "name":"chair" }', 102, 50.45);
+                VALUES (1002, '2018-01-11', '{ "name":"chair" }', 102, 50.45);
 ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
-               VALUES (1001, '2018-04-09', '{ "name":"pen" }', 102, 20.25);
+                VALUES (1001, '2018-04-09', '{ "name":"pen" }', 102, 20.25);
 ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
-               VALUES (1003, '2018-04-09', '{ "name":"pencil" }', 108, 200.80);
+                VALUES (1003, '2018-04-09', '{ "name":"pencil" }', 108, 200.80);
 ```
 
 ### Query by the partition column `customer_id` in the table
 
 ```sql
-ycqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order_date >= '2018-01-01';
+ycqlsh:example> SELECT SUM(amount) FROM orders
+                WHERE customer_id = 1001 AND order_date >= '2018-01-01';
 ```
 
-```
+```output
   sum(amount)
 -------------
       120.55
@@ -218,10 +257,11 @@ ycqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND orde
 ### Query by the partition column `order_date` in the index `orders_by_date`
 
 ```sql
-ycqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
+ycqlsh:example> SELECT SUM(amount) FROM orders
+                WHERE order_date = '2018-04-09';
 ```
 
-```
+```output
  sum(amount)
 -------------
       221.05
@@ -230,10 +270,11 @@ ycqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
 ### Query by the partition column `product->>'name'` in the index `product_name`
 
 ```sql
-ycqlsh:example> SELECT SUM(amount) FROM orders WHERE product->>'name' = 'desk';
+ycqlsh:example> SELECT SUM(amount) FROM orders
+                WHERE product->>'name' = 'desk';
 ```
 
-```
+```output
  sum(amount)
 -------------
       100.30
@@ -242,10 +283,11 @@ ycqlsh:example> SELECT SUM(amount) FROM orders WHERE product->>'name' = 'desk';
 ### Query by the partition column `warehouse_id` column in the index `orders_by_warehouse`
 
 ```sql
-ycqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order_date >= '2018-01-01';
+ycqlsh:example> SELECT SUM(amount) FROM orders
+                WHERE warehouse_id = 102 AND order_date >= '2018-01-01';
 ```
 
-```
+```output
  sum(amount)
 -------------
         70.7
@@ -268,23 +310,26 @@ ycqlsh:example> CREATE UNIQUE INDEX emp_by_userid ON emp (userid);
 
 ```sql
 ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
-               VALUES (1001, 'Smith', 'John', 'jsmith');
+                VALUES (1001, 'Smith', 'John', 'jsmith');
 ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
-               VALUES (1002, 'Smith', 'Jason', 'jsmith');
+                VALUES (1002, 'Smith', 'Jason', 'jsmith');
+```
+
+```output
 InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error: Execution Error. Duplicate value disallowed by unique index emp_by_userid
 INSERT INTO emp (enum, lastname, firstname, userid)
        ^^^^
 VALUES (1002, 'Smith', 'Jason', 'jsmith');
  (error -300)"
-ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
-               VALUES (1002, 'Smith', 'Jason', 'jasmith');
 ```
 
 ```sql
+ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
+                VALUES (1002, 'Smith', 'Jason', 'jasmith');
 ycqlsh:example> SELECT * FROM emp;
 ```
 
-```
+```output
  enum | lastname | firstname | userid
 ------+----------+-----------+---------
  1002 |    Smith |     Jason | jasmith
