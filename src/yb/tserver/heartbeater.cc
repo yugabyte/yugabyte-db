@@ -163,7 +163,7 @@ class Heartbeater::Thread {
   HostPort leader_master_hostport_;
 
   // Current RPC proxy to the leader master.
-  gscoped_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<master::MasterServiceProxy> proxy_;
 
   // The most recent response from a heartbeat.
   master::TSHeartbeatResponsePB last_hb_response_;
