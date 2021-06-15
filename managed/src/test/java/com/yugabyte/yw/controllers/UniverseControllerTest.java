@@ -1682,13 +1682,27 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testFindByNameWithUniverseNameExists() {
+  public void testFindWithUniverseNameExists() {
     Universe u = createUniverse("TestUniverse", customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/find/" + u.name;
-    Result result =
-        assertThrows(YWServiceException.class, () -> doRequestWithAuthToken("GET", url, authToken))
-            .getResult();
-    assertBadRequest(result, "Universe already exists");
+    String url = "/api/customers/" + customer.uuid + "/universes/find?name=" + u.name;
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 1);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testFindAllExistingUUID() {
+    Universe u = createUniverse("TestUniverse", customer.getCustomerId());
+    String url = "/api/customers/" + customer.uuid + "/universes/find";
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(result);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 1);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1704,11 +1718,15 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testFindByNameWithUniverseDoesNotExist() {
+  public void testFindWithUniverseDoesNotExist() {
     createUniverse(customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse";
+    String url = "/api/customers/" + customer.uuid + "/universes/find?name=FakeUniverse";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 0);
     assertAuditEntry(0, customer.uuid);
   }
 
