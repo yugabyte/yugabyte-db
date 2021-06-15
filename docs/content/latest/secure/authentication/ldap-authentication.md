@@ -21,9 +21,9 @@ showAsideToc: true
   </li>
 </ul>
 
-The ldap authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions). 
+The LDAP authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions). 
 
-LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with <code>[--ysql_hba_conf](/latest/reference/configuration/yb-tserver/#ysql-hba-conf)</code> flag. YugabyteDB supports two modes for LDAP authentication: 
+LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag. YugabyteDB supports two modes for LDAP authentication: 
 
 * <strong>simple-bind</strong> mode
 * <strong>search+bind</strong> mode
@@ -32,10 +32,10 @@ These are described below.
 
 ## Simple Bind Mode
 
-In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (“DN”) constructed with “prefix username suffix” format. Here is an example for Simple bind mode 
+In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (“DN”) constructed with “prefix username suffix” format. Here is an example for Simple bind mode:
 
-```
---ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host   all         all      0.0.0.0/0  ldap ldapserver=ldap.yugabyte.com ldapprefix=""uid="" ldapsuffix="", ou=DBAs, dc=example, dc=com"" ldapport=389"'
+```sh
+--ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldap.yugabyte.com ldapprefix=""uid="" ldapsuffix="", ou=DBAs, dc=example, dc=com"" ldapport=389"'
 ```
 
 ### Configurations
@@ -90,16 +90,13 @@ For Searching the LDAP directory if no fixed username and password is configured
 
 Here is an example for search + bind mode
 
-
+```sh
+--ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0  ldap ldapserver=ldap.yugabyte.com ldapbasedn=""dc=yugabyte, dc=com"" ldapsearchattribute=uid"'
 ```
---ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host   all         all      0.0.0.0/0  ldap ldapserver=ldap.yugabyte.com ldapbasedn=""dc=yugabyte, dc=com"" ldapsearchattribute=uid"'
-```
-
 
 ### Configurations
 
 The configurations supported for search + bind mode
-
 
 <table>
   <tr>

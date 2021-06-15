@@ -1,7 +1,7 @@
 ---
-title: LDAP Authentication
-headerTitle: LDAP Authentication
-linkTitle: LDAP Authentication
+title: LDAP authentication
+headerTitle: LDAP authentication
+linkTitle: LDAP authentication
 description: Configuring Yugabyte Platform to use an external LDAP authentication service.
 menu:
   latest:
@@ -21,41 +21,35 @@ showAsideToc: true
   </li>
 </ul>
 
+LDAP Authentication is similar to password authentication, except that it uses the LDAP protocol to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database and have appropriate permissions.
 
-The [LDAP Authentication](../../../secure/authentication/ldap-authentication/) method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions).
+You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
 
-This section illustrates how to configure Yugabyte Platform to use an LDAP server such as Active Directory with TLS.
+This section describes how to configure Yugabyte Platform to use an LDAP server such as Active Directory with TLS.
 
+For more information on LDAP in YugabyteDB, refer to [LDAP Authentication](../../../secure/authentication/ldap-authentication/).
 
-## TLS
+## Bind to the LDAP server using TLS
 
-Set the following
-[TServer flag](../../../yugabyte-platform/manage-deployments/edit-config-flags/)
-to use the `ldaptls=1` option to bind to the LDAP server using TLS:
+To bind to the LDAP server using TLS, you set the `ldaptls=1` option. Set the `ysql_hba_conf_csv` flag to the following value:
 
-  * **flag name**: `ysql_hba_conf_csv`
-  * **flag value**:
+```sh
+host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldapserver.example.org ldapbasedn=""dc=example,dc=org"" ldapsearchattribute=uid ldapbinddn=""cn=admin,dc=example,dc=org"" ldapbindpasswd=secret ldaptls=1"
+```
 
-  ```
-  host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldapserver.example.org ldapbasedn=""dc=example,dc=org"" ldapsearchattribute=uid ldapbinddn=""cn=admin,dc=example,dc=org"" ldapbindpasswd=secret ldaptls=1"
-  ```
+Set the flag in Platform as described in [Edit configuration flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/).
 
-Note: when entering the above flag value into the GUI, it _does not_ have single quotes enclosing it like it would in a Linux shell.
+{{< note title="Note" >}}
+When entering the flag value in Platform, do not enclose it in single quotes as you would in a Linux shell.
+{{< /note >}}
 
+The first host-based authentication (HBA) rule `host all yugabyte 127.0.0.1/0 password` allows access to the admin user (yugabyte) from localhost (127.0.0.1) using password authentication. This allows the administrator to login as `yugabyte` to set up the roles (and permissions) for LDAP users.
 
-The first HBA rule `host all yugabyte 127.0.0.1/0 password` allows access from the localhost (127.0.0.1) to the admin user (yugabyte) with password authentication.
-This allows the administrator to login with the yugabyte user for setting up the roles (and permissions) for the LDAP users.
+The second HBA rule configures LDAP authentication for all other user/host pairs using a [search+bind](../../../secure/authentication/ldap-authentication/#search-bind-mode) configuration. The YB-TServer will bind to the LDAP directory using a fixed username and password specified with `ldapbinddn` and `ldapbindpasswd`. The search is performed over the subtree at `ldapbasedn` and tries to find an exact match of the attribute specified in `ldapsearchattribute`. 
 
-The second HBA rule configures LDAP authentication for all other user/host pairs
-using a [search+bind](../../../secure/authentication/ldap-authentication/#search-bind-mode) configuration.
-The YB-Tserver will bind to the LDAP directory with a fixed username and password specified with `ldapbinddn` and `ldapbindpasswd`.
-The search will be performed over the subtree at `ldapbasedn` and will try to do an exact match of the attribute specified in `ldapsearchattribute`. Once the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
+Once the user is found, to verify that the login is correct, the server disconnects and re-binds to the directory as this user using the password specified by the client.
 
-For more information, see 
-the [--ysql_hba_conf_csv](../../..//reference/configuration/yb-tserver/#ysql-hba-conf-csv) option
-and [Host-based authentication](../../../secure/authentication/host-based-authentication).
-
-
+For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_csv flag](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv). For more information on HBA, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication).
 
 ## Example
 
@@ -63,14 +57,14 @@ and [Host-based authentication](../../../secure/authentication/host-based-authen
 
 1. Create a user in Active Directory, and validate a successful search for that user.
 
-    ```
+    ```sh
     ldapsearch -x -H ldaps://ldapserver.example.org -b dc=example,dc=org 'uid=adam' -D "cn=admin,dc=example,dc=org" -w adminpassword
     ```
 
     <br>
     You should see a response similar to the following:
 
-    ```
+    ```output
     # extended LDIF
     #
     # LDAPv3
@@ -104,29 +98,42 @@ and [Host-based authentication](../../../secure/authentication/host-based-authen
     # numEntries: 1
     ```
 
-    If instead you see something like `ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)` then you have a network, certificate, or binding (authentication) problem.
+    If instead you see something like `ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)`, then you have a network, certificate, or binding (authentication) problem.
 
 1. Create the user in YugabyteDB.
 
-    ```
+    ```sh
     % ysqlsh exampledb
+    ```
+
+    ```output
     Password for user yugabyte: yugabyte
     ysqlsh (11.2-YB-2.5.1.0-b0)
     Type "help" for help.
+    ```
 
+    ```sql
     exampledb=# create user adam;
     CREATE ROLE
     ```
 
-1. Validate the user can authenticate to the database using LDAP.
+1. Verify that the user can authenticate to the database using LDAP.
 
-    ```
+    ```sh
     % ysqlsh -U adam exampledb
+    ```
+
+    ```output
     Password for user adam: supersecret
     ysqlsh (11.2-YB-2.5.1.0-b0)
     Type "help" for help.
+    ```
 
-    exampledb=> \conninfo
+    ```sql
+    exampledb=# \conninfo
+    ```
+
+    ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
     ```
 
