@@ -83,7 +83,7 @@ class PbTracer : public debug::ConvertableToTraceFormat {
     out->append(ss.str());
   }
  private:
-  const gscoped_ptr<Message> msg_;
+  const std::unique_ptr<Message> msg_;
 };
 
 scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {

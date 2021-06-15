@@ -36,7 +36,6 @@
 #include <string>
 
 #include "yb/common/wire_protocol.pb.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/service_if.h"
@@ -125,16 +124,16 @@ class RpcServerBase {
 
   const std::string name_;
   std::shared_ptr<MemTracker> mem_tracker_;
-  gscoped_ptr<MetricRegistry> metric_registry_;
+  std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  gscoped_ptr<RpcServer> rpc_server_;
+  std::unique_ptr<RpcServer> rpc_server_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   scoped_refptr<Clock> clock_;
 
   // The instance identifier of this server.
-  gscoped_ptr<NodeInstancePB> instance_pb_;
+  std::unique_ptr<NodeInstancePB> instance_pb_;
 
   ServerBaseOptions options_;
 
@@ -149,7 +148,7 @@ class RpcServerBase {
   scoped_refptr<Thread> metrics_logging_thread_;
   CountDownLatch stop_metrics_logging_latch_;
 
-  gscoped_ptr<ScopedGLogMetrics> glog_metrics_;
+  std::unique_ptr<ScopedGLogMetrics> glog_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcServerBase);
 };
@@ -196,8 +195,8 @@ class RpcAndWebServerBase : public RpcServerBase {
   CHECKED_STATUS Start();
   void Shutdown();
 
-  gscoped_ptr<FsManager> fs_manager_;
-  gscoped_ptr<Webserver> web_server_;
+  std::unique_ptr<FsManager> fs_manager_;
+  std::unique_ptr<Webserver> web_server_;
 
  private:
   void GenerateInstanceID();

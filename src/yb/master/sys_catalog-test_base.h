@@ -83,9 +83,9 @@ class SysCatalogTest : public YBTest {
   }
 
   std::unique_ptr<Messenger> client_messenger_;
-  gscoped_ptr<MiniMaster> mini_master_;
+  std::unique_ptr<MiniMaster> mini_master_;
   Master* master_;
-  gscoped_ptr<MasterServiceProxy> proxy_;
+  std::unique_ptr<MasterServiceProxy> proxy_;
 };
 
 const int64_t kLeaderTerm = 1;

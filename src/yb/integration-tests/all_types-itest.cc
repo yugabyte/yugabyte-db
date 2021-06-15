@@ -379,7 +379,7 @@ class AllTypesItest : public YBTest {
   TestSetup setup_;
   YBSchema schema_;
   std::unique_ptr<YBClient> client_;
-  gscoped_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
   TableHandle table_;
 };
 

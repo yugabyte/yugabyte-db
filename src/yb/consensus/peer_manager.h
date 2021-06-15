@@ -38,7 +38,6 @@
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_util.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/locks.h"

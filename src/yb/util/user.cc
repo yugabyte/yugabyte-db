@@ -41,8 +41,8 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/errno.h"
+#include "yb/util/malloc.h"
 #include "yb/util/status.h"
 
 using std::string;
@@ -60,7 +60,7 @@ Status GetLoggedInUser(string* user_name) {
     bufsize = 16384;    // Should be more than enough, per the man page.
   }
 
-  gscoped_ptr<char[], FreeDeleter> buf(static_cast<char *>(malloc(bufsize)));
+  std::unique_ptr<char[], FreeDeleter> buf(static_cast<char *>(malloc(bufsize)));
   if (buf.get() == nullptr) {
     return STATUS(RuntimeError, "Malloc failed", Errno(errno));
   }

@@ -41,7 +41,6 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/callback_forward.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/ref_counted.h"
@@ -169,7 +168,6 @@ class ThreadPoolBuilder {
   const MonoDelta& idle_timeout() const { return idle_timeout_; }
 
   // Instantiate a new ThreadPool with the existing builder arguments.
-  CHECKED_STATUS Build(gscoped_ptr<ThreadPool>* pool) const;
   CHECKED_STATUS Build(std::unique_ptr<ThreadPool>* pool) const;
 
  private:
@@ -210,7 +208,7 @@ class ThreadPoolBuilder {
 //    static void Func(int n) { ... }
 //    class Task : public Runnable { ... }
 //
-//    gscoped_ptr<ThreadPool> thread_pool;
+//    std::unique_ptr<ThreadPool> thread_pool;
 //    CHECK_OK(
 //        ThreadPoolBuilder("my_pool")
 //            .set_min_threads(0)
