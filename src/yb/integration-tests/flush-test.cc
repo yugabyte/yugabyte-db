@@ -108,7 +108,7 @@ class FlushITest : public YBTest {
     // Start cluster
     MiniClusterOptions opts;
     opts.num_tablet_servers = 1;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     // Patch tablet options inside tablet manager, will be applied to new created tablets.
     cluster_->GetTabletManager(0)->TEST_tablet_options()->listeners.push_back(

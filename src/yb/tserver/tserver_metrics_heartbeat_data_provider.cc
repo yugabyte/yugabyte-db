@@ -136,7 +136,7 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   VLOG_WITH_PREFIX(4) << "Total SST File Sizes: "<< total_file_sizes;
   VLOG_WITH_PREFIX(4) << "Uptime seconds: "<< uptime_seconds;
 
-  for (const std::string& path : server().fs_manager()->GetDataRootDirs()) {
+  for (const std::string& path : server().fs_manager()->GetFsRootDirs()) {
     auto stat = server().GetEnv()->GetFilesystemStatsBytes(path.c_str());
     if (!stat.ok()) {
       continue;

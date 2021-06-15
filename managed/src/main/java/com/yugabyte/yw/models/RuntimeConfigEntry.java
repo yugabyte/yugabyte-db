@@ -9,12 +9,14 @@ import org.slf4j.LoggerFactory;
 
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
+
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
-import static java.util.stream.Collectors.toMap;
 import static play.mvc.Http.Status.NOT_FOUND;
 
 @Entity
@@ -23,11 +25,11 @@ public class RuntimeConfigEntry extends Model {
 
   @EmbeddedId private final RuntimeConfigEntryKey idKey;
 
-  private String value;
+  private byte[] value;
 
   public RuntimeConfigEntry(UUID scopedConfigId, String path, String value) {
     this.idKey = new RuntimeConfigEntryKey(scopedConfigId, path);
-    this.value = value;
+    this.setValue(value);
   }
 
   public String getPath() {
@@ -35,11 +37,11 @@ public class RuntimeConfigEntry extends Model {
   }
 
   public String getValue() {
-    return value;
+    return new String(this.value, StandardCharsets.UTF_8);
   }
 
   public void setValue(String value) {
-    this.value = value;
+    this.value = value.getBytes(StandardCharsets.UTF_8);
   }
 
   private static final Finder<UUID, RuntimeConfigEntry> findInScope =
@@ -67,63 +69,56 @@ public class RuntimeConfigEntry extends Model {
 
   public static Map<String, String> getAsMapForScope(UUID scope) {
     List<RuntimeConfigEntry> scopedValues = getAll(scope);
-    return scopedValues
-        .stream()
-        .collect(toMap(RuntimeConfigEntry::getPath, RuntimeConfigEntry::getValue));
+    Map<String, String> map = new HashMap<>();
+    for (RuntimeConfigEntry scopedValue : scopedValues) {
+      String path = scopedValue.getPath();
+      String value = scopedValue.getValue();
+      if (path == null || value == null) {
+        LOG.warn("Null key or value in runtime config {} = {}", path, value);
+        continue;
+      }
+      if (map.put(path, value) != null) {
+        LOG.warn("Duplicate key in runtime config {}", path);
+      }
+    }
+    return map;
+  }
+
+  private static RuntimeConfigEntry upsertInternal(
+      UUID uuid, String path, String value, Runnable ensure) {
+    RuntimeConfigEntry config = get(uuid, path);
+    LOG.debug("Setting {} value to: {}", path, value);
+
+    if (config == null) {
+      ensure.run();
+      config = new RuntimeConfigEntry(uuid, path, value);
+    } else {
+      config.setValue(value);
+    }
+
+    config.save();
+    return config;
   }
 
   @Transactional
   public static RuntimeConfigEntry upsertGlobal(String path, String value) {
-    RuntimeConfigEntry config = get(GLOBAL_SCOPE_UUID, path);
-    if (config == null) {
-      ScopedRuntimeConfig.ensureGlobal();
-      LOG.debug("Setting {} value to: {}", path, value);
-      config = new RuntimeConfigEntry(GLOBAL_SCOPE_UUID, path, value);
-    } else {
-      LOG.debug("Setting {} value to: {}", path, value);
-      config.setValue(value);
-    }
-    config.save();
-    return config;
+    return upsertInternal(GLOBAL_SCOPE_UUID, path, value, () -> ScopedRuntimeConfig.ensureGlobal());
   }
 
   @Transactional
   public static RuntimeConfigEntry upsert(Customer customer, String path, String value) {
-    RuntimeConfigEntry config = get(customer.uuid, path);
-    if (config == null) {
-      ScopedRuntimeConfig.ensure(customer);
-      config = new RuntimeConfigEntry(customer.uuid, path, value);
-    } else {
-      config.setValue(value);
-    }
-    config.save();
-    return config;
+    return upsertInternal(customer.uuid, path, value, () -> ScopedRuntimeConfig.ensure(customer));
   }
 
   @Transactional
   public static RuntimeConfigEntry upsert(Universe universe, String path, String value) {
-    RuntimeConfigEntry config = get(universe.universeUUID, path);
-    if (config == null) {
-      ScopedRuntimeConfig.ensure(universe);
-      config = new RuntimeConfigEntry(universe.universeUUID, path, value);
-    } else {
-      config.setValue(value);
-    }
-    config.save();
-    return config;
+    return upsertInternal(
+        universe.universeUUID, path, value, () -> ScopedRuntimeConfig.ensure(universe));
   }
 
   @Transactional
   public static RuntimeConfigEntry upsert(Provider provider, String path, String value) {
-    RuntimeConfigEntry config = get(provider.uuid, path);
-    if (config == null) {
-      ScopedRuntimeConfig.ensure(provider);
-      config = new RuntimeConfigEntry(provider.uuid, path, value);
-    } else {
-      config.setValue(value);
-    }
-    config.save();
-    return config;
+    return upsertInternal(provider.uuid, path, value, () -> ScopedRuntimeConfig.ensure(provider));
   }
 
   @Override

@@ -14,7 +14,6 @@
 #include "yb/util/universe_key_manager.h"
 
 namespace yb {
-namespace enterprise {
 
 Result<std::unique_ptr<UniverseKeyManager>> UniverseKeyManager::FromKey(
     const std::string& key_id, const Slice& key_data) {
@@ -22,7 +21,7 @@ Result<std::unique_ptr<UniverseKeyManager>> UniverseKeyManager::FromKey(
   UniverseKeyRegistryPB universe_key_registry;
   universe_key_registry.set_encryption_enabled(true);
   universe_key_registry.set_latest_version_id(key_id);
-  auto encryption_params = VERIFY_RESULT(yb::enterprise::EncryptionParams::FromSlice(key_data));
+  auto encryption_params = VERIFY_RESULT(yb::EncryptionParams::FromSlice(key_data));
   yb::EncryptionParamsPB params_pb;
   encryption_params->ToEncryptionParamsPB(&params_pb);
   (*universe_key_registry.mutable_universe_keys())[key_id] = params_pb;
@@ -40,7 +39,7 @@ void UniverseKeyManager::SetUniverseKeyRegistry(
   cond_.notify_all();
 }
 
-Result<yb::enterprise::EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
+Result<yb::EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
     const UniverseKeyId& version_id) {
   auto l = EnsureRegistryReceived();
   const auto it = universe_key_registry_.universe_keys().find(version_id);
@@ -76,5 +75,4 @@ std::unique_lock<std::mutex> UniverseKeyManager::EnsureRegistryReceived() {
   return l;
 }
 
-} // namespace enterprise
 } // namespace yb

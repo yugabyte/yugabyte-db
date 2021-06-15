@@ -1,7 +1,7 @@
 ---
 title: Horizontal Scalability
 headerTitle: Horizontal Scalability
-linkTitle: Horizontal Scalability
+linkTitle: Horizontal scalability
 description: Horizontal Scalability in YugabyteDB.
 headcontent: Horizontal Scalability in YugabyteDB.
 aliases:
@@ -42,7 +42,7 @@ A YugabyteDB cluster can be dynamically *scaled out* by adding nodes (or increas
 
 ### How scalability works
 
-Every table in YugabyteDB is transparently sharded using the primary key of the table, each of these shards are called *tablets*. Each tablet consists of a set of rows in a table. In YugabyteDB, tables are automatically into tablets. This is done at time of creating the table if possible. Tablets can also be split dynamically.
+Every table in YugabyteDB is transparently sharded using the primary key of the table, each of these shards are called *tablets*. Each tablet consists of a set of rows in a table. In YugabyteDB, tables are automatically split into tablets. This is done at time of creating the table if possible. Tablets can also be split dynamically.
 
 The table below summarizes the support for scalability and sharding across YSQL and YCQL APIs.
 

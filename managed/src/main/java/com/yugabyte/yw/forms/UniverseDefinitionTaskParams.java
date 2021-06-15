@@ -65,9 +65,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // id. This is used as the prefix of node names in the universe.
   public String nodePrefix = null;
 
-  // The UUID of the rootCA to be used to generate client certificates and facilitate TLS
-  // communication.
+  // The UUID of the rootCA to be used to generate node certificates and facilitate TLS
+  // communication between database nodes.
   public UUID rootCA = null;
+
+  // The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS
+  // communication between server and client.
+  public UUID clientRootCA = null;
+
+  // This flag represents whether user has chosen to use same certificates for node to node and
+  // client to server communication.
+  // Default is set to true to ensure backward compatability
+  public boolean rootAndClientRootCASame = true;
 
   // This flag represents whether user has chosen to provide placement info
   // In Edit Universe if this flag is set we go through the NEW_CONFIG_FROM_PLACEMENT_INFO path

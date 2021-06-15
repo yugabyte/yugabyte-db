@@ -1,7 +1,7 @@
 ---
 title: Query Tuning
 headerTitle: Query Tuning
-linkTitle: Query Tuning
+linkTitle: Query tuning
 description: Tuning and optimizing query performance
 headcontent: Tuning and optimizing query performance
 image: /images/section_icons/index/develop.png
@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: query-tuning
     parent: explore
-    weight: 235
+    weight: 280
 ---
 
 <div class="row">

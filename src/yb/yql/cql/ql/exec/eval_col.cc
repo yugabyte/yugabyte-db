@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/yql/cql/ql/exec/executor.h"
@@ -78,13 +79,33 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB
     }
   }
 
+  common::Jsonb jsonb_null;
+  RETURN_NOT_OK(jsonb_null.FromString("null"));
   const MCVector<JsonColumnArg>& jsoncol_args = tnode->json_col_args();
   for (const JsonColumnArg& col : jsoncol_args) {
+    QLExpressionPB expr_pb;
+    RETURN_NOT_OK(PTExprToPB(col.expr(), &expr_pb));
+
+    if (tnode->opcode() == TreeNodeOpcode::kPTUpdateStmt) {
+      const PTUpdateStmt* update_tnode = static_cast<const PTUpdateStmt*>(tnode);
+      if (update_tnode->update_properties() &&
+          update_tnode->update_properties()->ignore_null_jsonb_attributes()) {
+        if (expr_pb.expr_case() == QLExpressionPB::kValue &&
+            expr_pb.value().value_case() == QLValuePB::kJsonbValue &&
+            expr_pb.value().jsonb_value() == jsonb_null.SerializedJsonb()) {
+          // TODO(Piyush): Log attribute json path as well.
+          VLOG(1) << "Ignoring null for json attribute in UPDATE statement " \
+            "for column " << col.desc()->MangledName();
+          continue;
+        }
+      }
+    }
+
     const ColumnDesc *col_desc = col.desc();
     QLColumnValuePB *col_pb = req->add_column_values();
     col_pb->set_column_id(col_desc->id());
-    QLExpressionPB *expr_pb = col_pb->mutable_expr();
-    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
+    *(col_pb->mutable_expr()) = expr_pb;
+
     for (auto& col_arg : col.args()->node_list()) {
       QLJsonOperationPB *arg_pb = col_pb->add_json_args();
       RETURN_NOT_OK(PTJsonOperatorToPB(std::dynamic_pointer_cast<PTJsonOperator>(col_arg), arg_pb));

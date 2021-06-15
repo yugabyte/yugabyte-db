@@ -242,6 +242,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS GetYsqlCatalogVersion();
 
+  Result<rapidjson::Document> DdlLog();
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
@@ -338,6 +340,13 @@ std::string RightPadToUuidWidth(const std::string &s);
 Result<TypedNamespaceName> ParseNamespaceName(
     const std::string& full_namespace_name,
     const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL);
+
+void AddStringField(
+    const char* name, const std::string& value, rapidjson::Value* out,
+    rapidjson::Value::AllocatorType* allocator);
+
+// Renders hybrid time to string for user, time is rendered in local TZ.
+std::string HybridTimeToString(HybridTime ht);
 
 }  // namespace tools
 }  // namespace yb

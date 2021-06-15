@@ -36,15 +36,16 @@ public class YWModelConverter implements ModelConverter {
       ModelConverterContext context,
       Annotation[] annotations,
       Iterator<ModelConverter> chain) {
-    if (tooDeep()) {
-      LOG.warn("{}{}", type.getTypeName(), annotations);
-      throw new RuntimeException("Too Deep");
-    }
     if (canSkip(type) || !chain.hasNext()) {
       LOG.debug("skipped {}", type.getTypeName());
       return null;
     }
-    return chain.next().resolveProperty(type, context, annotations, chain);
+    ModelConverter nextConverter = chain.next();
+    if (nextConverter == this) {
+      LOG.warn("{}{}", type.getTypeName(), annotations);
+      throw new RuntimeException("Duplicate YWModelConverter added");
+    }
+    return nextConverter.resolveProperty(type, context, annotations, chain);
   }
 
   @Override
@@ -58,16 +59,5 @@ public class YWModelConverter implements ModelConverter {
   private boolean canSkip(Type type) {
     String typeName = type.getTypeName();
     return SKIPPED_PACKAGES.stream().anyMatch(typeName::contains);
-  }
-
-  private static boolean tooDeep() {
-    try {
-      throw new IllegalStateException("Too deep, emerging");
-    } catch (IllegalStateException e) {
-      if (e.getStackTrace().length > maxLevel + 1) {
-        return true;
-      }
-    }
-    return false;
   }
 }

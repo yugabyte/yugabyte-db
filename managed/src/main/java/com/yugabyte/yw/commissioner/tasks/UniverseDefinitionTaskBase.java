@@ -113,7 +113,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /** Writes the user intent to the universe. */
   public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate) {
-    return writeUserIntentToUniverse(false, true);
+    return writeUserIntentToUniverse(isReadOnlyCreate, true);
   }
 
   /**
@@ -143,6 +143,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               universeDetails.nodePrefix = taskParams().nodePrefix;
               universeDetails.universeUUID = taskParams().universeUUID;
               universeDetails.rootCA = taskParams().rootCA;
+              universeDetails.clientRootCA = taskParams().clientRootCA;
               universeDetails.allowInsecure = taskParams().allowInsecure;
               Cluster cluster = taskParams().getPrimaryCluster();
               if (cluster != null) {
@@ -637,45 +638,51 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
+  protected void fillSetupParamsForNode(
+      AnsibleSetupServer.Params params, UserIntent userIntent, NodeDetails node) {
+    CloudSpecificInfo cloudInfo = node.cloudInfo;
+    params.deviceInfo = userIntent.deviceInfo;
+    // Set the region code.
+    params.azUuid = node.azUuid;
+    params.placementUuid = node.placementUuid;
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    // Pick one of the subnets in a round robin fashion.
+    params.subnetId = cloudInfo.subnet_id;
+    // Set the instance type.
+    params.instanceType = cloudInfo.instance_type;
+    // Set the assign public ip param.
+    params.assignPublicIP = cloudInfo.assignPublicIP;
+    params.machineImage = node.machineImage;
+    params.useTimeSync = cloudInfo.useTimeSync;
+    params.cmkArn = taskParams().cmkArn;
+    params.ipArnString = userIntent.awsArnString;
+    // Set the ports to provision a node to use
+    params.communicationPorts =
+        UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(node);
+    // Whether to install node_exporter on nodes or not.
+    params.extraDependencies.installNodeExporter =
+        taskParams().extraDependencies.installNodeExporter;
+    // Which user the node exporter service will run as
+    params.nodeExporterUser = taskParams().nodeExporterUser;
+    // Development testing variable.
+    params.remotePackagePath = taskParams().remotePackagePath;
+  }
+
   /**
    * Creates a task list for provisioning the list of nodes passed in and adds it to the task queue.
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes, boolean reprovision) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      // Set the device information (numVolumes, volumeSize, etc.)
-      CloudSpecificInfo cloudInfo = node.cloudInfo;
-      params.deviceInfo = userIntent.deviceInfo;
-      // Set the region code.
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Pick one of the subnets in a round robin fashion.
-      params.subnetId = cloudInfo.subnet_id;
-      // Set the instance type.
-      params.instanceType = cloudInfo.instance_type;
-      // Set the assign public ip param.
-      params.assignPublicIP = cloudInfo.assignPublicIP;
-      params.useTimeSync = cloudInfo.useTimeSync;
-      params.cmkArn = taskParams().cmkArn;
-      params.ipArnString = userIntent.awsArnString;
-      // Set the ports to provision a node to use
-      params.communicationPorts =
-          UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(node);
-      // Whether to install node_exporter on nodes or not.
-      params.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
-      // Which user the node exporter service will run as
-      params.nodeExporterUser = taskParams().nodeExporterUser;
-      // Development testing variable.
-      params.remotePackagePath = taskParams().remotePackagePath;
+      fillSetupParamsForNode(params, userIntent, node);
+      params.reprovision = reprovision;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
@@ -687,6 +694,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
+    return createSetupServerTasks(nodes, false);
+  }
   /**
    * Creates a task list to configure the newly provisioned nodes and adds it to the task queue.
    * Includes tasks such as setting up the 'yugabyte' user and installing the passed in software
@@ -739,10 +749,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 
       params.allowInsecure = taskParams().allowInsecure;
       params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
       params.rootCA = taskParams().rootCA;
+      params.clientRootCA = taskParams().clientRootCA;
       params.enableYEDIS = userIntent.enableYEDIS;
 
       // Development testing variable.
@@ -876,22 +888,24 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Update the master addresses in memory.
     createSetFlagInMemoryTasks(
-        tserverNodes,
-        ServerType.TSERVER,
-        true /* force flag update */,
-        null /* no gflag to update */,
-        true /* updateMasterAddr */);
+            tserverNodes,
+            ServerType.TSERVER,
+            true /* force flag update */,
+            null /* no gflag to update */,
+            true /* updateMasterAddr */)
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     // Change the master addresses in the conf file for the all masters to reflect
     // the changes.
     createConfigureServerTasks(
             masterNodes, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     createSetFlagInMemoryTasks(
-        masterNodes,
-        ServerType.MASTER,
-        true /* force flag update */,
-        null /* no gflag to update */,
-        true /* updateMasterAddr */);
+            masterNodes,
+            ServerType.MASTER,
+            true /* force flag update */,
+            null /* no gflag to update */,
+            true /* updateMasterAddr */)
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 
   /** Reserves onprem nodes for an existing universe and performs preflight checks on them. */

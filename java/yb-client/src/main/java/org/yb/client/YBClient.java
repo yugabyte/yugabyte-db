@@ -824,6 +824,18 @@ public class YBClient implements AutoCloseable {
     boolean get() throws Exception;
   }
 
+  private class TableDoesNotExistCondition implements Condition {
+    private String nameFilter;
+    public TableDoesNotExistCondition(String nameFilter) {
+      this.nameFilter = nameFilter;
+    }
+    @Override
+    public boolean get() throws Exception {
+      ListTablesResponse tl = getTablesList(nameFilter);
+      return tl.getTablesList().isEmpty();
+    }
+  }
+
   /**
    * Checks the ping of the given ip and port.
    */
@@ -1139,6 +1151,11 @@ public class YBClient implements AutoCloseable {
           final HostAndPort hp, String tableId) throws Exception{
     Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp, tableId);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public boolean waitForTableRemoval(final long timeoutMs, String name) {
+    Condition TableDoesNotExistCondition = new TableDoesNotExistCondition(name);
+    return waitForCondition(TableDoesNotExistCondition, timeoutMs);
   }
 
   /**

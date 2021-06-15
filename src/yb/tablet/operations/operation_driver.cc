@@ -384,7 +384,9 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
 
   {
     auto status = operation_->Replicated(leader_term);
-    LOG_IF_WITH_PREFIX(FATAL, !status.ok()) << "Apply failed: " << status;
+    LOG_IF_WITH_PREFIX(FATAL, !status.ok())
+        << "Apply failed: " << status
+        << ", request: " << operation_->state()->request()->ShortDebugString();
     operation_tracker_->Release(this, applied_op_ids);
   }
 }

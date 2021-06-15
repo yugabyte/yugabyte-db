@@ -156,6 +156,8 @@ class FsManager {
   // ==========================================================================
   //  on-disk path
   // ==========================================================================
+  std::set<std::string> GetFsRootDirs() const;
+
   std::vector<std::string> GetDataRootDirs() const;
 
   std::vector<std::string> GetWalRootDirs() const;
