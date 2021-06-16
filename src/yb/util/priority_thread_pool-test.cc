@@ -96,7 +96,7 @@ class Task : public PriorityThreadPoolTask {
     }
   }
 
-  bool BelongsTo(void* key) override {
+  bool ShouldRemoveWithKey(void* key) override {
     return false;
   }
 
@@ -200,8 +200,8 @@ class RandomTask : public PriorityThreadPoolTask {
   }
 
   // Returns true if the task belongs to specified key, which was passed to
-  // PriorityThreadPool::Remove.
-  bool BelongsTo(void* key) override {
+  // PriorityThreadPool::Remove and should be removed.
+  bool ShouldRemoveWithKey(void* key) override {
     return false;
   }
 

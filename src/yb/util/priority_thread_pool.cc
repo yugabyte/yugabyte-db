@@ -113,7 +113,7 @@ class PriorityThreadPoolInternalTask {
   }
 
   std::string ToString() const {
-    return Format("{ task: $0 worker: $1 state: $2 priority: $3 serial: $4 }",
+    return Format("{ task: $0 worker: $1 state: $2 priority: $3 serial_no: $4 }",
                   TaskToString(), worker_, state(), priority(), serial_no_);
   }
 
@@ -423,7 +423,8 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (auto it = tasks_.begin(); it != tasks_.end();) {
-        if (it->state() == PriorityThreadPoolTaskState::kNotStarted && it->task()->BelongsTo(key)) {
+        if (it->state() == PriorityThreadPoolTaskState::kNotStarted &&
+            it->task()->ShouldRemoveWithKey(key)) {
           abort_tasks.push_back(std::move(it->task()));
           it = tasks_.erase(it);
         } else {
