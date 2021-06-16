@@ -24,17 +24,15 @@ import time
 
 PYTHON_VERSION = sys.version_info[0]
 if PYTHON_VERSION == 2:
-    import urllib2
-    from urllib2 import HTTPError, urlopen
+    from urllib2 import HTTPError, urlopen, Request
 else:
-    import urllib.request
-    from urllib.request import urlopen
+    from urllib.request import urlopen, Request
     from urllib.error import HTTPError
 
 SUCCESS = "success"
 FAIL = "failed"
 PROGRESS_BAR = 100
-SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_PATH = os.getcwd()
 
 
 class HelpMessage(enum.Enum):
@@ -69,7 +67,7 @@ def exception_handling(func):
                 json.loads(content)
                 sys.stderr.write(content)
             except ValueError as exception:
-                message = 'Invalid YB_PLATFORM_URL URL or params.'
+                message = 'Invalid YB_PLATFORM_URL URL, params or env values.\n'
                 sys.stderr.write(message)
                 sys.stderr.write(str(exception))
         except ValueError as exception:
@@ -141,14 +139,14 @@ class YBUniverse():
         :return: Response of the API call.
         """
         if PYTHON_VERSION == 2:
-            request = urllib2.Request(url)
+            request = Request(url)
             if is_delete:
                 request.get_method = lambda: 'DELETE'
         else:
             if is_delete:
-                request = urllib.request.Request(url, method='DELETE')
+                request = Request(url, method='DELETE')
             else:
-                request = urllib.request.Request(url)
+                request = Request(url)
 
         request.add_header('X-AUTH-YW-API-TOKEN', self.api_token)
         request.add_header('Content-Type', 'application/json; charset=utf-8')
