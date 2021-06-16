@@ -539,7 +539,7 @@ public class NodeManagerTest extends FakeDBApplication {
                   expectedCommand.add(clientRootCert.certificate);
                   expectedCommand.add("--clientRootCA_key");
                   expectedCommand.add(clientRootCert.privateKey);
-                } else {
+                } else if (clientRootCert.certType == CertificateInfo.Type.CustomCertHostPath) {
                   CertificateParams.CustomCertInfo customCertInfo =
                       clientRootCert.getCustomCertInfo();
                   expectedCommand.add("--use_custom_client_certs");
@@ -549,6 +549,16 @@ public class NodeManagerTest extends FakeDBApplication {
                   expectedCommand.add(customCertInfo.nodeCertPath);
                   expectedCommand.add("--client_node_key_path");
                   expectedCommand.add(customCertInfo.nodeKeyPath);
+                } else {
+                  CertificateInfo.CustomServerCertInfo customServerCertInfo =
+                      clientRootCert.getCustomServerCertInfo();
+                  expectedCommand.add("--use_custom_server_certs");
+                  expectedCommand.add("--server_root_cert");
+                  expectedCommand.add(clientRootCert.certificate);
+                  expectedCommand.add("--server_node_cert");
+                  expectedCommand.add(customServerCertInfo.serverCert);
+                  expectedCommand.add("--server_node_key");
+                  expectedCommand.add(customServerCertInfo.serverKey);
                 }
 
                 expectedCommand.add("--client_cert");

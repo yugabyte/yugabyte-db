@@ -429,6 +429,27 @@ class AbstractCloud(AbstractCommandParser):
                                                                 self.CLIENT_KEY_NAME))
             remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
+    def copy_server_certs(self, extra_vars, ssh_options):
+        remote_shell = RemoteShell(ssh_options)
+        root_cert_path = extra_vars["server_root_cert"]
+        node_cert_path = extra_vars["server_node_cert"]
+        node_key_path = extra_vars["server_node_key"]
+        certs_dir = extra_vars["certs_client_dir"]
+        node_ip = ssh_options["ssh_host"]
+
+        logging.info("Copying server certs located at {}, {}, {}.".format(
+            root_cert_path, node_cert_path, node_key_path))
+        key_file = 'node.{}.key'.format(node_ip)
+        cert_file = 'node.{}.crt'.format(node_ip)
+
+        remote_shell.run_command('mkdir -p ' + certs_dir)
+        # Give write permission in case file exists. If the command fails, ignore.
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
+        remote_shell.put_file(root_cert_path, os.path.join(certs_dir, self.ROOT_CERT_NAME))
+        remote_shell.put_file(node_cert_path, os.path.join(certs_dir, cert_file))
+        remote_shell.put_file(node_key_path, os.path.join(certs_dir, key_file))
+        remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
+
     def create_encryption_at_rest_file(self, extra_vars, ssh_options):
         encryption_key_path = extra_vars["encryption_key_file"]  # Source file path
         key_node_dir = extra_vars["encryption_key_dir"]  # Target file path

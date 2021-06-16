@@ -206,6 +206,11 @@ public class UniverseCRUDHandler {
                   taskParams.nodePrefix, customer.uuid, appConfig.getString("yb.storage.path"));
         }
         CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+        if (cert.certType == CertificateInfo.Type.CustomServerCert) {
+          throw new YWServiceException(
+              BAD_REQUEST,
+              "CustomServerCert are only supported for Client to Server Communication.");
+        }
         if (cert.certType != CertificateInfo.Type.SelfSigned) {
           if (!taskParams
               .getPrimaryCluster()
@@ -259,13 +264,15 @@ public class UniverseCRUDHandler {
               null,
               null);
         } else {
-          if (!taskParams
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.onprem)) {
+          if (cert.certType == CertificateInfo.Type.CustomCertHostPath
+              && !taskParams
+                  .getPrimaryCluster()
+                  .userIntent
+                  .providerType
+                  .equals(Common.CloudType.onprem)) {
             throw new YWServiceException(
-                BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
+                BAD_REQUEST,
+                "CustomCertHostPath certificates are only supported for onprem providers.");
           }
           if (!CertificateInfo.isCertificateValid(taskParams.clientRootCA)) {
             String errMsg =
