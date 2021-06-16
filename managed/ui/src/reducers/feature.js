@@ -6,8 +6,8 @@ const initialStateFeatureInTest = {
 };
 
 const initialStateFeatureReleased = {
-  pausedUniverse: false,
-  addListMultiProvider: false
+  pausedUniverse: true,
+  addListMultiProvider: true
 };
 
 export const FeatureFlag = (
