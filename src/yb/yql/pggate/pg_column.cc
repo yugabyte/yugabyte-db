@@ -131,5 +131,9 @@ PgsqlExpressionPB *PgColumn::AllocBindConditionExprPB(PgsqlReadRequestPB *read_r
   return bind_condition_expr_pb_->mutable_condition()->add_operands();
 }
 
+void PgColumn::ResetBindPB() {
+  bind_pb_ = nullptr;
+}
+
 }  // namespace pggate
 }  // namespace yb

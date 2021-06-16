@@ -48,6 +48,8 @@ class PgColumn {
   // Assign values for write requests.
   PgsqlExpressionPB *AllocAssignPB(PgsqlWriteRequestPB *write_req);
 
+  void ResetBindPB();
+
   // Access functions.
   ColumnDesc *desc() {
     return &desc_;
