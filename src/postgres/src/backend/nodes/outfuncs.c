@@ -2941,7 +2941,6 @@ _outIndexElem(StringInfo str, const IndexElem *node)
 	WRITE_NODE_FIELD(opclass);
 	WRITE_ENUM_FIELD(ordering, SortByDir);
 	WRITE_ENUM_FIELD(nulls_ordering, SortByNulls);
-	WRITE_NODE_FIELD(yb_name_list);
 }
 
 static void
