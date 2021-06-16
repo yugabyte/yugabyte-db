@@ -26,9 +26,8 @@ import datetime
 import six
 import logging
 import os
+import tempfile
 import yaml
-import errno
-import shutil
 import socket
 import time
 
@@ -45,7 +44,6 @@ class AbstractCloud(AbstractCommandParser):
     KEY_SIZE = 2048
     PUBLIC_EXPONENT = 65537
     CERT_VALID_DURATION = 365
-    CERTS_TEMP_DIR = "/opt/yugaware/certs"
     YSQLSH_CERT_DIR = os.path.join(YB_HOME_DIR, ".yugabytedb")
     ROOT_CERT_NAME = "ca.crt"
     CLIENT_ROOT_NAME = "root.crt"
@@ -306,32 +304,23 @@ class AbstractCloud(AbstractCommandParser):
         )
         key_file = 'node.{}.key'.format(node_ip)
         cert_file = 'node.{}.crt'.format(node_ip)
-        common_path = '{}/{}'.format(self.CERTS_TEMP_DIR, node_ip)
-        try:
-            os.makedirs(common_path)
-        except OSError as exc:  # Guard against race condition
-            if exc.errno != errno.EEXIST:
-                raise YBOpsRuntimeError(common_path + " could not be  be created")
-        with open(os.path.join(common_path, key_file), 'wb') as pem_out:
-            pem_out.write(pem)
-        # Write certificate to file
-        pem = certificate.public_bytes(encoding=Encoding.PEM)
-        with open(os.path.join(common_path, cert_file), 'wb') as pem_out:
-            pem_out.write(pem)
-        # Copy files over to node
-        remote_shell.run_command('mkdir -p ' + certs_dir)
-        # Give write permission in case file exists. If the command fails, ignore.
-        remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
-        remote_shell.put_file(os.path.join(common_path, key_file),
-                              os.path.join(certs_dir, key_file))
-        remote_shell.put_file(os.path.join(common_path, cert_file),
-                              os.path.join(certs_dir, cert_file))
-        remote_shell.put_file(root_cert_path, os.path.join(certs_dir, self.ROOT_CERT_NAME))
-        remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
-        try:
-            shutil.rmtree(common_path)
-        except OSError as e:
-            raise YBOpsRuntimeError("Error: %s - %s." % (e.filename, e.strerror))
+        with tempfile.TemporaryDirectory() as common_path:
+            with open(os.path.join(common_path, key_file), 'wb') as pem_out:
+                pem_out.write(pem)
+            # Write certificate to file
+            pem = certificate.public_bytes(encoding=Encoding.PEM)
+            with open(os.path.join(common_path, cert_file), 'wb') as pem_out:
+                pem_out.write(pem)
+            # Copy files over to node
+            remote_shell.run_command('mkdir -p ' + certs_dir)
+            # Give write permission in case file exists. If the command fails, ignore.
+            remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
+            remote_shell.put_file(os.path.join(common_path, key_file),
+                                  os.path.join(certs_dir, key_file))
+            remote_shell.put_file(os.path.join(common_path, cert_file),
+                                  os.path.join(certs_dir, cert_file))
+            remote_shell.put_file(root_cert_path, os.path.join(certs_dir, self.ROOT_CERT_NAME))
+            remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
 
     def generate_client_cert(self, extra_vars, ssh_options):
         remote_shell = RemoteShell(ssh_options)
@@ -368,30 +357,20 @@ class AbstractCloud(AbstractCommandParser):
             remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
     def create_encryption_at_rest_file(self, extra_vars, ssh_options):
-        node_ip = ssh_options["ssh_host"]
         encryption_key_path = extra_vars["encryption_key_file"]  # Source file path
         key_node_dir = extra_vars["encryption_key_dir"]  # Target file path
         with open(encryption_key_path, "r") as f:
             encryption_key = f.read()
         key_file = os.path.basename(encryption_key_path)
-        common_path = os.path.join(self.CERTS_TEMP_DIR, node_ip)
-        try:
-            os.makedirs(common_path)
-        except OSError as exc:  # Guard against race condition
-            if exc.errno != errno.EEXIST:
-                raise YBOpsRuntimeError(common_path + " could not be  be created")
-        # Write encryption-at-rest key to file
-        with open(os.path.join(common_path, key_file), 'wb') as key_out:
-            key_out.write(encryption_key)
-        # Copy files over to node
-        remote_shell = RemoteShell(ssh_options)
-        remote_shell.run_command('mkdir -p ' + key_node_dir)
-        remote_shell.put_file(os.path.join(common_path, key_file),
-                              os.path.join(key_node_dir, key_file))
-        try:
-            shutil.rmtree(common_path)
-        except OSError as e:
-            raise YBOpsRuntimeError("Error: %s - %s." % (e.filename, e.strerror))
+        with tempfile.TemporaryDirectory() as common_path:
+            # Write encryption-at-rest key to file
+            with open(os.path.join(common_path, key_file), 'wb') as key_out:
+                key_out.write(encryption_key)
+            # Copy files over to node
+            remote_shell = RemoteShell(ssh_options)
+            remote_shell.run_command('mkdir -p ' + key_node_dir)
+            remote_shell.put_file(os.path.join(common_path, key_file),
+                                  os.path.join(key_node_dir, key_file))
 
     def get_host_info(self, args, get_all=False):
         """Use this to override in subclasses to use cloud-specific APIs to search the cloud
