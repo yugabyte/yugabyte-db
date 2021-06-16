@@ -1,8 +1,7 @@
-bin
+/bin
 build
 logs
 target
-devops/python_virtual_env
 .idea
 .idea_modules
 /.classpath

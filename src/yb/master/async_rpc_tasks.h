@@ -25,7 +25,6 @@
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -115,7 +114,7 @@ class RetryingTSRpcTask : public MonitoredTask {
  public:
   RetryingTSRpcTask(Master *master,
                     ThreadPool* callback_pool,
-                    gscoped_ptr<TSPicker> replica_picker,
+                    std::unique_ptr<TSPicker> replica_picker,
                     const scoped_refptr<TableInfo>& table);
 
   ~RetryingTSRpcTask();
@@ -195,7 +194,7 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   Master* const master_;
   ThreadPool* const callback_pool_;
-  const gscoped_ptr<TSPicker> replica_picker_;
+  const std::unique_ptr<TSPicker> replica_picker_;
   const scoped_refptr<TableInfo> table_;
 
   MonoTime start_ts_;
@@ -262,7 +261,7 @@ class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
                          const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(master,
                         callback_pool,
-                        gscoped_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
+                        std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
                         table),
       permanent_uuid_(permanent_uuid) {
   }

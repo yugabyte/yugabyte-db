@@ -41,8 +41,8 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/errno.h"
+#include "yb/util/malloc.h"
 #include "yb/util/status.h"
 
 using std::string;
@@ -60,15 +60,17 @@ Status GetLoggedInUser(string* user_name) {
     bufsize = 16384;    // Should be more than enough, per the man page.
   }
 
-  gscoped_ptr<char[], FreeDeleter> buf(static_cast<char *>(malloc(bufsize)));
+  std::unique_ptr<char[], FreeDeleter> buf(static_cast<char *>(malloc(bufsize)));
   if (buf.get() == nullptr) {
     return STATUS(RuntimeError, "Malloc failed", Errno(errno));
   }
 
-  int ret = getpwuid_r(getuid(), &pwd, buf.get(), bufsize, &result);
+  auto uid = getuid();
+  int ret = getpwuid_r(uid, &pwd, buf.get(), bufsize, &result);
   if (result == nullptr) {
     if (ret == 0) {
-      return STATUS(NotFound, "Current logged-in user not found! This is an unexpected error.");
+      return STATUS_FORMAT(
+          NotFound, "Current logged-in user $0 not found! This is an unexpected error.", uid);
     } else {
       // Errno in ret
       return STATUS(RuntimeError, "Error calling getpwuid_r()", Errno(ret));

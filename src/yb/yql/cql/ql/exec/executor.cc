@@ -13,7 +13,6 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/schema.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
@@ -36,15 +35,18 @@
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
+
+using namespace std::literals;
+using namespace std::placeholders;
 
 namespace yb {
 namespace ql {
 
 using std::string;
 using std::shared_ptr;
-using namespace std::placeholders;
 
 using audit::AuditLogger;
 using audit::IsPrepare;
@@ -65,10 +67,11 @@ using client::YBTableName;
 using client::YBTableType;
 using strings::Substitute;
 
-#define RETURN_STMT_NOT_OK(s) do {                                         \
+#define RETURN_STMT_NOT_OK(s, reset_async_calls) do {                      \
     auto&& _s = (s);                                                       \
-    if (PREDICT_FALSE(!_s.ok())) return StatementExecuted(MoveStatus(_s)); \
-  } while (false)
+    if (PREDICT_FALSE(!_s.ok())) {                                         \
+      return StatementExecuted(MoveStatus(_s), (reset_async_calls)); }     \
+    } while (false)
 
 //--------------------------------------------------------------------------------------------------
 
@@ -82,13 +85,37 @@ Executor::Executor(QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* resche
 }
 
 Executor::~Executor() {
+  LOG_IF(DFATAL, HasAsyncCalls())
+      << "Async calls still running: " << num_async_calls();
+}
+
+void Executor::Shutdown() {
+  int counter = 0;
+  while (HasAsyncCalls()) {
+    if (++counter == 1000) {
+      LOG(DFATAL) << "Too long Executor shutdown: " << num_async_calls();
+    }
+    std::this_thread::sleep_for(10ms);
+  }
 }
 
 //--------------------------------------------------------------------------------------------------
 
+bool Executor::HasAsyncCalls() {
+  return num_async_calls() != kAsyncCallsIdle;
+}
+
+Executor::ResetAsyncCalls Executor::PrepareExecuteAsync() {
+  LOG_IF(DFATAL, !cb_.is_null()) << __func__ << " while another execution is in progress.";
+  LOG_IF(DFATAL, HasAsyncCalls())
+      << __func__ << " while have " << num_async_calls() << " async calls running";
+  num_async_calls_.store(0, std::memory_order_release);
+  return ResetAsyncCalls(&num_async_calls_);
+}
+
 void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParameters& params,
                             StatementExecutedCallback cb) {
-  DCHECK(cb_.is_null()) << "Another execution is in progress.";
+  auto reset_async_calls = PrepareExecuteAsync();
   cb_ = std::move(cb);
   session_->SetDeadline(rescheduler_->GetDeadline());
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
@@ -98,12 +125,14 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
   } else {
     session_->SetReadPoint(client::Restart::kFalse);
   }
-  RETURN_STMT_NOT_OK(Execute(parse_tree, params));
-  FlushAsync();
+  RETURN_STMT_NOT_OK(Execute(parse_tree, params), &reset_async_calls);
+
+  FlushAsync(&reset_async_calls);
 }
 
 void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
-  DCHECK(cb_.is_null()) << "Another execution is in progress.";
+  auto reset_async_calls = PrepareExecuteAsync();
+
   cb_ = std::move(cb);
   session_->SetDeadline(rescheduler_->GetDeadline());
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
@@ -126,14 +155,16 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
             return StatementExecuted(
                 ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
                             "batch execution of conditional DML statement without RETURNS STATUS "
-                            "AS ROW clause is not supported yet"));
+                            "AS ROW clause is not supported yet"),
+                &reset_async_calls);
           }
 
           if (stmt->ModifiesMultipleRows()) {
             return StatementExecuted(
                 ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
                             "batch execution with DML statements modifying multiple rows is not "
-                            "supported yet"));
+                            "supported yet"),
+                &reset_async_calls);
           }
 
           if (!returns_status_batch_opt_) {
@@ -142,7 +173,8 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
             return StatementExecuted(
                 ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
                             "batch execution mixing statements with and without RETURNS STATUS "
-                            "AS ROW is not supported"));
+                            "AS ROW is not supported"),
+                &reset_async_calls);
           }
 
           if (*returns_status_batch_opt_) {
@@ -152,7 +184,8 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
               return StatementExecuted(
                   ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
                               "batch execution with RETURNS STATUS statements cannot span multiple "
-                              "tables"));
+                              "tables"),
+                  &reset_async_calls);
             }
           }
 
@@ -162,7 +195,8 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
           return StatementExecuted(
               ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
                           "batch execution supports INSERT, UPDATE and DELETE statements only "
-                          "currently"));
+                          "currently"),
+              &reset_async_calls);
           break;
       }
     }
@@ -171,12 +205,12 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
   for (const auto& pair : batch) {
     const ParseTree& parse_tree = pair.first;
     const StatementParameters& params = pair.second;
-    RETURN_STMT_NOT_OK(Execute(parse_tree, params));
+    RETURN_STMT_NOT_OK(Execute(parse_tree, params), &reset_async_calls);
   }
 
-  RETURN_STMT_NOT_OK(audit_logger_.EndBatchRequest());
+  RETURN_STMT_NOT_OK(audit_logger_.EndBatchRequest(), &reset_async_calls);
 
-  FlushAsync();
+  FlushAsync(&reset_async_calls);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1339,6 +1373,50 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
     return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
+  if (req->column_values_size() == 0) {
+    // We can reach here only in case of an UPDATE that consists of only setting
+    // jsonb col's attributes to 'null' along with ignore_null_jsonb_attributes=true
+    VLOG(1) << "Avoid updating indexes since 0 cols are written";
+    if (tnode->returns_status()) {
+      // Return row with [applied] = false with appropriate [message].
+      std::shared_ptr<std::vector<ColumnSchema>> columns =
+        std::make_shared<std::vector<ColumnSchema>>();
+      const auto& schema = table->schema();
+      columns->reserve(schema.num_columns() + 2);
+      columns->emplace_back("[applied]", DataType::BOOL);
+      columns->emplace_back("[message]", DataType::STRING);
+      columns->insert(columns->end(), schema.columns().begin(), schema.columns().end());
+
+      QLRowBlock result_row_block(Schema(*columns, 0));
+      QLRow& row = result_row_block.Extend();
+      row.mutable_column(0)->set_bool_value(false);
+      row.mutable_column(1)->set_string_value(
+        "No update performed as all JSON cols are set to 'null'");
+      // Leave the rest of the columns null in this case.
+
+      faststring row_data;
+      result_row_block.Serialize(YQL_CLIENT_CQL, &row_data);
+
+      result_ = std::make_shared<RowsResult>(table->name(), columns, row_data.ToString());
+    } else if (tnode->if_clause() != nullptr) {
+      // Return row with [applied] = false.
+      std::shared_ptr<std::vector<ColumnSchema>> columns =
+        std::make_shared<std::vector<ColumnSchema>>();
+      columns->emplace_back("[applied]", DataType::BOOL);
+
+      QLRowBlock result_row_block(Schema(*columns, 0));
+      QLRow& row = result_row_block.Extend();
+      row.mutable_column(0)->set_bool_value(false);
+
+      faststring row_data;
+      result_row_block.Serialize(YQL_CLIENT_CQL, &row_data);
+
+      result_ = std::make_shared<RowsResult>(table->name(), columns, row_data.ToString());
+    }
+
+    return Status::OK();
+  }
+
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
@@ -1570,7 +1648,12 @@ bool NeedsFlush(const client::YBSessionPtr& session) {
 
 } // namespace
 
-void Executor::FlushAsync() {
+void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
+  if (num_async_calls() != 0) {
+    LOG(DFATAL) << __func__ << " while have " << num_async_calls() << " async calls running";
+    return;
+  }
+
   // Buffered read/write operations are flushed in rounds. In each round, FlushAsync() is called to
   // flush buffered operations in the non-transactional session in the Executor or the transactional
   // session in each ExecContext if any. Also, transactions in any ExecContext ready to commit with
@@ -1606,28 +1689,8 @@ void Executor::FlushAsync() {
   // prior operations in the uncommitted transactions. num_flushes_ is updated before FlushAsync()
   // and CommitTransaction() are called to avoid race condition of recursive FlushAsync() called
   // from FlushAsyncDone() and CommitDone().
-  DCHECK_EQ(num_async_calls_, 0);
-  num_async_calls_ = flush_sessions.size() + commit_contexts.size();
   num_flushes_ += flush_sessions.size();
   async_status_ = Status::OK();
-  for (auto* exec_context : commit_contexts) {
-    exec_context->CommitTransaction(
-        rescheduler_->GetDeadline(), [this, exec_context](const Status& s) {
-      CommitDone(s, exec_context);
-    });
-  }
-  // Use the same score on each tablet. So probability of rejecting write should be related
-  // to used capacity.
-  auto rejection_score_source = std::make_shared<client::RejectionScoreSource>();
-  for (const auto& pair : flush_sessions) {
-    auto session = pair.first;
-    auto exec_context = pair.second;
-    session->SetRejectionScoreSource(rejection_score_source);
-    TRACE("Flush Async");
-    session->FlushAsync([this, exec_context](client::FlushStatus* flush_status) {
-        FlushAsyncDone(flush_status, exec_context);
-      });
-  }
 
   if (flush_sessions.empty() && commit_contexts.empty()) {
     // If this is a batch returning status, append the rows in the user-given order before
@@ -1646,10 +1709,31 @@ void Executor::FlushAsync() {
                 }
               }
               return false; // not done
-            }));
+            }), reset_async_calls);
       }
     }
-    return StatementExecuted(Status::OK());
+    return StatementExecuted(Status::OK(), reset_async_calls);
+  }
+
+  reset_async_calls->Cancel();
+  num_async_calls_.store(flush_sessions.size() + commit_contexts.size(), std::memory_order_release);
+  for (auto* exec_context : commit_contexts) {
+    exec_context->CommitTransaction(
+        rescheduler_->GetDeadline(), [this, exec_context](const Status& s) {
+      CommitDone(s, exec_context);
+    });
+  }
+  // Use the same score on each tablet. So probability of rejecting write should be related
+  // to used capacity.
+  auto rejection_score_source = std::make_shared<client::RejectionScoreSource>();
+  for (const auto& pair : flush_sessions) {
+    auto session = pair.first;
+    auto exec_context = pair.second;
+    session->SetRejectionScoreSource(rejection_score_source);
+    TRACE("Flush Async");
+    session->FlushAsync([this, exec_context](client::FlushStatus* flush_status) {
+        FlushAsyncDone(flush_status, exec_context);
+      });
   }
 }
 
@@ -1698,8 +1782,9 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
 
   // Process async results exclusively if this is the last callback of the last FlushAsync() and
   // there is no more outstanding async call.
-  if (--num_async_calls_ == 0) {
-    ProcessAsyncResults();
+  if (AddFetch(&num_async_calls_, -1, std::memory_order_acq_rel) == 0) {
+    ResetAsyncCalls reset_async_calls(&num_async_calls_);
+    ProcessAsyncResults(/* rescheduled */ false, &reset_async_calls);
   }
 }
 
@@ -1723,20 +1808,26 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
 
   // Process async results exclusively if this is the last callback of the last FlushAsync() and
   // there is no more outstanding async call.
-  if (--num_async_calls_ == 0) {
-    ProcessAsyncResults();
+  if (AddFetch(&num_async_calls_, -1, std::memory_order_acq_rel) == 0) {
+    ResetAsyncCalls reset_async_calls(&num_async_calls_);
+    ProcessAsyncResults(/* rescheduled */ false, &reset_async_calls);
   }
 }
 
-void Executor::ProcessAsyncResults(const bool rescheduled) {
+void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* reset_async_calls) {
+  if (num_async_calls() != 0) {
+    LOG(DFATAL) << __func__ << " while have " << num_async_calls() << " async calls running";
+    return;
+  }
+
   // If the current thread is not the RPC worker thread, call the callback directly. Otherwise,
   // reschedule the call to resume in the RPC worker thread.
   if (!rescheduled && rescheduler_->NeedReschedule()) {
-    return rescheduler_->Reschedule(&process_async_results_task_.Bind(this));
+    return rescheduler_->Reschedule(&process_async_results_task_.Bind(this, reset_async_calls));
   }
 
   // Return error immediately when async call failed.
-  RETURN_STMT_NOT_OK(async_status_);
+  RETURN_STMT_NOT_OK(async_status_, reset_async_calls);
 
   // Go through each ExecContext and process async results.
   bool need_flush = false;
@@ -1759,13 +1850,14 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       // We should restart read, but read time was specified by caller.
       // For instance it could happen in case of pagination.
       if (exec_context_->params().read_time()) {
-        RETURN_STMT_NOT_OK(
-            STATUS(IllegalState, "Restart read required, but read time specified by caller"));
+        return StatementExecuted(
+            STATUS(IllegalState, "Restart read required, but read time specified by caller"),
+            reset_async_calls);
       }
 
       YBSessionPtr session = GetSession(exec_context_);
       session->SetReadPoint(client::Restart::kTrue);
-      RETURN_STMT_NOT_OK(ExecTreeNode(root));
+      RETURN_STMT_NOT_OK(ExecTreeNode(root), reset_async_calls);
       need_flush |= NeedsFlush(session);
       exec_itr++;
       continue;
@@ -1777,7 +1869,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       TnodeContext& tnode_context = *tnode_itr;
 
       const Result<bool> result = ProcessTnodeResults(&tnode_context);
-      RETURN_STMT_NOT_OK(result);
+      RETURN_STMT_NOT_OK(result, reset_async_calls);
       if (*result) {
         need_flush = true;
       }
@@ -1796,8 +1888,9 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       // For SELECT statement, aggregate result sets if needed.
       const TreeNode *tnode = tnode_context.tnode();
       if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-        RETURN_STMT_NOT_OK(AggregateResultSets(static_cast<const PTSelectStmt *>(tnode),
-                                               &tnode_context));
+        RETURN_STMT_NOT_OK(
+            AggregateResultSets(static_cast<const PTSelectStmt *>(tnode), &tnode_context),
+            reset_async_calls);
       }
 
       // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been completed
@@ -1837,7 +1930,8 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       }
 
       // Move rows results and remove the statement tnode that has completed.
-      RETURN_STMT_NOT_OK(AppendRowsResult(std::move(tnode_context.rows_result())));
+      RETURN_STMT_NOT_OK(AppendRowsResult(std::move(tnode_context.rows_result())),
+                         reset_async_calls);
       tnode_itr = tnode_contexts.erase(tnode_itr);
     }
 
@@ -1859,9 +1953,9 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
   // when local call is enabled.
   // So to avoid stack overflow we use reschedule in this case.
   if ((need_flush || has_restart) && !rescheduled) {
-    rescheduler_->Reschedule(&flush_async_task_.Bind(this));
+    rescheduler_->Reschedule(&flush_async_task_.Bind(this, reset_async_calls));
   } else {
-    FlushAsync();
+    FlushAsync(reset_async_calls);
   }
 }
 
@@ -2106,23 +2200,16 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
   }
 
   // For update/delete, check if it just deletes some columns. If so, add the rest columns to be
-  // read so that tserver can check if they are all null also. We require this information (whether
-  // all columns are null) for rows which don't have a liveness column - for such a row (i.e.,
-  // without liveness column, if all columns are null, the row is as good as deleted. And in this
-  // case, the tserver will have to remove the corresponding index entries from indexes.
+  // read so that tserver can check if they are all null also, in which case the row will be
+  // removed after the DML.
   if ((req->type() == QLWriteRequestPB::QL_STMT_UPDATE ||
        req->type() == QLWriteRequestPB::QL_STMT_DELETE) &&
       !req->column_values().empty()) {
     bool all_null = true;
     std::set<int32> column_dels;
-    const Schema& schema = tnode->table()->InternalSchema();
     for (const QLColumnValuePB& column_value : req->column_values()) {
-      const ColumnSchema& col_desc = VERIFY_RESULT(
-        schema.column_by_id(ColumnId(column_value.column_id())));
-
       if (column_value.has_expr() &&
           column_value.expr().has_value() &&
-          !col_desc.is_static() && // Don't consider static column values.
           !IsNull(column_value.expr().value())) {
         all_null = false;
         break;
@@ -2130,13 +2217,13 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
       column_dels.insert(column_value.column_id());
     }
     if (all_null) {
-      // Ensure all columns of row are read by docdb layer before performing the write operation.
+      const Schema& schema = tnode->table()->InternalSchema();
       const MCSet<int32>& column_refs = tnode->column_refs();
       for (size_t idx = schema.num_key_columns(); idx < schema.num_columns(); idx++) {
         const int32 column_id = schema.column_id(idx);
         if (!schema.column(idx).is_static() &&
-            column_refs.count(column_id) == 0 && // Add col only if not already in column_refs.
-            column_dels.count(column_id) == 0) { // If col is already in delete list, don't add it.
+            column_refs.count(column_id) != 0 &&
+            column_dels.count(column_id) != 0) {
           req->mutable_column_refs()->add_ids(column_id);
         }
       }
@@ -2412,7 +2499,7 @@ Status Executor::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
   return std::static_pointer_cast<RowsResult>(result_)->Append(std::move(*rows_result));
 }
 
-void Executor::StatementExecuted(const Status& s) {
+void Executor::StatementExecuted(const Status& s, ResetAsyncCalls* reset_async_calls) {
   // Update metrics for all statements executed.
   if (s.ok() && ql_metrics_ != nullptr) {
     for (auto& exec_context : exec_contexts_) {
@@ -2452,11 +2539,11 @@ void Executor::StatementExecuted(const Status& s) {
   // Clean up and invoke statement-executed callback.
   ExecutedResult::SharedPtr result = s.ok() ? std::move(result_) : nullptr;
   StatementExecutedCallback cb = std::move(cb_);
-  Reset();
+  Reset(reset_async_calls);
   cb.Run(s, result);
 }
 
-void Executor::Reset() {
+void Executor::Reset(ResetAsyncCalls* reset_async_calls) {
   exec_context_ = nullptr;
   exec_contexts_.clear();
   write_batch_.Clear();
@@ -2465,6 +2552,7 @@ void Executor::Reset() {
   result_ = nullptr;
   cb_.Reset();
   returns_status_batch_opt_ = boost::none;
+  reset_async_calls->Perform();
 }
 
 QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_desc) {
@@ -2477,6 +2565,65 @@ QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_
     col_pb->set_column_id(col_desc.id());
     return col_pb->mutable_expr();
   }
+}
+
+Executor::ExecutorTask& Executor::ExecutorTask::Bind(
+    Executor* executor, Executor::ResetAsyncCalls* reset_async_calls) {
+  executor_ = executor;
+  reset_async_calls_ = std::move(*reset_async_calls);
+  return *this;
+}
+
+void Executor::ExecutorTask::Run() {
+  auto executor = executor_;
+  executor_ = nullptr;
+  DoRun(executor, &reset_async_calls_);
+}
+
+void Executor::ExecutorTask::Done(const Status& status) {
+  if (!status.ok()) {
+    reset_async_calls_.Perform();
+  }
+}
+
+Executor::ResetAsyncCalls::ResetAsyncCalls(std::atomic<int64_t>* num_async_calls)
+    : num_async_calls_(num_async_calls) {
+  LOG_IF(DFATAL, num_async_calls && num_async_calls->load(std::memory_order_acquire))
+      << "Expected 0 async calls, but have: " << num_async_calls->load(std::memory_order_acquire);
+}
+
+Executor::ResetAsyncCalls::ResetAsyncCalls(ResetAsyncCalls&& rhs)
+    : num_async_calls_(rhs.num_async_calls_) {
+  rhs.num_async_calls_ = nullptr;
+  LOG_IF(DFATAL, num_async_calls_ && num_async_calls_->load(std::memory_order_acquire))
+      << "Expected 0 async calls, but have: " << num_async_calls_->load(std::memory_order_acquire);
+}
+
+void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
+  Perform();
+  num_async_calls_ = rhs.num_async_calls_;
+  rhs.num_async_calls_ = nullptr;
+  LOG_IF(DFATAL, num_async_calls_ && num_async_calls_->load(std::memory_order_acquire))
+      << "Expected 0 async calls, but have: " << num_async_calls_->load(std::memory_order_acquire);
+}
+
+void Executor::ResetAsyncCalls::Cancel() {
+  num_async_calls_ = nullptr;
+}
+
+Executor::ResetAsyncCalls::~ResetAsyncCalls() {
+  Perform();
+}
+
+void Executor::ResetAsyncCalls::Perform() {
+  if (!num_async_calls_) {
+    return;
+  }
+
+  LOG_IF(DFATAL, num_async_calls_->load(std::memory_order_acquire))
+      << "Expected 0 async calls, but have: " << num_async_calls_->load(std::memory_order_acquire);
+  num_async_calls_->store(kAsyncCallsIdle, std::memory_order_release);
+  num_async_calls_ = nullptr;
 }
 
 }  // namespace ql

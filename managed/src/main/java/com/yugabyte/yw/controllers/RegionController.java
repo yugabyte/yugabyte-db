@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@Api("Region")
+@Api(value = "Region", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RegionController extends AuthenticatedController {
   @Inject FormFactory formFactory;
 
@@ -95,7 +95,7 @@ public class RegionController extends AuthenticatedController {
           name = "region",
           value = "region form data for new region to be created",
           paramType = "body",
-          dataTypeClass = RegionFormData.class,
+          dataType = "com.yugabyte.yw.forms.RegionFormData",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID) {
     Form<RegionFormData> formData = formFactory.form(RegionFormData.class).bindFromRequest();
@@ -147,7 +147,7 @@ public class RegionController extends AuthenticatedController {
           region.zones = new HashSet<>();
           zones.forEach(
               zone -> {
-                region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
+                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
               });
         } else {
           // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
@@ -166,7 +166,7 @@ public class RegionController extends AuthenticatedController {
           region.zones = new HashSet<>();
           zoneSubnets.forEach(
               (zone, subnet) -> {
-                region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
+                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
               });
         }
       } else {

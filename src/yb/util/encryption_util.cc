@@ -54,7 +54,6 @@ DEFINE_test_flag(bool, encryption_use_openssl_compatible_counter_overflow, true,
                  "increment for newly created keys.")
 
 namespace yb {
-namespace enterprise {
 
 namespace {
 
@@ -195,5 +194,4 @@ OpenSSLInitializer& InitOpenSSL() {
   return initializer;
 }
 
-} // namespace enterprise
 } // namespace yb

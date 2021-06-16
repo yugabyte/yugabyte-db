@@ -511,47 +511,6 @@ public class TestIndex extends BaseCQLTest {
                 "");
   }
 
-  private void testIndexUpdateMisc(boolean strongConsistency) throws Exception {
-    // #7641: UPDATE a row without liveness column. Set some columns with only null values
-    // (so it actually seems like a delete until we discover an existing non-null column).
-    // A row without liveness column can be achieved by inserting a row using UPDATE (upsert
-    // semantics). There should be no deletion of index entry.
-    createTable("create table test_update (h1 int, r1 int, v1 int, v2 int, v3 int, " +
-      "primary key(h1, r1)) ", strongConsistency);
-    createIndex("create index i1 on test_update (v3)", strongConsistency);
-
-    Map<String, String> tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1, r1");}};
-    Map<String, String> indexColumnMap = new HashMap<String, String>() {{
-      put("i1", "\"C$_v3\", \"C$_h1\", \"C$_r1\"");
-    }};
-
-    // Create row without liveness column. Assert that index entry is created.
-    assertIndexUpdate(tableColumnMap, indexColumnMap,
-      "update test_update set v1=3, v2=4, v3=null where h1=1 and r1=2");
-
-    // Perform update as described in #7641. Assert that index entry isn't removed spuriously.
-    assertIndexUpdate(tableColumnMap, indexColumnMap,
-      "update test_update set v2=null where h1=1 and r1=2");
-
-    // Follow-up test case: Apart from actual bug in #7641, we also test below case:
-    //   - UPDATE a row without liveness column. Set only null values on regular columns except a
-    //     non-null value on a static column. Index entry should get deleted.
-    session.execute("drop table test_update");
-    createTable("create table test_update (h1 int, r1 int, s1 int static, v2 int, v3 int, " +
-      "primary key(h1, r1)) ", strongConsistency);
-    createIndex("create index i1 on test_update (v3)", strongConsistency);
-
-    // Create row without liveness column. Assert that index entry is created.
-    assertIndexUpdate(tableColumnMap, indexColumnMap,
-      "update test_update set s1=3, v2=4, v3=null where h1=1 and r1=2");
-
-    // Perform update - index entry should be removed since tuple is removed in main table.
-    session.execute("update test_update set s1=4, v2=null where h1=1 and r1=2");
-    // assertQuery("select * from test_update where v3=null", "");
-    Set<String> index_tuples = queryTable("i1", indexColumnMap.get("i1"));
-    assertTrue(index_tuples.size() == 0);
-  }
-
   @Test
   public void testIndexUpdate() throws Exception {
     testIndexUpdate(true);
@@ -560,16 +519,6 @@ public class TestIndex extends BaseCQLTest {
   @Test
   public void testWeakIndexUpdate() throws Exception {
     testIndexUpdate(false);
-  }
-
-  @Test
-  public void testIndexUpdateMisc() throws Exception {
-    testIndexUpdateMisc(true);
-  }
-
-  @Test
-  public void testWeakIndexUpdateMisc() throws Exception {
-    testIndexUpdateMisc(false);
   }
 
   @Test
@@ -1623,7 +1572,10 @@ public class TestIndex extends BaseCQLTest {
       return null;
 
     if (value.charAt(0) == '\'')
-      if  (value.charAt(1) == '{') // JSONB
+      if (value.charAt(1) == '{') // JSONB
+        return value.substring(1, value.length() - 1);
+      else if (value.equals("'null'")) // JSONB null i.e., 'null'. Obviously assuming no other tests
+          // have a non-jsonb col = 'null' -> in which case we really want to include single quotes.
         return value.substring(1, value.length() - 1);
       else if (quoteStr)
         return value; // Text as "'str'"
@@ -1636,6 +1588,13 @@ public class TestIndex extends BaseCQLTest {
     if (!runPrepared) {
       LOG.info("Run query: " + query);
       return session.execute(query);
+    }
+
+    int idx_of_with = query.indexOf(" with");
+    String with_clause = "";
+    if (idx_of_with != -1) {
+      with_clause = query.substring(query.indexOf(" with"), query.length());
+      query = query.substring(0, query.indexOf(" with"));
     }
 
     query = query.replaceAll("=", " = ")
@@ -1685,7 +1644,10 @@ public class TestIndex extends BaseCQLTest {
       fail("Unknown statement type: " + command);
     }
 
-    LOG.info("Run prepared query: " + statement);
+    if (!with_clause.isEmpty())
+      statement += with_clause;
+
+    LOG.info("Run prepared query: " + statement + " with bind variables " + bindValues);
     assertFalse(statement.isEmpty());
     PreparedStatement prepared = session.prepare(statement);
     return session.execute(prepared.bind(bindValues.toArray()));
@@ -2031,11 +1993,217 @@ public class TestIndex extends BaseCQLTest {
     assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
         "delete c, j from test_update where h = 66 and r = 77");
 */
+
+    // Test cases involving different types of NULLs and ignore_null_jsonb_attributes=true/false.
+    //   There are two types of NULLs - the YCQL NULL and the jsonb 'null'.
+    //   1. Only the full jsonb col can be YCQL NULL - moreover this can't be done using an explicit
+    //      UPDATE/INSERT with NULL, but only by not specifying any value for the jsonb col.
+    //   2. Both the whole jsonb col or any internal json attribute can be the json 'null'
+
+    // Test for the case where the jsonb col is the YCQL NULL.
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update (h, r) values (1, 1);"
+      // not updated indexes:
+    );
+
+    // There are two operations to test for jsonb 'null's (msb in testcase description) -
+    //   1. Row insertion
+    //   2. Update on an existing row
+    //
+    // For both tests there 8 variations based on 0/1 for the following params (last 3 bits in
+    // testcase decription) -
+    //   1. ignore_null_jsonb_attributes=false/true if using UPDATE statement
+    //   2. j->'a' = 'null' (OR) j->'a'->'b' = 'null'
+    //      Note that the latter can't be done with UPDATE statement since we allow upsert only with
+    //      json nesting depth of 1.
+    //   3. Using an UPDATE/INSERT statement for the operation
+
+    // 0000
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};"
+      // not updated indexes:
+    );
+
+    // 0001
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');"
+      // not updated indexes:
+    );
+
+    // 0010 - not possible
+
+    // 0011
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');"
+      // not updated indexes:
+    );
+
+    // 0100
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // 0101 - not possible
+    // 0110 - not possible
+    // 0111 - not possible
+
+    // 1000
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // 1001
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, 'null')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // 1010 - not possible
+
+    // 1011
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, 'null')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 'b': null
+    session.execute("truncate table test_update");
+    session.execute(
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\": null}}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\":null}}');",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 'b': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\": 1}}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // 1100
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // 1101 - not possible
+    // 1110 - not possible
+    // 1111 - not possible
   }
 
   @Test
   public void testOptimizedJsonIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL));
+    doTestOptimizedJsonIndexUpdate(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL));
   }
 
   @Test
@@ -2045,7 +2213,7 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testPreparedOptimizedJsonIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperties(
+    doTestOptimizedJsonIndexUpdate(new TableProperties(
         TableProperties.TP_NON_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
   }
 

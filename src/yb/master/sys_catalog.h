@@ -113,9 +113,9 @@ class SysCatalogTable {
   template <class Item>
   CHECKED_STATUS UpdateItems(const vector<Item>& items, int64_t leader_term);
 
-  template <class Item>
-  CHECKED_STATUS AddAndUpdateItems(const vector<Item>& added_items,
-                                   const vector<Item>& updated_items,
+  template <class Items1, class Items2>
+  CHECKED_STATUS AddAndUpdateItems(const Items1& added_items,
+                                   const Items2& updated_items,
                                    int64_t leader_term);
 
   template <class Item>
@@ -193,6 +193,8 @@ class SysCatalogTable {
 
   const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
 
+  CHECKED_STATUS FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries);
+
  private:
   friend class CatalogManager;
 
@@ -249,16 +251,16 @@ class SysCatalogTable {
 
   scoped_refptr<MetricEntity> metric_entity_;
 
-  gscoped_ptr<ThreadPool> inform_removed_master_pool_;
+  std::unique_ptr<ThreadPool> inform_removed_master_pool_;
 
   // Thread pool for Raft-related operations
-  gscoped_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
 
   // Thread pool for preparing transactions, shared between all tablets.
-  gscoped_ptr<ThreadPool> tablet_prepare_pool_;
+  std::unique_ptr<ThreadPool> tablet_prepare_pool_;
 
   // Thread pool for appender tasks
-  gscoped_ptr<ThreadPool> append_pool_;
+  std::unique_ptr<ThreadPool> append_pool_;
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 

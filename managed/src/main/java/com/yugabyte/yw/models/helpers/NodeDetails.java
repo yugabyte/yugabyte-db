@@ -32,6 +32,8 @@ public class NodeDetails {
   // The UUID of the cluster that this node belongs to.
   public UUID placementUuid;
 
+  public String machineImage;
+
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
@@ -72,7 +74,9 @@ public class NodeDetails {
     // After a stopped/removed node is returned back to the IaaS.
     Decommissioned(ADD, DELETE),
     // Set when the cert is being updated.
-    UpdateCert();
+    UpdateCert(),
+    // Set when TLS params (node-to-node and client-to-node) is being toggled
+    ToggleTls();
 
     private final NodeActionType[] allowedActions;
 
@@ -138,6 +142,7 @@ public class NodeDetails {
     clone.nodeIdx = this.nodeIdx;
     clone.nodeUuid = this.nodeUuid;
     clone.placementUuid = this.placementUuid;
+    clone.machineImage = this.machineImage;
     return clone;
   }
 
@@ -182,7 +187,8 @@ public class NodeDetails {
         || state == NodeState.ToBeRemoved
         || state == NodeState.Removing
         || state == NodeState.Stopping
-        || state == NodeState.UpdateCert);
+        || state == NodeState.UpdateCert
+        || state == NodeState.ToggleTls);
   }
 
   @JsonIgnore

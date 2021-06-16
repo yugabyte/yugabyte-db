@@ -1211,7 +1211,8 @@ Status TSTabletManager::DeleteTablet(
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
   if (hide_only) {
-    return meta->SetHiddenAndFlush(true);
+    meta->SetHidden(true);
+    return meta->Flush();
   }
   // No matter if the tablet was deleted (drop table), or tombstoned (potentially moved to a
   // different TS), we do not need to flush rocksdb anymore, as this data is irrelevant.

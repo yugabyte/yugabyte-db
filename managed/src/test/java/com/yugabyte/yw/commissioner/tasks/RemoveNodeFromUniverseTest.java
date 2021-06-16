@@ -50,10 +50,10 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void setUp(boolean withMaster, int numNodes, int replicationFactor, boolean multiZone) {
     super.setUp();
     Region region = Region.create(defaultProvider, "test-region", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "az-1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-1", "az-1", "subnet-1");
     if (multiZone) {
-      AvailabilityZone.create(region, "az-2", "az-2", "subnet-2");
-      AvailabilityZone.create(region, "az-3", "az-3", "subnet-3");
+      AvailabilityZone.createOrThrow(region, "az-2", "az-2", "subnet-2");
+      AvailabilityZone.createOrThrow(region, "az-3", "az-3", "subnet-3");
     }
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();

@@ -20,13 +20,10 @@ namespace yb {
 
 class Env;
 
-namespace enterprise {
-
 class HeaderManager;
 
 std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_manager);
 
-}
 } // namespace yb
 
 #endif // YB_UTIL_ENCRYPTED_FILE_FACTORY_H

@@ -556,7 +556,7 @@ public class Universe extends Model {
     UniverseDefinitionTaskParams details = this.getUniverseDetails();
     if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
       // This means there must be a root CA associated with it.
-      return CertificateInfo.get(details.rootCA).certificate;
+      return CertificateInfo.get(details.clientRootCA).certificate;
     }
     return null;
   }
@@ -780,8 +780,10 @@ public class Universe extends Model {
         .stream()
         .filter(
             s ->
-                s.getUniverseDetails().rootCA != null
-                    && s.getUniverseDetails().rootCA.equals(certUUID))
+                (s.getUniverseDetails().rootCA != null
+                        && s.getUniverseDetails().rootCA.equals(certUUID))
+                    || (s.getUniverseDetails().clientRootCA != null
+                        && s.getUniverseDetails().clientRootCA.equals(certUUID)))
         .collect(Collectors.toSet());
   }
 

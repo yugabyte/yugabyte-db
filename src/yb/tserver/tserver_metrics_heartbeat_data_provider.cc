@@ -37,7 +37,9 @@ void addTabletData(master::TabletPathInfoPB* path_info,
                    std::unordered_map<std::string, master::ListTabletsOnPathPB*>* paths) {
   std::string data_dir = tablet_peer->tablet_metadata()->data_root_dir();
   const auto& tablet = tablet_peer->shared_tablet();
-  if (!tablet_peer->log_available() || !tablet || data_dir.empty()) {
+  if (!tablet_peer->log_available() || !tablet || data_dir.empty() ||
+      tablet_peer->tablet_metadata()->tablet_data_state() !=
+        tablet::TabletDataState::TABLET_DATA_READY) {
     return;
   }
   // Ignore WAL files when using another path
@@ -134,7 +136,7 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   VLOG_WITH_PREFIX(4) << "Total SST File Sizes: "<< total_file_sizes;
   VLOG_WITH_PREFIX(4) << "Uptime seconds: "<< uptime_seconds;
 
-  for (const std::string& path : server().fs_manager()->GetDataRootDirs()) {
+  for (const std::string& path : server().fs_manager()->GetFsRootDirs()) {
     auto stat = server().GetEnv()->GetFilesystemStatsBytes(path.c_str());
     if (!stat.ok()) {
       continue;

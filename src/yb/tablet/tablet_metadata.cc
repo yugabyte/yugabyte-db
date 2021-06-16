@@ -535,6 +535,24 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
+    restoration_hybrid_time_ = HybridTime::FromPB(superblock.restoration_hybrid_time());
+
+    if (superblock.has_split_op_id()) {
+      split_op_id_ = OpId::FromPB(superblock.split_op_id());
+
+      SCHECK_EQ(superblock.split_child_tablet_ids().size(), split_child_tablet_ids_.size(),
+                Corruption, "Expected exact number of child tablet ids");
+      for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
+        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(i);
+      }
+    }
+
+    if (!superblock.active_restorations().empty()) {
+      active_restorations_.reserve(superblock.active_restorations().size());
+      for (const auto& id : superblock.active_restorations()) {
+        active_restorations_.push_back(VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(id)));
+      }
+    }
   }
 
   return Status::OK();
@@ -619,12 +637,25 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   pb.set_is_under_twodc_replication(is_under_twodc_replication_);
   pb.set_hidden(hidden_);
+  if (restoration_hybrid_time_) {
+    pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
+  }
 
-  split_op_id_.ToPB(pb.mutable_split_op_id());
-  auto& split_child_table_ids = *pb.mutable_split_child_tablet_ids();
-  split_child_table_ids.Reserve(split_child_tablet_ids_.size());
-  for (const auto& split_child_tablet_id : split_child_tablet_ids_) {
-    *split_child_table_ids.Add() = split_child_tablet_id;
+  if (!split_op_id_.empty()) {
+    split_op_id_.ToPB(pb.mutable_split_op_id());
+    auto& split_child_table_ids = *pb.mutable_split_child_tablet_ids();
+    split_child_table_ids.Reserve(split_child_tablet_ids_.size());
+    for (const auto& split_child_tablet_id : split_child_tablet_ids_) {
+      *split_child_table_ids.Add() = split_child_tablet_id;
+    }
+  }
+
+  if (!active_restorations_.empty()) {
+    auto& active_restorations = *pb.mutable_active_restorations();
+    active_restorations.Reserve(active_restorations_.size());
+    for (const auto& id : active_restorations_) {
+      active_restorations.Add()->assign(id.AsSlice().cdata(), id.size());
+    }
   }
 
   superblock->Swap(&pb);
@@ -809,17 +840,24 @@ bool RaftGroupMetadata::is_under_twodc_replication() const {
   return is_under_twodc_replication_;
 }
 
-Status RaftGroupMetadata::SetHiddenAndFlush(bool value) {
-  {
-    std::lock_guard<MutexType> lock(data_mutex_);
-    hidden_ = value;
-  }
-  return Flush();
+void RaftGroupMetadata::SetHidden(bool value) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  hidden_ = value;
 }
 
 bool RaftGroupMetadata::hidden() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return hidden_;
+}
+
+void RaftGroupMetadata::SetRestorationHybridTime(HybridTime value) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  restoration_hybrid_time_ = value;
+}
+
+HybridTime RaftGroupMetadata::restoration_hybrid_time() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return restoration_hybrid_time_;
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
@@ -862,6 +900,21 @@ void RaftGroupMetadata::SetSplitDone(
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
   split_child_tablet_ids_[0] = child1;
   split_child_tablet_ids_[1] = child2;
+}
+
+bool RaftGroupMetadata::has_active_restoration() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return !active_restorations_.empty();
+}
+
+void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  active_restorations_.push_back(restoration_id);
+}
+
+void RaftGroupMetadata::UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  Erase(restoration_id, &active_restorations_);
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {

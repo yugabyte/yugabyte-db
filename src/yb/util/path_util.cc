@@ -49,8 +49,8 @@
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/malloc.h"
 #include "yb/util/thread_restrictions.h"
-#include "yb/gutil/gscoped_ptr.h"
 
 using std::string;
 
@@ -80,7 +80,7 @@ Status FileCreationError(const std::string& path_dir, int err_number) {
 }
 
 string DirName(const string& path) {
-  gscoped_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
+  std::unique_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
 #if defined(__APPLE__)
   static std::mutex lock;
   std::lock_guard<std::mutex> l(lock);
@@ -89,7 +89,7 @@ string DirName(const string& path) {
 }
 
 string BaseName(const string& path) {
-  gscoped_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
+  std::unique_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
   return basename(path_copy.get());
 }
 

@@ -57,7 +57,6 @@
 #include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
@@ -673,6 +672,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilter(OperationFilter* filter);
 
   void SplitDone();
+  CHECKED_STATUS RestoreStarted(const TxnSnapshotRestorationId& restoration_id);
+  CHECKED_STATUS RestoreFinished(
+      const TxnSnapshotRestorationId& restoration_id, HybridTime restoration_hybrid_time);
 
  private:
   friend class Iterator;
@@ -741,6 +743,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   CHECKED_STATUS OpenDbAndCheckIntegrity(const std::string& db_dir);
 
+  // Add or remove restoring operation filter if necessary.
+  void SyncRestoringOperationFilter();
+
   const Schema key_schema_;
 
   RaftGroupMetadataPtr metadata_;
@@ -770,7 +775,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;
-  gscoped_ptr<TabletMetrics> metrics_;
+  std::unique_ptr<TabletMetrics> metrics_;
   FunctionGaugeDetacher metric_detacher_;
 
   // A pointer to the server's clock.
@@ -926,9 +931,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   boost::intrusive::list<OperationFilter> operation_filters_;
 
-  class CompletedSplitOperationFilter;
-  std::unique_ptr<CompletedSplitOperationFilter> completed_split_operation_filter_;
+  std::unique_ptr<OperationFilter> completed_split_operation_filter_;
   std::unique_ptr<log::LogAnchor> completed_split_log_anchor_;
+
+  std::unique_ptr<OperationFilter> restoring_operation_filter_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

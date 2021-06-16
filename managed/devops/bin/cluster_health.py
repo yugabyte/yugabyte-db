@@ -32,7 +32,8 @@ YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
 YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
-VM_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
+VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
+VM_CLIENT_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt")
 K8S_CERT_FILE_PATH = "/opt/certs/yugabyte/ca.crt"
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
@@ -194,13 +195,14 @@ class NodeChecker():
 
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
-                 ssl_protocol, enable_ysql_auth):
+                 root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
         self.enable_tls_client = enable_tls_client
+        self.root_and_client_root_ca_same = root_and_client_root_ca_same
         self.ssl_protocol = ssl_protocol
         # TODO: best way to do mark that this is a k8s deployment?
         self.is_k8s = ssh_port == 0 and not self.identity_file
@@ -394,7 +396,12 @@ class NodeChecker():
         cqlsh = '{}/bin/cqlsh'.format(YB_TSERVER_DIR)
         remote_cmd = '{} {} {} -e "SHOW HOST"'.format(cqlsh, self.node, self.ycql_port)
         if self.enable_tls_client:
-            cert_file = K8S_CERT_FILE_PATH if self.is_k8s else VM_CERT_FILE_PATH
+            if self.is_k8s:
+                cert_file = K8S_CERT_FILE_PATH
+            elif self.root_and_client_root_ca_same:
+                cert_file = VM_ROOT_CERT_FILE_PATH
+            else:
+                cert_file = VM_CLIENT_ROOT_CERT_FILE_PATH
             protocols = re.split('\\W+', self.ssl_protocol or "")
             ssl_version = DEFAULT_SSL_VERSION
             for protocol in protocols:
@@ -598,6 +605,7 @@ class Cluster():
         self.identity_file = data["identityFile"]
         self.ssh_port = data["sshPort"]
         self.enable_tls_client = data["enableTlsClient"]
+        self.root_and_client_root_ca_same = data['rootAndClientRootCASame']
         self.master_nodes = data["masterNodes"]
         self.tserver_nodes = data["tserverNodes"]
         self.yb_version = data["ybSoftwareVersion"]
@@ -649,8 +657,8 @@ def main():
                 checker = NodeChecker(
                         node, node_name, c.identity_file, c.ssh_port,
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
-                        c.ycql_port, c.redis_port, c.enable_tls_client, c.ssl_protocol,
-                        c.enable_ysql_auth)
+                        c.ycql_port, c.redis_port, c.enable_tls_client,
+                        c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth)
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
                     coordinator.add_check(

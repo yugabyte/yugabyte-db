@@ -36,7 +36,6 @@
 
 #include "yb/util/bfpg/tserver_opcodes.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -243,7 +242,7 @@ CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timest
 } // namespace
 
 QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
-                                   const IndexMap& index_map,
+                                   std::reference_wrapper<const IndexMap> index_map,
                                    const Schema* unique_index_key_schema,
                                    const TransactionOperationContextOpt& txn_op_context)
     : schema_(std::move(schema)),
@@ -257,7 +256,8 @@ Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response)
   response_ = response;
   insert_into_unique_index_ = request_.type() == QLWriteRequestPB::QL_STMT_INSERT &&
                               unique_index_key_schema_ != nullptr;
-  require_read_ = RequireRead(request_, *schema_) || insert_into_unique_index_;
+  require_read_ = RequireRead(request_, *schema_) || insert_into_unique_index_
+                  || !index_map_.empty();
   update_indexes_ = !request_.update_index_ids().empty();
 
   // Determine if static / non-static columns are being written.
@@ -335,7 +335,7 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
 
 Status QLWriteOperation::GetDocPaths(
     GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
-  if (mode == GetDocPathsMode::kLock || request_.column_values().empty()) {
+  if (mode == GetDocPathsMode::kLock || request_.column_values().empty() || !index_map_.empty()) {
     if (encoded_hashed_doc_key_) {
       paths->push_back(encoded_hashed_doc_key_);
     }
@@ -535,8 +535,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*pk_doc_key_,
-                    PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+          SubDocKey(*pk_doc_key_, PrimitiveValue::kLivenessColumn),
           requested_read_time.read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -890,8 +889,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       // ensure our write path is fast while complicating the read path a bit.
       auto is_insert = request_.type() == QLWriteRequestPB::QL_STMT_INSERT;
       if (is_insert && encoded_pk_doc_key_) {
-        const DocPath sub_path(encoded_pk_doc_key_.as_slice(),
-                               PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+        const DocPath sub_path(encoded_pk_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn);
         const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
             sub_path, value, data.read_time, data.deadline, request_.query_id()));
@@ -1050,9 +1048,7 @@ Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_w
     }
 
     // Delete the liveness column as well.
-    const DocPath liveness_column(
-        row_path.encoded_doc_key(),
-        PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+    const DocPath liveness_column(row_path.encoded_doc_key(), PrimitiveValue::kLivenessColumn);
     RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
                                                 read_ht,
                                                 deadline,
@@ -1076,15 +1072,11 @@ ValueState GetValueState(const QLTableRow& row, const ColumnId column_id) {
 
 } // namespace
 
-Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
-                                            const QLTableRow& new_row) const {
+bool QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
+                                    const QLTableRow& new_row) const {
   // Delete the whole row?
   if (request_.type() == QLWriteRequestPB::QL_STMT_DELETE && request_.column_values().empty()) {
     return true;
-  }
-
-  if (existing_row.IsEmpty()) { // If the row doesn't exist, don't check further.
-    return false;
   }
 
   // For update/delete, if there is no liveness column, the row will be deleted after the DML unless
@@ -1105,14 +1097,9 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
       switch (GetValueState(existing_row, column_id)) {
         case ValueState::kNull: continue;
         case ValueState::kNotNull: return false;
-        case ValueState::kMissing:
-          // In case there exists a row with the same primary key, we definitely need to know if its
-          // columns have value NULL or not. Populate the column before executing this function.
-          RSTATUS_DCHECK(false, InternalError, "CQL proxy should mention all required columns in "
-            "QLWriteRequestPB's column_refs.");
+        case ValueState::kMissing: break;
       }
     }
-
     return true;
   }
 
@@ -1150,7 +1137,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
     bool index_key_changed = false;
     bool index_pred_existing_row = true;
     bool index_pred_new_row = true;
-    bool is_row_deleted = VERIFY_RESULT(IsRowDeleted(existing_row, new_row));
+    bool is_row_deleted = IsRowDeleted(existing_row, new_row);
 
     if (index->where_predicate_spec()) {
       RETURN_NOT_OK(EvalCondition(

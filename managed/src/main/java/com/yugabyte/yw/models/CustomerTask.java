@@ -90,8 +90,14 @@ public class CustomerTask extends Model {
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 
+    @EnumValue("UpgradeVMImage")
+    UpgradeVMImage,
+
     @EnumValue("UpdateCert")
     UpdateCert,
+
+    @EnumValue("ToggleTls")
+    ToggleTls,
 
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
@@ -144,6 +150,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case UpdateCert:
           return completed ? "Updated Cert " : "Updating Cert ";
+        case ToggleTls:
+          return completed ? "Toggled Tls " : "Toggling Tls ";
         case UpgradeGflags:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case BulkImportData:

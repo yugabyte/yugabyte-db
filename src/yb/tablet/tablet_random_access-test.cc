@@ -231,7 +231,7 @@ class TestRandomAccess : public YBTabletTest {
   // operations. This stops the compact/flush thread.
   CountDownLatch done_{1};
 
-  gscoped_ptr<LocalTabletWriter> writer_;
+  std::unique_ptr<LocalTabletWriter> writer_;
 
   unsigned int random_seed_ = SeedRandom();
 };

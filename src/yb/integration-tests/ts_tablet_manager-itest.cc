@@ -100,7 +100,7 @@ class TsTabletManagerITest : public YBTest {
  protected:
   const YBSchema schema_;
 
-  gscoped_ptr<MiniCluster> cluster_;
+  std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<YBClient> client_;
 };
@@ -116,7 +116,7 @@ void TsTabletManagerITest::SetUp() {
 
   MiniClusterOptions opts;
   opts.num_tablet_servers = kNumReplicas;
-  cluster_.reset(new MiniCluster(env_.get(), opts));
+  cluster_.reset(new MiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   client_ = ASSERT_RESULT(cluster_->CreateClient(client_messenger_.get()));
 }

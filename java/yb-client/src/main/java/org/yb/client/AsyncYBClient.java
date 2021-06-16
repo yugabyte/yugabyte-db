@@ -51,67 +51,25 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.Message;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
-
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.util.io.pem.PemObject;
-import org.bouncycastle.util.io.pem.PemReader;
-import org.yb.Common;
-import org.yb.Common.YQLDatabase;
-import org.yb.Schema;
-import org.yb.annotations.InterfaceAudience;
-import org.yb.annotations.InterfaceStability;
-import org.yb.consensus.Metadata;
-import org.yb.master.Master;
-import org.yb.master.Master.GetTableLocationsResponsePB;
-import org.yb.master.Master.ListTablesResponsePB.TableInfo;
-import org.yb.util.AsyncUtil;
-import org.yb.util.NetUtil;
-import org.yb.util.Pair;
-import org.yb.util.Slice;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelEvent;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.DefaultChannelPipeline;
-import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
-import org.jboss.netty.channel.socket.SocketChannel;
-import org.jboss.netty.channel.socket.SocketChannelConfig;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
-import org.jboss.netty.handler.timeout.ReadTimeoutHandler;
-import org.jboss.netty.handler.ssl.SslHandler;
-import org.jboss.netty.util.HashedWheelTimer;
-import org.jboss.netty.util.Timeout;
-import org.jboss.netty.util.TimerTask;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.TrustManagerFactory;
-
-import java.security.cert.CertificateFactory;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
-import java.security.KeyStore;
-import java.security.KeyFactory;
-import java.security.PrivateKey;
-import java.security.Security;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-
 import java.io.FileInputStream;
 import java.io.FileReader;
-
-import javax.annotation.concurrent.GuardedBy;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.Security;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -122,7 +80,40 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManagerFactory;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.util.io.pem.PemObject;
+import org.bouncycastle.util.io.pem.PemReader;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.channel.ChannelEvent;
+import org.jboss.netty.channel.ChannelStateEvent;
+import org.jboss.netty.channel.DefaultChannelPipeline;
+import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
+import org.jboss.netty.channel.socket.SocketChannel;
+import org.jboss.netty.channel.socket.SocketChannelConfig;
+import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
+import org.jboss.netty.handler.ssl.SslHandler;
+import org.jboss.netty.handler.timeout.ReadTimeoutHandler;
+import org.jboss.netty.util.HashedWheelTimer;
+import org.jboss.netty.util.Timeout;
+import org.jboss.netty.util.TimerTask;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.Common;
+import org.yb.Common.YQLDatabase;
+import org.yb.Schema;
+import org.yb.annotations.InterfaceAudience;
+import org.yb.annotations.InterfaceStability;
+import org.yb.consensus.Metadata;
+import org.yb.master.Master;
+import org.yb.master.Master.GetTableLocationsResponsePB;
+import org.yb.util.AsyncUtil;
+import org.yb.util.NetUtil;
+import org.yb.util.Pair;
+import org.yb.util.Slice;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
@@ -2115,6 +2106,7 @@ public class AsyncYBClient implements AutoCloseable {
       try {
         PemReader pemReader = new PemReader(new FileReader(keyFile));
         PemObject pemObject = pemReader.readPemObject();
+        pemReader.close();
         byte[] bytes = pemObject.getContent();
         PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
         KeyFactory kf = KeyFactory.getInstance("RSA");
@@ -2129,15 +2121,16 @@ public class AsyncYBClient implements AutoCloseable {
       }
     }
 
+    @SuppressWarnings("unchecked")
     private SslHandler createSslHandler(String certfile, String clientCertFile,
                                         String clientKeyFile) {
       try {
         Security.addProvider(new BouncyCastleProvider());
         CertificateFactory cf = CertificateFactory.getInstance("X.509");
         FileInputStream fis = new FileInputStream(certFile);
-        X509Certificate ca;
+        List<X509Certificate> cas;
         try {
-          ca = (X509Certificate) cf.generateCertificate(fis);
+          cas = (List<X509Certificate>) (List<?>) cf.generateCertificates(fis);
         } catch (Exception e) {
           log.error("Exception generating CA certificate from input file: ", e);
           throw e;
@@ -2149,14 +2142,18 @@ public class AsyncYBClient implements AutoCloseable {
         String keyStoreType = KeyStore.getDefaultType();
         KeyStore keyStore = KeyStore.getInstance(keyStoreType);
         keyStore.load(null, null);
-        keyStore.setCertificateEntry("ca", ca);
+        for (int i = 0; i < cas.size(); i++) {
+          // Adding to the trust store. Expect the caller to have verified
+          // the certs.
+          keyStore.setCertificateEntry("ca_" + i, cas.get(i));
+        }
 
         // Create a TrustManager that trusts the CAs in our KeyStore
         String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
         TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
         tmf.init(keyStore);
 
-        X509Certificate clientCert = null;
+        List<X509Certificate> clientCerts = null;
         KeyStore clientKeyStore = null;
         KeyManagerFactory kmf = null;
         if (clientCertFile != null) {
@@ -2166,7 +2163,7 @@ public class AsyncYBClient implements AutoCloseable {
           }
           fis = new FileInputStream(clientCertFile);
           try {
-            clientCert = (X509Certificate) cf.generateCertificate(fis);
+            clientCerts = (List<X509Certificate>) (List<?>) cf.generateCertificates(fis);
           } catch (Exception e) {
             log.error("Exception generating CA certificate from input file: ", e);
             throw e;
@@ -2174,13 +2171,14 @@ public class AsyncYBClient implements AutoCloseable {
             fis.close();
           }
           PrivateKey pk = getPrivateKey(clientKeyFile);
-          Certificate[] chain = new Certificate[2];
-          chain[0] = clientCert;
-          chain[1] = ca;
-
+          Certificate[] chain = new Certificate[clientCerts.size()];
           clientKeyStore = KeyStore.getInstance(keyStoreType);
           clientKeyStore.load(null, null);
-          clientKeyStore.setCertificateEntry("node_crt", clientCert);
+          for (int i = 0; i < clientCerts.size(); i++) {
+            chain[i] = clientCerts.get(i);
+            clientKeyStore.setCertificateEntry("node_crt_" + i, clientCerts.get(i));
+          }
+
           String password = "password";
           char[] ksPass = password.toCharArray();
           clientKeyStore.setKeyEntry("node_key", pk, ksPass, chain);

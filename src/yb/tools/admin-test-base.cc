@@ -13,6 +13,7 @@
 
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 
 #include "yb/util/subprocess.h"
@@ -49,6 +50,39 @@ Result<rapidjson::Document> AdminTestBase::ParseJson(const std::string& raw) {
         InvalidArgument, "Failed to parse json output $0: $1", result.GetParseError(), raw);
   }
   return result;
+}
+
+Result<CassandraSession> AdminTestBase::CqlConnect(const std::string& db_name) {
+  if (!cql_driver_) {
+    std::vector<std::string> hosts;
+    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      hosts.push_back(cluster_->tablet_server(i)->bind_host());
+    }
+    LOG(INFO) << "CQL hosts: " << AsString(hosts);
+    cql_driver_ = std::make_unique<CppCassandraDriver>(
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kTrue);
+  }
+  auto result = VERIFY_RESULT(cql_driver_->CreateSession());
+  if (!db_name.empty()) {
+    RETURN_NOT_OK(result.ExecuteQuery(Format("USE $0", db_name)));
+  }
+  return result;
+}
+
+Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name) {
+  auto it = value.FindMember(name);
+  if (it == value.MemberEnd()) {
+    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
+  }
+  return it->value;
+}
+
+Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
+  auto it = value->FindMember(name);
+  if (it == value->MemberEnd()) {
+    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
+  }
+  return it->value;
 }
 
 }  // namespace tools

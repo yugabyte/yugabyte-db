@@ -259,6 +259,12 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
   google::SetUsageMessage(str.str());
 }
 
+Result<rapidjson::Document> DdlLog(
+    ClusterAdminClientClass* client, const ClusterAdminCli::CLIArguments& args) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  return client->DdlLog();
+}
+
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   DCHECK_ONLY_NOTNULL(client);
 
@@ -813,6 +819,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to get catalog version");
         return Status::OK();
       });
+
+  RegisterJson("ddl_log", "", std::bind(&DdlLog, client, _1));
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(
@@ -871,6 +879,20 @@ Result<client::YBTableName> ResolveSingleTableName(ClusterAdminClientClass* clie
     return STATUS_FORMAT(InvalidArgument, "Single table expected, $0 found", tables.size());
   }
   return std::move(tables.front());
+}
+
+Status CheckArgumentsCount(int count, int min, int max) {
+  if (count < min) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Too few arguments $0, should be in range [$1, $2]", count, min, max);
+  }
+
+  if (count > max) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Too many arguments $0, should be in range [$1, $2]", count, min, max);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace tools
