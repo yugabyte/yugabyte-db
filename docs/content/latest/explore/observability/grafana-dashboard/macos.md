@@ -33,7 +33,7 @@ showAsideToc: true
   - Create a local instance of Prometheus and perform  the Steps 1-4 listed under [Prometheus Integration](https://docs.yugabyte.com/latest/explore/observability/prometheus-integration/macos/). (Step 5 is optional)
 
   ## 1. Setup Grafana and add Prometheus as a data source.
-  - Install [Grafana](https://grafana.com/docs/grafana/latest/installation/mac/) and start the grafana server.
+  - Install Grafana and start the server from the [Grafana documentation](https://grafana.com/docs/grafana/latest/installation/mac/).
   - Open the Grafana UI on http://localhost:3000. The default login is `admin` / `admin`. 
   - Follow the steps to create a Prometheus data source from this [page](https://prometheus.io/docs/visualization/grafana/). 
 
@@ -44,7 +44,7 @@ showAsideToc: true
 
   ![Grafana import](/images/ce/grafana-add.png)
 
-  - On the next page, enter the Yugabytedb dashboard ID in the `import via grafana.com` option and click load.
+  - On the next page, enter the Yugabytedb dashboard ID in the `import via grafana.com` option and click `Load`.
 
   ![Grafana import](/images/ce/grafana-import.png)
 
@@ -52,7 +52,7 @@ showAsideToc: true
 
   ![Grafana dashboard](/images/ce/graf-dash-details.png)
 
-  - After clicking import, you can see the new dashboard with various details starting with the status your Master and Tserver Nodes. The metrics displayed further are categorized by API types (YSQL, YCQL) and by API methods(Insert, Select, Update etc). 
+  - After clicking import, you can see the new dashboard with various details starting with the status of your Master and Tserver Nodes. The metrics displayed further are categorized by API types (YSQL, YCQL) and by API methods(Insert, Select, Update etc). 
 
   ![Grafana dashboard](/images/ce/graf-server-status.png)
 
@@ -65,12 +65,21 @@ showAsideToc: true
 
   ![Grafana RocksDB](/images/ce/graf-rocksdb.png)
 
+  ## 3. Clean up (optional)
 
+  Optionally, you can shut down the local cluster created earlier as a prerequisite.
 
+  ```sh
+  $ ./bin/yugabyted destroy \
+                    --base_dir=node-1
+  ```
 
+  ```sh
+  $ ./bin/yugabyted destroy \
+                    --base_dir=node-2
+  ```
 
-
-
-
-
-
+  ```sh
+  $ ./bin/yugabyted destroy \
+                    --base_dir=node-3
+  ```
