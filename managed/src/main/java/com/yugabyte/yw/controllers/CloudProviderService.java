@@ -12,7 +12,6 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
@@ -25,7 +24,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.*;
@@ -91,28 +89,30 @@ public class CloudProviderService {
     provider.delete();
   }
 
-  Provider createProvider(Customer customer, CloudProviderFormData cloudProviderFormData)
+  Provider createProvider(
+      Customer customer,
+      Common.CloudType providerCode,
+      String providerName,
+      Map<String, String> providerConfig,
+      String anyProviderRegion)
       throws IOException {
-    Common.CloudType providerCode = cloudProviderFormData.code;
-    Provider existentProvider =
-        Provider.get(customer.uuid, cloudProviderFormData.name, providerCode);
+    Provider existentProvider = Provider.get(customer.uuid, providerName, providerCode);
     if (existentProvider != null) {
       throw new YWServiceException(
-          BAD_REQUEST,
-          String.format("Provider with the name %s already exists", cloudProviderFormData.name));
+          BAD_REQUEST, String.format("Provider with the name %s already exists", providerName));
     }
 
-    Provider provider =
-        Provider.create(
-            customer.uuid, providerCode, cloudProviderFormData.name, cloudProviderFormData.config);
-    if (!cloudProviderFormData.config.isEmpty()) {
+    Provider provider = Provider.create(customer.uuid, providerCode, providerName, providerConfig);
+    if (!providerConfig.isEmpty()) {
       String hostedZoneId = provider.getHostedZoneId();
       switch (provider.code) {
         case "aws":
+          // TODO: Add this validation. But there is a bad test
+          //  if (anyProviderRegion == null || anyProviderRegion.isEmpty()) {
+          //    throw new YWServiceException(BAD_REQUEST, "Must have at least one region");
+          //  }
           CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
-          if (cloudAPI != null
-              && !cloudAPI.isValidCreds(
-                  cloudProviderFormData.config, cloudProviderFormData.region)) {
+          if (cloudAPI != null && !cloudAPI.isValidCreds(providerConfig, anyProviderRegion)) {
             provider.delete();
             throw new YWServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
           }
@@ -121,10 +121,10 @@ public class CloudProviderService {
           }
           break;
         case "gcp":
-          updateGCPConfig(provider, cloudProviderFormData.config);
+          updateGCPConfig(provider, providerConfig);
           break;
         case "kubernetes":
-          updateKubeConfig(provider, cloudProviderFormData.config, false);
+          updateKubeConfig(provider, providerConfig, false);
           try {
             createKubernetesInstanceTypes(customer, provider);
           } catch (PersistenceException ex) {
@@ -268,8 +268,10 @@ public class CloudProviderService {
       }
 
       provider.setConfig(config);
+      provider.save();
     } else if (zone == null) {
       region.setConfig(config);
+      region.save();
     } else {
       zone.updateConfig(config);
     }
@@ -488,13 +490,9 @@ public class CloudProviderService {
       taskParams.perRegionMetadata = new HashMap<>();
     }
     if (taskParams.perRegionMetadata.isEmpty()) {
-      JsonNode regionInfo = queryHelper.getRegions(provider.uuid);
-      if (regionInfo instanceof ArrayNode) {
-        ArrayNode regionListArray = (ArrayNode) regionInfo;
-        for (JsonNode region : regionListArray) {
-          taskParams.perRegionMetadata.put(
-              region.asText(), new CloudBootstrap.Params.PerRegionMetadata());
-        }
+      List<String> regionCodes = queryHelper.getRegionCodes(provider);
+      for (String regionCode : regionCodes) {
+        taskParams.perRegionMetadata.put(regionCode, new CloudBootstrap.Params.PerRegionMetadata());
       }
     }
 

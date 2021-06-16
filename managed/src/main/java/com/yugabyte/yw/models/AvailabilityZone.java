@@ -33,7 +33,7 @@ public class AvailabilityZone extends Model {
   @Constraints.Required
   @Column(nullable = false)
   @ManyToOne
-  @JsonBackReference
+  @JsonBackReference("region-zones")
   public Region region;
 
   @Column(nullable = false, columnDefinition = "boolean default true")

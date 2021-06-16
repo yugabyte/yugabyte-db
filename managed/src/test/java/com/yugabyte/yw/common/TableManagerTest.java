@@ -318,6 +318,7 @@ public class TableManagerTest extends FakeDBApplication {
     Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG", "foo");
     testProvider.setConfig(config);
+    testProvider.save();
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;

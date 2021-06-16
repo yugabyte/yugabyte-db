@@ -31,7 +31,7 @@ public class ProviderTest extends FakeDBApplication {
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
-    assertTrue(provider.isActive());
+    assertTrue(provider.active);
   }
 
   @Test
@@ -100,13 +100,13 @@ public class ProviderTest extends FakeDBApplication {
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
-    assertTrue(provider.isActive());
+    assertTrue(provider.active);
 
-    provider.setActiveFlag(false);
+    provider.active = false;
     provider.save();
 
     Provider fetch = Provider.find.byId(provider.uuid);
-    assertFalse(fetch.isActive());
+    assertFalse(fetch.active);
   }
 
   @Test
@@ -118,7 +118,7 @@ public class ProviderTest extends FakeDBApplication {
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
     assertEquals(fetch.name, provider.name);
-    assertTrue(fetch.isActive());
+    assertTrue(fetch.active);
     assertEquals(fetch.customerUUID, defaultCustomer.uuid);
   }
 
@@ -129,7 +129,7 @@ public class ProviderTest extends FakeDBApplication {
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
     assertEquals(fetch.name, provider.name);
-    assertTrue(fetch.isActive());
+    assertTrue(fetch.active);
     assertEquals(fetch.customerUUID, defaultCustomer.uuid);
   }
 

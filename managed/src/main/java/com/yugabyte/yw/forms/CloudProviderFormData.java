@@ -18,8 +18,6 @@ public class CloudProviderFormData {
 
   @Constraints.Required() public String name;
 
-  public Boolean active = true;
-
   // We would store credentials and other environment
   // settings specific to the provider as a key-value map.
   @JsonSetter(nulls = Nulls.AS_EMPTY)

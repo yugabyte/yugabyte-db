@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.ApiModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import play.libs.Json;
 
@@ -36,6 +38,26 @@ public class CloudBootstrap extends CloudTaskBase {
 
   @ApiModel("CloudBootstrapParams")
   public static class Params extends CloudTaskParams {
+    public static Params fromProvider(Provider provider) {
+      Params taskParams = new Params();
+      taskParams.airGapInstall = provider.airGapInstall;
+      taskParams.customHostCidrs = provider.customHostCidrs;
+      taskParams.destVpcId = provider.destVpcId;
+      taskParams.hostVpcId = provider.hostVpcId;
+      taskParams.hostVpcRegion = provider.hostVpcRegion;
+      taskParams.keyPairName = provider.keyPairName;
+      taskParams.providerUUID = provider.uuid;
+      taskParams.sshPort = provider.sshPort;
+      taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
+      taskParams.sshUser = provider.sshUser;
+      taskParams.perRegionMetadata =
+          provider
+              .regions
+              .stream()
+              .collect(Collectors.toMap(region -> region.name, PerRegionMetadata::fromRegion));
+      return taskParams;
+    }
+
     // Class to encapsulate custom network bootstrap overrides per region.
     public static class PerRegionMetadata {
       // Custom VPC ID to use for this region
@@ -46,6 +68,7 @@ public class CloudBootstrap extends CloudTaskBase {
       // Custom CIDR to use for the VPC, if YB is creating it.
       // Default: chosen by YB.
       // Required: False.
+      // TODO: Remove. This is not used currently.
       public String vpcCidr;
 
       // Custom map from AZ name to Subnet ID for AWS.
@@ -68,6 +91,19 @@ public class CloudBootstrap extends CloudTaskBase {
       // Default: created by YB.
       // Required: True for custom input, False for YW managed.
       public String customSecurityGroupId;
+
+      public static PerRegionMetadata fromRegion(Region region) {
+        PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
+        perRegionMetadata.customImageId = region.ybImage;
+        perRegionMetadata.customSecurityGroupId = region.getSecurityGroupId();
+        //    perRegionMetadata.subnetId = can only be set per zone
+        perRegionMetadata.vpcId = region.getVnetName();
+        //    perRegionMetadata.vpcCidr = never used
+        perRegionMetadata.azToSubnetIds =
+            region.zones.stream().collect(Collectors.toMap(zone -> zone.name, zone -> zone.subnet));
+
+        return perRegionMetadata;
+      }
     }
 
     // Map from region name to metadata.
@@ -98,6 +134,9 @@ public class CloudBootstrap extends CloudTaskBase {
     // TODO(bogdan): only used/needed for GCP.
     public String destVpcId = null;
   }
+
+  // TODO: these fields should probably be persisted with provider but currently these are lost
+  public static class ProviderTransientData {}
 
   @Override
   protected Params taskParams() {

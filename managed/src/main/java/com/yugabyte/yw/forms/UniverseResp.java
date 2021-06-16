@@ -20,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.Play;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -59,7 +58,6 @@ public class UniverseResp {
     dnsName = entity.getDnsName();
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
     this.taskUUID = taskUUID == null ? null : taskUUID.toString();
-    Collection<NodeDetails> nodes = entity.getUniverseDetails().nodeDetailsSet;
     this.resources = resources;
     universeConfig = entity.getConfig();
     this.sampleAppCommandTxt = this.getManifest(entity);

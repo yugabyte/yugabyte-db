@@ -11,7 +11,9 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -49,9 +51,8 @@ public class CloudQueryHelper extends DevopsBase {
         "current-host");
   }
 
-  public JsonNode getRegions(UUID providerUUID) {
-    Provider p = Provider.get(providerUUID);
-    List<String> commandArgs = new ArrayList<String>();
+  public List<String> getRegionCodes(Provider p) {
+    List<String> commandArgs = new ArrayList<>();
     if (p.code.equals("gcp")) {
       // TODO: ideally we shouldn't have this hardcoded string present in multiple places.
       String potentialGcpNetwork = p.getConfig().get("CUSTOM_GCE_NETWORK");
@@ -60,7 +61,12 @@ public class CloudQueryHelper extends DevopsBase {
         commandArgs.add(potentialGcpNetwork);
       }
     }
-    return execAndParseCommandCloud(providerUUID, "regions", commandArgs);
+    JsonNode regionInfo = execAndParseCommandCloud(p.uuid, "regions", commandArgs);
+    List<String> regionCodes = ImmutableList.of();
+    if (regionInfo instanceof ArrayNode) {
+      regionCodes = Json.fromJson(regionInfo, List.class);
+    }
+    return regionCodes;
   }
 
   public JsonNode getZones(UUID regionUUID) {

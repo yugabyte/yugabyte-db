@@ -79,6 +79,7 @@ public class CloudRegionSetup extends CloudTaskBase {
     String customSecurityGroupId = taskParams().metadata.customSecurityGroupId;
     if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {
       region.setSecurityGroupId(customSecurityGroupId);
+      region.save();
     }
 
     JsonNode zoneInfo = null;
@@ -109,6 +110,7 @@ public class CloudRegionSetup extends CloudTaskBase {
           vnet = queryHelper.getVnet(region);
         }
         region.setVnetName(vnet);
+        region.save();
         if (zoneNets == null || zoneNets.size() == 0) {
           zoneInfo = queryHelper.getZones(region.uuid, vnet);
           if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {

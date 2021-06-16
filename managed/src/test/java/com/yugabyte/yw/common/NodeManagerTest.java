@@ -932,6 +932,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
     for (TestData t : testData) {
       t.region.setSecurityGroupId(sgId);
+      t.region.save();
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";

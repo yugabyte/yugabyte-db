@@ -101,20 +101,6 @@ public class RegionTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSettingValidLatLong() {
-    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    r.setLatLon(-10, 120);
-    assertEquals(r.latitude, -10, 0);
-    assertEquals(r.longitude, 120, 0);
-  }
-
-  @Test(expected = IllegalArgumentException.class)
-  public void testSettingInvalidLatLong() {
-    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    r.setLatLon(-90, 200);
-  }
-
-  @Test
   public void testDisableRegionZones() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "AZ - 1", "subnet-1");

@@ -12,6 +12,8 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
+import io.swagger.annotations.ApiModelProperty;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -63,14 +65,29 @@ public class YWResults {
   }
 
   public static class YWTask extends OkResult {
-    public final UUID taskUUID;
+    @VisibleForTesting public UUID taskUUID;
+
+    @ApiModelProperty(
+        value = "UUID of the resource being modified  by the task",
+        accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+    @VisibleForTesting
+    public UUID resourceUUID;
+
+    // for json deserialization
+    public YWTask() {}
 
     public YWTask(UUID taskUUID) {
+      this(taskUUID, null);
+    }
+
+    public YWTask(UUID taskUUID, UUID resourceUUID) {
       this.taskUUID = taskUUID;
+      this.resourceUUID = resourceUUID;
     }
   }
 
   public static class YWTasks extends OkResult {
+    // TODO Need to make it YWTask list w/o making ui unhappy.
     public final List<UUID> taskUUID;
 
     public YWTasks(List<UUID> taskUUID) {
