@@ -84,11 +84,11 @@ DECLARE_int32(TEST_slowdown_backfill_alter_table_rpcs_ms);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int64(tablet_split_low_phase_tablet_count_per_node);
-DECLARE_int64(tablet_split_high_phase_tablet_count_per_node);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_final_phase_size_threshold_bytes);
+DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_bool(TEST_disable_cleanup_split_tablet);
@@ -1366,7 +1366,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
 TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplitting) {
   constexpr int kNumRowsPerBatch = 1000;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_tablet_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1_MB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
 
@@ -1413,13 +1413,13 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMovesToNextPhase) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 50_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 100_KB;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_tablet_count_per_node) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_tablet_count_per_node) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
 
-  auto this_phase_tablet_lower_limit = FLAGS_tablet_split_low_phase_tablet_count_per_node
+  auto this_phase_tablet_lower_limit = FLAGS_tablet_split_low_phase_shard_count_per_node
       * cluster_->num_tablet_servers();
-  auto this_phase_tablet_upper_limit = FLAGS_tablet_split_high_phase_tablet_count_per_node
+  auto this_phase_tablet_upper_limit = FLAGS_tablet_split_high_phase_shard_count_per_node
       * cluster_->num_tablet_servers();
 
   int num_tablets = this_phase_tablet_lower_limit;
@@ -1449,8 +1449,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 20_KB;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_tablet_count_per_node) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_tablet_count_per_node) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 2;
   // Disable automatic compactions, but continue to allow manual compactions.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
@@ -1504,10 +1504,10 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
     }
   };
   test_phase(
-    FLAGS_tablet_split_low_phase_tablet_count_per_node * num_tservers,
+    FLAGS_tablet_split_low_phase_shard_count_per_node * num_tservers,
     FLAGS_tablet_split_low_phase_size_threshold_bytes);
   test_phase(
-    FLAGS_tablet_split_high_phase_tablet_count_per_node * num_tservers,
+    FLAGS_tablet_split_high_phase_shard_count_per_node * num_tservers,
     FLAGS_tablet_split_high_phase_size_threshold_bytes);
 }
 
@@ -1615,11 +1615,11 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
     auto master_flags = {
       "--TEST_disable_split_tablet_candidate_processing=true",
-      "--tablet_split_low_phase_tablet_count_per_node=-1",
-      "--tablet_split_high_phase_tablet_count_per_node=-1",
+      "--tablet_split_low_phase_shard_count_per_node=-1",
+      "--tablet_split_high_phase_shard_count_per_node=-1",
       "--tablet_split_low_phase_size_threshold_bytes=-1",
       "--tablet_split_high_phase_size_threshold_bytes=-1",
-      "--tablet_split_final_phase_size_threshold_bytes=-1",
+      "--tablet_force_split_threshold_bytes=-1",
     };
     for (const auto& flag : master_flags) {
       this->mini_cluster_opt_.extra_master_flags.push_back(flag);
