@@ -298,7 +298,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
   }
 
   std::unique_ptr<YBClient> client_;
-  gscoped_ptr<LinkedListTester> tester_;
+  std::unique_ptr<LinkedListTester> tester_;
 };
 
 // Generates the linked list pattern.

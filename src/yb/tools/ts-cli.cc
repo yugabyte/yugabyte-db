@@ -207,9 +207,9 @@ class TsAdminClient {
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
   shared_ptr<server::GenericServiceProxy> generic_proxy_;
-  gscoped_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
-  gscoped_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
-  gscoped_ptr<consensus::ConsensusServiceProxy> cons_proxy_;
+  std::unique_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+  std::unique_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
+  std::unique_ptr<consensus::ConsensusServiceProxy> cons_proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };

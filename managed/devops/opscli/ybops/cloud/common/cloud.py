@@ -30,6 +30,8 @@ import tempfile
 import yaml
 import socket
 import time
+import re
+import ssl
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -212,6 +214,74 @@ class AbstractCloud(AbstractCommandParser):
             # If there is an error code, that means the files are different. Should fail.
             remote_shell.run_command('diff -Z {} {}'.format(root_cert_path, yb_root_cert_path))
 
+    def __verify_certs_hostname(self, node_crt_path, ssh_options):
+        host = ssh_options["ssh_host"]
+        remote_shell = RemoteShell(ssh_options)
+
+        # Get readable text version of cert
+        cert_text = remote_shell.run_command(
+            "openssl x509 -noout -text -in {}".format(node_crt_path))
+        if "Certificate:" not in cert_text.stdout:
+            raise YBOpsRuntimeError("Unable to decode the node cert: {}.".format(node_crt_path))
+
+        # Extract commonName and subjectAltName from the cert text output
+        regex_out = re.findall(" Subject:.*CN=([\\S]*)$| (DNS|IP Address):([\\S]*?)(,|$)",
+                               cert_text.stdout, re.M)
+        # Hostname will be present in group 0 for CN and in group 1 and 2 for SAN
+        cn_entry = [x[0] for x in regex_out if x[0] != '']
+        san_entry = {(x[1], x[2]) for x in regex_out if x[0] == ''}
+
+        # Create cert object following the below dictionary format
+        # https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert
+        cert_cn = {'subject': ((('commonName', cn_entry[0] if len(cn_entry) > 0 else ''),),)}
+        cert_san = {'subjectAltName': tuple(san_entry)}
+
+        # Check if the provided hostname matches with either CN or SAN
+        cn_matched = False
+        san_matched = False
+        try:
+            ssl.match_hostname(cert_cn, host)
+            cn_matched = True
+        except ssl.CertificateError:
+            pass
+        try:
+            ssl.match_hostname(cert_san, host)
+            san_matched = True
+        except ssl.CertificateError:
+            pass
+
+        if not cn_matched and not san_matched:
+            raise YBOpsRuntimeError(
+                "'{}' does not match with any entry in CN or SAN of the node cert: {}, "
+                "cert_cn: {}, cert_san: {}".format(host, node_crt_path, cert_cn, cert_san))
+
+    def verify_certs(self, root_crt_path, node_crt_path, ssh_options, verify_hostname=False):
+        remote_shell = RemoteShell(ssh_options)
+
+        try:
+            remote_shell.run_command('which openssl')
+        except YBOpsRuntimeError:
+            logging.debug("Openssl not found, skipping certificate verification.")
+            return
+
+        # Verify if the node cert is not expired
+        validity_verify = remote_shell.run_command_raw(
+            "openssl x509 -noout -checkend 86400 -in {}".format(node_crt_path))
+        if validity_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                "Node cert: {} is expired or will expire in one day.".format(node_crt_path))
+
+        # Verify if node cert has valid signature
+        signature_verify = remote_shell.run_command_raw(
+            "openssl verify -CAfile {} {} | egrep error".format(root_crt_path, node_crt_path))
+        if signature_verify.exited != 1:
+            raise YBOpsRuntimeError(
+                "Node cert: {} is not signed by the provided root cert: {}.".format(node_crt_path,
+                                                                                    root_crt_path))
+
+        if verify_hostname:
+            self.__verify_certs_hostname(node_crt_path, ssh_options)
+
     def __copy_certs(self, ssh_options, remote_shell, root_cert_path,
                      node_cert_path, node_key_path, certs_dir):
         node_ip = ssh_options["ssh_host"]
@@ -234,22 +304,25 @@ class AbstractCloud(AbstractCommandParser):
 
     def copy_certs(self, extra_vars, ssh_options):
         remote_shell = RemoteShell(ssh_options)
+
         if "root_cert_path" in extra_vars:
-            node_ip = ssh_options["ssh_host"]
             root_cert_path = extra_vars["root_cert_path"]
             node_cert_path = extra_vars["node_cert_path"]
             node_key_path = extra_vars["node_key_path"]
             certs_node_dir = extra_vars["certs_node_dir"]
+            self.verify_certs(root_cert_path, node_cert_path, ssh_options, verify_hostname=True)
             self.__copy_certs(ssh_options, remote_shell, root_cert_path, node_cert_path,
                               node_key_path, certs_node_dir)
+
         if "client_root_cert_path" in extra_vars:
-            node_ip = ssh_options["ssh_host"]
             root_cert_path = extra_vars["client_root_cert_path"]
             node_cert_path = extra_vars["client_node_cert_path"]
             node_key_path = extra_vars["client_node_key_path"]
             certs_client_dir = extra_vars["certs_client_dir"]
+            self.verify_certs(root_cert_path, node_cert_path, ssh_options, verify_hostname=False)
             self.__copy_certs(ssh_options, remote_shell, root_cert_path, node_cert_path,
                               node_key_path, certs_client_dir)
+
         if "client_cert_path" in extra_vars:
             client_cert_path = extra_vars["client_cert_path"]
             client_key_path = extra_vars["client_key_path"]

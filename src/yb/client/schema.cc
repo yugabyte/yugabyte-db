@@ -510,8 +510,8 @@ int32_t YBSchema::ColumnId(size_t idx) const {
   return schema_->column_id(idx);
 }
 
-YBPartialRow* YBSchema::NewRow() const {
-  return new YBPartialRow(schema_.get());
+std::unique_ptr<YBPartialRow> YBSchema::NewRow() const {
+  return std::make_unique<YBPartialRow>(schema_.get());
 }
 
 const std::vector<ColumnSchema>& YBSchema::columns() const {

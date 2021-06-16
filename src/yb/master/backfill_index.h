@@ -290,7 +290,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
       HybridTime min_cutoff)
       : RetryingTSRpcTask(
             backfill_table->master(), backfill_table->threadpool(),
-            gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get()),
+            std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get()),
         backfill_table_(backfill_table),
         tablet_(tablet),
         min_cutoff_(min_cutoff) {

@@ -51,6 +51,7 @@
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/string_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/logging.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fault_injection.h"
@@ -3209,6 +3210,20 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
     bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd) {
   mutex_.AssertHeld();
 
+  auto scope_exit = yb::ScopeExit([&cfd] {
+    if (cfd && cfd->Unref()) {
+      delete cfd;
+    }
+  });
+
+  if (cfd) {
+    // cfd is not nullptr when we get here from DBImpl::FlushTask and in this case we need to reset
+    // pending flush flag.
+    // In other cases (getting here from DBImpl::BGWorkFlush) this is done by
+    // DBImpl::PopFirstFromFlushQueue called below.
+    cfd->set_pending_flush(false);
+  }
+
   Status status = bg_error_;
   if (status.ok() && IsShuttingDown() && disable_flush_on_shutdown_) {
     status = STATUS(ShutdownInProgress, "");
@@ -3235,9 +3250,6 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
       cfd = first_cfd;
       break;
     }
-  } else {
-    DCHECK(cfd->pending_flush());
-    cfd->set_pending_flush(false);
   }
 
   if (cfd == nullptr) {
@@ -3253,12 +3265,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
       << "compaction slots scheduled " << bg_compaction_scheduled_ << ", "
       << "compaction tasks " << yb::ToString(compaction_tasks_) << ", "
       << "total compaction slots " << BGCompactionsAllowed();
-  auto result = FlushMemTableToOutputFile(cfd, mutable_cf_options, made_progress,
+  return FlushMemTableToOutputFile(cfd, mutable_cf_options, made_progress,
                                           job_context, log_buffer);
-  if (cfd->Unref()) {
-    delete cfd;
-  }
-  return result;
 }
 
 void DBImpl::WaitAfterBackgroundError(
