@@ -215,6 +215,7 @@ class UniverseDetail extends Component {
       showDeleteUniverseModal,
       showToggleUniverseStateModal,
       showToggleBackupModal,
+      updateBackupState,
       closeModal,
       customer,
       customer: { currentCustomer },
@@ -468,10 +469,19 @@ class UniverseDetail extends Component {
         return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
       }) !== undefined;
 
-
-
-
-    
+    /**
+     * Handle the backup state toggle.
+     * i.e open the confirmation model if backup is to be disabled.
+     * else, Enable the backups.
+     */
+    const handleBackupToggle = () => {
+      const takeBackups =
+        currentUniverse.data.universeConfig &&
+        currentUniverse.data.universeConfig?.takeBackups === 'true';
+      takeBackups
+        ? showToggleBackupModal()
+        : updateBackupState(currentUniverse.data.universeUUID, !takeBackups);
+    };
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -625,7 +635,7 @@ class UniverseDetail extends Component {
                       {!universePaused && (
                         <YBMenuItem
                           disabled={updateInProgress}
-                          onClick={showToggleBackupModal}
+                          onClick={handleBackupToggle}
                           availability={getFeatureState(
                             currentCustomer.data.features,
                             'universes.backup'

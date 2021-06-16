@@ -7,7 +7,9 @@ import {
   fetchUniverseInfoResponse,
   resetUniverseInfo,
   getHealthCheck,
-  getHealthCheckResponse
+  getHealthCheckResponse,
+  updateBackupState,
+  updateBackupStateResponse
 } from '../../../actions/universe';
 import {
   fetchCustomerTasks,
@@ -81,6 +83,14 @@ const mapDispatchToProps = (dispatch) => {
     },
     showToggleBackupModal: () => {
       dispatch(openDialog('toggleBackupModalForm'));
+    },
+    updateBackupState: (universeUUID, flag) => {
+      dispatch(updateBackupState(universeUUID, flag)).then((response) => {
+        dispatch(updateBackupStateResponse(response.payload));
+        dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+          dispatch(fetchUniverseInfoResponse(response.payload));
+        });
+      });
     },
     closeModal: () => {
       dispatch(closeDialog());

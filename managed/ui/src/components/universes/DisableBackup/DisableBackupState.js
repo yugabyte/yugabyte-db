@@ -14,9 +14,7 @@ export const ToggleBackupState = (props) => {
     universe: { universeConfig },
     updateBackupState
   } = props;
-  const takeBackups = universeConfig && universeConfig?.takeBackups === 'true';
-  const backupState = takeBackups ? 'Disable Backup' : 'Enable Backup';
-  const modalTitle = `${backupState} for: ${props?.universe?.name}?`;
+  const modalTitle = `Disable Backup for: ${props?.universe?.name}?`;
 
   // toggle backup state for current universe
   const submitBackupState = () => {

@@ -1,6 +1,6 @@
 import { connect } from "react-redux";
 import { fetchUniverseInfo, fetchUniverseInfoResponse, updateBackupState, updateBackupStateResponse } from "../../../actions/universe";
-import { ToggleBackupState } from "./ToggleBackupState";
+import { ToggleBackupState } from "./DisableBackupState";
 
 
 const mapDispatchToProps = (dispatch) => {
