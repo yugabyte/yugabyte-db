@@ -381,22 +381,24 @@ DEFINE_int64(tablet_split_size_threshold_bytes, 0,
              "splitting is disabled if this value is set to 0.");
 TAG_FLAG(tablet_split_size_threshold_bytes, hidden);
 
-DEFINE_int64(tablet_split_low_phase_tablet_count_per_node, 1,
+DEFINE_int64(tablet_split_low_phase_shard_count_per_node, 1,
              "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
              "as defined by tablet_split_low_phase_size_threshold_bytes.");
-DEFINE_int64(tablet_split_high_phase_tablet_count_per_node, 32,
+DEFINE_int64(tablet_split_high_phase_shard_count_per_node, 32,
              "The per-node tablet count until which a table is splitting at the phase 2 threshold, "
              "as defined by tablet_split_high_phase_size_threshold_bytes.");
 
 DEFINE_int64(tablet_split_low_phase_size_threshold_bytes, 1_GB,
              "The tablet size threshold at which to split tablets in phase 1. "
-             "See tablet_split_low_phase_tablet_count_per_node.");
+             "See tablet_split_low_phase_shard_count_per_node.");
 DEFINE_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
              "The tablet size threshold at which to split tablets in phase 2. "
-             "See tablet_split_high_phase_tablet_count_per_node.");
-DEFINE_int64(tablet_split_final_phase_size_threshold_bytes, 32_GB,
-             "The tablet size threshold at which to split tablets after both phases have been "
-             "surpassed.");
+             "See tablet_split_high_phase_shard_count_per_node.");
+DEFINE_int64(tablet_force_split_threshold_bytes, 50_GB,
+             "The tablet size threshold at which to split tablets regardless of how many tablets "
+             "exist in the table already. This should be configured to prevent runaway whale "
+             "tablets from forming in your cluster even if both automatic splitting phases have "
+             "been finished.");
 
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
@@ -2177,13 +2179,13 @@ bool CatalogManager::ShouldSplitValidCandidate(
   auto num_servers = ts_descs.size();
   int64 num_tablets_per_server = tablet_info.table()->NumTablets() / num_servers;
 
-  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_tablet_count_per_node) {
+  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
     return size > FLAGS_tablet_split_low_phase_size_threshold_bytes;
   }
-  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_tablet_count_per_node) {
+  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
     return size > FLAGS_tablet_split_high_phase_size_threshold_bytes;
   }
-  return size > FLAGS_tablet_split_final_phase_size_threshold_bytes;
+  return size > FLAGS_tablet_force_split_threshold_bytes;
 }
 
 Status CatalogManager::DoSplitTablet(
