@@ -12,6 +12,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Singleton;
+import com.google.auth.Credentials;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageOptions;
+import com.google.api.gax.paging.Page;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.StorageException;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
 import org.apache.commons.lang3.StringUtils;
@@ -20,6 +27,7 @@ import play.libs.Json;
 import javax.inject.Inject;
 import javax.validation.ConstraintViolation;
 import javax.validation.Validator;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -57,6 +65,8 @@ public class CustomerConfigValidator {
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
 
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+
+  public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
 
@@ -229,6 +239,55 @@ public class CustomerConfigValidator {
     }
   }
 
+  public static class ConfigGCSPreflightCheckValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigGCSPreflightCheckValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data, ObjectNode errorJson) {
+      if (this.name.equals(NAME_GCS) && data.get(GCS_CREDENTIALS_JSON_FIELDNAME) != null) {
+        String gsUriPath = data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String gsUri = gsUriPath;
+        // Assuming bucket name will always start with gs:// otherwise that will be invalid
+        if (gsUriPath.length() < 5 || !gsUriPath.startsWith("gs://")) {
+          errorJson.set(fieldName, Json.newArray().add("Invalid gsUriPath format: " + gsUriPath));
+        } else {
+          gsUriPath = gsUriPath.substring(5);
+          String[] bucketSplit = gsUriPath.split("/", 2);
+          String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
+          String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
+          String gcpCredentials = data.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
+          try {
+            Credentials credentials =
+                GoogleCredentials.fromStream(
+                    new ByteArrayInputStream(gcpCredentials.getBytes("UTF-8")));
+            Storage storage =
+                StorageOptions.newBuilder().setCredentials(credentials).build().getService();
+            Page<Blob> blobs =
+                storage.list(
+                    bucketName,
+                    Storage.BlobListOption.prefix(prefix),
+                    Storage.BlobListOption.currentDirectory());
+            if (!blobs.getValues().iterator().hasNext()) {
+              errorJson.set(
+                  fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
+            }
+          } catch (StorageException exp) {
+            errorJson.set(
+                fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
+          } catch (Exception e) {
+            errorJson.set(fieldName, Json.newArray().add("Invalid GCP Credential Json."));
+          }
+        }
+      }
+    }
+  }
+
   private final List<ConfigValidator> validators = new ArrayList<>();
 
   @Inject
@@ -254,6 +313,8 @@ public class CustomerConfigValidator {
             PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
     validators.add(
         new ConfigS3PreflightCheckValidator(STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME));
+    validators.add(
+        new ConfigGCSPreflightCheckValidator(STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME));
   }
 
   public ObjectNode validateFormData(JsonNode formData) {
