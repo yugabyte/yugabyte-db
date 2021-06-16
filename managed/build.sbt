@@ -290,7 +290,8 @@ runPlatform := {
 libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
 
 libraryDependencies ++= Seq(
-  "org.webjars" % "swagger-ui" % "3.43.0",
+  // We wont use swagger-ui jar since we want to change some of the assets:
+  //  "org.webjars" % "swagger-ui" % "3.43.0",
   "io.swagger" %% "swagger-play2" % "1.6.1",
   "io.swagger" %% "swagger-scala-module" % "1.0.5",
   "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.8"
