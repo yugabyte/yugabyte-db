@@ -966,6 +966,55 @@ SELECT * FROM test_method WHERE h2 = 258;
   2 | 258 |  1 |  2 | 10 | 20
 (1 row)
 
+-- Test more HASH key cases in PRIMARY KEY
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int);
+-- These should fail
+ALTER TABLE test_hash ADD PRIMARY KEY ((h1 % 8, h2) HASH, r1, r2);
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY ((h1 % 8, h2) HASH, r1...
+                                  ^
+ALTER TABLE test_hash ADD PRIMARY KEY ((h1, h2) HASH, (r1 + r2) DESC);
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY ((h1, h2) HASH, (r1 + ...
+                                  ^
+-- Extra parenthesis turns the column group into a RowExpr - should fail
+ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)) HASH);
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)) HASH);
+                                  ^
+ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)));
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)));
+                                  ^
+-- This should succeed
+CREATE UNIQUE INDEX test_hash_h1_h2mod8_r2_r1_idx ON test_hash ((h1, (h2 % 8)) HASH, r2, r1);
+-- This should fail
+ALTER TABLE test_hash ADD PRIMARY KEY USING INDEX test_hash_h1_h2mod8_r2_r1_idx;
+ERROR:  index "test_hash_h1_h2mod8_r2_r1_idx" contains expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY USING INDEX test_hash_...
+                                  ^
+DETAIL:  Cannot create a primary key or unique constraint using such an index.
+-- These CREATE TABLE statements should fail
+DROP TABLE test_hash;
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY (r1, (h1, h2) HASH));
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 3:   PRIMARY KEY (r1, (h1, h2) HASH));
+                           ^
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1 + 666) HASH));
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 3:   PRIMARY KEY ((h1 + 666) HASH));
+          ^
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1, (h2 + 666)) HASH, r1, r2));
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 3:   PRIMARY KEY ((h1, (h2 + 666)) HASH, r1, r2));
+          ^
 -- Test ordering on split indexes
 CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
 CREATE INDEX ON tbl(v ASC) SPLIT AT VALUES((10), (20), (30));
