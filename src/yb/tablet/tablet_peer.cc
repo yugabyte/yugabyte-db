@@ -413,13 +413,13 @@ const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
   return consensus_->CommittedConfig();
 }
 
-bool TabletPeer::StartShutdown() {
+bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
     if (tablet_) {
-      tablet_->StartShutdown();
+      tablet_->StartShutdown(is_drop_table);
     }
   }
 
@@ -529,7 +529,7 @@ void TabletPeer::WaitUntilShutdown() {
 }
 
 Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  bool isShutdownInitiated = StartShutdown();
+  bool isShutdownInitiated = StartShutdown(is_drop_table);
 
   RETURN_NOT_OK(AbortSQLTransactions());
 
