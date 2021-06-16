@@ -60,9 +60,9 @@ class AbstractCloud(AbstractCommandParser):
         vars_file = os.path.join(devops_home,
                                  AbstractCloud.VARS_DIR_SUFFIX,
                                  "{}.yml".format(self.name))
-        self.ansible_vars = yaml.load(open(vars_file))
+        self.ansible_vars = yaml.load(open(vars_file), yaml.SafeLoader)
         with open(vars_file, 'r') as f:
-            self.ansible_vars = yaml.load(f) or {}
+            self.ansible_vars = yaml.load(f, yaml.SafeLoader) or {}
 
         # The metadata file name is the same internally and externally.
         metadata_filename = "{}-metadata.yml".format(self.name)
@@ -74,7 +74,7 @@ class AbstractCloud(AbstractCommandParser):
             path = path_getter(metadata_filename)
             if os.path.isfile(path):
                 with open(path) as ymlfile:
-                    metadata = yaml.load(ymlfile)
+                    metadata = yaml.load(ymlfile, yaml.SafeLoader)
                     self.metadata.update(metadata)
 
     def update_metadata(self, override_filename):
