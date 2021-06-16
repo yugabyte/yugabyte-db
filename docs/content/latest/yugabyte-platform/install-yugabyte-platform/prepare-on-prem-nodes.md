@@ -1,6 +1,6 @@
 ---
 title: Prepare nodes (on-prem)
-headerTitle: Prepare nodes (on-prem)
+headerTitle: Prepare nodes for on-premises deployment
 linkTitle: Prepare nodes (on-prem)
 description: Prepare YugabyteDB nodes for on-premises deployments.
 menu:
@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-For on-premises deployments of Yugabyte universes, you need to import nodes that can be managed by the Yugabyte Platform. This page outlines the steps required to prepare these YugabyteDB nodes for on-premises deployments.
+For on-premises deployments of Yugabyte universes, you need to import nodes that can be managed by Yugabyte Platform. This page outlines the steps required to prepare these YugabyteDB nodes for on-premises deployments.
 
 ## Ports
 
@@ -40,35 +40,37 @@ For more information on ports used by YugabyteDB, refer to [Default ports](../..
 
 ## Preparing nodes
 
+To prepare nodes for on premises deployment:
+
 1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/latest/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/latest/deploy/checklist/#running-on-public-clouds). 
 1. Install the prerequisites and verify the system resource limits as described in [system configuration](/latest/deploy/manual-deployment/system-config).
-1. You need `ssh` access to the machine and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
+1. Ensure you have `ssh` access to the machine and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
 1. Verify that you can `ssh` into this node (from your local machine if the node has a public address).
 
     ```sh
     $ ssh -i your_private_key.pem ssh_user@node_ip
     ```
 
-The following actions will be performed with sudo access.
+The following actions are performed with sudo access:
 
 * Create the `yugabyte:yugabyte` user + group.
-* Set home dir /home/yugabyte.
+* Set the home directory to /home/yugabyte.
 * Create the `prometheus:prometheus` user + group.
 
-{{< tip title="Tip" >}}
+  {{< tip title="Tip" >}}
 If you're using the LDAP directory for managing system users, you can pre-provision Yugabyte and Prometheus users: 
 
 * The `yugabyte` user should belong to the `yugabyte` group.
 
-* Set the home dir for the `yugabyte` user (default /home/yugabyte) and ensure the directory is owned by `yugabyte:yugabyte`. The home directory will be used during cloud provider configuration.
+* Set the home directory for the `yugabyte` user (default /home/yugabyte) and ensure the directory is owned by `yugabyte:yugabyte`. The home directory is used during cloud provider configuration.
     
-* The Prometheus username and the group can be user-defined. You will enter the custom user during cloud provider configuration.
-{{< /tip >}}
+* The Prometheus username and the group can be user-defined. You enter the custom user during cloud provider configuration.
+  {{< /tip >}}
 
-* Ensure you can schedule Cron jobs with Crontab. Cron jobs are used for health monitoring, log file rotation, and system core files cleanup.
+* Ensure you can schedule Cron jobs with Crontab. Cron jobs are used for health monitoring, log file rotation, and cleanup of system core files.
 
-{{< tip title="Tip" >}}
-For any 3rd party cron scheduling tools, you can add these cron entries and disable Crontab. Disabling Crontab will create alerts after the universe creation that can be ignored. But you need to ensure cron jobs are set appropriately for the platform to work as expected. 
+  {{< tip title="Tip" >}}
+For any 3rd party cron scheduling tools, you can disable Crontab and add these cron entries: 
 
 ```sh
 # Ansible: cleanup core files hourly
@@ -81,10 +83,11 @@ For any 3rd party cron scheduling tools, you can add these cron entries and disa
 */1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
 ```
 
-{{< /tip >}}
+Disabling Crontab creates alerts after the universe is created, but they can be ignored. But you need to ensure cron jobs are set appropriately for the platform to work as expected.
+  {{< /tip >}}
 
 * Verify that Python 2.7 is installed.
-* Enable core dumps + set ulimits.
+* Enable core dumps and set ulimits.
 
     ```sh
     *       hard        core        unlimited

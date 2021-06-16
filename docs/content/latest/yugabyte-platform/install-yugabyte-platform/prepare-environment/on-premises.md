@@ -58,7 +58,7 @@ showAsideToc: true
 
 </ul>
 
-To run a Yugabyte universe on a private cloud, you need to prepare one machine to run the Yugabyte Platform, which is in turn used to install and manage the nodes that will make up the universe.
+To run a Yugabyte universe on a private cloud, you need to prepare one computer to run the Yugabyte Platform, which is in turn used to install and manage the nodes that will make up the universe.
 
 The platform node has the following requirements:
 

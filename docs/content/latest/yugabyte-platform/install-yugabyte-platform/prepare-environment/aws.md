@@ -68,7 +68,7 @@ In order to access Yugabyte Platform from outside the AWS environment, you would
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
 - View the Yugabyte Platform console (port `tcp:80`)
 
-In addition, if you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 To create a security group that enables these, go to **EC2 > Security Groups**, click **Create Security Group** and then add the following values:
 
