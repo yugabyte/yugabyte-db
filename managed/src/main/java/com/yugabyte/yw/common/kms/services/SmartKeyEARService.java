@@ -48,7 +48,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
    *     for
    * @return a session token to be used to authorize subsequent requests
    */
-  private String retrieveSessionAuthorization(ObjectNode authConfig) {
+  public String retrieveSessionAuthorization(ObjectNode authConfig) {
     final String endpoint = "/sys/v1/session/auth";
     final String apiToken = authConfig.get("api_key").asText();
     final String baseUrl = authConfig.get("base_url").asText();
