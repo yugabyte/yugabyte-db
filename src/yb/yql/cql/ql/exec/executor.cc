@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/schema.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
@@ -2200,16 +2201,23 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
   }
 
   // For update/delete, check if it just deletes some columns. If so, add the rest columns to be
-  // read so that tserver can check if they are all null also, in which case the row will be
-  // removed after the DML.
+  // read so that tserver can check if they are all null also. We require this information (whether
+  // all columns are null) for rows which don't have a liveness column - for such a row (i.e.,
+  // without liveness column, if all columns are null, the row is as good as deleted. And in this
+  // case, the tserver will have to remove the corresponding index entries from indexes.
   if ((req->type() == QLWriteRequestPB::QL_STMT_UPDATE ||
        req->type() == QLWriteRequestPB::QL_STMT_DELETE) &&
       !req->column_values().empty()) {
     bool all_null = true;
     std::set<int32> column_dels;
+    const Schema& schema = tnode->table()->InternalSchema();
     for (const QLColumnValuePB& column_value : req->column_values()) {
+      const ColumnSchema& col_desc = VERIFY_RESULT(
+        schema.column_by_id(ColumnId(column_value.column_id())));
+
       if (column_value.has_expr() &&
           column_value.expr().has_value() &&
+          !col_desc.is_static() && // Don't consider static column values.
           !IsNull(column_value.expr().value())) {
         all_null = false;
         break;
@@ -2217,13 +2225,29 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
       column_dels.insert(column_value.column_id());
     }
     if (all_null) {
-      const Schema& schema = tnode->table()->InternalSchema();
+      // Ensure all columns of row are read by docdb layer before performing the write operation.
       const MCSet<int32>& column_refs = tnode->column_refs();
       for (size_t idx = schema.num_key_columns(); idx < schema.num_columns(); idx++) {
         const int32 column_id = schema.column_id(idx);
         if (!schema.column(idx).is_static() &&
-            column_refs.count(column_id) != 0 &&
-            column_dels.count(column_id) != 0) {
+            column_refs.count(column_id) == 0 && // Add col only if not already in column_refs.
+            column_dels.count(column_id) == 0) {
+            // If col is already in delete list, don't add it. This is okay because of the following
+            // reason.
+            //
+            // We reach here if we have -
+            //   1. an UPDATE statement with all = NULL type of set clauses
+            //   2. a DELETE statement on some cols. This is as good as setting those cols to NULL.
+            //
+            // If column is not in column_refs but already there in the column_dels list, we need
+            // not add it in column_refs because the IsRowDeleted() function in cql_operation.cc
+            // doesn't need to know if this column was NULL or not in the old/existing row.
+            // Since the new row has BULL for this column, the loop in the function "continue"s.
+            //
+            // Also, if a column is deleted/set to NULL, you might wonder why we don't add it to
+            // column_refs in case it is part of an index (in which case we need to delete the
+            // index entry for the old value). But this isn't an issue, because the column would
+            // already have been added to column_refs as part of AnalyzeIndexesForWrites().
           req->mutable_column_refs()->add_ids(column_id);
         }
       }
