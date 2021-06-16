@@ -18,6 +18,7 @@ import com.google.cloud.storage.StorageOptions;
 import com.google.api.gax.paging.Page;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.StorageException;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
 import org.apache.commons.lang3.StringUtils;
@@ -272,14 +273,12 @@ public class CustomerConfigValidator {
                     bucketName,
                     Storage.BlobListOption.prefix(prefix),
                     Storage.BlobListOption.currentDirectory());
-            final List<Blob> blobItems = new ArrayList<>();
-            for (Blob blob : blobs.iterateAll()) {
-              blobItems.add(blob);
-            }
-            if (blobItems.size() == 0) {
+            if (!blobs.getValues().iterator().hasNext()) {
               errorJson.set(
                   fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
             }
+          } catch (StorageException exp) {
+            errorJson.set(fieldName, Json.newArray().add(exp.getMessage()));
           } catch (Exception e) {
             errorJson.set(fieldName, Json.newArray().add("Invalid GCP Credential Json."));
           }
