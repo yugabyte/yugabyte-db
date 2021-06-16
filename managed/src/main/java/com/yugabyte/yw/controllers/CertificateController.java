@@ -43,18 +43,42 @@ public class CertificateController extends AuthenticatedController {
     String certContent = formData.get().certContent;
     String keyContent = formData.get().keyContent;
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
-    if (certType == CertificateInfo.Type.SelfSigned) {
-      if (certContent == null || keyContent == null) {
-        throw new YWServiceException(BAD_REQUEST, "Certificate or Keyfile can't be null.");
-      }
-    } else {
-      if (customCertInfo == null) {
-        throw new YWServiceException(BAD_REQUEST, "Custom Cert Info must be provided.");
-      } else if (customCertInfo.nodeCertPath == null
-          || customCertInfo.nodeKeyPath == null
-          || customCertInfo.rootCertPath == null) {
-        throw new YWServiceException(BAD_REQUEST, "Custom Cert Paths can't be empty.");
-      }
+    CertificateParams.CustomServerCertData customServerCertData =
+        formData.get().customServerCertData;
+    switch (certType) {
+      case SelfSigned:
+        {
+          if (certContent == null || keyContent == null) {
+            throw new YWServiceException(BAD_REQUEST, "Certificate or Keyfile can't be null.");
+          }
+          break;
+        }
+      case CustomCertHostPath:
+        {
+          if (customCertInfo == null) {
+            throw new YWServiceException(BAD_REQUEST, "Custom Cert Info must be provided.");
+          } else if (customCertInfo.nodeCertPath == null
+              || customCertInfo.nodeKeyPath == null
+              || customCertInfo.rootCertPath == null) {
+            throw new YWServiceException(BAD_REQUEST, "Custom Cert Paths can't be empty.");
+          }
+          break;
+        }
+      case CustomServerCert:
+        {
+          if (customServerCertData == null) {
+            throw new YWServiceException(BAD_REQUEST, "Custom Server Cert Info must be provided.");
+          } else if (customServerCertData.serverCertContent == null
+              || customServerCertData.serverKeyContent == null) {
+            throw new YWServiceException(
+                BAD_REQUEST, "Custom Server Cert and Key content can't be empty.");
+          }
+          break;
+        }
+      default:
+        {
+          throw new YWServiceException(BAD_REQUEST, "certType should be valid.");
+        }
     }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
     UUID certUUID =
@@ -67,7 +91,8 @@ public class CertificateController extends AuthenticatedController {
             certStart,
             certExpiry,
             certType,
-            customCertInfo);
+            customCertInfo,
+            customServerCertData);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return YWResults.withData(certUUID);
   }
