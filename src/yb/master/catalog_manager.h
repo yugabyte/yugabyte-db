@@ -754,6 +754,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS DeleteTablet(
       const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc);
 
+  CHECKED_STATUS DdlLog(
+      const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
+
   CHECKED_STATUS DeleteTablets(const std::vector<TabletId>& tablet_ids);
 
   // Test wrapper around protected DoSplitTablet method.

@@ -77,10 +77,10 @@ CHECKED_STATUS SysCatalogTable::AddItems(const vector<Item>& items, int64_t lead
   return MutateItems(items, QLWriteRequestPB::QL_STMT_INSERT, leader_term);
 }
 
-template <class Item>
+template <class Items1, class Items2>
 CHECKED_STATUS SysCatalogTable::AddAndUpdateItems(
-    const vector<Item>& added_items,
-    const vector<Item>& updated_items,
+    const Items1& added_items,
+    const Items2& updated_items,
     int64_t leader_term) {
   auto w = NewWriter(leader_term);
   for (const auto& item : added_items) {
