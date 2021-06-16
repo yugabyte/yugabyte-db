@@ -106,7 +106,7 @@ For more information and examples, see the following:
 A foreign key represents one or more columns in a table referencing the following: 
 
 - A primary key in another table.
-- A [unique index](../indexes-1#using-the-unique-index) or columns restricted with a [unique constraint](#unique-constraint) in another table.
+- A [unique index](../indexes-1#using-a-unique-index) or columns restricted with a [unique constraint](#unique-constraint) in another table.
 
 Tables can have multiple foreign keys.
 
@@ -250,7 +250,7 @@ For additional examples, see [Table with CHECK constraint](https://docs.yugabyte
 
 The `UNIQUE` constraint allows you to ensure that values stored in columns are unique across rows in a table. During inserting new rows or updating existing ones, the `UNIQUE` constraint checks if the value is already in the table, in which case the change is rejected and an error is displayed.
 
-When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../indexes-1#using-the-unique-index) on these columns.
+When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../indexes-1#using-a-unique-index) on these columns.
 
 The following example creates a table with a `UNIQUE` constraint for the `phone` column:
 
@@ -288,7 +288,7 @@ CREATE TABLE employees (
 );
 ```
 
-For additional examples, see [Table with UNIQUE constraint](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
+For additional examples, see [Table with UNIQUE constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
 
 ## NOT NULL Constraint
 
