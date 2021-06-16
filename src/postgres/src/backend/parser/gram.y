@@ -3719,7 +3719,8 @@ ColConstraint:
 			| ConstraintAttr						{ $$ = $1; }
 			| COLLATE any_name
 				{
-					parser_ybc_signal_unsupported(@1, "COLLATE", 1127);
+					if (!YBIsCollationEnabled())
+						parser_ybc_signal_unsupported(@1, "COLLATE", 1127);
 					/*
 					 * Note: the CollateClause is momentarily included in
 					 * the list built by ColQualList, but we split it out
@@ -6297,7 +6298,8 @@ DefineStmt:
 				}
 			| CREATE COLLATION any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE COLLATION");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "CREATE COLLATION");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_COLLATION;
 					n->args = NIL;

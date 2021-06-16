@@ -1296,3 +1296,13 @@ yb_servers(PG_FUNCTION_ARGS)
   }
   SRF_RETURN_DONE(funcctx);
 }
+
+bool IsYBSupportedLibcLocale(const char *localebuf) {
+	/*
+	 * For libc mode, Yugabyte only supports the basic locales.
+	 */
+	if (strcmp(localebuf, "C") == 0 || strcmp(localebuf, "POSIX") == 0)
+		return true;
+	return strcasecmp(localebuf, "en_US.utf8") == 0 ||
+		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
+}
