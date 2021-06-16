@@ -6,7 +6,7 @@
 
 The current Yugabyte JDBC driver is built on the Postgres JDBC driver. It works fine with YugabyteDB as YugabyteDB is wire compatible with PostgreSQL. However, YugabyteDB being a distributed database can use some smarts to not only increase performance but also obviate the need of external load balancers like HAProxy, pgpool etc. Elaborating on the four key motivations.
 
-### Cluster Awareness to eliminate need for a load balance
+### Cluster Awareness to eliminate need for a load balancer
 
 Each of the available tservers can be connected to for a database connection. However due to convenience client applications just use a single url (host port combination specific to one tserver) and make connections to that. This is not ideal and leads to operational complexities. This is because the load is not uniformly distributed across all the peers. Also in case any tserver crashes or is unavailable due to host specific problems, the client application will stop working despite the presence of other healthy servers in the system. External load balancers like HAProxy and pgpool etc can be used to uniformly distribute the client load to multiple servers behind the proxy, however that has two main disadvantages. Firstly, configure and maintain an extra software component which adds to complexity and two, in a true distributed system like YugabyteDB, clusters are configured to scale up and down depending on the load and in that case the external load balancers also would be needed to everytime made aware of the changing list of servers behind them.
 
