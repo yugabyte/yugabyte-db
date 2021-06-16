@@ -209,10 +209,6 @@ class DBImpl::ThreadPoolTask : public yb::PriorityThreadPoolTask {
  public:
   explicit ThreadPoolTask(DBImpl* db_impl) : db_impl_(db_impl) {}
 
-  bool BelongsTo(void* key) override {
-    return key == db_impl_;
-  }
-
   void Run(const Status& status, yb::PriorityThreadPoolSuspender* suspender) override {
     if (!status.ok()) {
       LOG_WITH_PREFIX(INFO) << "Task cancelled " << ToString() << ": " << status;
@@ -260,6 +256,10 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     db_impl->mutex_.AssertHeld();
   }
 
+  bool ShouldRemoveWithKey(void* key) override {
+    return key == db_impl_;
+  }
+
   void DoRun(yb::PriorityThreadPoolSuspender* suspender) override {
     compaction_->SetSuspender(suspender);
     db_impl_->BackgroundCallCompaction(manual_compaction_, std::move(compaction_holder_), this);
@@ -298,7 +298,8 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 
   std::string ToString() const override {
     return yb::Format(
-        "{ compact db: $0 is_manual: $1 }", db_impl_->GetName(), manual_compaction_ != nullptr);
+        "{ compact db: $0 is_manual: $1 serial_no: $2 }", db_impl_->GetName(),
+        manual_compaction_ != nullptr, SerialNo());
   }
 
   bool UpdatePriority() override {
@@ -362,6 +363,10 @@ class DBImpl::FlushTask : public ThreadPoolTask {
   FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd)
       : ThreadPoolTask(db_impl), cfd_(cfd) {}
 
+  bool ShouldRemoveWithKey(void* key) override {
+    return key == db_impl_ && db_impl_->disable_flush_on_shutdown_;
+  }
+
   void DoRun(yb::PriorityThreadPoolSuspender* suspender) override {
     // Since flush tasks has highest priority we could don't use suspender for them.
     db_impl_->BackgroundCallFlush(cfd_);
@@ -391,7 +396,7 @@ class DBImpl::FlushTask : public ThreadPoolTask {
   }
 
   std::string ToString() const override {
-    return yb::Format("{ flush db: $0 }", db_impl_->GetName());
+    return yb::Format("{ flush db: $0 serial_no: $1 }", db_impl_->GetName(), SerialNo());
   }
 
  private:
