@@ -99,6 +99,7 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
@@ -150,6 +151,10 @@ DEFINE_test_flag(double, fault_crash_in_split_after_log_copied, 0.0,
                  "Fraction of the time when the tablet will crash immediately after initiating a "
                  "Log::CopyTo from parent to child tablet, but before marking the child tablet as "
                  "TABLET_DATA_READY.");
+
+DEFINE_test_flag(bool, simulate_already_present_in_remote_bootstrap, false,
+                 "If true, return an AlreadyPresent error in remote bootstrap after starting the "
+                 "remote bootstrap client.");
 
 DEFINE_test_flag(double, fault_crash_in_split_before_log_flushed, 0.0,
                  "Fraction of the time when the tablet will crash immediately before flushing a "
@@ -733,7 +738,7 @@ Status TSTabletManager::StartSubtabletsSplit(
 
     // Try to load metadata from previous not completed split.
     auto load_result = RaftGroupMetadata::Load(fs_manager_, subtablet_id);
-    if (load_result.ok() && CanServeTabletData(iter->raft_group_metadata->tablet_data_state())) {
+    if (load_result.ok() && CanServeTabletData((*load_result)->tablet_data_state())) {
       // Sub tablet has been already created and ready during previous split attempt at this node or
       // as a result of remote bootstrap from another node, no need to re-create.
       iter = tcmetas->erase(iter);
@@ -1052,6 +1057,12 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // From this point onward, the superblock is persisted in TABLET_DATA_COPYING
   // state, and we need to tombstone the tablet if additional steps prior to
   // getting to a TABLET_DATA_READY state fail.
+
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_already_present_in_remote_bootstrap)) {
+    LOG_WITH_PREFIX(INFO)
+        << "Simulating AlreadyPresent error in TSTabletManager::StartRemoteBootstrap.";
+    return STATUS(AlreadyPresent, "failed");
+  }
 
   // Registering a non-initialized TabletPeer offers visibility through the Web UI.
   RegisterTabletPeerMode mode = replacing_tablet ? REPLACEMENT_PEER : NEW_PEER;

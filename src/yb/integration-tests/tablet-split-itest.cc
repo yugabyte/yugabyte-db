@@ -32,6 +32,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
+#include "yb/fs/fs_manager.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/redis_table_test_base.h"
@@ -44,6 +45,7 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/atomic.h"
+#include "yb/util/format.h"
 #include "yb/util/status.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -1839,6 +1841,86 @@ TEST_F(TabletSplitExternalMiniClusterITest, CrashesAfterChildLogCopy) {
   }, 20s * kTimeMultiplier, "Write rows after requiring bootstraped node consensus."));
 
   CHECK_OK(non_faulted_follower->Restart());
+}
+
+TEST_F(TabletSplitExternalMiniClusterITest, TestSplitAfterFailedRemoteBootstrapCreatesDirectories) {
+  const auto kApplyTabletSplitDelay = 15s * kTimeMultiplier;
+
+  const auto get_tablet_meta_dirs =
+      [this](ExternalTabletServer* node) -> Result<std::vector<string>> {
+    auto tablet_meta_dirs = VERIFY_RESULT(env_->GetChildren(
+        JoinPathSegments(node->GetDataDir(), "yb-data", "tserver", "tablet-meta")));
+    std::sort(tablet_meta_dirs.begin(), tablet_meta_dirs.end());
+    return tablet_meta_dirs;
+  };
+
+  const auto wait_for_same_tablet_metas =
+      [&get_tablet_meta_dirs]
+      (ExternalTabletServer* node_1, ExternalTabletServer* node_2) -> Status {
+    return WaitFor([node_1, node_2, &get_tablet_meta_dirs]() -> Result<bool> {
+      auto node_1_metas = VERIFY_RESULT(get_tablet_meta_dirs(node_1));
+      auto node_2_metas = VERIFY_RESULT(get_tablet_meta_dirs(node_2));
+      if (node_1_metas.size() != node_2_metas.size()) {
+        return false;
+      }
+      for (int i = 0; i < node_2_metas.size(); ++i) {
+        if (node_1_metas.at(i) != node_2_metas.at(i)) {
+          return false;
+        }
+      }
+      return true;
+    }, 5s * kTimeMultiplier, "Waiting for nodes to have same set of tablet metas.");
+  };
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRows());
+  const auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  const auto leader = cluster_->tablet_server(leader_idx);
+  const auto healthy_follower_idx = (leader_idx + 1) % 3;
+  const auto healthy_follower = cluster_->tablet_server(healthy_follower_idx);
+  const auto faulted_follower_idx = (leader_idx + 2) % 3;
+  const auto faulted_follower = cluster_->tablet_server(faulted_follower_idx);
+
+  // Make one node fail on tablet split, and ensure the leader does not remote bootstrap to it at
+  // first.
+  ASSERT_OK(cluster_->SetFlag(
+      faulted_follower, "TEST_crash_before_apply_tablet_split_op", "true"));
+  ASSERT_OK(cluster_->SetFlag(leader, "TEST_enable_remote_bootstrap", "false"));
+  ASSERT_OK(SplitTablet(tablet_id));
+  ASSERT_OK(cluster_->WaitForTSToCrash(faulted_follower));
+
+  // Once split is applied on two nodes, re-enable remote bootstrap before restarting the faulted
+  // node. Ensure that remote bootstrap requests can be retried until the faulted node is up.
+  ASSERT_OK(WaitForTablets(3, leader_idx));
+  ASSERT_OK(WaitForTablets(3, healthy_follower_idx));
+  ASSERT_OK(wait_for_same_tablet_metas(leader, healthy_follower));
+  ASSERT_OK(cluster_->SetFlag(leader, "unresponsive_ts_rpc_retry_limit", "100"));
+  ASSERT_OK(cluster_->SetFlag(leader, "TEST_enable_remote_bootstrap", "true"));
+
+  // Restart the faulted node. Ensure it waits a long time in ApplyTabletSplit to allow a remote
+  // bootstrap request to come in and create a directory for the subtablets before returning error.
+  ASSERT_OK(faulted_follower->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy, {
+    std::make_pair(
+        "TEST_apply_tablet_split_inject_delay_ms",
+        Format("$0", MonoDelta(kApplyTabletSplitDelay).ToMilliseconds())),
+    std::make_pair("TEST_simulate_already_present_in_remote_bootstrap", "true"),
+    std::make_pair("TEST_crash_before_apply_tablet_split_op", "false"),
+  }));
+
+  // Once the faulted node has the same tablet metas written to disk as the leader, disable remote
+  // bootstrap to avoid registering transition status for the subtablets.
+  ASSERT_OK(wait_for_same_tablet_metas(leader, faulted_follower));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_enable_remote_bootstrap", "false"));
+
+  // Sleep some time to allow the ApplyTabletSplit pause to run out, and then ensure we have healthy
+  // subtablets at the formerly faulted follower node.
+  std::this_thread::sleep_for(kApplyTabletSplitDelay);
+  EXPECT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows().ok();
+  }, 10s * kTimeMultiplier, "Write rows after faulted follower resurrection."));
+  cluster_->Shutdown();
 }
 
 TEST_F(TabletSplitExternalMiniClusterITest, RemoteBootstrapsFromNodeWithUncommittedSplitOp) {

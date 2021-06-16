@@ -736,11 +736,13 @@ class ExternalTabletServer : public ExternalDaemon {
 
   CHECKED_STATUS Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool set_proxy_addrs = true);
+      bool set_proxy_addrs = true,
+      std::vector<std::pair<string, string>> extra_flags = {});
 
   // Restarts the daemon. Requires that it has previously been shutdown.
   CHECKED_STATUS Restart(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      std::vector<std::pair<string, string>> flags = {});
 
   // IP addresses to bind to.
   const std::string& bind_host() const {
