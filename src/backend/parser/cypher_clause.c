@@ -2642,6 +2642,20 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     char *alias;
     AttrNumber resno;
 
+    if (edge->label)
+    {
+        label_cache_data *lcd =
+            search_label_name_graph_cache(edge->label, cpstate->graph_oid);
+
+        if (lcd && lcd->kind != LABEL_KIND_EDGE)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("label %s is for vertices, not edges",
+                                   edge->label),
+                            parser_errposition(pstate, edge->location)));
+        }
+    }
+
     rel->type = LABEL_KIND_EDGE;
     rel->flags = CYPHER_TARGET_NODE_FLAG_INSERT;
     rel->label_name = edge->label;
@@ -2758,6 +2772,20 @@ transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
                              cypher_node *node)
 {
     ParseState *pstate = (ParseState *)cpstate;
+
+    if (node->label)
+    {
+        label_cache_data *lcd =
+            search_label_name_graph_cache(node->label, cpstate->graph_oid);
+
+        if (lcd && lcd->kind != LABEL_KIND_VERTEX)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("label %s is for edges, not vertices",
+                                   node->label),
+                            parser_errposition(pstate, node->location)));
+        }
+    }
 
     /*
      *  Check if the variable already exists, if so find the entity and

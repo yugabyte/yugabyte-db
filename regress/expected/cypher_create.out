@@ -551,12 +551,39 @@ ERROR:  column definition list for CREATE clause must contain a single agtype at
 LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a a...
                       ^
 HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
+-- nodes cannot use edge labels and edge labels cannot use node labels
+SELECT * FROM cypher('cypher_create', $$
+	CREATE
+		(:existing_vlabel {id: 1})
+		-[c:existing_elabel {id: 3}]->
+		(:existing_vlabel {id: 2})
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH(a), (b)
+		WHERE a.id = 1 AND b.id = 2
+	CREATE (a)-[c:existing_vlabel { id: 4}]->(b)
+	RETURN c.id
+$$) as (c agtype);
+ERROR:  label existing_vlabel is for vertices, not edges
+LINE 4:  CREATE (a)-[c:existing_vlabel { id: 4}]->(b)
+                    ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a:existing_elabel { id: 5})
+	RETURN a.id
+$$) as (a agtype);
+ERROR:  label existing_elabel is for edges, not vertices
+LINE 2:  CREATE (a:existing_elabel { id: 5})
+                ^
 --
 -- Clean up
 --
 DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 9 other objects
+NOTICE:  drop cascades to 11 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
 drop cascades to table cypher_create._ag_label_edge
 drop cascades to table cypher_create.v
@@ -566,6 +593,8 @@ drop cascades to table cypher_create.e_var
 drop cascades to table cypher_create.n_other_node
 drop cascades to table cypher_create.b_var
 drop cascades to table cypher_create.new_vertex
+drop cascades to table cypher_create.existing_vlabel
+drop cascades to table cypher_create.existing_elabel
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------

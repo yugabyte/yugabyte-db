@@ -253,6 +253,26 @@ $$) as t(b agtype);
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a int);
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a agtype, b int);
 
+-- nodes cannot use edge labels and edge labels cannot use node labels
+SELECT * FROM cypher('cypher_create', $$
+	CREATE
+		(:existing_vlabel {id: 1})
+		-[c:existing_elabel {id: 3}]->
+		(:existing_vlabel {id: 2})
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH(a), (b)
+		WHERE a.id = 1 AND b.id = 2
+	CREATE (a)-[c:existing_vlabel { id: 4}]->(b)
+	RETURN c.id
+$$) as (c agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a:existing_elabel { id: 5})
+	RETURN a.id
+$$) as (a agtype);
+
 --
 -- Clean up
 --
