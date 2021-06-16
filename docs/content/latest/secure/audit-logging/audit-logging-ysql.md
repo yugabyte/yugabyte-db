@@ -101,17 +101,18 @@ YSQL Audit logging can be further customized by configuring the pgAudit flags as
 <li><strong><code>ALL</code></strong>: Include all of the above.
 
 Multiple classes can be provided using a comma-separated list and classes can be subtracted by prefacing the class with a - sign.
-<p>
-The default is none.
+
 </li>
 </ul>
+
+The default is none.
    </td>
   </tr>
   <tr>
    <td><code>pgaudit.log_catalog</code>
    </td>
    <td><strong><code>ON</code></strong>: <strong>Session logging</strong> would be enabled in the case for all relations in a statement that are in pg_catalog.
-<strong><code>OFF</code></strong>: Vice Versa!  Disabling this setting will reduce noise in the log from tools.
+<strong><code>OFF</code></strong>: Vice Versa!  Disabling this setting will reduce noise in the log from tools.<p>
 The default is <strong><code>ON</code></strong>.
    </td>
   </tr>
@@ -120,42 +121,43 @@ The default is <strong><code>ON</code></strong>.
    </td>
    <td><strong><code>ON</code></strong>: Log messages will be visible to a client process such as psql. Useful for debugging.
 <strong><code>OFF</code></strong>: Vice Versa!
-Note that pgaudit.log_level is only enabled when pgaudit.log_client is <strong><code>ON</code></strong>.
+Note that pgaudit.log_level is only enabled when pgaudit.log_client is <strong><code>ON</code></strong>.<p>
 The default is <strong><code>OFF</code></strong>.
    </td>
   </tr>
   <tr>
-   <td><code>pgaudit.log_leve</code>l
+   <td><code>pgaudit.log_level</code>
    </td>
    <td>Values: <strong><code>DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG</code></strong>. 
 Log level that will be used for log entries (<code>ERROR</code>, <code>FATAL</code>, and <code>PANIC</code> are not allowed). This setting is used for testing.
+
 <p>
-Note that <code>pgaudit.log_leve</code>l is only enabled when pgaudit.log_client is <strong><code>ON</code></strong>; otherwise the default will be used.
-The default is <code>LOG</code>.
+Note that <code>pgaudit.log_level</code> is only enabled when pgaudit.log_client is <strong><code>ON</code></strong>; otherwise the default will be used.<br><br>
+The default is <strong><code>LOG</code></strong>.
    </td>
   </tr>
   <tr>
    <td><code>pgaudit.log_parameter</code>
    </td>
-   <td><code>ON</code>: Audit logging includes the parameters that were passed with the statement. When parameters are present they will be included in CSV format after the statement text.
+   <td><strong><code>ON</code></strong>: Audit logging includes the parameters that were passed with the statement. When parameters are present they will be included in CSV format after the statement text.
 <p>
-The default is <code>OFF</code>.
+The default is <strong><code>OFF</code></strong>.
    </td>
   </tr>
   <tr>
    <td><code>pgaudit.log_relation</code>
    </td>
-   <td><code>ON</code>: Session audit logging creates separate log entries for each relation (<code>TABLE</code>, <code>VIEW</code>, etc.) referenced in a <code>SELECT</code> or <code>DML</code> statement. This is a useful shortcut for exhaustive logging without using <strong>object audit logging</strong>.
+   <td><strong><code>ON</code></strong>: Session audit logging creates separate log entries for each relation (<code>TABLE</code>, <code>VIEW</code>, etc.) referenced in a <code>SELECT</code> or <code>DML</code> statement. This is a useful shortcut for exhaustive logging without using <strong>object audit logging</strong>.
 <p>
-The default is <code>OFF</code>.
+The default is <strong><code>OFF</code></strong>.
    </td>
   </tr>
   <tr>
    <td><code>pgaudit.log_statement_once</code>
    </td>
-   <td><code>ON</code>: Specifies whether logging will include the statement text and parameters with the first log entry for a statement/substatement combination or with every entry. Disabling this setting will result in less verbose logging but may make it more difficult to determine the statement that generated a log entry.
+   <td><strong><code>ON</code></strong>: Specifies whether logging will include the statement text and parameters with the first log entry for a statement/substatement combination or with every entry. Disabling this setting will result in less verbose logging but may make it more difficult to determine the statement that generated a log entry.
 <p>
-The default is <code>OFF</code>.
+The default is <strong><code>OFF</code></strong>.
    </td>
   </tr>
   <tr>
@@ -167,7 +169,6 @@ There is no default.
    </td>
   </tr>
 </table>
-
 
 ## Example
 
@@ -181,8 +182,6 @@ Start the YugabyteDB Cluster with the following Audit logging Configuration.
     ```
     --ysql_pg_conf="pgaudit.log='DDL',pgaudit.log_level=notice,pgaudit.log_client=ON"
     ```
-
-
 
     Alternatively, go to a YSQL shell and execute the following commands.
 
@@ -202,35 +201,29 @@ Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for t
     $ ./ysqlsh -U yugabyte -W
     ```
 
-
-
     When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
 
 
     ```
     ysqlsh (11.2-YB-2.5.0.0-b0)
     Type "help" for help.
-
+    
     yugabyte=#
     ```
 
 
 Enable `pgaudit` extension on the YugabyteDB cluster.
 
-  
-
     Connect to the database using the following: `yugabyte=> \c yugabyte yugabyte;`
-
+    
     Create the `pgAudit` extension.
     ```
     You are now connected to database "yugabyte" as user "yugabyte".
-
+    
     yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
     CREATE EXTENSION
-
+    
     ```
-
-
 
 ### 3. Create a table, verify log 
 
