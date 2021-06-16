@@ -278,7 +278,8 @@ public class CustomerConfigValidator {
                   fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
             }
           } catch (StorageException exp) {
-            errorJson.set(fieldName, Json.newArray().add(exp.getMessage()));
+            errorJson.set(
+                fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
           } catch (Exception e) {
             errorJson.set(fieldName, Json.newArray().add("Invalid GCP Credential Json."));
           }
