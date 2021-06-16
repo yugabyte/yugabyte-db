@@ -34,8 +34,11 @@ endif()
 
 get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
 
+set(POSTGRES_PKG_CONFIG_PATH "${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib/pkgconfig")
+
 set(build_postgres_args
     "${CMAKE_COMMAND}" -E env "YB_BUILD_ROOT=$ENV{YB_BUILD_ROOT}"
+                          env "PKG_CONFIG_PATH=${POSTGRES_PKG_CONFIG_PATH}"
     "${BUILD_SUPPORT_DIR}/build_postgres"
       --build_root          "${YB_BUILD_ROOT}"
       --cflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"

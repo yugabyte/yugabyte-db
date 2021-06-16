@@ -400,4 +400,9 @@ bool YBReadFromFollowersEnabled();
 YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs);
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
+/*
+ * Check whether the given libc locale is supported in YugaByte mode.
+ */
+bool IsYBSupportedLibcLocale(const char *localebuf);
+
 #endif /* PG_YB_UTILS_H */

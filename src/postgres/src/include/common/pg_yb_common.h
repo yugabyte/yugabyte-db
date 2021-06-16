@@ -106,4 +106,9 @@ extern const char *YBGetCurrentRegion();
  */
 extern const char *YBGetCurrentZone();
 
+/**
+ * Returns whether COLLATION support is enabled.
+ */
+extern bool YBIsCollationEnabled();
+
 #endif /* PG_YB_COMMON_H */
