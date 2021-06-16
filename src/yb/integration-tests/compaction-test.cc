@@ -26,6 +26,7 @@
 
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals; // NOLINT
 
@@ -33,6 +34,7 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
+DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 
 namespace yb {
 
@@ -120,8 +122,8 @@ class CompactionTest : public YBTest {
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     // These flags should be set after minicluster start, so it wouldn't override them.
-    FLAGS_db_write_buffer_size = kMemStoreSize;
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = 3;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = kMemStoreSize;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 3;
     // Patch tablet options inside tablet manager, will be applied to newly created tablets.
     cluster_->GetTabletManager(0)->TEST_tablet_options()->listeners.push_back(rocksdb_listener_);
 
@@ -188,7 +190,7 @@ class CompactionTest : public YBTest {
             return true;
           }, 60s,
         Format("Waiting until we've written at least $0 files per rocksdb ...", num_files),
-        kWaitDelay));
+        kWaitDelay * kTimeMultiplier));
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
     return Status::OK();
@@ -233,12 +235,13 @@ void CompactionTest::TestCompactionAfterTruncate() {
 
 void CompactionTest::TestCompactionWithoutFrontiers(const int num_without_frontiers) {
   // Write a number of files without frontiers
-  FLAGS_TEST_disable_adding_user_frontier_to_sst = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_getting_user_frontier_from_mem_table) = true;
   ASSERT_OK(WriteAtLeastFilesPerDb(num_without_frontiers));
   // If the number of files to write without frontiers is less than the number to
   // trigger compaction, then write the rest with frontiers.
   if (num_without_frontiers < FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) {
-    FLAGS_TEST_disable_adding_user_frontier_to_sst = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = false;
     const int num_with_frontiers =
         (FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) - num_without_frontiers;
     ASSERT_OK(WriteAtLeastFilesPerDb(num_with_frontiers));
@@ -255,9 +258,12 @@ void CompactionTest::TestCompactionWithoutFrontiers(const int num_without_fronti
         }
         return true;
       },
-      60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay));
+      60s,
+      "Waiting until we have number of SST files not higher than threshold ...",
+      kWaitDelay * kTimeMultiplier));
   // reset FLAGS_TEST_disable_adding_user_frontier_to_sst
-  FLAGS_TEST_disable_adding_user_frontier_to_sst = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_getting_user_frontier_from_mem_table) = false;
 }
 
 TEST_F(CompactionTest, CompactionAfterTruncate) {
@@ -291,8 +297,8 @@ class CompactionTestWithTTL : public CompactionTest {
 };
 
 TEST_F(CompactionTestWithTTL, CompactionAfterExpiry) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_rocksdb_level0_file_num_compaction_trigger = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 10;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
   rocksdb_listener_->Reset();
