@@ -271,7 +271,7 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). \
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/).
 
 ## Is YugabyteDB open source?
 

@@ -77,7 +77,7 @@ In some cases you might decide to define a primary key for an existing table. To
 ALTER TABLE table_name ADD PRIMARY KEY (column1, column2);
 ```
 
-The `ALTER TABLE` statement also allows you to add an auto-incremented primary key to an existing table by using the [SERIAL type](https://docs.yugabyte.com/latest/explore/ysql-language-features/data-types/#serial-pseudotype), as per the following syntax:
+The `ALTER TABLE` statement also allows you to add an auto-incremented primary key to an existing table by using the [SERIAL type](../../ysql-language-features/data-types/#serial-pseudotype), as per the following syntax:
 
 ```sql
 ALTER TABLE table_name ADD COLUMN ID SERIAL PRIMARY KEY;
@@ -95,10 +95,10 @@ The following example shows how to remove the primary key constraint from the `e
 ALTER TABLE employees DROP CONSTRAINT employees_pkey;
 ```
 
-For more information and examples, see the following: 
+For more information and examples, refer to the following: 
 
-- [Primary Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
-- [Table with Primary Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
+- [Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
+- [Table with Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
 - [Primary Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS)
 
 ## Foreign Key
@@ -193,8 +193,8 @@ ALTER TABLE child_table
 
 For more information and examples, see the following: 
 
-- [Foreign Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key)
-- [Table with Foreign Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
+- [Foreign Key](./../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key)
+- [Table with Foreign Key](./../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
 - [Foreign Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-FK)
 
 ## CHECK Constraint
@@ -244,7 +244,7 @@ ALTER TABLE employees
   ADD CONSTRAINT name_check CHECK (char_length(name) <= 3);
 ```
 
-For additional examples, see [Table with CHECK constraint](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint).
+For additional examples, see [Table with CHECK constraint](./../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint).
 
 ## UNIQUE Constraint
 
