@@ -1130,7 +1130,7 @@ void BackfillTablet::LaunchNextChunkOrDone() {
 
 void BackfillTablet::Done(
     const Status& status, const boost::optional<string>& backfilled_until,
-    const std::unordered_set<TableId>& failed_indexes) {
+    const std::unordered_set<TableId>& failed_indexes, const int number_rows_processed) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status
               << "\nFailed_indexes are " << yb::ToString(failed_indexes);
@@ -1138,7 +1138,7 @@ void BackfillTablet::Done(
   }
 
   if (backfilled_until) {
-    auto s = UpdateBackfilledUntil(*backfilled_until);
+    auto s = UpdateBackfilledUntil(*backfilled_until, number_rows_processed);
     if (!s.ok()) {
       LOG(WARNING) << "Could not persist how far the tablet is done backfilling. " << s.ToString();
       return;
@@ -1148,14 +1148,21 @@ void BackfillTablet::Done(
   LaunchNextChunkOrDone();
 }
 
-Status BackfillTablet::UpdateBackfilledUntil(const string& backfilled_until) {
+Status BackfillTablet::UpdateBackfilledUntil(const string& backfilled_until, int number_rows_processed) {
   backfilled_until_ = backfilled_until;
   VLOG_WITH_PREFIX(2) << "Done backfilling the tablet " << yb::ToString(tablet_) << " until "
                       << yb::ToString(backfilled_until_);
   {
     auto l = tablet_->LockForWrite();
     for (const auto& idx_id : backfill_table_->indexes_to_build()) {
-      l.mutable_data()->pb.mutable_backfilled_until()->insert({idx_id, backfilled_until_});
+      auto backfilled_until_map = l.mutable_data()->pb.mutable_backfilled_until();
+      backfilled_until_map->insert({idx_id, backfilled_until_});
+      auto number_rows_processed_map = l.mutable_data()->pb.mutable_number_rows_processed().find(idx_id);
+      if (it != number_rows_processed_map.end()) {
+        it->second += number_rows_processed;
+      } else {
+        number_rows_processed_map[idx_id] = number_rows_processed;
+      }
     }
     RETURN_NOT_OK(backfill_table_->master()->catalog_manager()->sys_catalog()->UpdateItem(
         tablet_.get(), backfill_table_->leader_term()));
@@ -1414,7 +1421,7 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
   }
 
   if (resp_.has_backfilled_until()) {
-    backfill_tablet_->Done(status, resp_.backfilled_until(), failed_indexes);
+    backfill_tablet_->Done(status, resp_.backfilled_until(), failed_indexes, resp_.number_rows_processed());
   } else {
     backfill_tablet_->Done(status, boost::none, failed_indexes);
   }

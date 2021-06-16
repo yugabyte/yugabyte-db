@@ -336,6 +336,10 @@ message SysTabletsEntryPB {
   // the DocKey for the next row to be backfilled.
   map<string, bytes> backfilled_until = 12;
 
+  // The number of rows which have been processed 
+  // For each Key (corresponding to table_id of index table).
+  map<string, uint64> number_rows_processed = 18;
+
   // Tablet IDs for this tablet split if they have been registered in master.
   repeated bytes split_tablet_ids = 14;
 

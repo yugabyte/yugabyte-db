@@ -771,6 +771,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
+  int number_row_processed;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -805,7 +806,8 @@ void TabletServiceAdminImpl::BackfillIndex(
         deadline,
         read_at,
         &backfilled_until,
-        &failed_indexes);
+        &failed_indexes,
+        &number_rows_processed);
   } else {
     SetupErrorAndRespond(
         resp->mutable_error(),
@@ -820,6 +822,7 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+  resp->set_number_rows_processed(number_rows_processed);
 
   if (!backfill_status.ok()) {
     VLOG(2) << " Failed indexes are " << yb::ToString(failed_indexes);
