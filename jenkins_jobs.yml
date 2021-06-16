@@ -27,3 +27,6 @@ jobs:
   - os: ubuntu18.04
     compiler: gcc7
     build_type: debug
+  - os: ubuntu20.04
+    compiler: gcc9
+    build_type: release
