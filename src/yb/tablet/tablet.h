@@ -261,7 +261,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown();
+  bool StartShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::memory_order_acquire);
   }
@@ -713,11 +713,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
   ScopedRWOperationPause PauseReadWriteOperations(Stop stop = Stop::kFalse);
 
-  CHECKED_STATUS ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
+  void StartShutdownRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown);
+
+  CHECKED_STATUS ShutdownRocksDBs(
+      Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
 
   CHECKED_STATUS DoEnableCompactions();
-
-  void PreventCallbacksFromRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown);
 
   std::string LogPrefix() const;
 
@@ -803,10 +804,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<rocksdb::Statistics> regulardb_statistics_;
   std::shared_ptr<rocksdb::Statistics> intentsdb_statistics_;
 
-  // RocksDB database for key-value tables.
+  // RocksDB database instances for key-value tables.
   std::unique_ptr<rocksdb::DB> regular_db_;
-
   std::unique_ptr<rocksdb::DB> intents_db_;
+  std::atomic<bool> rocksdb_shutdown_requested_{false};
 
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;
