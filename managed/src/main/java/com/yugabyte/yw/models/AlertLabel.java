@@ -50,7 +50,7 @@ public class AlertLabel extends Model {
 
   public void setAlert(Alert alert) {
     this.alert = alert;
-    key.setAlertUUID(alert.uuid);
+    key.setAlertUUID(alert.getUuid());
   }
 
   public String getName() {

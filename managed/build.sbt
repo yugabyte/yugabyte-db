@@ -90,7 +90,8 @@ def clean_venv(baseDirectory: File): Int = {
 
 def build_venv(baseDirectory: File): Int = {
   ybLog("Building virtual env...")
-  Process("./bin/install_python_requirements.sh", baseDirectory / "devops")!
+  Process("./bin/install_python_requirements.sh", baseDirectory / "devops").!
+  Process("./bin/install_ansible_requirements.sh --force", baseDirectory / "devops").!
 }
 
 // ------------------------------------------------------------------------------------------------

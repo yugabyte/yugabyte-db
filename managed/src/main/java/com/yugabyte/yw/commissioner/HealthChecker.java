@@ -20,9 +20,9 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -517,6 +517,8 @@ public class HealthChecker {
       // Since health checker only uses CQLSH, we only care about the
       // client to node encryption flag.
       info.enableTlsClient = cluster.userIntent.enableClientToNodeEncrypt;
+      // Setting this flag to identify correct cert location.
+      info.rootAndClientRootCASame = details.rootAndClientRootCASame;
       // Pass in whether YSQL authentication is enabled for the given cluster.
       info.enableYSQLAuth =
           cluster.userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true");

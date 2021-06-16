@@ -45,9 +45,6 @@ DECLARE_bool(use_client_to_server_encryption);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {
-
-using enterprise::EncryptionParams;
-
 namespace tools {
 namespace enterprise {
 

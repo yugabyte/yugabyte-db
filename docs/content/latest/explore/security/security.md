@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: explore-security
     parent: explore
-    weight: 930
+    weight: 300
 isTocNested: true
 showAsideToc: true
 ---

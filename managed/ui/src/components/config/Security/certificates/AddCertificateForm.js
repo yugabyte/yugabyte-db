@@ -19,8 +19,8 @@ const initialValues = {
   rootCACert: '',
   nodeCertPath: '',
   nodeCertPrivate: '',
-  clientCert: '',
-  clientCertPrivate: '',
+  clientCertPath: '',
+  clientKeyPath: '',
 };
 
 // react-day-picker lib requires this to be class component
@@ -98,8 +98,8 @@ export default class AddCertificateForm extends Component {
           nodeCertPath: vals.nodeCertPath,
           nodeKeyPath: vals.nodeCertPrivate,
           rootCertPath: vals.rootCACert,
-          clientCert: vals.clientCert,
-          clientCertPrivate: vals.clientCertPrivate
+          clientCertPath: vals.clientCertPath,
+          clientKeyPath: vals.clientKeyPath
         }
       };
 
@@ -160,8 +160,8 @@ export default class AddCertificateForm extends Component {
       setFieldValue('rootCACert', '');
       setFieldValue('nodeCertPath', '');
       setFieldValue('nodeCertPrivate', '');
-      setFieldValue('clientCert', '');
-      setFieldValue('clientCertPrivate', '', false);
+      setFieldValue('clientCertPath', '');
+      setFieldValue('clientKeyPath', '', false);
       if (values.certExpiry instanceof Date) {
         setFieldValue('certExpiry',
           new Date(values.certExpiry.toLocaleDateString('default', {
@@ -189,8 +189,8 @@ export default class AddCertificateForm extends Component {
     setFieldTouched('rootCACert', false);
     setFieldTouched('nodeCertPath', false);
     setFieldTouched('nodeCertPrivate', false);
-    setFieldTouched('clientCert', false);
-    setFieldTouched('clientCertPrivate', false);
+    setFieldTouched('clientCertPath', false);
+    setFieldTouched('clientKeyPath', false);
     setErrors(newErrors);
     this.setState({tab: newTabKey});
   }
@@ -318,12 +318,12 @@ export default class AddCertificateForm extends Component {
                     required
                   />
                   <Field
-                    name="clientCert"
+                    name="clientCertPath"
                     component={YBFormInput}
                     label="Client Certificate"
                     placeholder="/opt/yugabyte/yugaware/data/cert1/client.crt"
                   />
-                  <Field name="clientCertPrivate"
+                  <Field name="clientKeyPath"
                     component={YBFormInput}
                     label="Client Certificate Private Key"
                     placeholder="/opt/yugabyte/yugaware/data/cert1/client.key"

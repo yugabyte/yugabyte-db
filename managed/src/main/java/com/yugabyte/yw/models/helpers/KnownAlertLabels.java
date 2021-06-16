@@ -15,7 +15,8 @@ public enum KnownAlertLabels {
   DEFINITION_NAME,
   UNIVERSE_UUID,
   UNIVERSE_NAME,
-  CUSTOMER_UUID;
+  CUSTOMER_UUID,
+  ALERT_STATE;
 
   public String labelName() {
     return name().toLowerCase();

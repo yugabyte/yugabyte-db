@@ -4,17 +4,21 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -99,6 +103,10 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Mock ReleaseManager releaseManager;
 
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock Config mockConfig;
+
   @InjectMocks NodeManager nodeManager;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
@@ -117,6 +125,7 @@ public class NodeManagerTest extends FakeDBApplication {
     public final NodeInstance node;
     public String privateKey = "/path/to/private.key";
     public final List<String> baseCommand = new ArrayList<>();
+    public final String replacementVolume = "test-volume";
 
     public TestData(
         Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
@@ -269,6 +278,8 @@ public class NodeManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    when(mockConfig.hasPath(NodeManager.BOOT_SCRIPT_PATH)).thenReturn(false);
+    when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
   }
@@ -297,6 +308,15 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add(ctlParams.process);
         expectedCommand.add(ctlParams.command);
         break;
+      case Replace_Root_Volume:
+        expectedCommand.add("--replacement_disk");
+        expectedCommand.add(String.valueOf(testData.replacementVolume));
+        break;
+      case Create_Root_Volumes:
+        CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) params;
+        expectedCommand.add("--num_disks");
+        expectedCommand.add(String.valueOf(crvParams.numVolumes));
+        // intentional fall-thru
       case Provision:
         AnsibleSetupServer.Params setupParams = (AnsibleSetupServer.Params) params;
         if (!cloud.equals(Common.CloudType.onprem)) {
@@ -424,8 +444,9 @@ public class NodeManagerTest extends FakeDBApplication {
           }
           if (configureParams.enableNodeToNodeEncrypt
               || configureParams.enableClientToNodeEncrypt) {
+
             CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
-            if (cert == null) {
+            if (configureParams.rootAndClientRootCASame && cert == null) {
               throw new RuntimeException(
                   "No valid rootCA found for " + configureParams.universeUUID);
             }
@@ -437,31 +458,103 @@ public class NodeManagerTest extends FakeDBApplication {
             }
             gflags.put(
                 "allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
-            gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
             gflags.put("cert_node_filename", params.nodeName);
-            expectedCommand.add("--certs_node_dir");
-            expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
 
-            if (cert.certType == CertificateInfo.Type.SelfSigned) {
-              expectedCommand.add("--rootCA_cert");
-              expectedCommand.add(cert.certificate);
-              expectedCommand.add("--rootCA_key");
-              expectedCommand.add(cert.privateKey);
-              if (configureParams.enableClientToNodeEncrypt) {
-                expectedCommand.add("--client_cert");
-                expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
-                expectedCommand.add("--client_key");
-                expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+            if (configureParams.rootAndClientRootCASame) {
+              gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+              expectedCommand.add("--certs_node_dir");
+              expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
+
+              CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
+              if (rootCert == null) {
+                throw new RuntimeException(
+                    "No valid rootCA found for " + configureParams.universeUUID);
+              }
+
+              if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+                expectedCommand.add("--rootCA_cert");
+                expectedCommand.add(rootCert.certificate);
+                expectedCommand.add("--rootCA_key");
+                expectedCommand.add(rootCert.privateKey);
+              } else {
+                CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                expectedCommand.add("--use_custom_certs");
+                expectedCommand.add("--root_cert_path");
+                expectedCommand.add(customCertInfo.rootCertPath);
+                expectedCommand.add("--node_cert_path");
+                expectedCommand.add(customCertInfo.nodeCertPath);
+                expectedCommand.add("--node_key_path");
+                expectedCommand.add(customCertInfo.nodeKeyPath);
+                if (customCertInfo.clientCertPath != null) {
+                  expectedCommand.add("--client_cert_path");
+                  expectedCommand.add(customCertInfo.clientCertPath);
+                  expectedCommand.add("--client_key_path");
+                  expectedCommand.add(customCertInfo.clientKeyPath);
+                }
               }
             } else {
-              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-              expectedCommand.add("--use_custom_certs");
-              expectedCommand.add("--root_cert_path");
-              expectedCommand.add(customCertInfo.rootCertPath);
-              expectedCommand.add("--node_cert_path");
-              expectedCommand.add(customCertInfo.nodeCertPath);
-              expectedCommand.add("--node_key_path");
-              expectedCommand.add(customCertInfo.nodeKeyPath);
+              if (configureParams.enableNodeToNodeEncrypt) {
+                gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+                expectedCommand.add("--certs_node_dir");
+                expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
+
+                CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
+                if (rootCert == null) {
+                  throw new RuntimeException(
+                      "No valid rootCA found for " + configureParams.universeUUID);
+                }
+
+                if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+                  expectedCommand.add("--rootCA_cert");
+                  expectedCommand.add(rootCert.certificate);
+                  expectedCommand.add("--rootCA_key");
+                  expectedCommand.add(rootCert.privateKey);
+                } else {
+                  CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                  expectedCommand.add("--use_custom_certs");
+                  expectedCommand.add("--root_cert_path");
+                  expectedCommand.add(customCertInfo.rootCertPath);
+                  expectedCommand.add("--node_cert_path");
+                  expectedCommand.add(customCertInfo.nodeCertPath);
+                  expectedCommand.add("--node_key_path");
+                  expectedCommand.add(customCertInfo.nodeKeyPath);
+                }
+              }
+              if (configureParams.enableClientToNodeEncrypt) {
+                gflags.put("certs_for_client_dir", "/home/yugabyte/yugabyte-client-tls-config");
+                expectedCommand.add("--certs_client_dir");
+                expectedCommand.add("/home/yugabyte/yugabyte-client-tls-config");
+
+                CertificateInfo clientRootCert = CertificateInfo.get(configureParams.clientRootCA);
+                if (clientRootCert == null) {
+                  throw new RuntimeException(
+                      "No valid clientRootCA found for " + configureParams.universeUUID);
+                }
+
+                if (clientRootCert.certType == CertificateInfo.Type.SelfSigned) {
+                  expectedCommand.add("--clientRootCA_cert");
+                  expectedCommand.add(clientRootCert.certificate);
+                  expectedCommand.add("--clientRootCA_key");
+                  expectedCommand.add(clientRootCert.privateKey);
+                } else {
+                  CertificateParams.CustomCertInfo customCertInfo =
+                      clientRootCert.getCustomCertInfo();
+                  expectedCommand.add("--use_custom_client_certs");
+                  expectedCommand.add("--client_root_cert_path");
+                  expectedCommand.add(customCertInfo.rootCertPath);
+                  expectedCommand.add("--client_node_cert_path");
+                  expectedCommand.add(customCertInfo.nodeCertPath);
+                  expectedCommand.add("--client_node_key_path");
+                  expectedCommand.add(customCertInfo.nodeKeyPath);
+                }
+
+                expectedCommand.add("--client_cert");
+                expectedCommand.add(
+                    CertificateHelper.getClientCertFile(configureParams.clientRootCA));
+                expectedCommand.add("--client_key");
+                expectedCommand.add(
+                    CertificateHelper.getClientKeyFile(configureParams.clientRootCA));
+              }
             }
           }
           expectedCommand.add("--extra_gflags");
@@ -495,6 +588,8 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--gflags_to_remove");
             expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
           }
+          expectedCommand.add("--tags");
+          expectedCommand.add("override_gflags");
         } else if (configureParams.type == ToggleTls) {
           String nodeToNodeString = String.valueOf(configureParams.enableNodeToNodeEncrypt);
           String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
@@ -606,39 +701,89 @@ public class NodeManagerTest extends FakeDBApplication {
     }
     if (params.deviceInfo != null) {
       DeviceInfo deviceInfo = params.deviceInfo;
-      if (deviceInfo.numVolumes != null && !cloud.equals(Common.CloudType.onprem)) {
-        expectedCommand.add("--num_volumes");
-        expectedCommand.add(Integer.toString(deviceInfo.numVolumes));
-      } else if (deviceInfo.mountPoints != null) {
-        expectedCommand.add("--mount_points");
-        expectedCommand.add(fakeMountPaths);
-      }
-      if (deviceInfo.volumeSize != null) {
-        expectedCommand.add("--volume_size");
-        expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
-      }
-      if (type == NodeManager.NodeCommandType.Provision && deviceInfo.storageType != null) {
-        expectedCommand.add("--volume_type");
-        expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
-        if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
-          expectedCommand.add("--disk_iops");
-          expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+
+      if (type != NodeManager.NodeCommandType.Replace_Root_Volume) {
+        if (deviceInfo.numVolumes != null && !cloud.equals(Common.CloudType.onprem)) {
+          expectedCommand.add("--num_volumes");
+          expectedCommand.add(Integer.toString(deviceInfo.numVolumes));
+        } else if (deviceInfo.mountPoints != null) {
+          expectedCommand.add("--mount_points");
+          expectedCommand.add(fakeMountPaths);
         }
-        if (deviceInfo.storageType.isThroughputProvisioning() && deviceInfo.throughput != null) {
-          expectedCommand.add("--disk_throughput");
-          expectedCommand.add(Integer.toString(deviceInfo.throughput));
+        if (deviceInfo.volumeSize != null) {
+          expectedCommand.add("--volume_size");
+          expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
         }
       }
 
-      String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
-      if (type == NodeManager.NodeCommandType.Provision && packagePath != null) {
-        expectedCommand.add("--local_package_path");
-        expectedCommand.add(packagePath);
+      if (type == NodeManager.NodeCommandType.Provision
+          || type == NodeManager.NodeCommandType.Create_Root_Volumes) {
+        if (deviceInfo.storageType != null) {
+          expectedCommand.add("--volume_type");
+          expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
+          if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
+            expectedCommand.add("--disk_iops");
+            expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+          }
+          if (deviceInfo.storageType.isThroughputProvisioning() && deviceInfo.throughput != null) {
+            expectedCommand.add("--disk_throughput");
+            expectedCommand.add(Integer.toString(deviceInfo.throughput));
+          }
+        }
+
+        String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
+        if (packagePath != null) {
+          expectedCommand.add("--local_package_path");
+          expectedCommand.add(packagePath);
+        }
       }
     }
 
     expectedCommand.add(params.nodeName);
     return expectedCommand;
+  }
+
+  private void runAndVerifyNodeCommand(
+      TestData t, NodeTaskParams params, NodeManager.NodeCommandType cmdType) {
+    List<String> expectedCommand = t.baseCommand;
+    expectedCommand.addAll(nodeCommand(cmdType, params, t));
+
+    nodeManager.nodeCommand(cmdType, params);
+    verify(shellProcessHandler, times(1))
+        .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+  }
+
+  @Test
+  public void testCreateRootVolumesCommand() {
+    for (TestData t : testData) {
+      CreateRootVolumes.Params params = new CreateRootVolumes.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      params.numVolumes = 1;
+
+      runAndVerifyNodeCommand(t, params, NodeManager.NodeCommandType.Create_Root_Volumes);
+    }
+  }
+
+  @Test
+  public void testReplaceRootVolumeCommand() {
+    for (TestData t : testData) {
+      ReplaceRootVolume.Params params = new ReplaceRootVolume.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.replacementDisk = t.replacementVolume;
+
+      runAndVerifyNodeCommand(t, params, NodeManager.NodeCommandType.Replace_Root_Volume);
+    }
   }
 
   @Test

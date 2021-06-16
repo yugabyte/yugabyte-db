@@ -1,5 +1,6 @@
 package com.yugabyte.yw.common.swagger;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Singleton;
 import io.swagger.converter.ModelConverter;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import java.util.Arrays;
 import java.util.Iterator;
 
 @Singleton
@@ -36,15 +38,25 @@ public class YWModelConverter implements ModelConverter {
       ModelConverterContext context,
       Annotation[] annotations,
       Iterator<ModelConverter> chain) {
-    if (tooDeep()) {
-      LOG.warn("{}{}", type.getTypeName(), annotations);
-      throw new RuntimeException("Too Deep");
-    }
-    if (canSkip(type) || !chain.hasNext()) {
+    if (canSkip(type) || canSkip(annotations) || !chain.hasNext()) {
       LOG.debug("skipped {}", type.getTypeName());
       return null;
     }
-    return chain.next().resolveProperty(type, context, annotations, chain);
+
+    ModelConverter nextConverter = chain.next();
+    if (nextConverter == this) {
+      LOG.warn("{}{}", type.getTypeName(), annotations);
+      throw new RuntimeException("Duplicate YWModelConverter added");
+    }
+    return nextConverter.resolveProperty(type, context, annotations, chain);
+  }
+
+  private boolean canSkip(Annotation[] annotations) {
+    if (annotations == null) {
+      return false;
+    }
+    return Arrays.stream(annotations)
+        .anyMatch(annotation -> annotation.annotationType().equals(JsonBackReference.class));
   }
 
   @Override
@@ -58,16 +70,5 @@ public class YWModelConverter implements ModelConverter {
   private boolean canSkip(Type type) {
     String typeName = type.getTypeName();
     return SKIPPED_PACKAGES.stream().anyMatch(typeName::contains);
-  }
-
-  private static boolean tooDeep() {
-    try {
-      throw new IllegalStateException("Too deep, emerging");
-    } catch (IllegalStateException e) {
-      if (e.getStackTrace().length > maxLevel + 1) {
-        return true;
-      }
-    }
-    return false;
   }
 }
