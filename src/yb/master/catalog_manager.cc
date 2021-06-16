@@ -4345,6 +4345,11 @@ Status CatalogManager::DeleteTableInMemory(
 }
 
 TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableInfoPtr& table) {
+  if (!table) {
+    LOG_WITH_PREFIX(INFO) << "Finished deleting an Orphaned tablet. "
+                          << "Table Information is null. Skipping updating its state to DELETED.";
+    return TableInfo::WriteLock();
+  }
   if (table->HasTasks()) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << table->ToString() << " has tasks";
     return TableInfo::WriteLock();
@@ -5388,20 +5393,10 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
       // 1a. Find the tablet, deleting/skipping it if it can't be found.
       scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, tablet_id);
       if (!tablet) {
-        // It'd be unsafe to ask the tserver to delete this tablet without first
-        // replicating something to our followers (i.e. to guarantee that we're
-        // the leader). For example, if we were a rogue master, we might be
-        // deleting a tablet created by a new master accidentally. But masters
-        // retain metadata for deleted tablets forever, so a tablet can only be
-        // truly unknown in the event of a serious misconfiguration, such as a
-        // tserver heartbeating to the wrong cluster. Therefore, it should be
-        // reasonable to ignore it and wait for an operator fix the situation.
-        if (FLAGS_master_ignore_deleted_on_load &&
-            report.tablet_data_state() == TABLET_DATA_DELETED) {
-          VLOG(1) << "Ignoring report from unknown tablet " << tablet_id;
-        } else {
-          LOG(DFATAL) << "Ignoring report from unknown tablet " << tablet_id;
-        }
+        // If a TS reported an unknown tablet, send a delete tablet rpc to the TS.
+        LOG(INFO) << "Null tablet reported, possibly the TS was not around when the"
+                      " table was being deleted. Sending Delete tablet RPC to this TS.";
+        tablets_to_delete.insert(tablet_id);
         // Every tablet in the report that is processed gets a heartbeat response entry.
         ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
         update->set_tablet_id(tablet_id);

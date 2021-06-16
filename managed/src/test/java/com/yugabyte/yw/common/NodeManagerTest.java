@@ -444,8 +444,9 @@ public class NodeManagerTest extends FakeDBApplication {
           }
           if (configureParams.enableNodeToNodeEncrypt
               || configureParams.enableClientToNodeEncrypt) {
+
             CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
-            if (cert == null) {
+            if (configureParams.rootAndClientRootCASame && cert == null) {
               throw new RuntimeException(
                   "No valid rootCA found for " + configureParams.universeUUID);
             }
@@ -457,31 +458,103 @@ public class NodeManagerTest extends FakeDBApplication {
             }
             gflags.put(
                 "allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
-            gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
             gflags.put("cert_node_filename", params.nodeName);
-            expectedCommand.add("--certs_node_dir");
-            expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
 
-            if (cert.certType == CertificateInfo.Type.SelfSigned) {
-              expectedCommand.add("--rootCA_cert");
-              expectedCommand.add(cert.certificate);
-              expectedCommand.add("--rootCA_key");
-              expectedCommand.add(cert.privateKey);
-              if (configureParams.enableClientToNodeEncrypt) {
-                expectedCommand.add("--client_cert");
-                expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
-                expectedCommand.add("--client_key");
-                expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+            if (configureParams.rootAndClientRootCASame) {
+              gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+              expectedCommand.add("--certs_node_dir");
+              expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
+
+              CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
+              if (rootCert == null) {
+                throw new RuntimeException(
+                    "No valid rootCA found for " + configureParams.universeUUID);
+              }
+
+              if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+                expectedCommand.add("--rootCA_cert");
+                expectedCommand.add(rootCert.certificate);
+                expectedCommand.add("--rootCA_key");
+                expectedCommand.add(rootCert.privateKey);
+              } else {
+                CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                expectedCommand.add("--use_custom_certs");
+                expectedCommand.add("--root_cert_path");
+                expectedCommand.add(customCertInfo.rootCertPath);
+                expectedCommand.add("--node_cert_path");
+                expectedCommand.add(customCertInfo.nodeCertPath);
+                expectedCommand.add("--node_key_path");
+                expectedCommand.add(customCertInfo.nodeKeyPath);
+                if (customCertInfo.clientCertPath != null) {
+                  expectedCommand.add("--client_cert_path");
+                  expectedCommand.add(customCertInfo.clientCertPath);
+                  expectedCommand.add("--client_key_path");
+                  expectedCommand.add(customCertInfo.clientKeyPath);
+                }
               }
             } else {
-              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-              expectedCommand.add("--use_custom_certs");
-              expectedCommand.add("--root_cert_path");
-              expectedCommand.add(customCertInfo.rootCertPath);
-              expectedCommand.add("--node_cert_path");
-              expectedCommand.add(customCertInfo.nodeCertPath);
-              expectedCommand.add("--node_key_path");
-              expectedCommand.add(customCertInfo.nodeKeyPath);
+              if (configureParams.enableNodeToNodeEncrypt) {
+                gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+                expectedCommand.add("--certs_node_dir");
+                expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
+
+                CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
+                if (rootCert == null) {
+                  throw new RuntimeException(
+                      "No valid rootCA found for " + configureParams.universeUUID);
+                }
+
+                if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+                  expectedCommand.add("--rootCA_cert");
+                  expectedCommand.add(rootCert.certificate);
+                  expectedCommand.add("--rootCA_key");
+                  expectedCommand.add(rootCert.privateKey);
+                } else {
+                  CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                  expectedCommand.add("--use_custom_certs");
+                  expectedCommand.add("--root_cert_path");
+                  expectedCommand.add(customCertInfo.rootCertPath);
+                  expectedCommand.add("--node_cert_path");
+                  expectedCommand.add(customCertInfo.nodeCertPath);
+                  expectedCommand.add("--node_key_path");
+                  expectedCommand.add(customCertInfo.nodeKeyPath);
+                }
+              }
+              if (configureParams.enableClientToNodeEncrypt) {
+                gflags.put("certs_for_client_dir", "/home/yugabyte/yugabyte-client-tls-config");
+                expectedCommand.add("--certs_client_dir");
+                expectedCommand.add("/home/yugabyte/yugabyte-client-tls-config");
+
+                CertificateInfo clientRootCert = CertificateInfo.get(configureParams.clientRootCA);
+                if (clientRootCert == null) {
+                  throw new RuntimeException(
+                      "No valid clientRootCA found for " + configureParams.universeUUID);
+                }
+
+                if (clientRootCert.certType == CertificateInfo.Type.SelfSigned) {
+                  expectedCommand.add("--clientRootCA_cert");
+                  expectedCommand.add(clientRootCert.certificate);
+                  expectedCommand.add("--clientRootCA_key");
+                  expectedCommand.add(clientRootCert.privateKey);
+                } else {
+                  CertificateParams.CustomCertInfo customCertInfo =
+                      clientRootCert.getCustomCertInfo();
+                  expectedCommand.add("--use_custom_client_certs");
+                  expectedCommand.add("--client_root_cert_path");
+                  expectedCommand.add(customCertInfo.rootCertPath);
+                  expectedCommand.add("--client_node_cert_path");
+                  expectedCommand.add(customCertInfo.nodeCertPath);
+                  expectedCommand.add("--client_node_key_path");
+                  expectedCommand.add(customCertInfo.nodeKeyPath);
+                }
+
+                expectedCommand.add("--client_cert");
+                expectedCommand.add(
+                    CertificateHelper.getClientCertFile(configureParams.clientRootCA));
+                expectedCommand.add("--client_key");
+                expectedCommand.add(
+                    CertificateHelper.getClientKeyFile(configureParams.clientRootCA));
+              }
             }
           }
           expectedCommand.add("--extra_gflags");

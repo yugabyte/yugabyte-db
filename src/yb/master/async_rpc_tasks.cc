@@ -113,7 +113,7 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
   : master_(master),
     callback_pool_(callback_pool),
     replica_picker_(replica_picker.Pass()),
-    table_(DCHECK_NOTNULL(table)),
+    table_(table),
     start_ts_(MonoTime::Now()),
     deadline_(start_ts_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {
 }
