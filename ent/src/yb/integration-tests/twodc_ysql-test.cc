@@ -40,7 +40,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -135,13 +134,13 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     opts.num_masters = num_masters;
     FLAGS_replication_factor = replication_factor;
     opts.cluster_id = "producer";
-    producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(env_.get(), opts);
+    producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
     RETURN_NOT_OK(producer_cluster()->StartSync());
     RETURN_NOT_OK(producer_cluster()->WaitForTabletServerCount(replication_factor));
     RETURN_NOT_OK(WaitForInitDb(producer_cluster()));
 
     opts.cluster_id = "consumer";
-    consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(env_.get(), opts);
+    consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
     RETURN_NOT_OK(consumer_cluster()->StartSync());
     RETURN_NOT_OK(consumer_cluster()->WaitForTabletServerCount(replication_factor));
     RETURN_NOT_OK(WaitForInitDb(consumer_cluster()));

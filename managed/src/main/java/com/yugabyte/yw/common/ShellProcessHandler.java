@@ -10,30 +10,34 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.inject.Inject;
 import com.google.common.base.Joiner;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.inject.Singleton;
+import com.google.inject.Inject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.concurrent.TimeUnit;
-
-import com.yugabyte.yw.common.ShellResponse;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Singleton
 public class ShellProcessHandler {
   public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
   @Inject play.Configuration appConfig;
+
+  static final Pattern ANSIBLE_FAIL_PAT =
+      Pattern.compile(
+          "(ybops.common.exceptions.YBOpsRuntimeError: Runtime error: "
+              + "Playbook run.* )with args.* (failed with.*) ");
+  static final Pattern ANSIBLE_FAILED_TASK_PAT =
+      Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
 
   public ShellResponse run(
       List<String> command, Map<String, String> extraEnvVars, boolean logCmdOutput) {
@@ -91,18 +95,44 @@ public class ShellProcessHandler {
           FileInputStream errorInputStream = new FileInputStream(tempErrorFile);
           InputStreamReader errorReader = new InputStreamReader(errorInputStream);
           BufferedReader errorStream = new BufferedReader(errorReader)) {
-        String processOutput = outputStream.lines().collect(Collectors.joining("\n")).trim();
-        String processError = errorStream.lines().collect(Collectors.joining("\n")).trim();
         if (logCmdOutput) {
-          LOG.debug("Proc stdout for '{}' | {}", response.description, processOutput);
-          LOG.debug("Proc stderr for '{}' | {}", response.description, processError);
+          LOG.debug("Proc stdout for '{}' :", response.description);
         }
+        StringBuilder processOutput = new StringBuilder();
+        outputStream
+            .lines()
+            .forEach(
+                line -> {
+                  processOutput.append(line).append("\n");
+                  if (logCmdOutput) {
+                    LOG.debug(line);
+                  }
+                });
+        if (logCmdOutput) {
+          LOG.debug("Proc stderr for '{}' :", response.description);
+        }
+        StringBuilder processError = new StringBuilder();
+        errorStream
+            .lines()
+            .forEach(
+                line -> {
+                  processError.append(line).append("\n");
+                  if (logCmdOutput) {
+                    LOG.debug(line);
+                  }
+                });
         response.code = process.exitValue();
-        response.message = (response.code == 0) ? processOutput : processError;
+        response.message =
+            (response.code == 0) ? processOutput.toString().trim() : processError.toString().trim();
+        String ansibleErrMsg =
+            getAnsibleErrMsg(response.code, processOutput.toString(), processError.toString());
+        if (ansibleErrMsg != null) {
+          response.message = ansibleErrMsg;
+        }
       }
     } catch (IOException | InterruptedException e) {
       response.code = -1;
-      LOG.error("Exception running command", e);
+      LOG.error("Exception running command '{}'", response.description, e);
       response.message = e.getMessage();
     } finally {
       if (startMs > 0) {
@@ -164,5 +194,28 @@ public class ShellProcessHandler {
         LOG.info(line);
       }
     }
+  }
+
+  private static String getAnsibleErrMsg(int code, String stdout, String stderr) {
+
+    if (stderr == null || code == 0) return null;
+
+    String result = null;
+
+    Matcher ansibleFailMatch = ANSIBLE_FAIL_PAT.matcher(stderr);
+    if (ansibleFailMatch.find()) {
+      result = ansibleFailMatch.group(1) + ansibleFailMatch.group(2);
+
+      // Attempt to find a line in ansible stdout for the failed task.
+      // Logs for each task are separated by empty lines.
+      for (String s : stdout.split("\\R\\R")) {
+        Matcher m = ANSIBLE_FAILED_TASK_PAT.matcher(s);
+        if (m.find()) {
+          result = m.group(0);
+          break;
+        }
+      }
+    }
+    return result;
   }
 }

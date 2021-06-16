@@ -52,7 +52,7 @@ class TsRecoveryITest : public YBTest {
   void StartCluster(const vector<string>& extra_tserver_flags = vector<string>(),
                     int num_tablet_servers = 1);
 
-  gscoped_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
 };
 
 void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,

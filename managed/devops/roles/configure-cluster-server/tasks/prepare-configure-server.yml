@@ -1,0 +1,78 @@
+- name: Setup | Create bin directory for {{ user_name }}
+  file:
+    path: "{{ yb_bin_dir }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+
+- set_fact:
+    _mount_points: "{{ mount_points.split(',') }}"
+
+- set_fact:
+    mount_cores_dir: "{{ _mount_points[0] }}/cores"
+
+- name: Configure | Add yb server ctl script
+  vars:
+    mount_paths: "{{ _mount_points | join(' ') }}"
+  template:
+    src: yb-server-ctl.sh.j2
+    dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+
+- name: Setup | Create directory to land core dumps
+  file:
+    path: "{{ mount_cores_dir }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+
+- name: Setup | Symlink cores directory to {{ user_name }} home directory
+  file:
+    src: "{{ mount_cores_dir }}"
+    dest: "{{ yb_cores_dir }}"
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    state: link
+
+- name: Configure | Add clean_cores script
+  template:
+    src: clean_cores.sh.j2
+    dest: "{{ yb_bin_dir }}/clean_cores.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+
+- name: Configure | Add purge logs script
+  template:
+    src: zip_purge_yb_logs.sh.j2
+    dest: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+
+- set_fact:
+    cron_result: {}
+
+- name: Setup cron to cleanup core files.
+  cron:
+    name: "cleanup core files hourly"
+    minute: "0"
+    user: "{{ user_name }}"
+    job: "{{ yb_bin_dir }}/clean_cores.sh"
+  register: cron_result
+  failed_when:
+    - cron_result is failed
+    - cloud_type != "onprem"
+
+- name: Setup cron to cleanup log files.
+  cron:
+    name: "cleanup yb log files hourly"
+    minute: "5"
+    user: "{{ user_name }}"
+    job: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+  register: cron_result
+  failed_when:
+    - cron_result is failed
+    - cloud_type != "onprem"

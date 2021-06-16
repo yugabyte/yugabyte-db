@@ -65,6 +65,7 @@ class YBTableTestBase : public YBTest {
   virtual int session_timeout_ms();
   virtual int num_masters();
   virtual int num_tablet_servers();
+  virtual int num_drives();
   virtual int num_tablets();
   virtual int client_rpc_timeout_ms();
   virtual client::YBTableName table_name();
@@ -124,12 +125,15 @@ class YBTableTestBase : public YBTest {
 
   static constexpr int kDefaultNumMasters = 1;
   static constexpr int kDefaultNumTabletServers = 3;
+  static constexpr int kDefaultNumDrives = 1;
   static constexpr int kDefaultSessionTimeoutMs = 60000;
   static constexpr int kDefaultClientRpcTimeoutMs = 30000;
   static constexpr int kDefaultLoadBalanceTimeoutMs = 60000;
   static constexpr bool kDefaultUsingExternalMiniCluster = false;
   static constexpr bool kDefaultEnableYSQL = true;
   static const client::YBTableName kDefaultTableName;
+
+  std::unique_ptr<Env> ts_env_;
 
   vector<uint16_t> master_rpc_ports();
   // Calls CreateYBClient and assigns it to local class field.

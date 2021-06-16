@@ -48,7 +48,7 @@ using std::shared_ptr;
 DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
              "Amount of time the catalog manager background task thread waits "
              "between runs");
-TAG_FLAG(catalog_manager_bg_task_wait_ms, hidden);
+TAG_FLAG(catalog_manager_bg_task_wait_ms, runtime);
 
 DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
@@ -129,18 +129,27 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->tasks_tracker_->CleanupOldTasks();
 
       TabletInfos to_delete;
-      TabletInfos to_process;
+      TableToTabletInfos to_process;
 
       // Get list of tablets not yet running or already replaced.
       catalog_manager_->ExtractTabletsToProcess(&to_delete, &to_process);
 
+      bool processed_tablets = false;
       if (!to_process.empty()) {
         // Transition tablet assignment state from preparing to creating, send
         // and schedule creation / deletion RPC messages, etc.
-        WARN_NOT_OK(catalog_manager_->ProcessPendingAssignments(to_process),
-                    "Error processing pending assignments");
-        // TODO: Add tests for this in the revision that makes create/alter fault tolerant.
-      } else {
+        for (const auto& entries : to_process) {
+          LOG(INFO) << "Processing pending assignments for table: " << entries.first;
+          Status s = catalog_manager_->ProcessPendingAssignments(entries.second);
+          // Set processed_tablets as true if the call succeeds for at least one table.
+          processed_tablets = processed_tablets || s.ok();
+          // TODO Add tests for this in the revision that makes
+          // create/alter fault tolerant.
+        }
+      }
+
+      // Do the LB enabling check
+      if (!processed_tablets) {
         if (catalog_manager_->TimeSinceElectedLeader() >
             MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
           catalog_manager_->load_balance_policy_->RunLoadBalancer();

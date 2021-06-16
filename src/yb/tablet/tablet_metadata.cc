@@ -535,6 +535,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
+    restoration_hybrid_time_ = HybridTime::FromPB(superblock.restoration_hybrid_time());
 
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
@@ -636,6 +637,9 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   pb.set_is_under_twodc_replication(is_under_twodc_replication_);
   pb.set_hidden(hidden_);
+  if (restoration_hybrid_time_) {
+    pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
+  }
 
   if (!split_op_id_.empty()) {
     split_op_id_.ToPB(pb.mutable_split_op_id());
@@ -836,17 +840,24 @@ bool RaftGroupMetadata::is_under_twodc_replication() const {
   return is_under_twodc_replication_;
 }
 
-Status RaftGroupMetadata::SetHiddenAndFlush(bool value) {
-  {
-    std::lock_guard<MutexType> lock(data_mutex_);
-    hidden_ = value;
-  }
-  return Flush();
+void RaftGroupMetadata::SetHidden(bool value) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  hidden_ = value;
 }
 
 bool RaftGroupMetadata::hidden() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return hidden_;
+}
+
+void RaftGroupMetadata::SetRestorationHybridTime(HybridTime value) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  restoration_hybrid_time_ = value;
+}
+
+HybridTime RaftGroupMetadata::restoration_hybrid_time() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return restoration_hybrid_time_;
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {

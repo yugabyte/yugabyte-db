@@ -6,20 +6,19 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 public class ReleaseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseController.class);
@@ -33,6 +32,7 @@ public class ReleaseController extends AuthenticatedController {
 
     Form<ReleaseFormData> formData = formFactory.getFormDataOrBadRequest(ReleaseFormData.class);
     ReleaseFormData releaseFormData = formData.get();
+    LOG.info("ReleaseController: Adding new release: {} ", releaseFormData.toString());
     try {
       releaseManager.addRelease(releaseFormData.version);
     } catch (RuntimeException re) {
@@ -82,6 +82,7 @@ public class ReleaseController extends AuthenticatedController {
   public Result refresh(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
+    LOG.info("ReleaseController: refresh");
     try {
       releaseManager.importLocalReleases();
     } catch (RuntimeException re) {

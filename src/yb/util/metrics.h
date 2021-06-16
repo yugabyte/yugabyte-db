@@ -1477,7 +1477,7 @@ class Histogram : public Metric {
   explicit Histogram(std::unique_ptr<HistogramPrototype> proto, uint64_t highest_trackable_value,
         int num_significant_digits, ExportPercentiles export_percentiles);
 
-  const gscoped_ptr<HdrHistogram> histogram_;
+  const std::unique_ptr<HdrHistogram> histogram_;
   const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };

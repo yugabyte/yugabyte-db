@@ -18,17 +18,17 @@ Helps find the Linuxbrew installation.
 import os
 import sys
 from yb.command_util import run_program
-from yb.common_util import safe_path_join
+from yb.common_util import safe_path_join, YB_SRC_ROOT
+
+from typing import Optional
 
 
-g_linuxbrew_dir = None
-g_build_root = None
-
-YB_SRC_ROOT = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..')
+g_linuxbrew_dir: Optional[str] = None
+g_build_root: Optional[str] = None
 
 
 class LinuxbrewHome:
-    def __init__(self, build_root=None):
+    def __init__(self, build_root: Optional[str] = None) -> None:
         old_build_root = os.environ.get('BUILD_ROOT')
         if build_root is not None:
             os.environ['BUILD_ROOT'] = build_root
@@ -58,10 +58,10 @@ class LinuxbrewHome:
 
             # Directories derived from the Linuxbrew top-level one.
             self.linuxbrew_link_target = os.path.realpath(linuxbrew_dir)
-            self.cellar_glibc_dir = safe_path_join(self.linuxbrew_dir, 'Cellar', 'glibc')
-            self.ldd_path = safe_path_join(self.linuxbrew_dir, 'bin', 'ldd')
-            self.ld_so_path = safe_path_join(self.linuxbrew_dir, 'lib', 'ld.so')
-            self.patchelf_path = safe_path_join(self.linuxbrew_dir, 'bin', 'patchelf')
+            self.cellar_glibc_dir = safe_path_join([self.linuxbrew_dir, 'Cellar', 'glibc'])
+            self.ldd_path = safe_path_join([self.linuxbrew_dir, 'bin', 'ldd'])
+            self.ld_so_path = safe_path_join([self.linuxbrew_dir, 'lib', 'ld.so'])
+            self.patchelf_path = safe_path_join([self.linuxbrew_dir, 'bin', 'patchelf'])
         finally:
             if old_build_root is None:
                 if 'BUILD_ROOT' in os.environ:
@@ -69,22 +69,31 @@ class LinuxbrewHome:
             else:
                 os.environ['BUILD_ROOT'] = old_build_root
 
-    def path_is_in_linuxbrew_dir(self, path):
+    def path_is_in_linuxbrew_dir(self, path: str) -> bool:
+        if not self.is_enabled():
+            return False
         path = os.path.abspath(path)
+        assert self.linuxbrew_dir is not None
+        assert self.linuxbrew_link_target is not None
         return (path.startswith(self.linuxbrew_dir + '/') or
                 path.startswith(self.linuxbrew_link_target + '/'))
 
-    def get_human_readable_dirs(self):
+    def get_human_readable_dirs(self) -> str:
+        assert self.linuxbrew_dir is not None
+        assert self.linuxbrew_link_target is not None
         return ', '.join("'%s'" % d for d in
                          sorted(set([self.linuxbrew_dir, self.linuxbrew_link_target])))
 
+    def is_enabled(self) -> bool:
+        return self.linuxbrew_dir is not None
 
-def set_build_root(build_root):
+
+def set_build_root(build_root: str) -> None:
     global g_build_root
     g_build_root = build_root
 
 
-def get_linuxbrew_dir():
+def get_linuxbrew_dir() -> Optional[str]:
     if not sys.platform.startswith('linux'):
         return None
 

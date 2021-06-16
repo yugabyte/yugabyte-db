@@ -10,14 +10,15 @@
 
 from ybops.cloud.common.command import InstanceCommand, QueryCommand, AccessCommand, \
     NetworkCommand
-from ybops.cloud.common.method import ConfigureInstancesMethod, DestroyInstancesMethod, \
+from ybops.cloud.common.method import ConfigureInstancesMethod, \
     ListInstancesMethod, AccessCreateVaultMethod, InitYSQLMethod, UpdateDiskMethod, \
     CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod
 from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstancesMethod, \
     GcpQueryRegionsMethod, GcpQueryZonesMethod, GcpQueryInstanceTypesMethod, \
     GcpQueryCurrentHostMethod, GcpQueryPreemptibleInstanceMethod, GcpDestroyInstancesMethod, \
     GcpAccessAddKeyMethod, GcpNetworkBootstrapMethod, GcpNetworkQueryMethod, \
-    GcpNetworkCleanupMethod, GcpQueryVpcMethod
+    GcpNetworkCleanupMethod, GcpQueryVpcMethod, GcpCreateRootVolumesMethod, \
+    GcpReplaceRootVolumeMethod
 
 
 class GcpInstanceCommand(InstanceCommand):
@@ -29,6 +30,8 @@ class GcpInstanceCommand(InstanceCommand):
     def add_methods(self):
         self.add_method(GcpProvisionInstancesMethod(self))
         self.add_method(GcpCreateInstancesMethod(self))
+        self.add_method(GcpCreateRootVolumesMethod(self))
+        self.add_method(GcpReplaceRootVolumeMethod(self))
         self.add_method(GcpDestroyInstancesMethod(self))
         self.add_method(ListInstancesMethod(self))
         self.add_method(ConfigureInstancesMethod(self))
