@@ -856,7 +856,7 @@ void Tablet::MarkFinishedBootstrapping() {
   state_ = kOpen;
 }
 
-bool Tablet::StartShutdown() {
+bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
@@ -868,28 +868,15 @@ bool Tablet::StartShutdown() {
     transaction_participant_->StartShutdown();
   }
 
-  if (post_split_compaction_task_pool_token_) {
-    post_split_compaction_task_pool_token_->Shutdown();
-  }
+  StartShutdownRocksDBs(DisableFlushOnShutdown(is_drop_table));
 
   return true;
-}
-
-void Tablet::PreventCallbacksFromRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown) {
-  if (intents_db_) {
-    intents_db_->ListenFilesChanged(nullptr);
-    intents_db_->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
-  }
-
-  if (regular_db_) {
-    regular_db_->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
-  }
 }
 
 void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
   LOG_WITH_PREFIX(INFO) << __func__ << "(" << is_drop_table << ")";
 
-  StartShutdown();
+  StartShutdown(is_drop_table);
 
   auto op_pause = PauseReadWriteOperations(Stop::kTrue);
   if (!op_pause.ok()) {
@@ -925,8 +912,13 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
   // Shutdown the RocksDB instance for this table, if present.
   // Destroy intents and regular DBs in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  WARN_NOT_OK(ResetRocksDBs(Destroy::kFalse, DisableFlushOnShutdown(is_drop_table)),
+  WARN_NOT_OK(ShutdownRocksDBs(Destroy::kFalse, DisableFlushOnShutdown(is_drop_table)),
               "Failed to reset rocksdb during shutdown");
+
+  if (post_split_compaction_task_pool_token_) {
+    post_split_compaction_task_pool_token_->Shutdown();
+  }
+
   state_ = kShutdown;
 
   // Release the mutex that prevents snapshot restore / truncate operations from running. Such
@@ -952,8 +944,27 @@ CHECKED_STATUS ResetRocksDB(
   return rocksdb::DestroyDB(dir, options);
 }
 
-Status Tablet::ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown) {
-  PreventCallbacksFromRocksDBs(disable_flush_on_shutdown);
+void Tablet::StartShutdownRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown) {
+  bool expected = false;
+  if (!rocksdb_shutdown_requested_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+
+  for (auto* db : {regular_db_.get(), intents_db_.get()}) {
+    if (db) {
+      db->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
+      db->StartShutdown();
+    }
+  }
+}
+
+Status Tablet::ShutdownRocksDBs(
+    Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown) {
+  StartShutdownRocksDBs(disable_flush_on_shutdown);
+
+  if (intents_db_) {
+    intents_db_->ListenFilesChanged(nullptr);
+  }
 
   rocksdb::Options rocksdb_options;
   if (destroy) {
@@ -963,6 +974,11 @@ Status Tablet::ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flu
   Status intents_status = ResetRocksDB(destroy, rocksdb_options, &intents_db_);
   Status regular_status = ResetRocksDB(destroy, rocksdb_options, &regular_db_);
   key_bounds_ = docdb::KeyBounds();
+  // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
+  // so we don't have to reset it on RocksDB open (we potentially can have several places in the
+  // code doing opening RocksDB while RocksDB shutdown is always going through
+  // Tablet::ShutdownRocksDBs).
+  rocksdb_shutdown_requested_ = false;
 
   return regular_status.ok() ? intents_status : regular_status;
 }
@@ -2583,6 +2599,9 @@ Status Tablet::Truncate(TruncateOperationState *state) {
     return Status::OK();
   }
 
+  const auto disable_flush_on_shutdown = DisableFlushOnShutdown::kTrue;
+  StartShutdownRocksDBs(disable_flush_on_shutdown);
+
   auto op_pause = PauseReadWriteOperations();
   RETURN_NOT_OK(op_pause);
 
@@ -2594,7 +2613,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
   const string db_dir = regular_db_->GetName();
 
-  auto s = ResetRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue);
+  auto s = ShutdownRocksDBs(Destroy::kTrue, disable_flush_on_shutdown);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
@@ -3125,7 +3144,10 @@ void Tablet::ForceRocksDBCompactInTest() {
 }
 
 Status Tablet::ForceFullRocksDBCompact() {
-  if (regular_db_) {
+  ScopedRWOperation scoped_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_operation);
+
+    if (regular_db_) {
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get()));
   }
   if (intents_db_) {
@@ -3427,7 +3449,8 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
 
 void Tablet::TriggerPostSplitCompactionSync() {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
-  WARN_NOT_OK(ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
+  WARN_WITH_PREFIX_NOT_OK(
+      ForceFullRocksDBCompact(), LogPrefix() + "Failed to compact post-split tablet.");
 }
 
 Status Tablet::VerifyDataIntegrity() {

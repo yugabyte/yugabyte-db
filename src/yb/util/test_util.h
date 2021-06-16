@@ -215,6 +215,8 @@ CHECKED_STATUS WaitFor(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
+// DEPRECATED: use ASSERT_OK(LoggedWaitFor(...)) instead, so we don't forget to use
+// ASSERT_NO_FATALS with AssertLoggedWaitFor.
 void AssertLoggedWaitFor(
     const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
