@@ -45,7 +45,7 @@ This can be done in one of the following ways:
 
 ##### Option A: Using `--ysql_pg_conf` TServer flag
 
-Database administrators can leverage `ysql_pg_conf` to set appropriate values for pgAudit configuration.
+Database administrators can leverage `ysql_pg_conf` to set appropriate values for `pgAudit` configuration.
 
 For example, `ysql_pg_conf="pgaudit.log='DDL',pgaudit.log_level=notice"`
 
@@ -63,7 +63,7 @@ For example, `SET pgaudit.log='DDL'`
 
 ### Step 2. Load the `pgAudit` extension
 
-Enable audit logging in YugabyteDB clusters by creating the `pgaudit` extension. Executing the following statement in a YSQL shell enables Audit logging:
+Enable audit logging in YugabyteDB clusters by creating the `pgAudit` extension. Executing the following statement in a YSQL shell enables Audit logging:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgaudit;
@@ -72,7 +72,7 @@ CREATE EXTENSION IF NOT EXISTS pgaudit;
 
 ## Customizing Audit Logging
 
-YSQL audit logging can be further customized by configuring the pgAudit flags as per the following table.
+YSQL audit logging can be further customized by configuring the `pgAudit` flags as per the following table.
 
 <table>
   <tr>
@@ -174,14 +174,14 @@ There is no default.
   </tr>
 </table>
 
-## Example
+## Examples
 
 Use these steps to configure audit logging in a YugabyteDB cluster with bare minimum configurations.
 
 
 ### 1. Enable audit logging
 
-Start the YugabyteDB Cluster with the following Audit logging Configuration:
+Start the YugabyteDB Cluster with the following Audit logging configuration:
 
 ```shell
 --ysql_pg_conf="pgaudit.log='DDL',pgaudit.log_level=notice,pgaudit.log_client=ON"
@@ -215,7 +215,7 @@ You should be able to login and see an output similar to the following:
     
     yugabyte=#
 
-To enable the `pgaudit` extension on the YugabyteDB cluster, connect to the database by using the following:
+To enable the `pgAudit` extension on the YugabyteDB cluster, connect to the database by using the following:
 
 ```shell
 yugabyte=> \c yugabyte yugabyte;
