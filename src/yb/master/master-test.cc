@@ -1612,6 +1612,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
 
     if (!del_resp.has_error()) {
       Status s = DeleteNamespaceWait(is_del_req);
+      ASSERT_FALSE(s.IsTimedOut()) << "Unexpected timeout: " << s;
       WARN_NOT_OK(s, "Expected failure");
       delete_failed = !s.ok();
     }

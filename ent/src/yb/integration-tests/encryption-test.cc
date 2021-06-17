@@ -145,8 +145,8 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     return true;
   }
 
-  void WaitForAllMastersHaveLatestKeyInMemory() {
-    AssertLoggedWaitFor([&]() -> Result<bool> {
+  CHECKED_STATUS WaitForAllMastersHaveLatestKeyInMemory() {
+    return LoggedWaitFor([&]() -> Result<bool> {
       return AllMastersHaveLatestKeyInMemory();
     }, 30s, "Wait for all masters to have key in memory");
   }
@@ -168,12 +168,12 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     auto res = ASSERT_RESULT(IsEncryptionEnabled());
     ASSERT_NE("", res);
     ASSERT_EQ(current_key_id_, res);
-    ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+    ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   }
 
-  void WaitForLoadBalanced() {
+  CHECKED_STATUS WaitForLoadBalanced() {
     SleepFor(MonoDelta::FromSeconds(5));
-    AssertLoggedWaitFor([&]() -> Result<bool> {
+    return LoggedWaitFor([&]() -> Result<bool> {
       master::IsLoadBalancedRequestPB req;
       master::IsLoadBalancedResponsePB resp;
       auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
@@ -218,13 +218,13 @@ TEST_F(EncryptionTest, MasterLeaderRestart) {
   WriteWorkload(0, kNumKeys);
   // Restart the master leader.
   CHECK_OK(mini_cluster()->leader_mini_master()->Restart());
-  ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+  ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   // Restart the tablet servers and make sure they can contact the new master leader for the key.
   for (int i = 0; i < mini_cluster()->num_tablet_servers(); i++) {
     CHECK_OK(mini_cluster()->mini_tablet_server(i)->Restart());
   }
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
@@ -238,7 +238,7 @@ TEST_F(EncryptionTest, AllMastersRestart) {
     CHECK_OK(mini_cluster()->mini_master(i)->Restart());
   }
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
@@ -251,13 +251,13 @@ TEST_F(EncryptionTest, RollingMasterRestart) {
 
   for (int i = 0; i < mini_cluster()->num_masters(); i++) {
     CHECK_OK(mini_cluster()->mini_master(i)->Restart());
-    ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+    ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   }
   // Test that each master bootstraps from each other.
   ASSERT_NO_FATALS(AddUniverseKeys());
   ASSERT_NO_FATALS(RotateKey());
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
@@ -268,7 +268,7 @@ TEST_F(EncryptionTest, AddServer) {
   // Write 1000 values, add a server, and write 1000 more.
   WriteWorkload(0, kNumKeys);
   ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
@@ -301,7 +301,7 @@ TEST_F(EncryptionTest, DisableEncryption) {
 TEST_F(EncryptionTest, EmptyTable) {
   // No values added, make sure add server works with empty tables.
   ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }

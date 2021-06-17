@@ -3422,10 +3422,10 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     return Status::OK();
   };
 
-  AssertLoggedWaitFor([&]() -> Result<bool> {
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     RETURN_NOT_OK(get_split_op_ids());
     return split_op_ids[0].term > 0;
-  }, kTimeout, "Waiting for the initial leader to add SPLIT_OP to Raft log");
+  }, kTimeout, "Waiting for the initial leader to add SPLIT_OP to Raft log"));
   LOG(INFO) << "split_op_ids: " << AsString(split_op_ids);
   ASSERT_EQ(split_op_ids[1], OpId());
   ASSERT_EQ(split_op_ids[2], OpId());
@@ -3438,7 +3438,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   ASSERT_OK(FindTabletLeader(tablet_servers_, tablet_id_, kTimeout, &new_leader));
   LOG(INFO) << "New leader: " << new_leader->uuid();
 
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&]() -> Result<bool> {
         RETURN_NOT_OK(get_split_op_ids());
         for (const auto& split_op_id : split_op_ids) {
@@ -3448,7 +3448,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
         }
         return true;
       },
-      kTimeout, "Waiting for SPLIT_OP to be aborted and split_op_id to be reset on all replicas");
+      kTimeout, "Waiting for SPLIT_OP to be aborted and split_op_id to be reset on all replicas"));
   split_latch.Wait();
 
   LOG(INFO) << "Pause update consensus on the old leader";
@@ -3467,7 +3467,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     split_latch.CountDown();
   });
 
-  AssertLoggedWaitFor([&]() -> Result<bool> {
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     RETURN_NOT_OK(get_split_op_ids());
     for (int i = 0; i < tservers.size(); ++i) {
       if (tservers[i]->uuid() == new_leader->uuid() && split_op_ids[i].index > 0) {
@@ -3475,7 +3475,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
       }
     }
     return false;
-  }, kTimeout, "Waiting for the new leader to add SPLIT_OP to Raft log");
+  }, kTimeout, "Waiting for the new leader to add SPLIT_OP to Raft log"));
   LOG(INFO) << "split_op_ids: " << AsString(split_op_ids);
 
   // Make sure followers have split_op_id not yet set.
@@ -3490,7 +3490,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     ASSERT_OK(pause_update_consensus(tserver, false));
   }
 
-  AssertLoggedWaitFor([&]() -> Result<bool> {
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     RETURN_NOT_OK(get_split_op_ids());
     for (auto& split_op_id : split_op_ids) {
       if (split_op_id == OpId()) {
@@ -3498,7 +3498,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
       }
     }
     return true;
-  }, kTimeout, "Waiting for all replicas to add SPLIT_OP to Raft log");
+  }, kTimeout, "Waiting for all replicas to add SPLIT_OP to Raft log"));
   LOG(INFO) << "split_op_ids: " << AsString(split_op_ids);
 
   for (auto& split_op_id : split_op_ids) {

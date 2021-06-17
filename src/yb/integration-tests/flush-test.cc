@@ -159,9 +159,9 @@ class FlushITest : public YBTest {
 
   void WriteAtLeast(size_t size_bytes) {
     workload_->Start();
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [this, size_bytes] { return BytesWritten() >= size_bytes; }, 60s,
-        Format("Waiting until we've written at least $0 bytes ...", size_bytes), kWaitDelay);
+        Format("Waiting until we've written at least $0 bytes ...", size_bytes), kWaitDelay));
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
   }
@@ -186,16 +186,16 @@ class FlushITest : public YBTest {
   void WriteUntilCompaction() {
     int num_compactions_started = rocksdb_listener_->GetNumCompactionsStarted();
     workload_->Start();
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [this, num_compactions_started] {
           return rocksdb_listener_->GetNumCompactionsStarted() > num_compactions_started;
-        }, 60s, "Waiting until we've written to start compaction ...", kWaitDelay);
+        }, 60s, "Waiting until we've written to start compaction ...", kWaitDelay));
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [this] {
           return NumTotalRunningCompactions(cluster_.get()) == 0 && NumRunningFlushes() == 0;
-        }, 60s, "Waiting until compactions and flushes are done ...", kWaitDelay);
+        }, 60s, "Waiting until compactions and flushes are done ...", kWaitDelay));
   }
 
   void AddTabletsWithNonEmptyMemTable(std::unordered_map<TabletId, int>* tablets, int order) {
@@ -301,9 +301,9 @@ void FlushITest::TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_res
 
   DumpMemoryUsage();
 
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this] { return !memory_monitor()->Exceeded(); }, 30s,
-      "Waiting until memory is freed by flushes...", kWaitDelay);
+      "Waiting until memory is freed by flushes...", kWaitDelay));
 
   LOG(INFO) << "Tables: " << tables;
 
