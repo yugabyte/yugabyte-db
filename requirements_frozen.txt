@@ -1,11 +1,11 @@
 bashlex==0.12
+boto==2.49.0
 Click==7.0
 compiledb==0.9.8
+distro==1.5.0
 enum34==1.1.6
+overrides==3.1.0
+psutil==5.5.1
 PyYAML==3.13
 six==1.12.0
 yugabyte-pycommon==1.9.3
-psutil==5.5.1
-distro==1.5.0
-boto==2.49.0
-overrides==3.1.0

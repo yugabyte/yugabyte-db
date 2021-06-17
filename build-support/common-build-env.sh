@@ -187,9 +187,19 @@ make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
   clang
+  clang7
+  clang8
+  clang9
+  clang10
+  clang11
+  clang12
   gcc
+  gcc5
+  gcc6
+  gcc7
   gcc8
   gcc9
+  gcc10
   zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
@@ -273,6 +283,11 @@ yb_mvn_parameters_already_set=false
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
+
+yb_activate_debug_mode() {
+  PS4='[${BASH_SOURCE[0]}:${LINENO} ${FUNCNAME[0]:-}] '
+  set -x
+}
 
 is_thirdparty_build() {
   [[ ${YB_IS_THIRDPARTY_BUILD:-0} == "1" ]]
@@ -922,40 +937,26 @@ find_compiler_by_type() {
       cc_executable+=${YB_GCC_SUFFIX:-}
       cxx_executable+=${YB_GCC_SUFFIX:-}
     ;;
-    # TODO mbautin: remove repetition in handling of various versions of GCC.
-    # TODO mbautin: do we actually need separate YB_GCC<n>_PREFIX environment variables?
-    gcc8)
-      if is_centos; then
-        cc_executable=/opt/rh/devtoolset-8/root/usr/bin/gcc
-        cxx_executable=/opt/rh/devtoolset-8/root/usr/bin/g++
-      elif [[ -n ${YB_GCC8_PREFIX:-} ]]; then
-        if [[ ! -d $YB_GCC8_PREFIX/bin ]]; then
-          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
-        fi
-        cc_executable=$YB_GCC8_PREFIX/bin/gcc-8
-        cxx_executable=$YB_GCC8_PREFIX/bin/g++-8
-      else
-        # shellcheck disable=SC2230
-        cc_executable=$(which gcc-8)
-        # shellcheck disable=SC2230
-        cxx_executable=$(which g++-8)
+    gcc*)
+      local gcc_major_version=${YB_COMPILER_TYPE#gcc}
+      if [[ ! $gcc_major_version =~ ^[0-9]+$ ]]; then
+        fatal "Invalid GCC major version: '$gcc_major_version'" \
+              "(from compiler type '$YB_COMPILER_TYPE')."
       fi
-    ;;
-    gcc9)
       if is_centos; then
-        cc_executable=/opt/rh/devtoolset-9/root/usr/bin/gcc
-        cxx_executable=/opt/rh/devtoolset-9/root/usr/bin/g++
-      elif [[ -n ${YB_GCC9_PREFIX:-} ]]; then
-        if [[ ! -d $YB_GCC9_PREFIX/bin ]]; then
-          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
+        local gcc_bin_dir
+        if [[ -d /opt/rh/gcc-toolset-$gcc_major_version ]]; then
+          gcc_bin_dir=/opt/rh/gcc-toolset-$gcc_major_version/root/usr/bin
+        else
+          gcc_bin_dir=/opt/rh/devtoolset-$gcc_major_version/root/usr/bin
         fi
-        cc_executable=$YB_GCC9_PREFIX/bin/gcc-9
-        cxx_executable=$YB_GCC9_PREFIX/bin/g++-9
+        cc_executable=$gcc_bin_dir/gcc
+        cxx_executable=$gcc_bin_dir/g++
       else
         # shellcheck disable=SC2230
-        cc_executable=$(which gcc-9)
+        cc_executable=$(which "gcc-$gcc_major_version")
         # shellcheck disable=SC2230
-        cxx_executable=$(which g++-9)
+        cxx_executable=$(which "g++-$gcc_major_version")
       fi
     ;;
     clang)
@@ -1534,6 +1535,7 @@ detect_num_cpus_and_set_make_parallelism() {
 }
 
 validate_thirdparty_dir() {
+  expect_vars_to_be_set YB_THIRDPARTY_DIR
   ensure_file_exists "$YB_THIRDPARTY_DIR/build_thirdparty.sh"
   ensure_directory_exists "$YB_THIRDPARTY_DIR/installed"
 }
@@ -1754,14 +1756,6 @@ find_or_download_thirdparty() {
     if ! using_default_thirdparty_dir; then
       export NO_REBUILD_THIRDPARTY=1
     fi
-    return
-  fi
-
-  if [[ -n ${YB_COMPILER_TYPE:-} &&
-        ${YB_COMPILER_TYPE} != "gcc" &&
-        ${YB_COMPILER_TYPE} != "clang" ]]; then
-    # For compiler types like clang11 or gcc8, don't attempt to use a prebuilt thirdparty archive
-    # yet (as of 11/01/2020). We will do that when we pre-build those archives.
     return
   fi
 
@@ -2223,7 +2217,7 @@ set_prebuilt_thirdparty_url() {
     # we do need to upgrade these build types to a non-Linuxbrew toolchain, though.
     if [[ $YB_COMPILER_TYPE == "clang" ||
           $build_type == "asan" ||
-          $build_type == "tsan" ]]; then
+          $build_type == "tsan" ]] && is_centos; then
       thirdparty_url_file+="_legacy_clang7_linuxbrew"
     fi
     thirdparty_url_file+=.txt

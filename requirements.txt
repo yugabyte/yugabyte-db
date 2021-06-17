@@ -1,5 +1,4 @@
 PyYAML
-six
 yugabyte_pycommon
 compiledb
 psutil
