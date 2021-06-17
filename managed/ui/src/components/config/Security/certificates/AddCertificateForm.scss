@@ -1,0 +1,12 @@
+.field-active {
+  position: relative;
+  z-index: 1;
+  top: -52px;
+  left: 55%;
+  color: grey;
+  font-size: 10px;
+  transition: 300ms;
+}
+.field-inactive {
+  display: none;
+}

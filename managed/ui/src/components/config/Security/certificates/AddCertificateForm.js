@@ -10,6 +10,7 @@ import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtil
 import { Field } from 'formik';
 
 import MomentLocaleUtils, { formatDate, parseDate } from 'react-day-picker/moment';
+import './AddCertificateForm.scss';
 
 const initialValues = {
   certName: '',
@@ -41,7 +42,22 @@ export default class AddCertificateForm extends Component {
   };
 
   state = {
-    tab: 'selfSigned'
+    tab: 'selfSigned',
+    fieldActive: {
+      rootCACert: false,
+      nodeCertPath: false,
+      nodeCertPrivate: false,
+      clientCertPath: false,
+      clientKeyPath: false
+    }
+  }
+
+  placeholderObject = {
+    rootCACert: '/opt/yugabyte/keys/cert1/ca.crt',
+    nodeCertPath: '/opt/yugabyte/keys/cert1/node.key',
+    nodeCertPrivate: '/opt/yugabyte/keys/cert1/node.crt',
+    clientCertPath: '/opt/yugabyte/yugaware/data/cert1/client.crt',
+    clientKeyPath: '/opt/yugabyte/yugaware/data/cert1/client.key'
   }
 
   readUploadedFileAsText = (inputFile, isRequired) => {
@@ -195,6 +211,24 @@ export default class AddCertificateForm extends Component {
     this.setState({tab: newTabKey});
   }
 
+  handleOnFocus = (event) => {
+    this.setState({ ...this.state,
+      fieldActive: {
+        [event.target.name]: true 
+      }
+    });
+    event.target.placeholder='';
+  }
+
+  handleOnBlur = (event) => {
+    this.setState({ ...this.state,
+      fieldActive: {
+        [event.target.name]: false 
+      }
+    });
+    event.target.placeholder = this.placeholderObject[event.target.name];
+  }
+
   render() {
     const {
       customer: { addCertificate }
@@ -228,7 +262,13 @@ export default class AddCertificateForm extends Component {
                 onSelect={(k) => this.tabSelect(k, props)}
               >
                 <Tab eventKey="selfSigned" title="Self Signed">
-                  <Field name="certName" component={YBFormInput} type="text" label="Certificate Name" required />
+                  <Field
+                    name="certName"
+                    component={YBFormInput}
+                    type="text"
+                    label="Certificate Name"
+                    required
+                  />
                   <Field
                     name="certExpiry"
                     component={YBFormDatePicker}
@@ -261,16 +301,23 @@ export default class AddCertificateForm extends Component {
                     title="Upload Key"
                     required
                   />
-                  {getPromiseState(addCertificate).isError() && isNonEmptyObject(addCertificate.error) && (
-                    <Alert bsStyle="danger" variant="danger">
-                      Certificate adding has been failed:
-                      <br />
-                      {JSON.stringify(addCertificate.error)}
-                    </Alert>
-                  )}
+                  {getPromiseState(addCertificate).isError() &&
+                    isNonEmptyObject(addCertificate.error) && (
+                      <Alert bsStyle="danger" variant="danger">
+                        Certificate adding has been failed:
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                 </Tab>
                 <Tab eventKey="caSigned" title="CA Signed">
-                  <Field name="certName" component={YBFormInput} type="text" label="Certificate Name" required />
+                  <Field
+                    name="certName"
+                    component={YBFormInput}
+                    type="text"
+                    label="Certificate Name"
+                    required
+                  />
                   <Field
                     name="certExpiry"
                     component={YBFormDatePicker}
@@ -296,45 +343,82 @@ export default class AddCertificateForm extends Component {
                     title="Upload Root Certificate"
                     required
                   />
-                  <Field
-                    name="rootCACert"
-                    component={YBFormInput}
-                    label="Root CA Certificate"
-                    placeholder="/opt/yugabyte/keys/cert1/ca.crt"
-                    required
-                  />
-                  <Field
-                    name="nodeCertPath"
-                    component={YBFormInput}
-                    label="Database Node Certificate Path"
-                    placeholder="/opt/yugabyte/keys/cert1/node.crt"
-                    required
-                  />
-                  <Field
-                    name="nodeCertPrivate"
-                    component={YBFormInput}
-                    label="Database Node Certificate Private Key"
-                    placeholder="/opt/yugabyte/keys/cert1/node.key"
-                    required
-                  />
-                  <Field
-                    name="clientCertPath"
-                    component={YBFormInput}
-                    label="Client Certificate"
-                    placeholder="/opt/yugabyte/yugaware/data/cert1/client.crt"
-                  />
-                  <Field name="clientKeyPath"
-                    component={YBFormInput}
-                    label="Client Certificate Private Key"
-                    placeholder="/opt/yugabyte/yugaware/data/cert1/client.key"
-                  />
-                  {getPromiseState(addCertificate).isError() && isNonEmptyObject(addCertificate.error) && (
-                    <Alert bsStyle="danger" variant="danger">
-                      Certificate adding has been failed:
-                      <br />
-                      {JSON.stringify(addCertificate.error)}
-                    </Alert>
-                  )}
+                  <div>
+                    <Field
+                      name="rootCACert"
+                      component={YBFormInput}
+                      label="Root CA Certificate"
+                      placeholder={this.placeholderObject['rootCACert']}
+                      required
+                      onFocus={this.handleOnFocus}
+                      onBlur={this.handleOnBlur}
+                    />
+                    <span className={this.state.fieldActive['rootCACert'] ? 'field-active' : 'field-inactive'}>
+                      {this.placeholderObject['rootCACert']}
+                    </span>
+                  </div>
+                  <div>
+                    <Field
+                      name="nodeCertPath"
+                      component={YBFormInput}
+                      label="Database Node Certificate Path"
+                      placeholder={this.placeholderObject['nodeCertPath']}
+                      required
+                      onFocus={this.handleOnFocus}
+                      onBlur={this.handleOnBlur}
+                    />
+                    <span className={this.state.fieldActive['nodeCertPath'] ? 'field-active' : 'field-inactive'}>
+                      {this.placeholderObject['nodeCertPath']}
+                    </span>
+                  </div>
+                  <div>
+                    <Field
+                      name="nodeCertPrivate"
+                      component={YBFormInput}
+                      label="Database Node Certificate Private Key"
+                      placeholder={this.placeholderObject['nodeCertPrivate']}
+                      required
+                      onFocus={this.handleOnFocus}
+                      onBlur={this.handleOnBlur}
+                    />
+                    <span className={this.state.fieldActive['nodeCertPrivate'] ? 'field-active' : 'field-inactive'}>
+                      {this.placeholderObject['nodeCertPrivate']}
+                    </span>
+                  </div>
+                  <div>
+                    <Field
+                      name="clientCertPath"
+                      component={YBFormInput}
+                      label="Client Certificate"
+                      placeholder={this.placeholderObject['clientCertPath']}
+                      onFocus={this.handleOnFocus}
+                      onBlur={this.handleOnBlur}
+                    />
+                    <span className={this.state.fieldActive['clientCertPath'] ? 'field-active' : 'field-inactive'}>
+                      {this.placeholderObject['clientCertPath']}
+                    </span>
+                  </div>
+                  <div>
+                    <Field
+                      name="clientKeyPath"
+                      component={YBFormInput}
+                      label="Client Certificate Private Key"
+                      placeholder={this.placeholderObject['clientKeyPath']}
+                      onFocus={this.handleOnFocus}
+                      onBlur={this.handleOnBlur}
+                    />
+                    <span className={this.state.fieldActive['clientKeyPath'] ? 'field-active' : 'field-inactive'}>
+                      {this.placeholderObject['clientKeyPath']}
+                    </span>
+                  </div>
+                  {getPromiseState(addCertificate).isError() &&
+                    isNonEmptyObject(addCertificate.error) && (
+                      <Alert bsStyle="danger" variant="danger">
+                        Certificate adding has been failed:
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                 </Tab>
               </Tabs>
             );
