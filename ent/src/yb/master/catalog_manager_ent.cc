@@ -1912,6 +1912,15 @@ Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestP
   return snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, resp);
 }
 
+Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
+                                              DeleteSnapshotScheduleResponsePB* resp,
+                                              rpc::RpcContext* rpc) {
+  auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+
+  return snapshot_coordinator_.DeleteSnapshotSchedule(
+      snapshot_schedule_id, leader_ready_term(), rpc->GetClientDeadline());
+}
+
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   super::DumpState(out, on_disk_dump);
 
