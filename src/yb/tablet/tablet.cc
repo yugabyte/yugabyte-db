@@ -241,6 +241,7 @@ DEFINE_test_flag(bool, pause_before_post_split_compation, false,
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
                  "Prevents adding the UserFrontier to SST file in order to mimic older files.");
 
+DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(consistent_restore);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -2387,6 +2388,7 @@ Status Tablet::FlushIndexBatchIfRequired(
   auto client = client_future_.get();
   auto session = std::make_shared<YBSession>(client);
   session->SetHybridTimeForWrite(write_time);
+  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms));
 
   std::unordered_set<
       client::YBqlWriteOpPtr, client::YBqlWriteOp::PrimaryKeyComparator,

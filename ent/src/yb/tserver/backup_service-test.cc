@@ -47,7 +47,7 @@ class BackupServiceTest : public TabletServerTestBase {
             proxy_cache_.get(), HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr())));
   }
 
-  gscoped_ptr<TabletServerBackupServiceProxy> backup_proxy_;
+  std::unique_ptr<TabletServerBackupServiceProxy> backup_proxy_;
 };
 
 TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {

@@ -47,7 +47,6 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/substitute.h"

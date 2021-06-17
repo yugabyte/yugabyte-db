@@ -57,7 +57,6 @@
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/perf_context.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/snapshot.h"
 #include "yb/rocksdb/sst_file_writer.h"
@@ -84,9 +83,17 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/mock_env.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/xfunc.h"
+
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/priority_thread_pool.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
 #include "yb/util/tsan_util.h"
+
+DECLARE_bool(use_priority_thread_pool_for_compactions);
+DECLARE_bool(use_priority_thread_pool_for_flushes);
 
 namespace rocksdb {
 
@@ -8493,11 +8500,59 @@ TEST_F(DBTest, WalFilterTestWithChangeBatchExtraKeys) {
 }
 #endif  // ROCKSDB_LITE
 
+// Test for https://github.com/yugabyte/yugabyte-db/issues/8919.
+// Schedules flush after CancelAllBackgroundWork call.
+TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
+  FLAGS_use_priority_thread_pool_for_compactions = true;
+  constexpr auto kMaxBackgroundCompactions = 1;
+  constexpr auto kWriteBufferSize = 64_KB;
+  constexpr auto kValueSize = 2_KB;
+
+  for (const auto use_priority_thread_pool_for_flushes : {false, true}) {
+    LOG(INFO) << "use_priority_thread_pool_for_flushes: " << use_priority_thread_pool_for_flushes;
+    FLAGS_use_priority_thread_pool_for_flushes = use_priority_thread_pool_for_flushes;
+
+    yb::PriorityThreadPool thread_pool(kMaxBackgroundCompactions);
+    Options options = CurrentOptions();
+    options.create_if_missing = true;
+    options.priority_thread_pool_for_compactions_and_flushes = &thread_pool;
+    options.compression = kNoCompression;
+    options.write_buffer_size = kWriteBufferSize;
+    options.arena_block_size = kValueSize;
+    options.log_prefix = yb::Format(
+        "TEST_use_priority_thread_pool_for_flushes_$0: ", use_priority_thread_pool_for_flushes);
+    options.info_log_level = InfoLogLevel::INFO_LEVEL;
+    options.info_log = std::make_shared<yb::YBRocksDBLogger>(options.log_prefix);
+
+    DestroyAndReopen(options);
+
+    WriteOptions wo;
+    wo.disableWAL = true;
+
+    LOG(INFO) << "Writing data...";
+    Random rnd(301);
+    int key = 0;
+    while (key * kValueSize < kWriteBufferSize) {
+      ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
+    }
+
+    db_->SetDisableFlushOnShutdown(true);
+    CancelAllBackgroundWork(db_);
+
+    // Write one more key, that should trigger scheduling flush.
+    ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
+    LOG(INFO) << "Writing data - done";
+
+    Close();
+  }
+}
+
 }  // namespace rocksdb
 
 
 int main(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
+  google::ParseCommandLineNonHelpFlags(&argc, &argv, /* remove_flags */ true);
   return RUN_ALL_TESTS();
 }

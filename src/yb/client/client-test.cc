@@ -467,7 +467,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   YBSchema schema_;
 
-  gscoped_ptr<MiniCluster> cluster_;
+  std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
   TableHandle client_table_;
   TableHandle client_table2_;

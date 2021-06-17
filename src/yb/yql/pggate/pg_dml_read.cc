@@ -125,10 +125,6 @@ void PgDmlRead::SetColumnRefs() {
 // Method removes empty primary binds and moves tailing non empty range primary binds
 // which are following after empty binds into the 'condition_expr' field.
 Status PgDmlRead::ProcessEmptyPrimaryBinds() {
-  if (secondary_index_query_) {
-    RETURN_NOT_OK(secondary_index_query_->ProcessEmptyPrimaryBinds());
-  }
-
   if (!bind_desc_) {
     // This query does not have any binds.
     read_req_->clear_partition_column_values();
@@ -140,11 +136,12 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   bool miss_partition_columns = false;
   bool has_partition_columns = false;
 
-  for (size_t i = 0; i < bind_desc_->num_hash_key_columns(); i++) {
-    PgColumn& col = bind_desc_->columns()[i];
-    PgsqlExpressionPB* expr = col.bind_pb();
-    if (expr_binds_.find(expr) == expr_binds_.end() && !expr->has_condition()) {
-      // For IN clause expr->has_condition() returns 'true'.
+  const auto hash_columns_begin = bind_desc_->columns().begin();
+  const auto hash_columns_end = hash_columns_begin + bind_desc_->num_hash_key_columns();
+  for (auto it = hash_columns_begin; it != hash_columns_end; ++it) {
+    auto expr = it->bind_pb();
+    // For IN clause expr->has_condition() returns 'true'.
+    if (!expr || (!expr->has_condition() && (expr_binds_.find(expr) == expr_binds_.end()))) {
       miss_partition_columns = true;
     } else {
       has_partition_columns = true;
@@ -159,18 +156,27 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   if (miss_partition_columns) {
     VLOG(1) << "Full scan is needed";
     read_req_->clear_partition_column_values();
+    // Reset binding of columns whose values has been deleted.
+    std::for_each(
+        hash_columns_begin,
+        hash_columns_end,
+        [](auto& column) { column.ResetBindPB(); });
+
     // Move all range column binds (if any) into the 'condition_expr' field.
     preceding_key_column_missed = true;
   }
 
   size_t num_bound_range_columns = 0;
 
-  for (size_t i = bind_desc_->num_hash_key_columns(); i < bind_desc_->num_key_columns(); i++) {
-    auto& col = bind_desc_->columns()[i];
-    auto* expr = col.bind_pb();
-    const auto expr_bind = expr_binds_.find(expr);
+  const auto range_columns_end = bind_desc_->columns().end();
+  const auto range_columns_begin =
+      bind_desc_->columns().begin() + bind_desc_->num_hash_key_columns();
+  for (auto it = range_columns_begin; it < range_columns_end; ++it) {
+    auto& col = *it;
+    auto expr = col.bind_pb();
+    const auto expr_bind = expr ? expr_binds_.find(expr) : expr_binds_.end();
     // For IN clause expr->has_condition() returns 'true'.
-    if (expr->has_condition()) {
+    if (expr && expr->has_condition()) {
       preceding_key_column_missed = true;
       RETURN_NOT_OK(MoveBoundKeyInOperator(&col, expr->condition()));
     } else if (expr_bind == expr_binds_.end()) {
@@ -198,6 +204,11 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   auto& range_column_values = *read_req_->mutable_range_column_values();
   range_column_values.DeleteSubrange(
       num_bound_range_columns, range_column_values.size() - num_bound_range_columns);
+  // Reset binding of columns whose values has been deleted.
+  std::for_each(
+      range_columns_begin + num_bound_range_columns,
+      range_columns_end,
+      [](auto& column) { column.ResetBindPB(); });
   return Status::OK();
 }
 

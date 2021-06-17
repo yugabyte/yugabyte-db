@@ -7,9 +7,11 @@ import java.util.Objects;
 
 import org.apache.commons.validator.routines.EmailValidator;
 
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.yugabyte.yw.common.EmailHelper;
 
 // TODO: To mask/unmask sensitive fields while serializing to/deserializing from Json.
+@JsonTypeName("Email")
 public class AlertReceiverEmailParams extends AlertReceiverParams {
 
   public List<String> recipients;
