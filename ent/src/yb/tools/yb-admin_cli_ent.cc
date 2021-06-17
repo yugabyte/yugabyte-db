@@ -80,33 +80,33 @@ Result<T> GetOptionalArg(const Args& args, size_t idx) {
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
+  std::string options = "";
+  for (auto flag : kListSnapshotsFlagList) {
+    options += Format(" [$0]", flag);
+  }
   Register(
-      "list_snapshots", " [SHOW_DETAILS] [NOT_SHOW_RESTORED] [SHOW_DELETED]",
+      "list_snapshots", std::move(options),
       [client](const CLIArguments& args) -> Status {
-        bool show_details = false;
-        bool show_restored = true;
-        bool show_deleted = false;
+        EnumBitSet<ListSnapshotsFlag> flags;
 
-        if (args.size() > 2) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
         for (int i = 0; i < args.size(); ++i) {
-          string uppercase_flag;
+          std::string uppercase_flag;
           ToUpperCase(args[i], &uppercase_flag);
 
-          if (uppercase_flag == "SHOW_DETAILS") {
-            show_details = true;
-          } else if (uppercase_flag == "NOT_SHOW_RESTORED") {
-            show_restored = false;
-          } else if (uppercase_flag == "SHOW_DELETED") {
-            show_deleted = true;
-          } else {
-            return ClusterAdminCli::kInvalidArguments;
+          bool found = false;
+          for (auto flag : kListSnapshotsFlagList) {
+            if (uppercase_flag == ToString(flag)) {
+              flags.Set(flag);
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            return STATUS_FORMAT(InvalidArgument, "Wrong flag: $0", args[i]);
           }
         }
 
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details, show_restored, show_deleted),
-                              "Unable to list snapshots");
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(flags), "Unable to list snapshots");
         return Status::OK();
       });
 
@@ -161,6 +161,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 1));
         auto schedule_id = VERIFY_RESULT(GetOptionalArg<SnapshotScheduleId>(args, 0));
         return client->ListSnapshotSchedules(schedule_id);
+      });
+
+  RegisterJson(
+      "delete_snapshot_schedule",
+      " <schedule_id>",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 1));
+        auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+        return client->DeleteSnapshotSchedule(schedule_id);
       });
 
   RegisterJson(

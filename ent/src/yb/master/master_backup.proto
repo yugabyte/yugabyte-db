@@ -190,6 +190,7 @@ message SnapshotScheduleOptionsPB {
   optional SnapshotScheduleFilterPB filter = 1;
   optional uint64 interval_sec = 2; // interval for taking snapshot in seconds.
   optional uint64 retention_duration_sec = 3; // how long store snapshots in seconds.
+  optional fixed64 delete_time = 4; // hybrid time when this schedule was deleted.
 }
 
 message CreateSnapshotScheduleRequestPB {
@@ -219,6 +220,14 @@ message ListSnapshotSchedulesResponsePB {
   repeated SnapshotScheduleInfoPB schedules = 2;
 }
 
+message DeleteSnapshotScheduleRequestPB {
+  optional bytes snapshot_schedule_id = 1;
+}
+
+message DeleteSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
@@ -232,4 +241,6 @@ service MasterBackupService {
       returns (CreateSnapshotScheduleResponsePB);
   rpc ListSnapshotSchedules(ListSnapshotSchedulesRequestPB)
       returns (ListSnapshotSchedulesResponsePB);
+  rpc DeleteSnapshotSchedule(DeleteSnapshotScheduleRequestPB)
+      returns (DeleteSnapshotScheduleResponsePB);
 }

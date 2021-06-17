@@ -26,6 +26,10 @@ namespace yb {
 namespace tools {
 namespace enterprise {
 
+// Flags for list_snapshot command.
+YB_DEFINE_ENUM(ListSnapshotsFlag, (SHOW_DETAILS)(NOT_SHOW_RESTORED)(SHOW_DELETED)(JSON));
+using ListSnapshotsFlags = EnumBitSet<ListSnapshotsFlag>;
+
 class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   typedef yb::tools::ClusterAdminClient super;
  public:
@@ -36,7 +40,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       : super(init_master_addrs, timeout) {}
 
   // Snapshot operations.
-  CHECKED_STATUS ListSnapshots(bool show_details, bool show_restored, bool show_deleted);
+  CHECKED_STATUS ListSnapshots(const ListSnapshotsFlags& flags);
   CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables,
                                 const bool add_indexes = true,
                                 const int flush_timeout_secs = 0);
@@ -46,6 +50,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Result<rapidjson::Document> CreateSnapshotSchedule(const std::vector<client::YBTableName>& tables,
                                                      MonoDelta interval, MonoDelta retention);
   Result<rapidjson::Document> ListSnapshotSchedules(const SnapshotScheduleId& schedule_id);
+  Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
   CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id,

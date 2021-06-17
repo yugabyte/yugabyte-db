@@ -44,7 +44,7 @@ using docdb::HistoryRetentionDirective;
 
 TabletRetentionPolicy::TabletRetentionPolicy(
     server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
-    const RaftGroupMetadata* metadata)
+    RaftGroupMetadata* metadata)
     : clock_(std::move(clock)), allowed_history_cutoff_provider_(allowed_history_cutoff_provider),
       metadata_(*metadata), log_prefix_(metadata->LogPrefix()) {
 }
@@ -151,7 +151,7 @@ HybridTime TabletRetentionPolicy::SanitizeHistoryCutoff(HybridTime proposed_cuto
 
   HybridTime provided_allowed_cutoff;
   if (allowed_history_cutoff_provider_) {
-    provided_allowed_cutoff = allowed_history_cutoff_provider_(metadata_);
+    provided_allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
     allowed_cutoff = std::min(provided_allowed_cutoff, allowed_cutoff);
   }
 
