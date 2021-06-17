@@ -191,10 +191,10 @@ ALTER TABLE child_table
       [ON DELETE action];
 ```
 
-For more information and examples, see the following: 
+For more information and examples, see the following:
 
-- [Foreign Key](./../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key)
-- [Table with Foreign Key](./../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
+- [Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key)
+- [Table with Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
 - [Foreign Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-FK)
 
 ## CHECK Constraint
