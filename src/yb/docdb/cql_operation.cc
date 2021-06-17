@@ -36,7 +36,6 @@
 
 #include "yb/util/bfpg/tserver_opcodes.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -1067,15 +1066,11 @@ ValueState GetValueState(const QLTableRow& row, const ColumnId column_id) {
 
 } // namespace
 
-Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
-                                            const QLTableRow& new_row) const {
+bool QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
+                                    const QLTableRow& new_row) const {
   // Delete the whole row?
   if (request_.type() == QLWriteRequestPB::QL_STMT_DELETE && request_.column_values().empty()) {
     return true;
-  }
-
-  if (existing_row.IsEmpty()) { // If the row doesn't exist, don't check further.
-    return false;
   }
 
   // For update/delete, if there is no liveness column, the row will be deleted after the DML unless
@@ -1099,29 +1094,6 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
         case ValueState::kMissing: break;
       }
     }
-
-    #if DCHECK_IS_ON()
-    // If (for all non_pk cols new_row has value NULL/kMissing i.e., the UPDATE statement only sets
-    //     some/all cols to NULL)
-    // then (existing_row should have a value read from docdb for all non_pk
-    //       cols that are kMissing in new_row so that we can decide if the row is deleted or not).
-
-    bool skip_check = false;
-    for (size_t idx = schema_->num_key_columns(); idx < schema_->num_columns(); idx++) {
-        const ColumnId column_id = schema_->column_id(idx);
-        if (GetValueState(new_row, column_id) == ValueState::kNotNull) skip_check = true;
-    }
-
-    if (!skip_check) {
-        for (size_t idx = schema_->num_key_columns(); idx < schema_->num_columns(); idx++) {
-            const ColumnId column_id = schema_->column_id(idx);
-            if (GetValueState(new_row, column_id) == ValueState::kMissing) {
-              DCHECK(GetValueState(existing_row, column_id) != ValueState::kMissing);
-            }
-        }
-    }
-    #endif
-
     return true;
   }
 
@@ -1157,24 +1129,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   for (const TableId& index_id : index_ids) {
     const IndexInfo* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
-    bool index_pred_existing_row = true;
-    bool index_pred_new_row = true;
-    bool is_row_deleted = VERIFY_RESULT(IsRowDeleted(existing_row, new_row));
-
-    if (index->where_predicate_spec()) {
-      RETURN_NOT_OK(EvalCondition(
-        index->where_predicate_spec()->where_expr().condition(), existing_row,
-        &index_pred_existing_row));
-    }
-
-    if (is_row_deleted) {
-      // If it is a partial index and predicate wasn't satisfied for the existing row
-      // which is being deleted, we need to do nothing.
-      if (index->where_predicate_spec() && !index_pred_existing_row) {
-        VLOG(3) << "Skip index entry delete for index_id=" << index->table_id() <<
-          " since predicate not satisfied";
-        continue;
-      }
+    if (IsRowDeleted(existing_row, new_row)) {
       index_key_changed = true;
     } else {
       VERIFY_RESULT(CreateAndSetupIndexInsertRequest(
