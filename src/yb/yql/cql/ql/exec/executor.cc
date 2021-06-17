@@ -2231,7 +2231,23 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
         const int32 column_id = schema.column_id(idx);
         if (!schema.column(idx).is_static() &&
             column_refs.count(column_id) == 0 && // Add col only if not already in column_refs.
-            column_dels.count(column_id) == 0) { // If col is already in delete list, don't add it.
+            column_dels.count(column_id) == 0) {
+            // If col is already in delete list, don't add it. This is okay because of the following
+            // reason.
+            //
+            // We reach here if we have -
+            //   1. an UPDATE statement with all = NULL type of set clauses
+            //   2. a DELETE statement on some cols. This is as good as setting those cols to NULL.
+            //
+            // If column is not in column_refs but already there in the column_dels list, we need
+            // not add it in column_refs because the IsRowDeleted() function in cql_operation.cc
+            // doesn't need to know if this column was NULL or not in the old/existing row.
+            // Since the new row has BULL for this column, the loop in the function "continue"s.
+            //
+            // Also, if a column is deleted/set to NULL, you might wonder why we don't add it to
+            // column_refs in case it is part of an index (in which case we need to delete the
+            // index entry for the old value). But this isn't an issue, because the column would
+            // already have been added to column_refs as part of AnalyzeIndexesForWrites().
           req->mutable_column_refs()->add_ids(column_id);
         }
       }

@@ -1128,7 +1128,7 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
 
   DCHECK(maintenance_ops_.empty());
 
-  gscoped_ptr<MaintenanceOp> log_gc(new LogGCOp(this));
+  std::unique_ptr<MaintenanceOp> log_gc(new LogGCOp(this));
   maint_mgr->RegisterOp(log_gc.get());
   maintenance_ops_.push_back(log_gc.release());
   LOG_WITH_PREFIX(INFO) << "Registered log gc";

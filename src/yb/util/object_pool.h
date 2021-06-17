@@ -44,7 +44,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/manual_constructor.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -71,7 +70,7 @@ template<typename T>
 class ObjectPool {
  public:
   typedef ReturnToPool<T> deleter_type;
-  typedef gscoped_ptr<T, deleter_type> scoped_ptr;
+  typedef std::unique_ptr<T, deleter_type> scoped_ptr;
 
   ObjectPool() :
     free_list_head_(NULL),

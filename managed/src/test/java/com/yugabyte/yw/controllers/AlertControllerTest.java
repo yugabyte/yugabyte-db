@@ -13,13 +13,12 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.SmtpData;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertReceiver;
@@ -318,22 +317,23 @@ public class AlertControllerTest extends FakeDBApplication {
     assertEquals("[]", contentAsString(result));
   }
 
-  private ObjectNode getAlertReceiverJson() {
+  private AlertReceiverParams getAlertReceiverParamsForTests() {
     AlertReceiverEmailParams arParams = new AlertReceiverEmailParams();
     arParams.recipients = Collections.singletonList("test@test.com");
     arParams.smtpData = defaultSmtp;
+    return arParams;
+  }
 
+  private ObjectNode getAlertReceiverJson() {
     ObjectNode data = Json.newObject();
-    data.put("targetType", "Email").put("params", Json.toJson(arParams));
+    data.put("params", Json.toJson(getAlertReceiverParamsForTests()));
     return data;
   }
 
   private AlertReceiver receiverFromJson(JsonNode json) {
     ObjectMapper mapper = new ObjectMapper();
     try {
-      AlertReceiver receiver = mapper.treeToValue(json, AlertReceiver.class);
-      receiver.setParams(AlertUtils.fromJson(receiver.getTargetType(), json.get("params")));
-      return receiver;
+      return mapper.treeToValue(json, AlertReceiver.class);
     } catch (JsonProcessingException e) {
       fail("Bad json format.");
       return null;
@@ -359,10 +359,8 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertReceiver createdReceiver = createAlertReceiver();
     assertNotNull(createdReceiver.getUuid());
 
-    assertTrue(TargetType.Email == createdReceiver.getTargetType());
-    assertEquals(
-        AlertUtils.fromJson(TargetType.Email, getAlertReceiverJson().get("params")),
-        createdReceiver.getParams());
+    assertEquals(TargetType.Email.name(), AlertUtils.getJsonTypeName(createdReceiver.getParams()));
+    assertEquals(getAlertReceiverParamsForTests(), createdReceiver.getParams());
 
     Result result =
         doRequestWithAuthToken(
@@ -377,7 +375,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testCreateAlertReceiver_ErrorResult() {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_receivers");
     ObjectNode data = Json.newObject();
-    data.put("targetType", "Email");
+    data.put("params", Json.toJson(new AlertReceiverEmailParams()));
     Result result =
         assertThrows(
                 YWServiceException.class,
@@ -438,7 +436,6 @@ public class AlertControllerTest extends FakeDBApplication {
 
     ObjectNode data = Json.newObject();
     data.put("alertReceiverUUID", createdReceiver.getUuid().toString())
-        .put("targetType", "Email")
         .put("params", Json.toJson(createdReceiver.getParams()));
 
     Result result =
@@ -462,11 +459,10 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertReceiver createdReceiver = createAlertReceiver();
     assertNotNull(createdReceiver.getUuid());
 
-    createdReceiver.setTargetType(TargetType.Slack);
+    createdReceiver.setParams(new AlertReceiverSlackParams());
 
     ObjectNode data = Json.newObject();
     data.put("alertReceiverUUID", createdReceiver.getUuid().toString())
-        .put("targetType", createdReceiver.getTargetType().toString())
         .put("params", Json.toJson(createdReceiver.getParams()));
 
     Result result =
@@ -524,8 +520,7 @@ public class AlertControllerTest extends FakeDBApplication {
   private ObjectNode getAlertRouteJson() {
     AlertDefinition definition = ModelFactory.createAlertDefinition(customer, universe);
     AlertReceiver receiver =
-        AlertReceiver.create(
-            customer.uuid, TargetType.Email, AlertUtils.createParamsInstance(TargetType.Email));
+        AlertReceiver.create(customer.uuid, AlertUtils.createParamsInstance(TargetType.Email));
 
     ObjectNode data = Json.newObject();
     data.put("definitionUUID", definition.getUuid().toString())

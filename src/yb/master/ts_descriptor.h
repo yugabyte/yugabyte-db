@@ -40,7 +40,6 @@
 #include <string>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/gutil/gscoped_ptr.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master.pb.h"

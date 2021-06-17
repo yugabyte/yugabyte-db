@@ -495,7 +495,7 @@ class PgApiImpl {
   PggateOptions pggate_options_;
 
   // Metrics.
-  gscoped_ptr<MetricRegistry> metric_registry_;
+  std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
 
   // Memory tracker.

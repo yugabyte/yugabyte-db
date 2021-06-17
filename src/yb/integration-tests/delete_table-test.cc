@@ -41,6 +41,7 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
@@ -134,6 +135,12 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
   // bootstrap, are running.
   void DeleteTabletWithRetries(const TServerDetails* ts, const string& tablet_id,
                                TabletDataState delete_type, const MonoDelta& timeout);
+
+  void WaitForLoadBalanceCompletion(yb::MonoDelta timeout);
+
+  // Returns a list of all tablet servers registered with the master leader.
+  CHECKED_STATUS ListAllLiveTabletServersRegisteredWithMaster(const MonoDelta& timeout,
+                                                          vector<string>* ts_list);
 };
 
 string DeleteTableTest::GetLeaderUUID(const string& ts_uuid, const string& tablet_id) {
@@ -259,6 +266,36 @@ void DeleteTableTest::DeleteTabletWithRetries(const TServerDetails* ts,
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
   ASSERT_OK(s);
+}
+
+void DeleteTableTest::WaitForLoadBalanceCompletion(yb::MonoDelta timeout) {
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    return !VERIFY_RESULT(client_->IsLoadBalancerIdle());
+  }, timeout, "IsLoadBalancerActive"));
+
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    return client_->IsLoadBalancerIdle();
+  }, timeout, "IsLoadBalancerIdle"));
+}
+
+Status DeleteTableTest::ListAllLiveTabletServersRegisteredWithMaster(const MonoDelta& timeout,
+                                                                     vector<string>* ts_list) {
+    master::ListTabletServersRequestPB req;
+    master::ListTabletServersResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout);
+    int leader_idx;
+    RETURN_NOT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+
+    RETURN_NOT_OK(cluster_->master_proxy(leader_idx)->ListTabletServers(req, &resp, &rpc));
+
+    for (const auto& nodes : resp.servers()) {
+      if (nodes.alive()) {
+        (*ts_list).push_back(nodes.instance_id().permanent_uuid());
+      }
+    }
+
+    return Status::OK();
 }
 
 TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
@@ -1055,6 +1092,109 @@ TEST_F(DeleteTableTest, TestFDsNotLeakedOnTabletTombstone) {
   ets->Shutdown();
   ASSERT_OK(ets->Restart());
   ASSERT_EQ(0, PrintOpenTabletFiles(ets->pid(), tablet_id));
+}
+
+// This test simulates the following scenario.
+// 1. Create an RF 3 with 3 TS and 3 masters.
+// 2. Add a fourth TS.
+// 3. Create a table.
+// 4. Stop one of the TS completely (i.e. replicate its data to the TS created in (2)).
+// 5. Delete the table.
+// 6. Failover the master leader so that in-memory table/tablet maps are deleted.
+// 7. Restart the tserver stopped in (4).
+// Expectation: There shouldn't be any relic of the table on the TS.
+TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
+  // Default timeout to be used for operations.
+  const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
+
+  // Reduce the timeouts after which TS is DEAD.
+  vector<string> extra_tserver_flags = {
+    "--follower_unavailable_considered_failed_sec=18"
+  };
+  vector<string> extra_master_flags = {
+    "--tserver_unresponsive_timeout_ms=15000"
+  };
+  // Start a cluster with 3 TS and 3 masters.
+  ASSERT_NO_FATALS(StartCluster(
+    extra_tserver_flags, extra_master_flags, 3, 3, false
+  ));
+  LOG(INFO) << "Cluster with 3 masters and 3 tservers started successfully";
+
+  // Create a table on the cluster. We're just using TestWorkload
+  // as a convenient way to create it.
+  TestWorkload(cluster_.get()).Setup();
+  // The table should have replicas on all three tservers.
+  ASSERT_OK(inspect_->WaitForReplicaCount(3));
+  LOG(INFO) << "Table with 1 tablet and 3 replicas created successfully";
+
+  // Add a 4th TS. The load should stay [1, 1, 1, 0].
+  // This new TS will get the replica when we delete one
+  // of the old TS.
+  ASSERT_OK(cluster_->AddTabletServer(true, extra_tserver_flags));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, kTimeout));
+  LOG(INFO) << "Added a fourth tserver successfully";
+
+  // Grab the tablet ID (used later).
+  vector<string> tablets = inspect_->ListTabletsOnTS(0);
+  ASSERT_EQ(1, tablets.size());
+  const TabletId& tablet_id = tablets[0];
+  const string& ts_uuid = cluster_->tablet_server(0)->uuid();
+
+  // Shutdowm TS 0. We'll restart it back later.
+  cluster_->tablet_server(0)->Shutdown();
+
+  // Wait for the master to mark this TS as failed.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    vector<string> ts_list;
+    if (!ListAllLiveTabletServersRegisteredWithMaster(kTimeout, &ts_list).ok()) {
+      return false;
+    }
+    return std::find(ts_list.begin(), ts_list.end(), ts_uuid) == ts_list.end();
+  }, kTimeout, "Wait for TS to be marked dead by master"));
+  // Wait for its replicas to be migrated to another tserver.
+  WaitForLoadBalanceCompletion(kTimeout);
+  LOG(INFO) << "Tablet Server with id 0 removed completely and successfully";
+
+  // Delete the table now and wait for the replicas to get deleted.
+  ASSERT_NO_FATALS(DeleteTable(TestWorkloadOptions::kDefaultTableName));
+  for (int i = 1; i < 3; i++) {
+    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_EXPECTED));
+  }
+  // Check that the master no longer exposes the table in any way:
+  // 1) Should not list it in ListTables.
+  const YBTableName& table = TestWorkloadOptions::kDefaultTableName;
+  const auto tables = ASSERT_RESULT(client_->ListTables(table.table_name(), true));
+  ASSERT_EQ(0, tables.size());
+
+  // 2) Should respond to GetTableSchema with a NotFound error.
+  YBSchema schema;
+  PartitionSchema partition_schema;
+  Status s = client_->GetTableSchema(table, &schema, &partition_schema);
+  ASSERT_TRUE(s.IsNotFound()) << s.ToString();
+
+  // 3) Should return an error for GetTabletLocations RPCs.
+  {
+    rpc::RpcController rpc;
+    master::GetTabletLocationsRequestPB req;
+    master::GetTabletLocationsResponsePB resp;
+    rpc.set_timeout(MonoDelta::FromSeconds(10));
+    req.add_tablet_ids()->assign(tablet_id);
+    int leader_idx;
+    ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+    ASSERT_OK(cluster_->master_proxy(leader_idx)->GetTabletLocations(req, &resp, &rpc));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_EQ(1, resp.errors_size());
+    ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");
+  }
+  LOG(INFO) << "Table deleted successfully";
+
+  // Failover the master leader for the table to be removed from in-memory maps.
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  // Now restart the TServer and wait for the replica to be deleted.
+  ASSERT_OK(cluster_->tablet_server(0)->Restart());
+
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_EXPECTED));
 }
 
 // Parameterized test case for TABLET_DATA_DELETED deletions.

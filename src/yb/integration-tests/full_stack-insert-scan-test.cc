@@ -45,7 +45,6 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strcat.h"
@@ -204,23 +203,23 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
 namespace {
 
-gscoped_ptr<Subprocess> MakePerfStat() {
-  if (!FLAGS_perf_stat_scan) return gscoped_ptr<Subprocess>();
+std::unique_ptr<Subprocess> MakePerfStat() {
+  if (!FLAGS_perf_stat_scan) return std::unique_ptr<Subprocess>();
   // No output flag for perf-stat 2.x, just print to output
   string cmd = Substitute("perf stat --pid=$0", getpid());
   LOG(INFO) << "Calling: \"" << cmd << "\"";
-  return gscoped_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
+  return std::unique_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
 }
 
-gscoped_ptr<Subprocess> MakePerfRecord() {
-  if (!FLAGS_perf_record_scan) return gscoped_ptr<Subprocess>();
+std::unique_ptr<Subprocess> MakePerfRecord() {
+  if (!FLAGS_perf_record_scan) return std::unique_ptr<Subprocess>();
   string cmd = Substitute("perf record --pid=$0 --call-graph", getpid());
   if (FLAGS_perf_fp_flag) cmd += " fp";
   LOG(INFO) << "Calling: \"" << cmd << "\"";
-  return gscoped_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
+  return std::unique_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
 }
 
-void InterruptNotNull(gscoped_ptr<Subprocess> sub) {
+void InterruptNotNull(std::unique_ptr<Subprocess> sub) {
   if (!sub) return;
   ASSERT_OK(sub->Kill(SIGINT));
   int exit_status = 0;
@@ -364,8 +363,8 @@ void FullStackInsertScanTest::CreateTable() {
 void FullStackInsertScanTest::DoTestScans() {
   LOG(INFO) << "Doing test scans on table of " << kNumRows << " rows.";
 
-  gscoped_ptr<Subprocess> stat = MakePerfStat();
-  gscoped_ptr<Subprocess> record = MakePerfRecord();
+  auto stat = MakePerfStat();
+  auto record = MakePerfRecord();
   if (stat) {
     CHECK_OK(stat->Start());
   }
@@ -379,8 +378,8 @@ void FullStackInsertScanTest::DoTestScans() {
   ASSERT_NO_FATALS(ScanProjection(Int32ColumnNames(), "Int32 projection, 4 col"));
   ASSERT_NO_FATALS(ScanProjection(Int64ColumnNames(), "Int64 projection, 4 col"));
 
-  ASSERT_NO_FATALS(InterruptNotNull(record.Pass()));
-  ASSERT_NO_FATALS(InterruptNotNull(stat.Pass()));
+  ASSERT_NO_FATALS(InterruptNotNull(std::move(record)));
+  ASSERT_NO_FATALS(InterruptNotNull(std::move(stat)));
 }
 
 void FullStackInsertScanTest::FlushToDisk() {

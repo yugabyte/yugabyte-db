@@ -161,7 +161,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
   std::unique_ptr<YBClient> client_;
   YBSchema schema_;
   std::unique_ptr<Messenger> messenger_;
-  gscoped_ptr<MasterServiceProxy> master_proxy_;
+  std::unique_ptr<MasterServiceProxy> master_proxy_;
   TabletServerMap ts_map_;
 };
 
@@ -575,7 +575,7 @@ DontVerifyClusterBeforeNextTearDown();
 
   // Get a single tablet in the middle, make sure we get that one back
 
-  gscoped_ptr<YBPartialRow> row(schema_.NewRow());
+  std::unique_ptr<YBPartialRow> row(schema_.NewRow());
   ASSERT_OK(row->SetInt32(0, half_tablets - 1));
   string start_key_middle;
   ASSERT_OK(row->EncodeRowKey(&start_key_middle));

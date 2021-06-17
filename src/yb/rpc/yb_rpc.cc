@@ -288,7 +288,7 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
     return STATUS(Corruption, "remote_method in request header is not initialized",
         header_.remote_method().InitializationErrorString());
   }
-  remote_method_.FromPB(header_.remote_method());
+  remote_method_ = header_.remote_method();
 
   return Status::OK();
 }

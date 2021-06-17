@@ -2,94 +2,40 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
-import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.GCPInitializer;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.forms.CloudBootstrapFormData;
-import com.yugabyte.yw.forms.CloudProviderFormData;
-import com.yugabyte.yw.forms.KubernetesProviderFormData;
-import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData;
-import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData.ZoneData;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import io.swagger.annotations.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.api.Play;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.*;
-
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Api(value = "Provider", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderController extends AuthenticatedController {
-  private final Config config;
+  @Inject private CloudProviderService cloudProviderService;
 
-  @Inject
-  public CloudProviderController(Config config) {
-    this.config = config;
-  }
+  @Inject private ValidatingFormFactory formFactory;
 
-  public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
+  @Inject private AWSInitializer awsInitializer;
 
-  private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
-      Json.parse("{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
-  private static final JsonNode KUBERNETES_DEV_INSTANCE_TYPE =
-      Json.parse("{\"instanceTypeCode\": \"dev\", \"numCores\": 0.5, \"memSizeGB\": 0.5}");
-  private static final JsonNode KUBERNETES_INSTANCE_TYPES =
-      Json.parse(
-          "["
-              + "{\"instanceTypeCode\": \"xsmall\", \"numCores\": 2, \"memSizeGB\": 4},"
-              + "{\"instanceTypeCode\": \"small\", \"numCores\": 4, \"memSizeGB\": 7.5},"
-              + "{\"instanceTypeCode\": \"medium\", \"numCores\": 8, \"memSizeGB\": 15},"
-              + "{\"instanceTypeCode\": \"large\", \"numCores\": 16, \"memSizeGB\": 15},"
-              + "{\"instanceTypeCode\": \"xlarge\", \"numCores\": 32, \"memSizeGB\": 30}]");
+  @Inject private GCPInitializer gcpInitializer;
 
-  @Inject ValidatingFormFactory formFactory;
-
-  @Inject AWSInitializer awsInitializer;
-
-  @Inject GCPInitializer gcpInitializer;
-
-  @Inject AZUInitializer azuInitializer;
-
-  @Inject Commissioner commissioner;
-
-  @Inject ConfigHelper configHelper;
-
-  @Inject AccessManager accessManager;
-
-  @Inject DnsManager dnsManager;
-
-  @Inject private play.Environment environment;
-
-  @Inject CloudAPI.Factory cloudAPIFactory;
-
-  @Inject KubernetesManager kubernetesManager;
-
-  @Inject play.Configuration appConfig;
+  @Inject private AZUInitializer azuInitializer;
 
   /**
    * GET endpoint for listing providers
@@ -103,25 +49,11 @@ public class CloudProviderController extends AuthenticatedController {
 
   // This endpoint we are using only for deleting provider for integration test purpose. our
   // UI should call cleanup endpoint.
-  @ApiOperation(value = "deleteProvider", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "TEST_ONLY", hidden = true, response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    if (customer.getUniversesForProvider(providerUUID).size() > 0) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
-    }
-
-    // TODO: move this to task framework
-    for (AccessKey accessKey : AccessKey.getAll(providerUUID)) {
-      if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
-        new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
-      }
-      accessManager.deleteKeyByProvider(provider, accessKey.getKeyCode());
-      accessKey.delete();
-    }
-    NodeInstance.deleteByProvider(providerUUID);
-    InstanceType.deleteInstanceTypesForProvider(provider, config);
-    provider.delete();
+    cloudProviderService.delete(customer, provider);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
   }
@@ -140,380 +72,43 @@ public class CloudProviderController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.CloudProviderFormData",
           required = true))
   public Result create(UUID customerUUID) throws IOException {
-    Form<CloudProviderFormData> formData =
-        formFactory.getFormDataOrBadRequest(CloudProviderFormData.class);
-
-    Common.CloudType providerCode = formData.get().code;
-    Provider existentProvider = Provider.get(customerUUID, formData.get().name, providerCode);
-    if (existentProvider != null) {
-      return ApiResponse.error(
-          BAD_REQUEST,
-          String.format("Provider with the name %s already exists", formData.get().name));
-    }
-
-    // Since the Map<String, String> doesn't get parsed, so for now we would just
-    // parse it from the requestBody
-    JsonNode requestBody = request().body().asJson();
-    Map<String, String> config = processConfig(requestBody, providerCode);
-
-    Provider provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
-    if (!config.isEmpty()) {
-      String hostedZoneId = provider.getHostedZoneId();
-      switch (provider.code) {
-        case "aws":
-          CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
-          if (cloudAPI != null && !cloudAPI.isValidCreds(config, formData.get().region)) {
-            provider.delete();
-            throw new YWServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
-          }
-          if (hostedZoneId != null && hostedZoneId.length() != 0) {
-            return validateHostedZoneUpdate(provider, hostedZoneId);
-          }
-          break;
-        case "gcp":
-          updateGCPConfig(provider, config);
-          break;
-        case "kubernetes":
-          updateKubeConfig(provider, config, false);
-          try {
-            createKubernetesInstanceTypes(provider, customerUUID);
-          } catch (javax.persistence.PersistenceException ex) {
-            // TODO: make instance types more multi-tenant friendly...
-          }
-          break;
-        case "azu":
-          if (hostedZoneId != null && hostedZoneId.length() != 0) {
-            return validateHostedZoneUpdate(provider, hostedZoneId);
-          }
-          break;
-      }
-    }
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    JsonNode reqBody = maybeMassageRequestConfig();
+    CloudProviderFormData cloudProviderFormData =
+        formFactory.getFormDataOrBadRequest(reqBody, CloudProviderFormData.class);
+    Provider provider =
+        cloudProviderService.createProvider(
+            Customer.getOrBadRequest(customerUUID), cloudProviderFormData);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(cloudProviderFormData));
     return ApiResponse.success(provider);
   }
 
   // For creating the a multi-cluster kubernetes provider.
   public Result createKubernetes(UUID customerUUID) throws IOException {
     JsonNode requestBody = request().body().asJson();
-    ObjectMapper mapper = new ObjectMapper();
     KubernetesProviderFormData formData =
-        mapper.treeToValue(requestBody, KubernetesProviderFormData.class);
+        formFactory.getFormDataOrBadRequest(requestBody, KubernetesProviderFormData.class);
 
-    Common.CloudType providerCode = formData.code;
-    if (!providerCode.equals(Common.CloudType.kubernetes)) {
-      throw new YWServiceException(
-          BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
-    }
-
-    boolean hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
-    if (formData.regionList.isEmpty()) {
-      throw new YWServiceException(BAD_REQUEST, "Need regions in provider");
-    }
-    for (RegionData rd : formData.regionList) {
-      if (rd.config != null) {
-        if (rd.config.containsKey("KUBECONFIG_NAME")) {
-          if (hasConfig) {
-            throw new YWServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
-          } else {
-            hasConfig = true;
-          }
-        }
-      }
-      if (rd.zoneList.isEmpty()) {
-        throw new YWServiceException(BAD_REQUEST, "No zone provided in region");
-      }
-      for (ZoneData zd : rd.zoneList) {
-        if (zd.config != null) {
-          if (zd.config.containsKey("KUBECONFIG_NAME")) {
-            if (hasConfig) {
-              throw new YWServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
-            }
-          } else if (!hasConfig) {
-            LOG.warn(
-                "No Kubeconfig found at any level, in-cluster service account credentials will be used.");
-          }
-        }
-      }
-      hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
-    }
-
-    Provider provider = null;
-    Map<String, String> config = formData.config;
-    provider = Provider.create(customerUUID, providerCode, formData.name);
-    boolean isConfigInProvider = updateKubeConfig(provider, config, false);
-    if (isConfigInProvider) {}
-    List<RegionData> regionList = formData.regionList;
-    for (RegionData rd : regionList) {
-      Map<String, String> regionConfig = rd.config;
-      Region region = Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude);
-      boolean isConfigInRegion = updateKubeConfig(provider, region, regionConfig, false);
-      if (isConfigInRegion) {}
-      for (ZoneData zd : rd.zoneList) {
-        Map<String, String> zoneConfig = zd.config;
-        AvailabilityZone az = AvailabilityZone.createOrThrow(region, zd.code, zd.name, null);
-        boolean isConfigInZone = updateKubeConfig(provider, region, az, zoneConfig, false);
-        if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
-          // Use in-cluster ServiceAccount credentials
-          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
-        }
-      }
-    }
-    try {
-      createKubernetesInstanceTypes(provider, customerUUID);
-    } catch (javax.persistence.PersistenceException ex) {
-      provider.delete();
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
-      // TODO: make instance types more multi-tenant friendly...
-    }
+    Provider provider =
+        cloudProviderService.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
     auditService().createAuditEntry(ctx(), request(), requestBody);
     return ApiResponse.success(provider);
   }
 
-  private boolean updateKubeConfig(Provider provider, Map<String, String> config, boolean edit)
-      throws IOException {
-    return updateKubeConfig(provider, null, config, edit);
-  }
-
-  private boolean updateKubeConfig(
-      Provider provider, Region region, Map<String, String> config, boolean edit)
-      throws IOException {
-    return updateKubeConfig(provider, region, null, config, edit);
-  }
-
-  private boolean updateKubeConfig(
-      Provider provider,
-      Region region,
-      AvailabilityZone zone,
-      Map<String, String> config,
-      boolean edit)
-      throws IOException {
-    String kubeConfigFile = null;
-    String pullSecretFile = null;
-
-    if (config == null) {
-      return false;
-    }
-
-    String path = provider.uuid.toString();
-    if (region != null) {
-      path = path + "/" + region.uuid.toString();
-      if (zone != null) {
-        path = path + "/" + zone.uuid.toString();
-      }
-    }
-    boolean hasKubeConfig = config.containsKey("KUBECONFIG_NAME");
-    if (hasKubeConfig) {
-      kubeConfigFile = accessManager.createKubernetesConfig(path, config, edit);
-
-      // Remove the kubeconfig file related configs from provider config.
-      config.remove("KUBECONFIG_NAME");
-      config.remove("KUBECONFIG_CONTENT");
-
-      if (kubeConfigFile != null) {
-        config.put("KUBECONFIG", kubeConfigFile);
-      }
-    }
-
-    if (region == null) {
-      if (config.containsKey("KUBECONFIG_PULL_SECRET_NAME")) {
-        if (config.get("KUBECONFIG_PULL_SECRET_NAME") != null) {
-          pullSecretFile = accessManager.createPullSecret(provider.uuid, config, edit);
-        }
-      }
-      config.remove("KUBECONFIG_PULL_SECRET_NAME");
-      config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
-      if (pullSecretFile != null) {
-        config.put("KUBECONFIG_PULL_SECRET", pullSecretFile);
-      }
-
-      provider.setConfig(config);
-    } else if (zone == null) {
-      region.setConfig(config);
-    } else {
-      zone.updateConfig(config);
-    }
-    return hasKubeConfig;
-  }
-
-  private void updateGCPConfig(Provider provider, Map<String, String> config) throws IOException {
-    // Remove the key to avoid generating a credentials file unnecessarily.
-    config.remove("GCE_HOST_PROJECT");
-    // If we were not given a config file, then no need to do anything here.
-    if (config.isEmpty()) {
-      return;
-    }
-
-    String gcpCredentialsFile =
-        accessManager.createCredentialsFile(provider.uuid, Json.toJson(config));
-
-    Map<String, String> newConfig = new HashMap<String, String>();
-    if (config.get("project_id") != null) {
-      newConfig.put("GCE_PROJECT", config.get("project_id"));
-    }
-    if (config.get("client_email") != null) {
-      newConfig.put("GCE_EMAIL", config.get("client_email"));
-    }
-    if (gcpCredentialsFile != null) {
-      newConfig.put("GOOGLE_APPLICATION_CREDENTIALS", gcpCredentialsFile);
-    }
-    provider.setConfig(newConfig);
-    provider.save();
-  }
-
-  private void createKubernetesInstanceTypes(Provider provider, UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    KUBERNETES_INSTANCE_TYPES.forEach(
-        (instanceType -> {
-          InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
-          idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
-          InstanceType.upsert(
-              provider.uuid,
-              instanceType.get("instanceTypeCode").asText(),
-              instanceType.get("numCores").asDouble(),
-              instanceType.get("memSizeGB").asDouble(),
-              idt);
-        }));
-    if (environment.isDev()) {
-      InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
-      idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
-      InstanceType.upsert(
-          provider.uuid,
-          KUBERNETES_DEV_INSTANCE_TYPE.get("instanceTypeCode").asText(),
-          KUBERNETES_DEV_INSTANCE_TYPE.get("numCores").asDouble(),
-          KUBERNETES_DEV_INSTANCE_TYPE.get("memSizeGB").asDouble(),
-          idt);
-    }
-    if (customer.code.equals("cloud")) {
-      InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
-      idt.setVolumeDetailsList(1, 5, InstanceType.VolumeType.SSD);
-      InstanceType.upsert(
-          provider.uuid,
-          KUBERNETES_CLOUD_INSTANCE_TYPE.get("instanceTypeCode").asText(),
-          KUBERNETES_CLOUD_INSTANCE_TYPE.get("numCores").asDouble(),
-          KUBERNETES_CLOUD_INSTANCE_TYPE.get("memSizeGB").asDouble(),
-          idt);
-    }
-  }
-
-  // Performs discovery of region, zones, pull secret, storageClass
-  // when running inside a Kubernetes cluster. Returns the discovered
-  // information as a JSON, which is similar to the one which is
-  // passed to the createKubernetes method.
   @ApiOperation(
       value = "getSuggestedKubernetesConfigs",
+      notes =
+          " Performs discovery of region, zones, pull secret, storageClass when running"
+              + " inside a Kubernetes cluster. Returns the discovered information as a JSON, which"
+              + " is similar to the one which is passed to the createKubernetes method.",
       response = KubernetesProviderFormData.class)
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
-    try {
-      SetMultimap<String, String> regionToAZ = getKubernetesRegionToZoneInfo();
-      if (regionToAZ.isEmpty()) {
-        LOG.info(
-            "No regions and zones found, check if the region and zone labels are present on the nodes. https://k8s.io/docs/reference/labels-annotations-taints/");
-        throw new YWServiceException(
-            INTERNAL_SERVER_ERROR, "No region and zone information found.");
-      }
-
-      String storageClass = appConfig.getString("yb.kubernetes.storageClass");
-      String pullSecretName = appConfig.getString("yb.kubernetes.pullSecretName");
-      if (storageClass == null || pullSecretName == null) {
-        LOG.error("Required configuration keys from yb.kubernetes.* are missing.");
-        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Required configuration is missing.");
-      }
-      String pullSecretContent = getKubernetesPullSecretContent(pullSecretName);
-
-      KubernetesProviderFormData formData = new KubernetesProviderFormData();
-      formData.code = Common.CloudType.kubernetes;
-      if (pullSecretContent != null) {
-        formData.config =
-            ImmutableMap.of(
-                "KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName,
-                "KUBECONFIG_PULL_SECRET_NAME", pullSecretName, // filename
-                "KUBECONFIG_PULL_SECRET_CONTENT", pullSecretContent);
-      }
-
-      for (String region : regionToAZ.keySet()) {
-        RegionData regionData = new RegionData();
-        regionData.code = region;
-        for (String az : regionToAZ.get(region)) {
-          ZoneData zoneData = new ZoneData();
-          zoneData.code = az;
-          zoneData.name = az;
-          zoneData.config = ImmutableMap.of("STORAGE_CLASS", storageClass);
-          regionData.zoneList.add(zoneData);
-        }
-        formData.regionList.add(regionData);
-      }
-
-      ObjectMapper mapper = new ObjectMapper();
-      return ApiResponse.success(mapper.valueToTree(formData));
-    } catch (RuntimeException e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
-  }
-
-  // Performs region and zone discovery based on
-  // topology/failure-domain labels from the Kubernetes nodes.
-  private SetMultimap<String, String> getKubernetesRegionToZoneInfo() {
-    JsonNode nodeInfos = kubernetesManager.getNodeInfos(null);
-    SetMultimap<String, String> regionToAZ = HashMultimap.create();
-    for (JsonNode nodeInfo : nodeInfos.path("items")) {
-      JsonNode nodeLabels = nodeInfo.path("metadata").path("labels");
-      // failure-domain.beta.k8s.io is deprecated as of 1.17
-      String region = nodeLabels.path("topology.kubernetes.io/region").asText();
-      region =
-          region.isEmpty()
-              ? nodeLabels.path("failure-domain.beta.kubernetes.io/region").asText()
-              : region;
-      String zone = nodeLabels.path("topology.kubernetes.io/zone").asText();
-      zone =
-          zone.isEmpty()
-              ? nodeLabels.path("failure-domain.beta.kubernetes.io/zone").asText()
-              : zone;
-      if (region.isEmpty() || zone.isEmpty()) {
-        LOG.debug(
-            "Value of the zone or region label is empty for "
-                + nodeInfo.path("metadata").path("name").asText()
-                + ", skipping.");
-        continue;
-      }
-      regionToAZ.put(region, zone);
-    }
-    return regionToAZ;
-  }
-
-  // Fetches the secret secretName from current namespace, removes
-  // extra metadata and returns the secret as JSON string. Returns
-  // null if the secret is not present.
-  private String getKubernetesPullSecretContent(String secretName) {
-    JsonNode pullSecretJson;
-    try {
-      pullSecretJson = kubernetesManager.getSecret(null, secretName, null);
-    } catch (RuntimeException e) {
-      if (e.getMessage().contains("Error from server (NotFound): secrets")) {
-        LOG.debug(
-            "The pull secret " + secretName + " is not present, provider won't have this field.");
-        return null;
-      }
-      throw new RuntimeException("Unable to fetch the pull secret.");
-    }
-    JsonNode secretMetadata = pullSecretJson.get("metadata");
-    if (secretMetadata == null) {
-      LOG.error(
-          "metadata of the pull secret " + secretName + " is missing. This should never happen.");
-      throw new RuntimeException("Error while fetching the pull secret.");
-    }
-    ((ObjectNode) secretMetadata)
-        .remove(
-            ImmutableList.of(
-                "namespace", "uid", "selfLink", "creationTimestamp", "resourceVersion"));
-    JsonNode secretAnnotations = secretMetadata.get("annotations");
-    if (secretAnnotations != null) {
-      ((ObjectNode) secretAnnotations).remove("kubectl.kubernetes.io/last-applied-configuration");
-    }
-    return pullSecretJson.toString();
+    Customer.getOrBadRequest(customerUUID);
+    return ApiResponse.success(Json.toJson(cloudProviderService.suggestedKubernetesConfigs()));
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this
   // to standard provider bootstrap route soon.
+  @ApiOperation(value = "setupDocker", notes = "Unused", hidden = true)
   public Result setupDocker(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -522,26 +117,12 @@ public class CloudProviderController extends AuthenticatedController {
       return ApiResponse.success(providerList.get(0));
     }
 
-    Provider newProvider = Provider.create(customerUUID, Common.CloudType.docker, "Docker");
-    Map<String, Object> regionMetadata = configHelper.getConfig(DockerRegionMetadata);
-    regionMetadata.forEach(
-        (regionCode, metadata) -> {
-          Region region = Region.createWithMetadata(newProvider, regionCode, Json.toJson(metadata));
-          Arrays.asList("a", "b", "c")
-              .forEach(
-                  (zoneSuffix) -> {
-                    String zoneName = regionCode + zoneSuffix;
-                    AvailabilityZone.createOrThrow(region, zoneName, zoneName, "yugabyte-bridge");
-                  });
-        });
-    Map<String, Object> instanceTypeMetadata = configHelper.getConfig(DockerInstanceTypeMetadata);
-    instanceTypeMetadata.forEach(
-        (itCode, metadata) ->
-            InstanceType.createWithMetadata(newProvider.uuid, itCode, Json.toJson(metadata)));
+    Provider newProvider = cloudProviderService.setupNewDockerProvider(customer);
     auditService().createAuditEntry(ctx(), request());
     return ApiResponse.success(newProvider);
   }
 
+  @ApiOperation(value = "refreshPricing", notes = "Refresh Provider pricing info")
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     if (provider.code.equals("gcp")) {
@@ -561,58 +142,17 @@ public class CloudProviderController extends AuthenticatedController {
           required = true))
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): Need to manually parse maps, maybe add try/catch on parse?
-    JsonNode requestBody = request().body().asJson();
-    CloudBootstrap.Params taskParams = Json.fromJson(requestBody, CloudBootstrap.Params.class);
-
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    // Set the top-level provider info.
-    taskParams.providerUUID = providerUUID;
-    if (taskParams.destVpcId != null && !taskParams.destVpcId.isEmpty()) {
-      if (provider.code.equals("gcp")) {
-        // We need to save the destVpcId into the provider config, because we'll need it during
-        // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need
-        // to
-        // store it somewhere and the config is the easiest place to put it. As such, since all the
-        // config is loaded up as env vars anyway, might as well use in in devops like that...
-        Map<String, String> config = provider.getConfig();
-        config.put("CUSTOM_GCE_NETWORK", taskParams.destVpcId);
-        provider.setConfig(config);
-        provider.save();
-      } else if (provider.code.equals("aws")) {
-        taskParams.destVpcId = null;
-      }
-    }
-
-    // If the regionList is still empty by here, then we need to list the regions available.
-    if (taskParams.perRegionMetadata == null) {
-      taskParams.perRegionMetadata = new HashMap<>();
-    }
-    if (taskParams.perRegionMetadata.isEmpty()) {
-      CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
-      JsonNode regionInfo = queryHelper.getRegions(provider.uuid);
-      if (regionInfo instanceof ArrayNode) {
-        ArrayNode regionListArray = (ArrayNode) regionInfo;
-        for (JsonNode region : regionListArray) {
-          taskParams.perRegionMetadata.put(
-              region.asText(), new CloudBootstrap.Params.PerRegionMetadata());
-        }
-      }
-    }
-
-    UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
-    CustomerTask.create(
-        customer,
-        providerUUID,
-        taskUUID,
-        CustomerTask.TargetType.Provider,
-        CustomerTask.TaskType.Create,
-        provider.name);
-
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    JsonNode requestBody = request().body().asJson();
+    CloudBootstrap.Params taskParams =
+        formFactory.getFormDataOrBadRequest(requestBody, CloudBootstrap.Params.class);
+    UUID taskUUID = cloudProviderService.bootstrap(customer, provider, taskParams);
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
     return new YWResults.YWTask(taskUUID).asResult();
   }
 
+  @ApiOperation(value = "cleanup", notes = "Unimplemented", hidden = true)
   public Result cleanup(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): this is not currently used, be careful about the API...
     Form<CloudBootstrapFormData> formData =
@@ -636,64 +176,27 @@ public class CloudProviderController extends AuthenticatedController {
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "edit provider form data",
-          name = "editProviderFormData",
-          dataType = "java.lang.Object",
+          name = "EditProviderFormData",
+          dataType = "com.yugabyte.yw.forms.EditProviderRequest",
           required = true,
           paramType = "body"))
   public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    JsonNode formData = request().body().asJson();
+    Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-
-    if (Provider.HostedZoneEnabledProviders.contains(provider.code)) {
-      String hostedZoneId = formData.get("hostedZoneId").asText();
-      if (hostedZoneId == null || hostedZoneId.length() == 0) {
-        throw new YWServiceException(BAD_REQUEST, "Required field hosted zone id");
-      }
-      return validateHostedZoneUpdate(provider, hostedZoneId);
-    } else if (provider.code.equals("kubernetes")) {
-      Map<String, String> config = processConfig(formData, Common.CloudType.kubernetes);
-      if (config != null) {
-        updateKubeConfig(provider, config, true);
-        auditService().createAuditEntry(ctx(), request(), formData);
-        return ApiResponse.success(provider);
-      } else {
-        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Could not parse config");
-      }
-    } else {
-      throw new YWServiceException(
-          BAD_REQUEST, "Expected aws/k8s, but found providers with code: " + provider.code);
-    }
-  }
-
-  private Result validateHostedZoneUpdate(Provider provider, String hostedZoneId) {
-    // TODO: do we have a good abstraction to inspect this AND know that it's an error outside?
-    ShellResponse response = dnsManager.listDnsRecord(provider.uuid, hostedZoneId);
-    if (response.code != 0) {
-      return ApiResponse.error(
-          INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
-    }
-    // The result returned from devops should be of the form
-    // {
-    //    "name": "dev.yugabyte.com."
-    // }
-    JsonNode hostedZoneData = Json.parse(response.message);
-    hostedZoneData = hostedZoneData.get("name");
-    if (hostedZoneData == null || hostedZoneData.asText().isEmpty()) {
-      throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
-    }
-    provider.updateHostedZone(hostedZoneId, hostedZoneData.asText());
-    auditService().createAuditEntry(ctx(), request());
+    EditProviderRequest editProviderReq =
+        formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
+    cloudProviderService.editProvider(provider, editProviderReq);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(editProviderReq));
     return ApiResponse.success(provider);
   }
 
-  private Map<String, String> processConfig(JsonNode requestBody, Common.CloudType providerCode) {
-    Map<String, String> config = new HashMap<String, String>();
+  private JsonNode maybeMassageRequestConfig() {
+    JsonNode requestBody = request().body().asJson();
     JsonNode configNode = requestBody.get("config");
     // Confirm we had a "config" key and it was not null.
     if (configNode != null && !configNode.isNull()) {
-      if (providerCode.equals(Common.CloudType.gcp)) {
+      if (requestBody.get("code").asText().equals(Common.CloudType.gcp.name())) {
+        Map<String, String> config = new HashMap<>();
         // We may receive a config file, or we may be asked to use the local service account.
         // Default to using config file.
         boolean shouldUseHostCredentials =
@@ -713,10 +216,9 @@ public class CloudProviderController extends AuthenticatedController {
         if (contents != null && !contents.textValue().isEmpty()) {
           config.put("YB_FIREWALL_TAGS", contents.textValue());
         }
-      } else {
-        config = Json.fromJson(configNode, Map.class);
+        ((ObjectNode) requestBody).set("config", Json.toJson(config));
       }
     }
-    return config;
+    return requestBody;
   }
 }

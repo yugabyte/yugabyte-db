@@ -241,6 +241,8 @@ DEFINE_test_flag(bool, pause_before_post_split_compation, false,
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
                  "Prevents adding the UserFrontier to SST file in order to mimic older files.");
 
+DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_bool(consistent_restore);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -450,6 +452,10 @@ Tablet::Tablet(const TabletInitData& data)
 
   if (metadata_->tablet_data_state() == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     SplitDone();
+  }
+  auto restoration_hybrid_time = metadata_->restoration_hybrid_time();
+  if (restoration_hybrid_time && transaction_participant_ && FLAGS_consistent_restore) {
+    transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
   SyncRestoringOperationFilter();
 }
@@ -2382,6 +2388,7 @@ Status Tablet::FlushIndexBatchIfRequired(
   auto client = client_future_.get();
   auto session = std::make_shared<YBSession>(client);
   session->SetHybridTimeForWrite(write_time);
+  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms));
 
   std::unordered_set<
       client::YBqlWriteOpPtr, client::YBqlWriteOp::PrimaryKeyComparator,
@@ -3528,8 +3535,15 @@ Status Tablet::RestoreStarted(const TxnSnapshotRestorationId& restoration_id) {
   return Status::OK();
 }
 
-Status Tablet::RestoreFinished(const TxnSnapshotRestorationId& restoration_id) {
+Status Tablet::RestoreFinished(
+    const TxnSnapshotRestorationId& restoration_id, HybridTime restoration_hybrid_time) {
   metadata_->UnregisterRestoration(restoration_id);
+  if (restoration_hybrid_time) {
+    metadata_->SetRestorationHybridTime(restoration_hybrid_time);
+    if (transaction_participant_ && FLAGS_consistent_restore) {
+      transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
+    }
+  }
   RETURN_NOT_OK(metadata_->Flush());
 
   SyncRestoringOperationFilter();

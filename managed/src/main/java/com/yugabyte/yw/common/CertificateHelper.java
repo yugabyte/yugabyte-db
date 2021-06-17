@@ -77,6 +77,7 @@ public class CertificateHelper {
   public static final String DEFAULT_CLIENT = "yugabyte";
   public static final String CERT_PATH = "%s/certs/%s/%s";
   public static final String ROOT_CERT = "root.crt";
+  public static final String CLIENT_NODE_SUFFIX = "-client";
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
     try {
@@ -85,7 +86,7 @@ public class CertificateHelper {
       UUID rootCA_UUID = UUID.randomUUID();
       Calendar cal = Calendar.getInstance();
       Date certStart = cal.getTime();
-      cal.add(Calendar.YEAR, 1);
+      cal.add(Calendar.YEAR, 4);
       Date certExpiry = cal.getTime();
       X500Name subject =
           new X500NameBuilder(BCStyle.INSTANCE)
@@ -158,6 +159,10 @@ public class CertificateHelper {
     }
   }
 
+  public static UUID createClientRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
+    return createRootCA(nodePrefix + CLIENT_NODE_SUFFIX, customerUUID, storagePath);
+  }
+
   public static JsonNode createClientCertificate(
       UUID rootCA, String storagePath, String username, Date certStart, Date certExpiry) {
     LOG.info(
@@ -174,7 +179,7 @@ public class CertificateHelper {
         certStart = cal.getTime();
       }
       if (certExpiry == null) {
-        cal.add(Calendar.YEAR, 1);
+        cal.add(Calendar.YEAR, 4);
         certExpiry = cal.getTime();
       }
 
