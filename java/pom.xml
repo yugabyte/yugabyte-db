@@ -69,7 +69,7 @@
     <maven-javadoc-plugin.version>3.0.0</maven-javadoc-plugin.version>
     <maven-dependency-plugin.version>3.0.2</maven-dependency-plugin.version>
     <maven-clean-plugin.version>3.0.0</maven-clean-plugin.version>
-    <maven-s3-wagon.version>1.2.1</maven-s3-wagon.version>
+    <maven-s3-wagon.version>1.3.3</maven-s3-wagon.version>
     <maven-source-plugin.version>3.0.1</maven-source-plugin.version>
     <commons-codec.version>1.10</commons-codec.version>
 
@@ -319,6 +319,14 @@
         </configuration>
       </plugin>
     </plugins>
+
+    <extensions>
+      <extension>
+        <groupId>com.github.seahen</groupId>
+        <artifactId>maven-s3-wagon</artifactId>
+        <version>${maven-s3-wagon.version}</version>
+     </extension>
+    </extensions>
   </build>
 
   <!--
