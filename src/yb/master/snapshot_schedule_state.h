@@ -25,10 +25,13 @@
 namespace yb {
 namespace master {
 
+YB_DEFINE_ENUM(SnapshotScheduleOperationType, (kCreateSnapshot)(kCleanup));
+
 struct SnapshotScheduleOperation {
+  SnapshotScheduleOperationType type;
   SnapshotScheduleId schedule_id;
-  SnapshotScheduleFilterPB filter;
   TxnSnapshotId snapshot_id;
+  SnapshotScheduleFilterPB filter;
   HybridTime previous_snapshot_hybrid_time;
 };
 
@@ -55,12 +58,18 @@ class SnapshotScheduleState {
     return options_;
   }
 
+  bool deleted() const;
+
   void PrepareOperations(
       HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations);
   Result<SnapshotScheduleOperation> ForceCreateSnapshot(HybridTime last_snapshot_time);
   void SnapshotFinished(const TxnSnapshotId& snapshot_id, const Status& status);
 
-  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
+  Result<docdb::KeyBytes> EncodedKey() const;
+  static Result<docdb::KeyBytes> EncodedKey(
+      const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context);
+
+  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;
   CHECKED_STATUS ToPB(SnapshotScheduleInfoPB* pb) const;
   std::string ToString() const;
 
