@@ -8,6 +8,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
@@ -30,12 +31,12 @@ public class CustomerConfigController extends AuthenticatedController {
     ObjectNode formData = (ObjectNode) request().body().asJson();
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
+      throw new YWServiceException(BAD_REQUEST, errorJson);
     }
 
     errorJson = configValidator.validateDataContent(formData);
     if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
+      throw new YWServiceException(BAD_REQUEST, errorJson);
     }
 
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
@@ -45,10 +46,7 @@ public class CustomerConfigController extends AuthenticatedController {
 
   public Result delete(UUID customerUUID, UUID configUUID) {
     CustomerConfig customerConfig = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
-    if (!customerConfig.delete()) {
-      return ApiResponse.error(
-          INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
-    }
+    customerConfig.deleteOrThrow();
     alertManager.resolveAlerts(customerUUID, configUUID, "%");
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.withMessage("configUUID deleted");
@@ -62,12 +60,12 @@ public class CustomerConfigController extends AuthenticatedController {
     JsonNode formData = request().body().asJson();
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
+      throw new YWServiceException(BAD_REQUEST, errorJson);
     }
 
     errorJson = configValidator.validateDataContent(formData);
     if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
+      throw new YWServiceException(BAD_REQUEST, errorJson);
     }
     CustomerConfig config = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     JsonNode data = Json.toJson(formData.get("data"));
