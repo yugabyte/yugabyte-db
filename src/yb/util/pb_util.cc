@@ -156,6 +156,28 @@ string InitializationErrorMessage(const char* action,
   return result;
 }
 
+uint8_t* GetUInt8Ptr(const char* buffer) {
+  return pointer_cast<uint8_t*>(const_cast<char*>(buffer));
+}
+
+uint8_t* GetUInt8Ptr(uint8_t* buffer) {
+  return buffer;
+}
+
+template <class Out>
+void DoAppendPartialToString(const MessageLite &msg, Out* output) {
+  int old_size = output->size();
+  int byte_size = msg.ByteSize();
+
+  output->resize(old_size + byte_size);
+
+  uint8* start = GetUInt8Ptr(output->data()) + old_size;
+  uint8* end = msg.SerializeWithCachedSizesToArray(start);
+  if (end - start != byte_size) {
+    ByteSizeConsistencyError(byte_size, msg.ByteSize(), end - start);
+  }
+}
+
 } // anonymous namespace
 
 void AppendToString(const MessageLite &msg, faststring *output) {
@@ -164,16 +186,11 @@ void AppendToString(const MessageLite &msg, faststring *output) {
 }
 
 void AppendPartialToString(const MessageLite &msg, faststring* output) {
-  int old_size = output->size();
-  int byte_size = msg.ByteSize();
+  DoAppendPartialToString(msg, output);
+}
 
-  output->resize(old_size + byte_size);
-
-  uint8* start = &((*output)[old_size]);
-  uint8* end = msg.SerializeWithCachedSizesToArray(start);
-  if (end - start != byte_size) {
-    ByteSizeConsistencyError(byte_size, msg.ByteSize(), end - start);
-  }
+void AppendPartialToString(const MessageLite &msg, std::string* output) {
+  DoAppendPartialToString(msg, output);
 }
 
 void SerializeToString(const MessageLite &msg, faststring *output) {

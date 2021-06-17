@@ -71,6 +71,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                        ListSnapshotSchedulesResponsePB* resp,
                                        rpc::RpcContext* rpc);
 
+  CHECKED_STATUS DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
+                                        DeleteSnapshotScheduleResponsePB* resp,
+                                        rpc::RpcContext* rpc);
+
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
 
