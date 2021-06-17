@@ -85,6 +85,7 @@ void AppendToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::AppendPartialToString
 void AppendPartialToString(const MessageLite &msg, faststring *output);
+void AppendPartialToString(const MessageLite &msg, std::string *output);
 
 // See MessageLite::SerializeToString.
 void SerializeToString(const MessageLite &msg, faststring *output);

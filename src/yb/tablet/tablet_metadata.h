@@ -361,6 +361,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return kv_store_.snapshot_schedules.insert(schedule_id).second;
   }
 
+  bool RemoveSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.snapshot_schedules.erase(schedule_id) != 0;
+  }
+
   std::vector<SnapshotScheduleId> SnapshotSchedules() const {
     std::lock_guard<MutexType> lock(data_mutex_);
     return std::vector<SnapshotScheduleId>(

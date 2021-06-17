@@ -2310,32 +2310,60 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
 
 Status TSTabletManager::UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info) {
   std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+  ++snapshot_schedules_version_;
   snapshot_schedule_allowed_history_cutoff_.clear();
   for (const auto& schedule : info.schedules()) {
+    auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
     snapshot_schedule_allowed_history_cutoff_.emplace(
-        VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())),
-        HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+        schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+    missing_snapshot_schedules_.erase(schedule_id);
   }
   return Status::OK();
 }
 
-HybridTime TSTabletManager::AllowedHistoryCutoff(const tablet::RaftGroupMetadata& metadata) {
-  auto schedules = metadata.SnapshotSchedules();
+HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
+  auto schedules = metadata->SnapshotSchedules();
   if (schedules.empty()) {
     return HybridTime::kMax;
   }
+  std::vector<SnapshotScheduleId> schedules_to_remove;
+  auto se = ScopeExit([&schedules_to_remove, metadata]() {
+    if (schedules_to_remove.empty()) {
+      return;
+    }
+    bool any_removed = false;
+    for (const auto& schedule_id : schedules_to_remove) {
+      any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
+    }
+    if (any_removed) {
+      WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
+    }
+  });
   std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
   HybridTime result = HybridTime::kMax;
   for (const auto& schedule_id : schedules) {
     auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
-    // it == snapshot_schedule_allowed_history_cutoff_.end() - we don't know this schedule.
-    // !it->second - schedules does not have snapshots yet.
-    if (it == snapshot_schedule_allowed_history_cutoff_.end() || !it->second) {
-      // TODO handle schedule deletion
+    if (it == snapshot_schedule_allowed_history_cutoff_.end()) {
+      // We don't know this schedule.
+      auto emplace_result = missing_snapshot_schedules_.emplace(
+          schedule_id, snapshot_schedules_version_);
+      if (!emplace_result.second &&
+          emplace_result.first->second + 2 <= snapshot_schedules_version_) {
+        // We don't know this schedule, and there are already 2 rounds of heartbeat passed
+        // after we first time found that we don't know this schedule.
+        // So it means that schedule was deleted.
+        // One round is not enough, because schedule could be added after heartbeat processed on
+        // master, but response not yet received on TServer.
+        schedules_to_remove.push_back(schedule_id);
+        continue;
+      }
       return HybridTime::kMin;
-    } else {
-      result = std::min(result, it->second);
     }
+    if (!it->second) {
+      // Schedules does not have snapshots yet.
+      return HybridTime::kMin;
+    }
+    result = std::min(result, it->second);
   }
   return result;
 }
