@@ -133,10 +133,11 @@ public class UniverseResp {
                     + "--workload CassandraKeyValue --nodes <nodes> --ssl_cert /home/root.crt")
                 .replace(
                     "<root_cert_content>",
-                    universe.getUniverseDetails().clientRootCA != null
+                    universe.getUniverseDetails().rootAndClientRootCASame
                         ? CertificateHelper.getCertPEMFileContents(
-                            universe.getUniverseDetails().clientRootCA)
-                        : "")
+                            universe.getUniverseDetails().rootCA)
+                        : CertificateHelper.getCertPEMFileContents(
+                            universe.getUniverseDetails().clientRootCA))
                 .replace("<nodes>", nodeBuilder.toString());
       }
       sampleAppCommand = sampleAppCommand.replace("<file_name>", randomFileName);
