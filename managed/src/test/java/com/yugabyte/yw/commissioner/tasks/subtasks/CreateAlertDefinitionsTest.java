@@ -114,6 +114,25 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
     }
   }
 
+  @Test
+  public void testRunFunctionality_NoAlertConfigExist() {
+    CreateAlertDefinitionsExt alertDefinitionTask = new CreateAlertDefinitionsExt();
+    UniverseTaskParams taskParams = new UniverseTaskParams();
+    taskParams.universeUUID = u.universeUUID;
+    alertDefinitionTask.setParams(taskParams);
+
+    when(runtimeConfigFactory.forCustomer(customer)).thenReturn(getApp().config());
+
+    AlertDefinitionFilter activeDefinitionsFilter =
+        new AlertDefinitionFilter().setCustomerUuid(customer.uuid).setActive(true);
+    assertEquals(0, alertDefinitionService.list(activeDefinitionsFilter).size());
+
+    alertDefinitionTask.run();
+
+    List<AlertDefinition> createdDefinitions = alertDefinitionService.list(activeDefinitionsFilter);
+    assertEquals(activeDefinitions, createdDefinitions.size());
+  }
+
   private class CreateAlertDefinitionsExt extends CreateAlertDefinitions {
 
     private CreateAlertDefinitionsExt() {
