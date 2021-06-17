@@ -21,7 +21,7 @@ try:
     from builtins import RuntimeError
 except Exception as e:
     from exceptions import RuntimeError
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import tz
 from multiprocessing import Pool
 from six import string_types, PY2, PY3
@@ -335,6 +335,13 @@ class NodeChecker():
         remote_cmd = "ps -C {} -o etimes=".format(process)
         return self._remote_check_output(remote_cmd).strip()
 
+    def get_uptime_in_dhms(self, uptime):
+        dtime = timedelta(seconds=int(uptime))
+        d = {"days": dtime.days}
+        d["hours"], rem = divmod(dtime.seconds, 3600)
+        d["minutes"], d["seconds"] = divmod(rem, 60)
+        return "{days} days {hours} hours {minutes} minutes {seconds} seconds".format(**d)
+
     def check_uptime_for_process(self, process):
         logging.info("Checking uptime for {} process {}".format(self.node, process))
         e = self._new_entry("Uptime", process)
@@ -350,9 +357,11 @@ class NodeChecker():
                 (int(time.time()) - self.start_time_ms / 1000 <= RECENT_FAILURE_THRESHOLD_SEC)
             # Server went down recently.
             if int(uptime) <= RECENT_FAILURE_THRESHOLD_SEC and not recent_operation:
-                return e.fill_and_return_entry(['Uptime: {} seconds'.format(uptime)], True)
+                return e.fill_and_return_entry(['Uptime: {} seconds ({})'.format(
+                    uptime, self.get_uptime_in_dhms(uptime))], True)
             else:
-                return e.fill_and_return_entry(['Uptime: {} seconds'.format(uptime)], False)
+                return e.fill_and_return_entry(['Uptime: {} seconds ({})'.format(
+                    uptime, self.get_uptime_in_dhms(uptime))], False)
         elif not uptime:
             return e.fill_and_return_entry(['Process is not running'], True)
         else:
