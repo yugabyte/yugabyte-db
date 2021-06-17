@@ -13,6 +13,8 @@ import * as Yup from 'yup';
 import { BackupStorageOptions } from '../BackupStorageOptions';
 
 export default class RestoreBackup extends Component {
+  state = { storageConfigUUID: this.props.initialValues.storageConfigUUID };
+
   static propTypes = {
     backupInfo: PropTypes.object
   };
@@ -66,9 +68,10 @@ export default class RestoreBackup extends Component {
    * 
    * @param {string} value Input field value.
    */
-   backupConfigType = (value) => {
+  backupConfigType = (value) => {
     this.props.initialValues.storageConfigUUID = value;
-  }
+    this.setState({ storageConfigUUID: value });
+  };
 
   render() {
     const {
@@ -126,7 +129,7 @@ export default class RestoreBackup extends Component {
       const labelName = config.metadata.provider + ' - ' + config.metadata.name;
       return { value: config.metadata.configUUID, label: labelName };
     });
-    
+
     const configTypeList = BackupStorageOptions(storageConfigs);
     const initialValues = this.props.initialValues;
     const isUniverseBackup =
@@ -162,7 +165,7 @@ export default class RestoreBackup extends Component {
             const payload = {
               ...values,
               restoreToUniverseUUID,
-              storageConfigUUID: values.storageConfigUUID,
+              storageConfigUUID: this.state.storageConfigUUID,
               kmsConfigUUID: values.kmsConfigUUID
             };
             if (values.storageLocation) {
