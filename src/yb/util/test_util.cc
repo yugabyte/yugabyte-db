@@ -309,18 +309,6 @@ Status WaitFor(const std::function<Result<bool>()>& condition,
               max_delay);
 }
 
-void AssertLoggedWaitFor(
-    const std::function<Result<bool>()>& condition,
-    MonoDelta timeout,
-    const string& description,
-    MonoDelta initial_delay,
-    double delay_multiplier,
-    MonoDelta max_delay) {
-  LOG(INFO) << description;
-  ASSERT_OK(WaitFor(condition, timeout, description, initial_delay));
-  LOG(INFO) << description << " - DONE";
-}
-
 Status LoggedWaitFor(
     const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
