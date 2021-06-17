@@ -144,7 +144,6 @@ public class CustomerConfigValidator {
             }
           } catch (AmazonS3Exception s3Exception) {
             String errMessage = s3Exception.getErrorMessage();
-            System.out.println();
             if (errMessage.contains("Denied") || errMessage.contains("bucket"))
               errMessage += " " + s3Uri;
             errorJson.set(fieldName, Json.newArray().add(errMessage));

@@ -40,8 +40,12 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "POST", url, defaultUser.createAuthToken(), bodyJson);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthTokenAndBody(
+                        "POST", url, defaultUser.createAuthToken(), bodyJson))
+            .getResult();
 
     JsonNode node = Json.parse(contentAsString(result));
     assertErrorNodeValue(node, "data", "This field is required");
@@ -60,8 +64,12 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("type", "foo");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "POST", url, defaultUser.createAuthToken(), bodyJson);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthTokenAndBody(
+                        "POST", url, defaultUser.createAuthToken(), bodyJson))
+            .getResult();
 
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
@@ -77,8 +85,12 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("type", "STORAGE");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "POST", url, defaultUser.createAuthToken(), bodyJson);
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthTokenAndBody(
+                        "POST", url, defaultUser.createAuthToken(), bodyJson))
+            .getResult();
 
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
@@ -169,12 +181,23 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthToken(
+                        "DELETE", url, defaultUser.createAuthToken()))
+            .getResult();
     assertInternalServerError(result, "Customer Configuration could not be deleted.");
     backup.delete();
     Schedule schedule =
         ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
-    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    result =
+        assertThrows(
+                YWServiceException.class,
+                () ->
+                    FakeApiHelper.doRequestWithAuthToken(
+                        "DELETE", url, defaultUser.createAuthToken()))
+            .getResult();
     assertInternalServerError(result, "Customer Configuration could not be deleted.");
     schedule.delete();
     result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
@@ -211,7 +234,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   public void testValidPasswordPolicy() {
-    Result result = testPasswordPolicy(8, 1, 1, 1, 1);
+    Result result =
+        assertThrows(YWServiceException.class, () -> testPasswordPolicy(8, 1, 1, 1, 1)).getResult();
     assertOk(result);
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -219,7 +243,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testNegativePasswordPolicy() {
-    Result result = testPasswordPolicy(8, -1, 1, 1, 1);
+    Result result =
+        assertThrows(YWServiceException.class, () -> testPasswordPolicy(8, -1, 1, 1, 1))
+            .getResult();
     assertBadRequest(
         result, "{\"password policy\":[\"Minimal number of uppercase letters should be > 0\"]}");
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
