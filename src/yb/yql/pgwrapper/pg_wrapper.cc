@@ -397,13 +397,15 @@ Status PgWrapper::InitDb(bool yb_enabled) {
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   SetCommonEnv(&initdb_subprocess, yb_enabled);
-  int exit_code = 0;
+  int status = 0;
   RETURN_NOT_OK(initdb_subprocess.Start());
-  RETURN_NOT_OK(initdb_subprocess.Wait(&exit_code));
-  if (exit_code != 0) {
+  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
+  if (status != 0) {
+    SCHECK(WIFEXITED(status), InternalError,
+           Format("$0 did not exit normally", initdb_program_path));
     return STATUS_FORMAT(RuntimeError, "$0 failed with exit code $1",
                          initdb_program_path,
-                         exit_code);
+                         WEXITSTATUS(status));
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
