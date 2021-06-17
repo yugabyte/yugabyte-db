@@ -54,14 +54,15 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
 
       Config customerConfig = runtimeConfigFactory.forCustomer(customer);
       CustomerConfig alertConfig = CustomerConfig.getAlertConfig(customer.getUuid());
-      AlertingData data = Json.fromJson(alertConfig.getData(), AlertingData.class);
+      AlertingData data =
+          alertConfig == null ? null : Json.fromJson(alertConfig.getData(), AlertingData.class);
 
       for (AlertDefinitionTemplate template : AlertDefinitionTemplate.values()) {
         AlertDefinition alertDefinition = new AlertDefinition();
         alertDefinition.setActive(
             template != AlertDefinitionTemplate.CLOCK_SKEW
                 ? template.isCreateForNewUniverse()
-                : data.enableClockSkew);
+                : (data == null) || data.enableClockSkew);
         alertDefinition.setCustomerUUID(customer.getUuid());
         alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
         alertDefinition.setName(template.getName());
