@@ -18,7 +18,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,17 +36,16 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     super(baseTaskDependencies);
   }
 
-  public class KubernetesPlacement {
-    PlacementInfo placementInfo;
-    Map<UUID, Integer> masters = new HashMap<>();
-    Map<UUID, Integer> tservers = new HashMap<>();
-    Map<UUID, Map<String, String>> configs = new HashMap<>();
+  public static class KubernetesPlacement {
+    public PlacementInfo placementInfo;
+    public Map<UUID, Integer> masters;
+    public Map<UUID, Integer> tservers;
+    public Map<UUID, Map<String, String>> configs;
 
     public KubernetesPlacement(PlacementInfo pi) {
       placementInfo = pi;
       masters = PlacementInfoUtil.getNumMasterPerAZ(pi);
       tservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
-
       // Mapping of the deployment zone and its corresponding Kubeconfig.
       configs = PlacementInfoUtil.getConfigPerAZ(pi);
     }

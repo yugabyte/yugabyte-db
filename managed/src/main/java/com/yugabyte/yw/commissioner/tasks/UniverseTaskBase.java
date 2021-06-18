@@ -58,6 +58,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.models.Backup;
@@ -98,10 +99,35 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     super(baseTaskDependencies);
   }
 
+  private Universe universe = null;
+
   // The task params.
   @Override
   protected UniverseTaskParams taskParams() {
     return (UniverseTaskParams) taskParams;
+  }
+
+  protected Universe getUniverse() {
+    return getUniverse(false);
+  }
+
+  protected Universe getUniverse(boolean fetchFromDB) {
+    if (fetchFromDB) {
+      return Universe.getOrBadRequest(taskParams().universeUUID);
+    } else {
+      if (universe == null) {
+        universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      }
+      return universe;
+    }
+  }
+
+  protected UserIntent getUserIntent() {
+    return getUserIntent(false);
+  }
+
+  protected UserIntent getUserIntent(boolean fetchFromDB) {
+    return getUniverse(fetchFromDB).getUniverseDetails().getPrimaryCluster().userIntent;
   }
 
   private UniverseUpdater getLockingUniverseUpdater(

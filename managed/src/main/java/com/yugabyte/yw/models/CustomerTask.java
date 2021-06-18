@@ -104,24 +104,47 @@ public class CustomerTask extends Model {
     @EnumValue("Release")
     Release,
 
+    @EnumValue("RestartUniverse")
+    RestartUniverse,
+
+    @EnumValue("SoftwareUpgrade")
+    SoftwareUpgrade,
+
+    @EnumValue("GFlagsUpgrade")
+    GFlagsUpgrade,
+
+    @EnumValue("CertsRotate")
+    CertsRotate,
+
+    @EnumValue("TlsToggle")
+    TlsToggle,
+
+    @EnumValue("VMImageUpgrade")
+    VMImageUpgrade,
+
+    @Deprecated
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 
+    @Deprecated
     @EnumValue("UpgradeVMImage")
     UpgradeVMImage,
 
     @EnumValue("ResizeNode")
     ResizeNode,
 
+    @Deprecated
     @EnumValue("UpdateCert")
     UpdateCert,
 
+    @Deprecated
     @EnumValue("ToggleTls")
     ToggleTls,
 
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
 
+    @Deprecated
     @EnumValue("UpgradeGflags")
     UpgradeGflags,
 
@@ -166,6 +189,18 @@ public class CustomerTask extends Model {
           return completed ? "Updated " : "Updating ";
         case Delete:
           return completed ? "Deleted " : "Deleting ";
+        case RestartUniverse:
+          return completed ? "Restarted " : "Restarting ";
+        case SoftwareUpgrade:
+          return completed ? "Upgraded Software " : "Upgrading Software ";
+        case GFlagsUpgrade:
+          return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+        case CertsRotate:
+          return completed ? "Updated Certificates " : "Updating Certificates ";
+        case TlsToggle:
+          return completed ? "Toggled TLS " : "Toggling TLS ";
+        case VMImageUpgrade:
+          return completed ? "Upgraded VM Image " : "Upgrading VM Image ";
         case UpgradeSoftware:
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case UpdateCert:

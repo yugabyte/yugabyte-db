@@ -33,6 +33,8 @@ import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
@@ -68,27 +70,6 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   @Inject
   protected UpgradeUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-  }
-
-  // Upgrade Task Type
-  public enum UpgradeTaskType {
-    Everything,
-    Software,
-    VMImage,
-    GFlags,
-    Restart,
-    Certs,
-    ToggleTls,
-    ResizeNode
-  }
-
-  public enum UpgradeTaskSubType {
-    None,
-    Download,
-    Install,
-    CopyCerts,
-    Round1GFlagsUpdate,
-    Round2GFlagsUpdate
   }
 
   private enum UpgradeIteration {

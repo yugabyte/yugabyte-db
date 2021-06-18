@@ -11,18 +11,18 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
@@ -38,7 +38,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   }
 
   public static class Params extends NodeTaskParams {
-    public UpgradeUniverse.UpgradeTaskType type = UpgradeUniverse.UpgradeTaskType.Everything;
+    public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
 
     // Optional params.
@@ -74,7 +74,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         getNodeManager().nodeCommand(NodeManager.NodeCommandType.Configure, taskParams());
     processShellResponse(response);
 
-    if (taskParams().type == UpgradeUniverse.UpgradeTaskType.Everything
+    if (taskParams().type == UpgradeTaskParams.UpgradeTaskType.Everything
         && !taskParams().updateMasterAddrsOnly) {
       // Check cronjob status if installing software.
       response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());

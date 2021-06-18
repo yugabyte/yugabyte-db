@@ -166,7 +166,8 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    *
    * @return result of the universe update operation.
    */
-  @ApiOperation(value = "Upgrade  the universe", response = YWResults.YWTask.class)
+  @Deprecated
+  @ApiOperation(value = "Upgrade  the universe", response = YWResults.YWTask.class, hidden = true)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "upgrade_params",

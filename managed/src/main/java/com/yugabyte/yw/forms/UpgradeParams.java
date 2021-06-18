@@ -2,7 +2,6 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -11,7 +10,7 @@ import play.data.validation.Constraints;
 @JsonDeserialize(converter = UpgradeParams.Converter.class)
 public class UpgradeParams extends UniverseDefinitionTaskParams {
   // Rolling Restart task type
-  @Constraints.Required() public UpgradeUniverse.UpgradeTaskType taskType;
+  @Constraints.Required() public UpgradeTaskParams.UpgradeTaskType taskType;
 
   // The software version to install. Do not set this value if no software needs to be installed.
   public String ybSoftwareVersion = null;
