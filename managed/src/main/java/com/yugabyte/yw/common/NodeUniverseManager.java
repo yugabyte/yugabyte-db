@@ -27,12 +27,12 @@ public class NodeUniverseManager extends DevopsBase {
 
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(DOWNLOAD_LOGS_SSH_SCRIPT);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     if (getNodeDeploymentMode(node, universe).equals(Common.CloudType.kubernetes)) {
 
       // Get namespace.  First determine isMultiAz.
-      UniverseDefinitionTaskParams.Cluster cluster =
-          universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-      UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
       Provider provider = Provider.get(providerUUID);
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       String namespace =
@@ -45,9 +45,10 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add("--namespace");
       commandArgs.add(namespace);
     } else if (!getNodeDeploymentMode(node, universe).equals(Common.CloudType.unknown)) {
+      AccessKey accessKey = AccessKey.get(providerUUID, cluster.userIntent.accessKeyCode);
       commandArgs.add("ssh");
       commandArgs.add("--port");
-      commandArgs.add("54422");
+      commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
       commandArgs.add("--ip");
       commandArgs.add(node.cloudInfo.private_ip);
       commandArgs.add("--key");
