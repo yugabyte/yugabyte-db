@@ -68,19 +68,19 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
     $ keytool -keystore ybtruststore -alias ybtruststore -import -file ca.crt
     ```
 
-1. Verify the `yugabytedb.crt` client certificate with `ybtruststore` by running the following command:
+1. Verify the `yugabytedb.crt` client certificate with `ybtruststore`:
 
     ```sh
     $ openssl verify -CAfile ca.crt -purpose sslclient tlstest.crt
     ```
 
-1. Convert the client certificate to DER format by running the following command:
+1. Convert the client certificate to DER format:
   
     ```sh
     $ openssl x509 –in yugabytedb.crt -out yugabytedb.crt.der -outform der
     ```
 
-1. Convert the client key to pk8 format by running the following command:
+1. Convert the client key to pk8 format:
 
     ```sh
     $ openssl pkcs8 -topk8 -inform PEM -in yugabytedb.key -outform DER -nocrypt -out yugabytedb.key.pk8
@@ -224,3 +224,4 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
     Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
     Query returned: name=John, age=35, language: Java
     ```
+    
