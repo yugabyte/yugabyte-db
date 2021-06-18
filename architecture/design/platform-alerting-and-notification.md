@@ -30,10 +30,23 @@ Tracking GitHub Issue: [8963](https://github.com/yugabyte/yugabyte-db/issues/896
 * Restart by running the following commands on the cluster’s Master/TServer node
 * If there is an OOM exception, increase the heap size and restart it. 
 * If this alert continues to appear, restart a specific component or inform #yb-escalation or YB support channel etc. 
+
+![Platform alert configurations](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-alert-configurations.png)
+
 * Should have opt-in model based on role or users
 * Should have the ability to send test alerts to ensure right alerts are raised for the defined condition and threshold.
+
+![Platform create cluster alert](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-create-cluster-alert.png)
+
+## Alert destinations
+
+![Platform alert destinations](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-alert-destinations.png)
+
 ## Alert history
 To see a list of alerts, click the Alerts tab on the left(in case of Platform). By default, alerts are sorted in reverse chronological order by the alert raised time, but should have the ability to reorder the list by clicking the column headings. Each entry in the alert history table represent an alert with following information 
+
+![Platform alert list](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-alert-list.png)
+
 * Name shows the string name of each alert.
 * Created by shows the user that created the alert.
 * State shows whether the alert status is “Triggered” or ‘Ok’
