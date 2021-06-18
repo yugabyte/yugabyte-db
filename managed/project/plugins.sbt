@@ -16,6 +16,8 @@ addSbtPlugin("com.github.sbt" % "sbt-jacoco" % "3.0.3")
 
 addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "5.2.4")
 
+addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "5.0.1")
+
 // Plugin for formatting code.
 addSbtPlugin("com.swoval" % "sbt-jvm-format" % "0.3.1")
 

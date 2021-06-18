@@ -45,3 +45,5 @@ ui/junit.xml
 .session.vim*
 
 src/public/*
+
+client/*/generated

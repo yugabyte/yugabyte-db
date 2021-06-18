@@ -671,76 +671,6 @@
       "required" : [ "alertingData", "callhomeLevel", "smtpData" ],
       "type" : "object"
     },
-    "ArrayNode" : {
-      "properties" : {
-        "array" : {
-          "type" : "boolean"
-        },
-        "bigDecimal" : {
-          "type" : "boolean"
-        },
-        "bigInteger" : {
-          "type" : "boolean"
-        },
-        "binary" : {
-          "type" : "boolean"
-        },
-        "boolean" : {
-          "type" : "boolean"
-        },
-        "containerNode" : {
-          "type" : "boolean"
-        },
-        "double" : {
-          "type" : "boolean"
-        },
-        "float" : {
-          "type" : "boolean"
-        },
-        "floatingPointNumber" : {
-          "type" : "boolean"
-        },
-        "int" : {
-          "type" : "boolean"
-        },
-        "integralNumber" : {
-          "type" : "boolean"
-        },
-        "long" : {
-          "type" : "boolean"
-        },
-        "missingNode" : {
-          "type" : "boolean"
-        },
-        "nodeType" : {
-          "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ],
-          "type" : "string"
-        },
-        "null" : {
-          "type" : "boolean"
-        },
-        "number" : {
-          "type" : "boolean"
-        },
-        "object" : {
-          "type" : "boolean"
-        },
-        "pojo" : {
-          "type" : "boolean"
-        },
-        "short" : {
-          "type" : "boolean"
-        },
-        "textual" : {
-          "type" : "boolean"
-        },
-        "valueNode" : {
-          "type" : "boolean"
-        }
-      },
-      "required" : [ "array", "bigDecimal", "bigInteger", "binary", "boolean", "containerNode", "double", "float", "floatingPointNumber", "int", "integralNumber", "long", "missingNode", "nodeType", "null", "number", "object", "pojo", "short", "textual", "valueNode" ],
-      "type" : "object"
-    },
     "AsyncReplicationConfig" : {
       "properties" : {
         "active" : {
@@ -788,11 +718,6 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
-        },
-        "payload" : {
-          "$ref" : "#/definitions/JsonNode",
-          "description" : "Audit uuid",
-          "readOnly" : true
         },
         "taskUUID" : {
           "description" : "Task UUID",
@@ -1285,11 +1210,6 @@
           "format" : "date-time",
           "type" : "string"
         },
-        "universeDetails" : {
-          "$ref" : "#/definitions/ArrayNode",
-          "description" : "Associated universe details of the Certificate",
-          "readOnly" : true
-        },
         "uuid" : {
           "description" : "Certificate uuid",
           "format" : "uuid",
@@ -1593,11 +1513,6 @@
           "readOnly" : true,
           "type" : "integer"
         },
-        "features" : {
-          "$ref" : "#/definitions/JsonNode",
-          "description" : "Features",
-          "readOnly" : true
-        },
         "name" : {
           "description" : "Name of customer",
           "example" : "sridhar",
@@ -1644,11 +1559,6 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "data" : {
-          "$ref" : "#/definitions/JsonNode",
-          "description" : "Configuration data",
-          "example" : "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}"
-        },
         "inUse" : {
           "description" : "True if there is an in use reference to the object",
           "type" : "boolean"
@@ -1663,14 +1573,8 @@
           "enum" : [ "STORAGE", "ALERTS", "CALLHOME", "PASSWORD_POLICY", "OTHER" ],
           "example" : "STORAGE",
           "type" : "string"
-        },
-        "universeDetails" : {
-          "$ref" : "#/definitions/ArrayNode",
-          "description" : "Universe details",
-          "example" : "{\"name\": \"jd-aws-21-6-21-test4\"}"
         }
       },
-      "required" : [ "data" ],
       "type" : "object"
     },
     "Customer Detail" : {
@@ -1704,11 +1608,6 @@
           "format" : "int32",
           "readOnly" : true,
           "type" : "integer"
-        },
-        "features" : {
-          "$ref" : "#/definitions/JsonNode",
-          "description" : "Features",
-          "readOnly" : true
         },
         "name" : {
           "description" : "Name of customer",
@@ -1895,12 +1794,6 @@
       "type" : "object"
     },
     "FeatureUpdateFormData" : {
-      "properties" : {
-        "features" : {
-          "$ref" : "#/definitions/JsonNode"
-        }
-      },
-      "required" : [ "features" ],
       "type" : "object"
     },
     "Generic error response from Yugawware Platform API" : {
@@ -2037,76 +1930,6 @@
         }
       },
       "required" : [ "instanceTypeCode", "providerUuid" ],
-      "type" : "object"
-    },
-    "JsonNode" : {
-      "properties" : {
-        "array" : {
-          "type" : "boolean"
-        },
-        "bigDecimal" : {
-          "type" : "boolean"
-        },
-        "bigInteger" : {
-          "type" : "boolean"
-        },
-        "binary" : {
-          "type" : "boolean"
-        },
-        "boolean" : {
-          "type" : "boolean"
-        },
-        "containerNode" : {
-          "type" : "boolean"
-        },
-        "double" : {
-          "type" : "boolean"
-        },
-        "float" : {
-          "type" : "boolean"
-        },
-        "floatingPointNumber" : {
-          "type" : "boolean"
-        },
-        "int" : {
-          "type" : "boolean"
-        },
-        "integralNumber" : {
-          "type" : "boolean"
-        },
-        "long" : {
-          "type" : "boolean"
-        },
-        "missingNode" : {
-          "type" : "boolean"
-        },
-        "nodeType" : {
-          "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ],
-          "type" : "string"
-        },
-        "null" : {
-          "type" : "boolean"
-        },
-        "number" : {
-          "type" : "boolean"
-        },
-        "object" : {
-          "type" : "boolean"
-        },
-        "pojo" : {
-          "type" : "boolean"
-        },
-        "short" : {
-          "type" : "boolean"
-        },
-        "textual" : {
-          "type" : "boolean"
-        },
-        "valueNode" : {
-          "type" : "boolean"
-        }
-      },
-      "required" : [ "array", "bigDecimal", "bigInteger", "binary", "boolean", "containerNode", "double", "float", "floatingPointNumber", "int", "integralNumber", "long", "missingNode", "nodeType", "null", "number", "object", "pojo", "short", "textual", "valueNode" ],
       "type" : "object"
     },
     "KeyInfo" : {
@@ -2978,10 +2801,6 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "taskParams" : {
-          "$ref" : "#/definitions/JsonNode",
-          "description" : "Schedule task params"
-        },
         "taskType" : {
           "description" : "Type of the task to be schedules",
           "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion" ],
@@ -3400,11 +3219,6 @@
           "description" : "User email id",
           "example" : "username1@email.com",
           "type" : "string"
-        },
-        "features" : {
-          "$ref" : "#/definitions/JsonNode",
-          "description" : "Features",
-          "readOnly" : true
         },
         "isPrimary" : {
           "description" : "User is primary user or not",
@@ -4654,11 +4468,8 @@
           "type" : "string"
         } ],
         "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/JsonNode"
-            }
+          "default" : {
+            "description" : "successful operation"
           }
         },
         "security" : [ {

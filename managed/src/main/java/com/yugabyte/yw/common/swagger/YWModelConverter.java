@@ -27,7 +27,7 @@ public class YWModelConverter implements ModelConverter {
   }
 
   private static final ImmutableSet<String> SKIPPED_PACKAGES =
-      ImmutableSet.of("play.mvc", "io.ebean");
+      ImmutableSet.of("play.mvc", "io.ebean", "com.fasterxml.jackson.databind");
   public static final Logger LOG = LoggerFactory.getLogger(YWModelConverter.class);
   private static final double maxLevel = 300;
 

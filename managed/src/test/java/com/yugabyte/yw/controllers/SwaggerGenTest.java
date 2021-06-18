@@ -33,6 +33,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import org.apache.commons.io.IOUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
@@ -51,6 +52,7 @@ public class SwaggerGenTest extends FakeDBApplication {
     return true;
   }
 
+  @Ignore
   @Test
   public void genJson() throws IOException {
     String resourceName = "swagger.json";
