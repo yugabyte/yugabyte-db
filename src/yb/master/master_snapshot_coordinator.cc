@@ -78,6 +78,14 @@ void SubmitWrite(
   context->Submit(std::move(operation), leader_term);
 }
 
+CHECKED_STATUS SynchronizedWrite(
+    docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term, CoarseTimePoint deadline,
+    SnapshotCoordinatorContext* context) {
+  auto synchronizer = std::make_shared<Synchronizer>();
+  SubmitWrite(std::move(write_batch), leader_term, context, synchronizer);
+  return synchronizer->WaitUntil(ToSteady(deadline));
+}
+
 struct NoOp {
   template <class... Args>
   void operator()(Args&&... args) const {}
@@ -406,14 +414,12 @@ class MasterSnapshotCoordinator::Impl {
 
   Result<SnapshotScheduleId> CreateSchedule(
       const CreateSnapshotScheduleRequestPB& req, int64_t leader_term, CoarseTimePoint deadline) {
-    auto synchronizer = std::make_shared<Synchronizer>();
-
     SnapshotScheduleState schedule(&context_, req);
 
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(schedule.StoreToWriteBatch(&write_batch));
-    SubmitWrite(std::move(write_batch), leader_term, &context_, synchronizer);
-    RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
+
+    RETURN_NOT_OK(SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_));
 
     return schedule.id();
   }
@@ -432,6 +438,26 @@ class MasterSnapshotCoordinator::Impl {
     return FillSchedule(schedule, resp->add_schedules());
   }
 
+  CHECKED_STATUS DeleteSnapshotSchedule(
+      const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term,
+      CoarseTimePoint deadline) {
+    docdb::KeyValueWriteBatchPB write_batch;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(snapshot_schedule_id));
+      auto encoded_key = VERIFY_RESULT(schedule.EncodedKey());
+      auto pair = write_batch.add_write_pairs();
+      pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
+      auto options = schedule.options();
+      options.set_delete_time(context_.Clock()->Now().ToUint64());
+      auto* value = pair->mutable_value();
+      value->push_back(docdb::ValueTypeAsChar::kString);
+      pb_util::AppendPartialToString(options, value);
+    }
+
+    return SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_);
+  }
+
   CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (schedules_.empty()) {
@@ -439,6 +465,10 @@ class MasterSnapshotCoordinator::Impl {
     }
     auto* out = resp->mutable_snapshot_schedules();
     for (const auto& schedule : schedules_) {
+      // Don't send deleted schedules.
+      if (schedule->deleted()) {
+        continue;
+      }
       const auto& id = schedule->id();
       auto* out_schedule = out->add_schedules();
       out_schedule->set_id(id.data(), id.size());
@@ -662,31 +692,45 @@ class MasterSnapshotCoordinator::Impl {
     PollSchedulesComplete(schedules_data, leader_term);
   }
 
+  void TryDeleteSnapshot(SnapshotState* snapshot, PollSchedulesData* data) {
+    auto delete_status = snapshot->TryStartDelete();
+    if (!delete_status.ok()) {
+      VLOG(1) << "Unable to delete snapshot " << snapshot->id() << ": "
+              << delete_status << ", state: " << snapshot->ToString();
+      return;
+    }
+
+    VLOG(1) << "Cleanup snapshot: " << snapshot->id();
+    data->delete_snapshots.push_back(snapshot->id());
+  }
+
   void PollSchedulesPrepare(PollSchedulesData* data) REQUIRES(mutex_) {
     auto now = context_.Clock()->Now();
     for (const auto& p : schedules_) {
-      auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
-      auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
-      if (first_snapshot) {
-        if (first_snapshot != last_snapshot) {
-          auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
-          if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
-            auto delete_status = first_snapshot->TryStartDelete();
-            if (delete_status.ok()) {
-              VLOG(1) << "Cleanup snapshot: " << first_snapshot->id();
-              data->delete_snapshots.push_back(first_snapshot->id());
-            } else {
-              VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
-                      << delete_status << ", state: " << first_snapshot->ToString();
+      HybridTime last_snapshot_time;
+      if (p->deleted()) {
+        auto range = snapshots_.get<ScheduleTag>().equal_range(p->id());
+        for (const auto& snapshot : boost::make_iterator_range(range.first, range.second)) {
+          TryDeleteSnapshot(snapshot.get(), data);
+        }
+      } else {
+        auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
+        auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
+        if (first_snapshot) {
+          if (first_snapshot != last_snapshot) {
+            auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+            if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
+              TryDeleteSnapshot(first_snapshot, data);
             }
           }
+          data->schedule_min_restore_time[p->id()] =
+              first_snapshot->previous_snapshot_hybrid_time()
+                  ? first_snapshot->previous_snapshot_hybrid_time()
+                  : first_snapshot->snapshot_hybrid_time();
         }
-        data->schedule_min_restore_time[p->id()] = first_snapshot->previous_snapshot_hybrid_time()
-                ? first_snapshot->previous_snapshot_hybrid_time()
-                : first_snapshot->snapshot_hybrid_time();
+        last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
+                                           : HybridTime::kInvalid;
       }
-      auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
-                                              : HybridTime::kInvalid;
       p->PrepareOperations(last_snapshot_time, now, &data->schedule_operations);
     }
   }
@@ -696,8 +740,19 @@ class MasterSnapshotCoordinator::Impl {
       SubmitDelete(id, leader_term, nullptr);
     }
     for (const auto& operation : data.schedule_operations) {
-      WARN_NOT_OK(ExecuteScheduleOperation(operation, leader_term),
-                  Format("Failed to execute operation on $0", operation.schedule_id));
+      switch (operation.type) {
+        case SnapshotScheduleOperationType::kCreateSnapshot:
+          WARN_NOT_OK(ExecuteScheduleOperation(operation, leader_term),
+                      Format("Failed to execute operation on $0", operation.schedule_id));
+          break;
+        case SnapshotScheduleOperationType::kCleanup:
+          DeleteEntry(
+              leader_term, SnapshotScheduleState::EncodedKey(operation.schedule_id, &context_));
+          break;
+        default:
+          LOG(DFATAL) << "Unexpected operation type: " << operation.type;
+          break;
+      }
     }
     context_.CleanupHiddenObjects(data.schedule_min_restore_time);
   }
@@ -729,13 +784,16 @@ class MasterSnapshotCoordinator::Impl {
   void DeleteSnapshot(int64_t leader_term, const TxnSnapshotId& snapshot_id) {
     VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
 
-    docdb::KeyValueWriteBatchPB write_batch;
+    DeleteEntry(leader_term, EncodedSnapshotKey(snapshot_id, &context_));
+  }
 
-    auto encoded_key = EncodedSnapshotKey(snapshot_id, &context_);
+  void DeleteEntry(int64_t leader_term, const Result<docdb::KeyBytes>& encoded_key) {
     if (!encoded_key.ok()) {
       LOG(DFATAL) << "Failed to encode id for deletion: " << encoded_key.status();
       return;
     }
+
+    docdb::KeyValueWriteBatchPB write_batch;
     auto pair = write_batch.add_write_pairs();
     pair->set_key(encoded_key->AsSlice().cdata(), encoded_key->size());
     char value = { docdb::ValueTypeAsChar::kTombstone };
@@ -1129,6 +1187,11 @@ Result<SnapshotScheduleId> MasterSnapshotCoordinator::CreateSchedule(
 Status MasterSnapshotCoordinator::ListSnapshotSchedules(
     const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp) {
   return impl_->ListSnapshotSchedules(snapshot_schedule_id, resp);
+}
+
+Status MasterSnapshotCoordinator::DeleteSnapshotSchedule(
+    const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term, CoarseTimePoint deadline) {
+  return impl_->DeleteSnapshotSchedule(snapshot_schedule_id, leader_term, deadline);
 }
 
 Status MasterSnapshotCoordinator::Load(tablet::Tablet* tablet) {

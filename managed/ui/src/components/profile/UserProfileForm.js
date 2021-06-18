@@ -6,7 +6,7 @@ import { isEqual } from 'lodash';
 import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBButton } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
-import { showOrRedirect, isDisabled } from '../../utils/LayoutUtils';
+import { showOrRedirect } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
@@ -217,7 +217,7 @@ export default class UserProfileForm extends Component {
                   <YBButton
                     btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting || isDisabled(customer.data.features, 'universe.create')}
+                    disabled={isSubmitting}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>
