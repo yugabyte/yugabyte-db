@@ -368,14 +368,14 @@ TEST_F(TestThreadPool, TestPromises) {
 
 
 METRIC_DEFINE_entity(test_entity);
-METRIC_DEFINE_histogram(test_entity, queue_length, "queue length",
-                        MetricUnit::kTasks, "queue length", 1000, 1);
+METRIC_DEFINE_coarse_histogram(test_entity, queue_length, "queue length",
+                        MetricUnit::kTasks, "queue length");
 
-METRIC_DEFINE_histogram(test_entity, queue_time, "queue time",
-                        MetricUnit::kMicroseconds, "queue time", 1000000, 1);
+METRIC_DEFINE_coarse_histogram(test_entity, queue_time, "queue time",
+                        MetricUnit::kMicroseconds, "queue time");
 
-METRIC_DEFINE_histogram(test_entity, run_time, "run time",
-                        MetricUnit::kMicroseconds, "run time", 1000, 1);
+METRIC_DEFINE_coarse_histogram(test_entity, run_time, "run time",
+                        MetricUnit::kMicroseconds, "run time");
 
 TEST_F(TestThreadPool, TestMetrics) {
   MetricRegistry registry;

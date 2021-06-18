@@ -89,6 +89,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   CHECKED_STATUS ListSnapshotSchedules(
       const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp);
 
+  CHECKED_STATUS DeleteSnapshotSchedule(
+      const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term,
+      CoarseTimePoint deadline);
+
   // Load snapshots data from system catalog.
   CHECKED_STATUS Load(tablet::Tablet* tablet) override;
 

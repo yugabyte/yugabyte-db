@@ -107,12 +107,11 @@ DEFINE_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
   server, dns_resolve_latency_during_sys_catalog_setup,
   "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
-  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
-  60000000LU, 2);
+  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig");
 METRIC_DEFINE_counter(
   server, sys_catalog_peer_write_count,
   "yb.master.SysCatalogTable Count of Writes",
