@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import com.yugabyte.yw.commissioner.Common;
 import play.data.validation.Constraints;
 
@@ -20,6 +22,7 @@ public class CloudProviderFormData {
 
   // We would store credentials and other environment
   // settings specific to the provider as a key-value map.
+  @JsonSetter(nulls = Nulls.AS_EMPTY)
   public Map<String, String> config = new HashMap<>();
 
   public String region = null;
