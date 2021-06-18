@@ -27,6 +27,59 @@ This bug does not affect version 2.4.0.0.
 
 {{< /warning >}}
 
+## v2.4.5.0 - June 18, 2021
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.5.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.5.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.4.5.0-b12
+```
+
+### Improvements
+
+#### Core database
+
+N/A
+
+#### Yugabyte Platform
+
+* [[7706](https://github.com/yugabyte/yugabyte-db/issues/7706)] Allow editing of backup config credentials. (#8535)
+
+### Bug fixes
+
+#### Core database
+
+* [[4437](https://github.com/yugabyte/yugabyte-db/issues/4437)] [[8731](https://github.com/yugabyte/yugabyte-db/issues/8731)] [DocDB] disabled bloom filters for master tablet and fixed DocDbAwareV2FilterPolicy compatibility for range-partitioned co-located tables
+* [[6096](https://github.com/yugabyte/yugabyte-db/issues/6096)] [YSQL] Fix crash during bootstrap when replaying WAL of deleted colocated table
+* [[6482](https://github.com/yugabyte/yugabyte-db/issues/6482)] Fix timeout handling when getting safe time in a RF1 cluster
+* [[7641](https://github.com/yugabyte/yugabyte-db/issues/7641)] (This commit has been removed from release 2.4.5.0.) YCQL: Fix checks in index update path that determine full row removal.
+* [[8204](https://github.com/yugabyte/yugabyte-db/issues/8204)] [Ybase] GetLoadMoveCompletionPercent returns an incorrect 100% if tservers haven't heartbeated their tablet reports
+* [[8390](https://github.com/yugabyte/yugabyte-db/issues/8390)] Fix NPE Handling for indexed_table_id
+* [[8591](https://github.com/yugabyte/yugabyte-db/issues/8591)] [DocDB] Add protection against missing UserFrontiers in older SST files during intents cleanup
+
+#### Yugabyte Platform
+
+* [[6945](https://github.com/yugabyte/yugabyte-db/issues/6945)] Add limit to customer task API. (#8700)
+* [[7859](https://github.com/yugabyte/yugabyte-db/issues/7859)] Fix '< 1 min' uptime shown intermittently
+* [[8345](https://github.com/yugabyte/yugabyte-db/issues/8345)] Remove hard coded cert filepath
+* [[8611](https://github.com/yugabyte/yugabyte-db/issues/8611)] Enable edit backup configuration for the active tab only. (#8674)
+* [[8620](https://github.com/yugabyte/yugabyte-db/issues/8620)] Reset the values on cancel. (#8627)
+
 ## v2.4.4.0 - May 20, 2021
 
 ### Downloads
