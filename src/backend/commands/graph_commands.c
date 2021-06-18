@@ -61,6 +61,7 @@ Datum create_graph(PG_FUNCTION_ARGS)
 {
     char *graph;
     Name graph_name;
+    char *graph_name_str;
     Oid nsp_id;
 
     if (PG_ARGISNULL(0))
@@ -69,6 +70,14 @@ Datum create_graph(PG_FUNCTION_ARGS)
                         errmsg("graph name must not be NULL")));
     }
     graph_name = PG_GETARG_NAME(0);
+
+    graph_name_str = NameStr(*graph_name);
+    if (graph_exists(graph_name_str))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("graph \"%s\" already exists", graph_name_str)));
+    }
 
     nsp_id = create_schema_for_graph(graph_name);
 

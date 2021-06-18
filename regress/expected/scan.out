@@ -25,6 +25,8 @@ NOTICE:  graph "scan" has been created
  
 (1 row)
 
+SELECT create_graph('scan');
+ERROR:  graph "scan" already exists
 --
 -- multi-line comment
 --

@@ -22,6 +22,8 @@ SET search_path TO ag_catalog;
 
 SELECT create_graph('scan');
 
+SELECT create_graph('scan');
+
 --
 -- multi-line comment
 --
