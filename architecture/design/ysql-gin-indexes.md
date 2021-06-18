@@ -75,9 +75,9 @@ just smash all the null categories into one because of search modes...
 For regular indexes, there are scan flags like `SK_SEARCHISNULL` and
 `SK_SEARCHARRAY`.  For GIN, there are search modes:
 
-- include empty: TODO
-- all: TODO
-- everything: TODO
+- include empty: also match `GIN_CAT_EMPTY_ITEM`
+- all: match everything but `GIN_CAT_NULL_ITEM`
+- everything: match everything
 
 ## multicolumn
 
