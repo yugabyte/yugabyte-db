@@ -14,42 +14,46 @@ Tracking GitHub Issue: [8963](https://github.com/yugabyte/yugabyte-db/issues/896
 
 # Usage
 
-## Alerts creation
-* Alerts should be of two types, default (OOTB, preconfigured) and user defined alerts
-* Default alerts: YB Platform/Cloud will provide default alerts for a new project/instance/tenant
-* User defined alerts: Alerts based on an alert condition and threshold defined by a user
-* Alerts should be either global (for all universes) or targeted(for specific universe)
-* Every alert should have name to identify quickly from the list of alerts
-* Every alert should have one of the severity levels - Severe, High, Medium, Low
-* Every alert should have a metric, a condition, a threshold and optionally a time duration defined. This time duration(‘For’ duration mentioned in below tables) is nothing but the time to wait for alert condition to be true for M more minutes after evaluation first succeeds before raising alerts.
-* The check interval should be 1 minute for prometheus based alerts (the current default for the health check interval minute). The check interval is the amount of time from the start of one probe to the start of the next probe.
-* Alert notifications should be sent in real time (rather than grouping all alerts into batches over X minutes before notifying on subscribe channel like Email)
-* To resolve each alert playbook should be provided. Playbook for Phase 1 could be just documentation with alert resolution information like - 
-* Explanation of the alert
-* Logs are available in the following directory - (path to logs)
-* Restart by running the following commands on the cluster’s Master/TServer node
-* If there is an OOM exception, increase the heap size and restart it. 
-* If this alert continues to appear, restart a specific component or inform #yb-escalation or YB support channel etc. 
-
+## Alert definition and types
+* Yugabyte Platform will have default, preconfigured alerts, both at platform and cluster level. Cluster alerts can be configured globally for all clusters, or per specific cluster. In addition to the above default alerts, users can configure their alerts based on a specific condition on any available metric. 
 ![Platform alert configurations](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-alert-configurations.png)
 
-* Should have opt-in model based on role or users
-* Should have the ability to send test alerts to ensure right alerts are raised for the defined condition and threshold.
+* Every alert has the following information:
+    * Alert name and description
+    * Metric name
+    * Target (platform vs specific cluster vs all clusters)
+    * Metric threshold value
+    * Operator (less than, equal to or greater than)
+    * Duration
+    * Severity (warning and severe)
+    * Destination (email, slack, pagerduty, etc.)
+    
+![Platform create cluster alert](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-create-cluster-alert.png) 
 
-![Platform create cluster alert](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-create-cluster-alert.png)
+* Duration configured as M minutes means that it is a time to wait for alert condition to be true for M more minutes after evaluation first succeeds before raising alerts.
+* The check interval should be 1 minute for prometheus based alerts (the current default for the health check interval minute). The check interval is the amount of time from the start of one probe to the start of the next probe.
+
+* Alert notifications should be sent in real time (rather than grouping all alerts into batches over X minutes before notifying on subscribe channel like Email)
+* Alerts should be snoozed when universe/node creation or removal is in progress to avoid unnecessary alerts to be generated.
+* When an universe is deleted, corresponding alerts should also be deleted.
+* Should have the ability to send test alerts to ensure right alerts are raised for the defined condition and threshold.
+* To resolve each alert playbook should be provided. For now. playbook should be just documentation with alert resolution information like - 
+  * Explanation of the alert
+  * Logs are available in the following directory - (path to logs)
+  * Restart by running the following commands on the cluster’s Master/TServer node
+  * If there is an OOM exception, increase the heap size and restart it. 
+  * If this alert continues to appear, restart a specific component or inform #yb-escalation or YB support channel etc.
 
 ## Alert destinations
 
 ![Platform alert destinations](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-alert-destinations.png)
 
-## Alert history
-To see a list of alerts, click the Alerts tab on the left(in case of Platform). By default, alerts are sorted in reverse chronological order by the alert raised time, but should have the ability to reorder the list by clicking the column headings. Each entry in the alert history table represent an alert with following information 
+## View Alerts
+To see a list of alerts, click the Alerts tab on the left. By default, alerts are sorted in reverse chronological order by the alert raised time, but should have the ability to reorder the list by clicking the column headings. 
 
 ![Platform alert list](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-alert-list.png)
 
-* Name shows the string name of each alert.
-* Created by shows the user that created the alert.
-* State shows whether the alert status is “Triggered” or ‘Ok’
+
 * “Triggered” means that on the most recent alert check, when the configure threshold is breached. For example If your alert checks whether CPU is above 80%, your alert should be triggered as long as CPU is above 80%.
 * “Ok” means that the most recent alert check indicates that the configured threshold was not breached. This doesn’t mean that the Alert was not triggered previously. If your CPU value is now 40% your alert will show as Ok.
 ## Alert actions
