@@ -223,7 +223,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
 
     ```sql
     yugabyte=# CREATE ROLE riemann WITH LOGIN;
-    yugabyte=# GRANT ALL ON DATABASE yugabyte T0 riemann;
+    yugabyte=# GRANT ALL ON DATABASE yugabyte TO riemann;
     ```
 
 1. Connect using LDAP authentication.

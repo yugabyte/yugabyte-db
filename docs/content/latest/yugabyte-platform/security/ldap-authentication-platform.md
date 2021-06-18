@@ -113,8 +113,7 @@ For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_
     ```
 
     ```sql
-    exampledb=# create user adam;
-    CREATE ROLE
+    exampledb=# CREATE USER adam;
     ```
 
 1. Verify that the user can authenticate to the database using LDAP.
@@ -136,4 +135,3 @@ For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_
     ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
     ```
-
