@@ -28,6 +28,7 @@ azure-mgmt-compute==12.1.0
 azure-mgmt-privatedns==0.1.0
 azure-mgmt-network==10.2.0
 azure-mgmt-resource==10.0.0
+backports.tempfile==1.0
 boto>=2.42.0
 boto3>=1.4.0
 botocore>=1.4.59
