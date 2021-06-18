@@ -167,13 +167,7 @@ The following commands add three new nodes to a read replica cluster in region `
 ./bin/yb-ctl add_node --placement_info "c.r2.z22" --tserver_flags "placement_uuid=rr"
 ./bin/yb-ctl add_node --placement_info "c.r2.z23" --tserver_flags "placement_uuid=rr"
 
-./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2,127.0.0.3
-```
-
-Output:
-
-```
-add_read_replica_placement_info c.r2.z21:1,c.r2.z22:1,c.r2.z23:1 3 rr
+./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2,127.0.0.3 add_read_replica_placement_info c.r2.z21:1,c.r2.z22:1,c.r2.z23:1 3 rr
 ```
 
 The following illustration demonstrates the setup of two clusters, one of which is primary and another one is read replica visible via [Yugabyte Platform](https://docs.yugabyte.com/latest/yugabyte-platform/):
