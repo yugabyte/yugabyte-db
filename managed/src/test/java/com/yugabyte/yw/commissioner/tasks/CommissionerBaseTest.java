@@ -81,9 +81,9 @@ public abstract class CommissionerBaseTest extends WithApplication {
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
-  Customer defaultCustomer;
-  Provider defaultProvider;
-  Provider gcpProvider;
+  protected Customer defaultCustomer;
+  protected Provider defaultProvider;
+  protected Provider gcpProvider;
 
   @Before
   public void setUp() {
