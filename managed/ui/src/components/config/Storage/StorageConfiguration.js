@@ -236,7 +236,7 @@ class StorageConfiguration extends Component {
   onEditConfig = (config, activeTab) => {
     this.setState({
       editingTab: activeTab,
-      iamRoleEnabled: config?.IAM_INSTANCE_PROFILE || this.state.iamRoleEnabled
+      iamRoleEnabled: config?.IAM_INSTANCE_PROFILE || false
     });
   };
 
@@ -246,8 +246,7 @@ class StorageConfiguration extends Component {
   disableEditFields = () => {
     this.props.reset();
     this.setState({
-      editingTab: false,
-      iamRoleEnabled: !this.state.iamRoleEnabled
+      editingTab: false
     });
   };
 
