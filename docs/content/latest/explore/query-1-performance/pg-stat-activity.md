@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: pg-stat-activity
     parent: query-tuning
-    weight: 566
+    weight: 300
 isTocNested: true
 showAsideToc: true
 ---
