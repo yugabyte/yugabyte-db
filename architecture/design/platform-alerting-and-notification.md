@@ -1,6 +1,6 @@
 # Platform Alerting and Notification
 
-Tracking GitHub Issue: [8963](https://github.com/yugabyte/yugabyte-db/issues/8963)
+Tracking GitHub Issue: [8212](https://github.com/yugabyte/yugabyte-db/issues/8212)
 
 
 # Motivation
