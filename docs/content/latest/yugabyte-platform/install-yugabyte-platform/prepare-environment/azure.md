@@ -67,7 +67,7 @@ You are going to need these details from your Azure Cloud tenant:
 * [Tenant ID](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in)
 * You must have sufficient permissions 
   * To [register an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#permissions-required-for-registering-an-app) with your Azure AD tenant, and 
-  * To [assign the application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#check-azure-subscription-permissions)  roles in your Azure subscription
+  * To [assign the application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#check-azure-subscription-permissions) roles in your Azure subscription
 
 ## Create resource group (optional) 
 
@@ -92,7 +92,7 @@ To create a security group that enables these, go to Network Security Groups > A
 * For the name, enter yugaware-sg (you can change the name if you want).
 * Edit inbound security rules:
   * Add the appropriate IP addresses to the Source IP ranges field. To allow access from any machine, add 0.0.0.0/0 but note that this is not very secure.
-  * Add the ports 22, 8800, and 80 to the Port Range field. The protocol selected must be TCP. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 to the to the Port Range field.
+  * Add the ports 22, 8800, and 80 to the Port Range field. The protocol selected must be TCP. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 to the Port Range field.
 
 ## Create a service principal   
 
