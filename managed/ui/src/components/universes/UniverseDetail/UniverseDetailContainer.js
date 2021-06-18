@@ -29,6 +29,7 @@ import {
 } from '../../../actions/tables';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -86,6 +87,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully Enabled the backups.');
+        }
         dispatch(updateBackupStateResponse(response.payload));
         dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
           dispatch(fetchUniverseInfoResponse(response.payload));
