@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
@@ -25,6 +24,7 @@ import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.ToggleTlsParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -194,7 +194,7 @@ public class UniverseActionsHandler {
 
     TaskType taskType = TaskType.UpgradeUniverse;
     UpgradeParams taskParams = new UpgradeParams();
-    taskParams.taskType = UpgradeUniverse.UpgradeTaskType.ToggleTls;
+    taskParams.taskType = UpgradeTaskType.ToggleTls;
     taskParams.upgradeOption = requestParams.upgradeOption;
     taskParams.universeUUID = universe.universeUUID;
     taskParams.expectedUniverseVersion = -1;
