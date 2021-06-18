@@ -46,7 +46,22 @@ Tracking GitHub Issue: [8963](https://github.com/yugabyte/yugabyte-db/issues/896
 
 ## Alert destinations
 
+Whenever an alert triggers, it sends an alert data to its designated alert destinations. Destinations use this alert data to send emails, Slack messages, etc.
+
+The default destination for any alert is the email address of the user who created it. If you create an alert and want to be notified by email, you don’t need to set up a new alert destination.
+
 ![Platform alert destinations](https://github.com/ymahajan/yugabyte-db/blob/current-roadmap-updates/architecture/design/images/platform-alert-destinations.png)
+
+### PagerDuty
+* Send alerts to a PagerDuty account. 
+* Enter only the PagerDuty integration key. 
+* Define escalation rules and alert assignments directly in PagerDuty.
+* Acknowledge PagerDuty alerts from the PagerDuty dashboard.
+
+### Slack
+* Send the alert to a Slack channel in the authorized Slack workplace for the Organization.
+* Enter the channel name and either an API token or a Bot token.
+* To create an API token, see the API page in your Slack account.
 
 ## View Alerts
 To see a list of alerts, click the Alerts tab on the left. By default, alerts are sorted in reverse chronological order by the alert raised time, but should have the ability to reorder the list by clicking the column headings. 
@@ -56,16 +71,19 @@ To see a list of alerts, click the Alerts tab on the left. By default, alerts ar
 
 * “Triggered” means that on the most recent alert check, when the configure threshold is breached. For example If your alert checks whether CPU is above 80%, your alert should be triggered as long as CPU is above 80%.
 * “Ok” means that the most recent alert check indicates that the configured threshold was not breached. This doesn’t mean that the Alert was not triggered previously. If your CPU value is now 40% your alert will show as Ok.
-## Alert actions
-* **Suspend alerts during maintenance window**
-* Should have the ability to temporarily suspend alerts on a resource by creating an alert maintenance window. For example, you can create a maintenance window that suspends host alerts while you shut down hosts for maintenance.
-* Should have the ability to Add or Edit or Delete a maintenance window
-* Select the target components for which to suspend alerts.
-* Select the time period for which to suspend alerts.
-* **Acknowledge alerts to avoid repetitive alerts**
-When you acknowledge the alert, Platform should send no further notifications to the alert’s distribution list until the acknowledgement period has passed or until you resolve the alert. The distribution list should not receive any notification of the acknowledgment.
-* **Resolve alerts explicitly**
-Alerts should resolve when the alert condition no longer applies. For example, if a replica set’s primary goes down, Platform issues an alert that the replica set does not have a primary. When a new primary is elected, the alert condition no longer applies, and the alert should resolve. 
+* Acknowledge alerts to avoid repetitive alerts: When you acknowledge the alert, Platform should send no further notifications to the alert’s distribution list until the acknowledgement period has passed or until you resolve the alert. The distribution list should not receive any notification of the acknowledgment.
+* Resolve alerts explicitly: Alerts should resolve when the alert condition no longer applies. For example, if a replica set’s primary goes down, Platform issues an alert that the replica set does not have a primary. When a new primary is elected, the alert condition no longer applies, and the alert should resolve. 
+
+# Future Work
+* **Suspend alerts during maintenance window:** Platform has the ability to temporarily suspend alerts on a resource by creating an alert maintenance window. For example, you can create a maintenance window that suspends host alerts while you shut down hosts for maintenance.
+  * Should have the ability to Add or Edit or Delete a maintenance window
+  * Select the target components for which to suspend alerts.
+  * Select the time period for which to suspend alerts.
+* **Notification frequency:** Platform should send notifications to your chosen alert destinations whenever it detects that the alert status has changed
+  * Just once: Send a notification when the alert is raised.
+  * Each time alert is evaluated: Send a notification whenever the alert status is triggered regardless of its status at the previous evaluation.
+  * At most every: Send a notification whenever the alert status is triggered at a specific interval. This choice lets you avoid notification spam for alerts that trigger often.
+* **Alerts access control:** Three permission levels for a alert- No Permissions, Can Run, and Can Manage 
 
 # References
 
