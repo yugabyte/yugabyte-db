@@ -22,6 +22,12 @@ showAsideToc: true
     </a>
   </li>
   <li >
+    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - JDBC SSL/TLS
+    </a>
+  </li>
+  <li >
     <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
