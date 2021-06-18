@@ -8,12 +8,14 @@ Vagrant.configure(2) do |config|
     # Provision the VM
     config.vm.provision "shell", inline: <<-SHELL
         # Setup environment
-        echo 'export PG_VERSION=13' >> /etc/bashrc
+        echo 'export PG_VERSION=14' >> /etc/bashrc
         echo 'export PATH=$PATH:/usr/pgsql-${PG_VERSION?}/bin' >> /etc/bashrc
         source /etc/bashrc
 
         # Install PostgreSQL
         rpm -ivh https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        # Enable PG14 repo (can be removed after the official release)
+        yum-config-manager --enable pgdg14-updates-testing
         yum install -y postgresql${PG_VERSION?}-server
 
         # Compile & install pgaudit
