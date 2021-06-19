@@ -297,11 +297,14 @@ TEST_F(YbAdminSnapshotScheduleTest, Delete) {
     return false;
   }, 10s * kTimeMultiplier, "Snapshot schedule cleaned up"));
 
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    auto snapshots = VERIFY_RESULT(ListSnapshots()).GetArray();
-    LOG(INFO) << "Snapshots left: " << snapshots.Size();
-    return snapshots.Empty();
-  }, 10s * kTimeMultiplier, "Snapshots cleaned up"));
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        auto snapshots_json = VERIFY_RESULT(ListSnapshots());
+        auto snapshots = snapshots_json.GetArray();
+        LOG(INFO) << "Snapshots left: " << snapshots.Size();
+        return snapshots.Empty();
+      },
+      10s * kTimeMultiplier, "Snapshots cleaned up"));
 
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
     for (auto* tserver : cluster_->tserver_daemons()) {
