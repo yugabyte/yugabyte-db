@@ -69,6 +69,9 @@ static void
 							  Node *parsetree,
 #endif
 							  const char *queryString,
+#if PG_VERSION_NUM >= 140000
+							  bool readOnlyTree,
+#endif
 #if PG_VERSION_NUM >= 90300
 							  ProcessUtilityContext context,
 #endif
@@ -291,6 +294,9 @@ hypo_utility_hook(
 				  Node *parsetree,
 #endif
 				  const char *queryString,
+#if PG_VERSION_NUM >= 140000
+				  bool readOnlyTree,
+#endif
 #if PG_VERSION_NUM >= 90300
 				  ProcessUtilityContext context,
 #endif
@@ -326,6 +332,9 @@ hypo_utility_hook(
 						  parsetree,
 #endif
 						  queryString,
+#if PG_VERSION_NUM >= 140000
+						  readOnlyTree,
+#endif
 #if PG_VERSION_NUM >= 90300
 						  context,
 #endif
@@ -351,6 +360,9 @@ hypo_utility_hook(
 								parsetree,
 #endif
 								queryString,
+#if PG_VERSION_NUM >= 140000
+								readOnlyTree,
+#endif
 #if PG_VERSION_NUM >= 90300
 								context,
 #endif
