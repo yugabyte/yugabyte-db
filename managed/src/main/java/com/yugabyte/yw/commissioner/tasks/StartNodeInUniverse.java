@@ -39,7 +39,6 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
       // Create the task list sequence.
@@ -70,14 +69,6 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Start the tserver process
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-      // Mark the node process flags as true.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
       // Bring up any masters, as needed.
       boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
@@ -98,7 +89,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Mark node as isMaster in YW DB.
-        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
+        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true /* isAdd */)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Wait for the master to be responsive.
@@ -111,6 +102,24 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
         masterAdded = true;
       }
+
+      // Start the tserver process
+      createTServerTaskForNode(currentNode, "start")
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Mark the node process flags as true.
+      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true /* isAdd */)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Wait for the tablet server to be responsive.
+      createWaitForServersTasks(
+              new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Update the swamper target file.
+      // It is required because the node could be removed from the swamper file
+      // between the Stop/Start actions as Inactive.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Update all server conf files with new master information.
       if (masterAdded) {
@@ -127,24 +136,18 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-      // Update the swamper target file.
-      // It is required because the node could be removed from the swamper file
-      // between the Stop/Start actions as Inactive.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-
       // Mark universe update success to true
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-      hitException = true;
-      throw t;
-    } finally {
       // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
+      if (currentNode != null) {
         setNodeState(taskParams().nodeName, currentNode.state);
       }
+      throw t;
+    } finally {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());

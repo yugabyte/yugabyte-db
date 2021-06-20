@@ -77,7 +77,9 @@ public class RegionController extends AuthenticatedController {
       List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.uuid, 1);
       for (Region region : regionList) {
         ObjectNode regionNode = (ObjectNode) Json.toJson(region);
-        regionNode.set("provider", Json.toJson(provider));
+        ObjectNode providerForRegion = (ObjectNode) Json.toJson(provider);
+        providerForRegion.remove("regions"); // to Avoid recursion
+        regionNode.set("provider", providerForRegion);
         resultArray.add(regionNode);
       }
     }
