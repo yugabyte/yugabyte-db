@@ -1,6 +1,13 @@
 Changelog
 =========
 
+2021-06-21 version 1.3.1:
+-------------------------
+
+  **Miscellaneous**:
+
+  - Fix compatibility with PostgreSQL 14 beta 2
+
 2021-06-04 version 1.3.0:
 -------------------------
 
