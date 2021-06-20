@@ -9,11 +9,17 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
+import com.yugabyte.yw.forms.YWError;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponses;
+import io.swagger.annotations.Authorization;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -24,7 +30,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
-@Api
+@Api(
+    value = "Certificate Info",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
 
@@ -32,7 +40,14 @@ public class CertificateController extends AuthenticatedController {
 
   @Inject ValidatingFormFactory formFactory;
 
-  @ApiOperation(value = "upload", response = UUID.class)
+  @ApiOperation(value = "restore Backups", response = UUID.class, responseContainer = "Restore")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "certificate",
+          value = "certificate params of the backup to be restored",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CertificateParams",
+          required = true))
   public Result upload(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
@@ -73,7 +88,7 @@ public class CertificateController extends AuthenticatedController {
     return ApiResponse.success(certUUID);
   }
 
-  @ApiOperation(value = "TODO")
+  @ApiOperation(value = "get certificate info", response = JsonNode.class)
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
     Customer.getOrBadRequest(customerUUID);
@@ -89,6 +104,7 @@ public class CertificateController extends AuthenticatedController {
     return ApiResponse.success(result);
   }
 
+  @ApiOperation(value = "get root certificate", response = JsonNode.class)
   public Result getRootCert(UUID customerUUID, UUID rootCA) {
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo.getOrBadRequest(rootCA, customerUUID);
@@ -100,16 +116,27 @@ public class CertificateController extends AuthenticatedController {
     return ApiResponse.success(result);
   }
 
+  @ApiOperation(
+      value = "list Certificates for a specific customer",
+      response = CertificateInfo.class,
+      responseContainer = "List")
+  @ApiResponses(
+      @io.swagger.annotations.ApiResponse(
+          code = 500,
+          message = "If there was a server or database issue when listing the regions",
+          response = YWError.class))
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
     return ApiResponse.success(certs);
   }
 
+  @ApiOperation(value = "get certificate UUID", response = UUID.class)
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
     return ApiResponse.success(cert.uuid);
   }
 
+  @ApiOperation(value = "delete certificate", response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
     CertificateInfo.delete(reqCertUUID, customerUUID);
     auditService().createAuditEntry(ctx(), request());

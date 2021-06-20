@@ -176,10 +176,10 @@ class TabletPeerTest : public YBTabletTest {
                                            nullptr /* retryable_requests */));
   }
 
-  Status StartPeer(const ConsensusBootstrapInfo& info) {
+  CHECKED_STATUS StartPeer(const ConsensusBootstrapInfo& info) {
     RETURN_NOT_OK(tablet_peer_->Start(info));
 
-    AssertLoggedWaitFor([&]() -> Result<bool> {
+    return LoggedWaitFor([&]() -> Result<bool> {
       if (FLAGS_quick_leader_election_on_create) {
         return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
       }
@@ -187,7 +187,6 @@ class TabletPeerTest : public YBTabletTest {
       return true;
     }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
                                          "leader, otherwise emulate.");
-    return Status::OK();
   }
 
   void TabletPeerStateChangedCallback(

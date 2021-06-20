@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
@@ -11,11 +12,13 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.CloudProviderFormData;
+import com.yugabyte.yw.forms.EditProviderRequest;
+import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import io.swagger.annotations.*;
-import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -38,46 +41,21 @@ public class CloudProviderController extends AuthenticatedController {
   @Inject private AZUInitializer azuInitializer;
 
   /**
-   * GET endpoint for listing providers
-   *
-   * @return JSON response with provider's
-   */
-  @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
-  public Result list(UUID customerUUID) {
-    return ApiResponse.success(Provider.getAll(customerUUID));
-  }
-
-  // This endpoint we are using only for deleting provider for integration test purpose. our
-  // UI should call cleanup endpoint.
-  @ApiOperation(value = "TEST_ONLY", hidden = true, response = YWResults.YWSuccess.class)
-  public Result delete(UUID customerUUID, UUID providerUUID) {
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    cloudProviderService.delete(customer, provider);
-    auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
-  }
-
-  /**
    * POST endpoint for creating new providers
    *
    * @return JSON response of newly created provider
    */
-  @ApiOperation(value = "createProvider", response = Provider.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "providerFormData",
-          value = "provider form data",
-          paramType = "body",
-          dataType = "com.yugabyte.yw.forms.CloudProviderFormData",
-          required = true))
   public Result create(UUID customerUUID) throws IOException {
-    JsonNode reqBody = maybeMassageRequestConfig();
+    JsonNode reqBody = maybeMassageRequestConfig(request().body().asJson());
     CloudProviderFormData cloudProviderFormData =
         formFactory.getFormDataOrBadRequest(reqBody, CloudProviderFormData.class);
     Provider provider =
         cloudProviderService.createProvider(
-            Customer.getOrBadRequest(customerUUID), cloudProviderFormData);
+            Customer.getOrBadRequest(customerUUID),
+            cloudProviderFormData.code,
+            cloudProviderFormData.name,
+            cloudProviderFormData.config,
+            cloudProviderFormData.region);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(cloudProviderFormData));
     return ApiResponse.success(provider);
   }
@@ -133,13 +111,6 @@ public class CloudProviderController extends AuthenticatedController {
     return awsInitializer.initialize(customerUUID, providerUUID);
   }
 
-  @ApiOperation(value = "bootstrap", response = YWResults.YWTask.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          value = "bootstrap params",
-          dataType = "com.yugabyte.yw.commissioner.tasks.CloudBootstrap$Params",
-          paramType = "body",
-          required = true))
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): Need to manually parse maps, maybe add try/catch on parse?
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -155,10 +126,6 @@ public class CloudProviderController extends AuthenticatedController {
   @ApiOperation(value = "cleanup", notes = "Unimplemented", hidden = true)
   public Result cleanup(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): this is not currently used, be careful about the API...
-    Form<CloudBootstrapFormData> formData =
-        formFactory.getFormDataOrBadRequest(CloudBootstrapFormData.class);
-
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     return YWResults.YWSuccess.empty();
 
     /*
@@ -190,8 +157,8 @@ public class CloudProviderController extends AuthenticatedController {
     return ApiResponse.success(provider);
   }
 
-  private JsonNode maybeMassageRequestConfig() {
-    JsonNode requestBody = request().body().asJson();
+  @VisibleForTesting
+  static JsonNode maybeMassageRequestConfig(JsonNode requestBody) {
     JsonNode configNode = requestBody.get("config");
     // Confirm we had a "config" key and it was not null.
     if (configNode != null && !configNode.isNull()) {

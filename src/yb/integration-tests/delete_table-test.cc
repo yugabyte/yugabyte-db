@@ -529,9 +529,9 @@ TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
     workload.Setup();
     workload.Start();
 
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [&workload] { return workload.rows_inserted() > 100; }, 60s,
-        "Waiting until we have inserted some data...", 10ms);
+        "Waiting until we have inserted some data...", 10ms));
 
     auto tablets = inspect_->ListTabletsWithDataOnTS(1);
     ASSERT_EQ(1, tablets.size());

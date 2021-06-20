@@ -300,18 +300,18 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
 
   std::string pid_file = JoinPathSegments(pg_ts_->GetDataDir(), "pg_data", "postmaster.pid");
   // Wait for postgres server to start and setup postmaster.pid file
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {
         return env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to create postmaster.pid file");
+      }, timeout, "Waiting for postgres server to create postmaster.pid file"));
   ASSERT_TRUE(env_->FileExists(pid_file));
 
   // Shutdown tserver and wait for postgres server to shut down and delete postmaster.pid file
   pg_ts_->Shutdown();
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {
         return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown");
+      }, timeout, "Waiting for postgres server to shutdown"));
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create empty postmaster.pid file and ensure that tserver can start up
@@ -327,10 +327,10 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
   pg_ts_->Shutdown();
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {
         return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown", 100ms);
+      }, timeout, "Waiting for postgres server to shutdown", 100ms));
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create postmaster.pid file with string pid (invalid) and ensure that tserver can start up
@@ -343,10 +343,10 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
   pg_ts_->Shutdown();
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {
         return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown", 100ms);
+      }, timeout, "Waiting for postgres server to shutdown", 100ms));
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create postgres pid file with integer pid (valid) and ensure that tserver can start up

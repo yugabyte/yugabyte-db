@@ -260,11 +260,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
     // TODO(pitr) apply transactions and reset intents.
-    RETURN_NOT_OK(ResetRocksDBs(Destroy::kFalse, DisableFlushOnShutdown::kFalse));
+    RETURN_NOT_OK(ShutdownRocksDBs(Destroy::kFalse, DisableFlushOnShutdown::kFalse));
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(ResetRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue));
+    RETURN_NOT_OK(ShutdownRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue));
 
     auto s = CopyDirectory(
         &rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);

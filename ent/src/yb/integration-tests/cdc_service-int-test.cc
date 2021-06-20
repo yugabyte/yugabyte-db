@@ -131,7 +131,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
       int64_t term, int64_t index, bool* has_error = nullptr);
   void WriteTestRow(int32_t key, int32_t int_val, const string& string_val,
       const TabletId& tablet_id, const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
-  void WriteToProxyWithRetries(
+  CHECKED_STATUS WriteToProxyWithRetries(
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
       const tserver::WriteRequestPB& req, tserver::WriteResponsePB* resp, RpcController* rpc);
 
@@ -307,17 +307,17 @@ void CDCServiceTest::WriteTestRow(int32_t key,
   RpcController rpc;
   AddTestRowInsert(key, int_val, string_val, &write_req);
   SCOPED_TRACE(write_req.DebugString());
-  WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+  ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
   SCOPED_TRACE(write_resp.DebugString());
   ASSERT_FALSE(write_resp.has_error());
 }
 
-void CDCServiceTest::WriteToProxyWithRetries(
+Status CDCServiceTest::WriteToProxyWithRetries(
     const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
     const tserver::WriteRequestPB& req,
     tserver::WriteResponsePB* resp,
     RpcController* rpc) {
-  AssertLoggedWaitFor(
+  return LoggedWaitFor(
       [&req, resp, rpc, proxy]() -> Result<bool> {
         auto s = proxy->Write(req, resp, rpc);
         if (s.IsTryAgain() ||
@@ -544,7 +544,7 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     AddTestRowInsert(1, 11, "key1", &write_req);
     AddTestRowInsert(2, 22, "key2", &write_req);
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -589,7 +589,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
     AddTestRowInsert(1, 11, "key1", &write_req);
     AddTestRowInsert(2, 22, "key2", &write_req);
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -642,7 +642,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
 
     RpcController rpc;
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -675,7 +675,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
 
     RpcController rpc;
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -840,7 +840,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     RpcController rpc;
     AddTestRowInsert(1, 11, "key1", &write_req);
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -851,7 +851,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     RpcController rpc;
     AddTestRowInsert(2, 22, "key2", &write_req);
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -1017,7 +1017,7 @@ TEST_P(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
       }
 
       SCOPED_TRACE(write_req.DebugString());
-      WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+      ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
       SCOPED_TRACE(write_resp.DebugString());
       ASSERT_FALSE(write_resp.has_error());
     }
@@ -1078,7 +1078,7 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
     AddTestRowInsert(2, 22, "key2", &write_req);
 
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -1096,7 +1096,7 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
     AddTestRowInsert(3, 33, "key3_ext", &write_req);
 
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -1189,7 +1189,7 @@ TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
     AddTestRowInsert(3, 33, "key3_ext", &write_req);
 
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -1243,7 +1243,7 @@ TEST_P(CDCServiceTest, TestCheckpointUpdate) {
     AddTestRowInsert(2, 22, "key2", &write_req);
 
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
