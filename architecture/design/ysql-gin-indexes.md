@@ -96,7 +96,7 @@ not.  For GIN, there's more to distinguish, so they are categorized as follows:
 - null item: the container itself is null (i.e. `null`)
 
 DocDB does not support null categories, so we can add a new value type
-specifically for GIN nulls.
+specifically for GIN nulls.  For the first iteration, nulls won't be supported.
 
 ## search modes
 
