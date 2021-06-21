@@ -79,6 +79,8 @@ N/A
 * [[8345](https://github.com/yugabyte/yugabyte-db/issues/8345)] Remove hard coded cert filepath
 * [[8611](https://github.com/yugabyte/yugabyte-db/issues/8611)] Enable edit backup configuration for the active tab only. (#8674)
 * [[8620](https://github.com/yugabyte/yugabyte-db/issues/8620)] Reset the values on cancel. (#8627)
+* [[8809](https://github.com/yugabyte/yugabyte-db/issues/8809)] [Platform] Edit Configuration button was only working intermittently. (#8975)
+* [[8921](https://github.com/yugabyte/yugabyte-db/issues/8921)] [Platform] Allow ReadOnly and BackupAdmin roles to change their password.
 
 ## v2.4.4.0 - May 20, 2021
 
