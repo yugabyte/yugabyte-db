@@ -2439,7 +2439,9 @@ ExternalTabletServer::ExternalTabletServer(
 ExternalTabletServer::~ExternalTabletServer() {
 }
 
-Status ExternalTabletServer::Start(bool start_cql_proxy, bool set_proxy_addrs) {
+Status ExternalTabletServer::Start(
+    bool start_cql_proxy, bool set_proxy_addrs,
+    std::vector<std::pair<string, string>> extra_flags) {
   start_cql_proxy_ = start_cql_proxy;
   Flags flags;
   flags.Add("fs_data_dirs", data_dir_);
@@ -2463,6 +2465,10 @@ Status ExternalTabletServer::Start(bool start_cql_proxy, bool set_proxy_addrs) {
   // where several unit tests tend to run in parallel.
   flags.Add("tablet_server_svc_num_threads", "64");
   flags.Add("ts_consensus_svc_num_threads", "20");
+
+  for (const auto& flag_value : extra_flags) {
+    flags.Add(flag_value.first, flag_value.second);
+  }
 
   RETURN_NOT_OK(StartProcess(flags.value()));
 
@@ -2499,7 +2505,8 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   return Status::OK();
 }
 
-Status ExternalTabletServer::Restart(bool start_cql_proxy) {
+Status ExternalTabletServer::Restart(
+    bool start_cql_proxy, std::vector<std::pair<string, string>> flags) {
   LOG_WITH_PREFIX(INFO) << "Restart: start_cql_proxy=" << start_cql_proxy;
   if (!IsProcessAlive()) {
     // Make sure this function could be safely called if the process has already crashed.
@@ -2509,7 +2516,7 @@ Status ExternalTabletServer::Restart(bool start_cql_proxy) {
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
-  return Start(start_cql_proxy);
+  return Start(start_cql_proxy, true /* set_proxy_addrs */, flags);
 }
 
 Status RestartAllMasters(ExternalMiniCluster* cluster) {

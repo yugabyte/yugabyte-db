@@ -674,6 +674,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: foo\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
     defaultProvider.setConfig(defaultAnnotations);
+    defaultProvider.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -713,6 +714,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
     defaultRegion.setConfig(defaultAnnotations);
+    defaultRegion.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -789,6 +791,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<String, String>();
     defaultAnnotations.put("OVERRIDES", "foo: bar");
     defaultProvider.setConfig(defaultAnnotations);
+    defaultProvider.save();
     defaultAnnotations.put("OVERRIDES", "bar: foo");
     defaultAZ.updateConfig(defaultAnnotations);
 
