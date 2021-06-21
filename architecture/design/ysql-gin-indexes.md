@@ -69,8 +69,8 @@ query can be like
 A more complicated case is one key and two entries where both are required.  We
 can scan using one entry and recheck the condition afterward.
 
-For now, rechecking the condition is always done, even if it may not be
-necessary.
+For the first iteration, rechecking the condition is always done, even if it
+may not be necessary.
 
 ### delete
 
@@ -82,9 +82,9 @@ tombstone records.  This is similar to insert.
 
 ### update
 
-For now, this does a delete then insert.  This may be inefficient for `ybgin`
-since updating one row can mean multiple deletes and inserts when only a few
-would have sufficed.
+This does a delete then insert.  This may be inefficient for `ybgin` since
+updating one row can mean multiple deletes and inserts when only a few would
+have sufficed.
 
 ## null categories
 
@@ -117,7 +117,7 @@ Upstream postgres has a default option called "fastupdate" that writes rows to
 a buffer (called pending list) before flushing to disk for performance
 purposes.  YB won't do this in the first iteration, and it may never do it at
 all since, in a multi-node setup, this list needs to be cached on all nodes.
-For now, disallow it.
+For the first iteration, disallow it.
 
 ## extensions
 
