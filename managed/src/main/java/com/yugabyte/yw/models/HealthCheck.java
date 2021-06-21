@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import io.ebean.*;
 import io.ebean.annotation.DbJson;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -41,6 +42,8 @@ public class HealthCheck extends Model {
     public Date timestamp;
     public List<nodeData> data = new ArrayList<>();
     public String yb_version;
+
+    @JsonAlias({"error", "has_error"})
     public Boolean has_error;
   }
 
