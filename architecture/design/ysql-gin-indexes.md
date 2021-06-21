@@ -121,13 +121,19 @@ For now, disallow it.
 
 Some extensions extend gin:
 
-- `btree_gin`: add opclasses to support ordinary types (no element extraction)
-  so that they can be pseudo-included in gin indexes, which don't allow
-  included columns
-- `hstore`: add opclass to support `hstore` type
-- `intarray`: add opclass to support faster and more operators on `_int4`
-  (`int4` array) type without nulls
-- `pg_trgm`: add opclass to support trigram text search on `text` type
+- [`btree_gin`][ext-btree-gin]: add opclasses to support ordinary types (no
+  element extraction) so that they can be pseudo-included in gin indexes, which
+  don't allow included columns
+- [`hstore`][ext-hstore]: add opclass to support `hstore` type
+- [`intarray`][ext-intarray]: add opclass to support faster and more operators
+  on `_int4` (`int4` array) type without nulls
+- [`pg_trgm`][ext-pg-trgm]: add opclass to support trigram text search on
+  `text` type
 
 A `ybgin` equivalent can be created for each.  Creating the system objects is
 simple, but the underlying implementation may need to be rewritten.
+
+[ext-btree-gin]: https://www.postgresql.org/docs/current/btree-gin.html
+[ext-hstore]: https://www.postgresql.org/docs/current/hstore.html
+[ext-intarray]: https://www.postgresql.org/docs/current/intarray.html
+[ext-pg-trgm]: https://www.postgresql.org/docs/current/pgtrgm.html
