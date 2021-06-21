@@ -9,6 +9,18 @@ the base table.  To support GIN, we add a new access method `ybgin` and
 implement the access method api.  A lot of the work can be borrowed from
 upstream postgres's `gin` access method.
 
+## opclasses
+
+Upstream postgres comes with the following `gin` opclasses:
+
+- `tsvector_ops`: map `tsvector` to `text`
+- `array_ops`: map `anyarray` to `anyelement`
+- `jsonb_ops`: map `jsonb` to `text` (key or value in jsonb)
+- `jsonb_path_ops`: map `jsonb` to `int4` (hash of root-to-leaf path in jsonb)
+
+We can just duplicate these for the `ybgin` access method and reference the
+same opfamily.
+
 ## amapi
 
 ### build
