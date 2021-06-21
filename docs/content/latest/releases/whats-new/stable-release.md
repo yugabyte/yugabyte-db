@@ -76,7 +76,7 @@ N/A
 
 * [[6945](https://github.com/yugabyte/yugabyte-db/issues/6945)] Add limit to customer task API. (#8700)
 * [[7859](https://github.com/yugabyte/yugabyte-db/issues/7859)] Fix '< 1 min' uptime shown intermittently
-* [[8345](https://github.com/yugabyte/yugabyte-db/issues/8345)] Remove hard coded cert filepath
+* [[8345](https://github.com/yugabyte/yugabyte-db/issues/8345)] Remove hard coded cert filepath, and add Python module to use the system temporary directory
 * [[8611](https://github.com/yugabyte/yugabyte-db/issues/8611)] Enable edit backup configuration for the active tab only. (#8674)
 * [[8620](https://github.com/yugabyte/yugabyte-db/issues/8620)] Reset the values on cancel. (#8627)
 * [[8809](https://github.com/yugabyte/yugabyte-db/issues/8809)] [Platform] Edit Configuration button was only working intermittently. (#8975)
