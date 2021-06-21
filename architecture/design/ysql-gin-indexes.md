@@ -11,7 +11,7 @@ upstream postgres's `gin` access method.
 
 ## opclasses
 
-Upstream postgres comes with the following `gin` opclasses:
+Upstream postgres comes with the following [`gin` opclasses][opclasses]:
 
 - `tsvector_ops`: map `tsvector` to `text`
 - `array_ops`: map `anyarray` to `anyelement`
@@ -20,6 +20,8 @@ Upstream postgres comes with the following `gin` opclasses:
 
 We can just duplicate these for the `ybgin` access method and reference the
 same opfamily.
+
+[opclasses]: https://www.postgresql.org/docs/current/gin-builtin-opclasses.html
 
 ## amapi
 
