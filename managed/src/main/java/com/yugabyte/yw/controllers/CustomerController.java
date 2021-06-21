@@ -28,7 +28,6 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
-import com.yugabyte.yw.forms.CustomerDeleteData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
@@ -42,6 +41,7 @@ import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
+import com.yugabyte.yw.forms.YWResults;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -69,7 +69,7 @@ public class CustomerController extends AuthenticatedController {
         && !n.cloudInfo.mount_roots.isEmpty();
   }
 
-  @ApiOperation(value = "List customer", response = String.class, responseContainer = "List")
+  @ApiOperation(value = "List customer", response = UUID.class, responseContainer = "List")
   public Result list() {
     ArrayNode responseJson = Json.newArray();
     Customer.getAll().forEach(c -> responseJson.add(c.getUuid().toString()));
@@ -119,7 +119,7 @@ public class CustomerController extends AuthenticatedController {
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Customer",
-        value = "Customer data to be update",
+        value = "Customer data to be updated",
         required = true,
         dataType = "com.yugabyte.yw.forms.AlertingFormData",
         paramType = "body")
@@ -194,7 +194,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(Json.toJson(customer));
   }
 
-  @ApiOperation(value = "Delete customer by UUID", response = CustomerDeleteData.class)
+  @ApiOperation(value = "Delete customer by UUID", response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -204,20 +204,21 @@ public class CustomerController extends AuthenticatedController {
     }
 
     if (customer.delete()) {
-      ObjectNode responseJson = Json.newObject();
       auditService().createAuditEntry(ctx(), request());
-      responseJson.put("success", true);
-      return success(responseJson);
+      return YWResults.YWSuccess.empty();
     }
     throw new YWServiceException(
         INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
   }
 
-  @ApiOperation(value = "Upsert features of customer by UUID", response = HashMap.class)
+  @ApiOperation(
+      value = "Upsert features of customer by UUID",
+      responseContainer = "Map",
+      response = Object.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Feature",
-        value = "Feature to be upsert",
+        value = "Feature to be upserted",
         required = true,
         dataType = "com.yugabyte.yw.forms.FeatureUpdateFormData",
         paramType = "body")
@@ -364,7 +365,10 @@ public class CustomerController extends AuthenticatedController {
     return String.join("|", namespaces);
   }
 
-  @ApiOperation(value = "Get host info by customer UUID", response = HashMap.class)
+  @ApiOperation(
+      value = "Get host info by customer UUID",
+      responseContainer = "Map",
+      response = Object.class)
   public Result getHostInfo(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     ObjectNode hostInfo = Json.newObject();

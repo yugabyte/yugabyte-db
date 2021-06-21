@@ -3,20 +3,30 @@
 package com.yugabyte.yw.common.alerts;
 
 import java.util.Objects;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 
+@ApiModel(value = "SMPT", description = "Customers features and Universe UUID.")
 public class SmtpData {
+  @ApiModelProperty(value = "smtp server", example = "smtp.gmail.com")
   public String smtpServer = null;
 
+  @ApiModelProperty(value = "SMPT port number", example = "465")
   public int smtpPort = -1;
 
+  @ApiModelProperty(value = "SMTP email id", example = "test@gmail.com")
   public String emailFrom = null;
 
+  @ApiModelProperty(value = "SMTP email username", example = "testsmtp")
   public String smtpUsername = null;
 
+  @ApiModelProperty(value = "SMTP password", example = "XurenRknsc")
   public String smtpPassword = null;
 
+  @ApiModelProperty(value = "SMTP SSL", example = "true")
   public boolean useSSL = true;
 
+  @ApiModelProperty(value = "SMTP TSL", example = "false")
   public boolean useTLS = false;
 
   @Override

@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.*;
@@ -84,15 +85,13 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @param azUUID AvailabilityZone UUID
    * @return JSON response on whether or not delete region was successful or not.
    */
-  @ApiOperation(value = "deleteAZ", response = Object.class)
+  @ApiOperation(value = "deleteAZ", response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);
     az.setActiveFlag(false);
     az.update();
-    ObjectNode responseJson = Json.newObject();
     auditService().createAuditEntry(ctx(), request());
-    responseJson.put("success", true);
-    return ApiResponse.success(responseJson);
+    return YWResults.YWSuccess.empty();
   }
 }

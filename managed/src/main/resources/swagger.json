@@ -16,22 +16,39 @@
   "host" : "localhost",
   "basePath" : "/",
   "tags" : [ {
-    "name" : "RuntimeConfig"
-  }, {
-    "name" : "Provider"
-  }, {
-    "name" : "Customer"
+    "name" : "Customer Task"
   }, {
     "name" : "AvailabilityZone"
   }, {
+    "name" : "RuntimeConfig"
+  }, {
+    "name" : "Users"
+  }, {
     "name" : "Region"
   }, {
+    "name" : "Provider1"
+  }, {
+    "name" : "Provider"
+  }, {
     "name" : "Universe"
+  }, {
+    "name" : "Customer"
   } ],
   "schemes" : [ "http", "https" ],
   "consumes" : [ "application/json" ],
   "produces" : [ "application/json" ],
   "paths" : {
+    "/api/v1/register" : {
+      "post" : {
+        "operationId" : "register",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
     "/universes/{uniUUID}/proxy/{proxyUrl}" : {
       "get" : {
         "operationId" : "proxyRequest",
@@ -54,9 +71,9 @@
         }
       }
     },
-    "/api/v1/register" : {
-      "post" : {
-        "operationId" : "register",
+    "/api/v1/logout" : {
+      "get" : {
+        "operationId" : "logout",
         "parameters" : [ ],
         "responses" : {
           "default" : {
@@ -65,19 +82,42 @@
         }
       }
     },
-    "/api/v1/logs/{maxLines}" : {
-      "get" : {
-        "operationId" : "getLogs",
+    "/api/v1/login" : {
+      "post" : {
+        "summary" : "login",
+        "description" : "",
+        "operationId" : "login",
         "parameters" : [ {
-          "name" : "maxLines",
-          "in" : "path",
+          "in" : "body",
+          "name" : "loginFormData",
+          "description" : "login form data",
           "required" : true,
-          "type" : "integer",
-          "format" : "int32"
+          "schema" : {
+            "$ref" : "#/definitions/CustomerLoginFormData"
+          }
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/insecure_login" : {
+      "get" : {
+        "summary" : "insecureLogin",
+        "description" : "",
+        "operationId" : "insecure_login",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
           }
         }
       }
@@ -165,6 +205,23 @@
         }
       }
     },
+    "/api/v1/logs/{maxLines}" : {
+      "get" : {
+        "operationId" : "getLogs",
+        "parameters" : [ {
+          "name" : "maxLines",
+          "in" : "path",
+          "required" : true,
+          "type" : "integer",
+          "format" : "int32"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
     "/api/v1/ui_theme" : {
       "get" : {
         "operationId" : "getUITheme",
@@ -176,19 +233,17 @@
         }
       }
     },
-    "/api/v1/login" : {
+    "/api/v1/customers/{cUUID}/universes/import" : {
       "post" : {
-        "summary" : "login",
+        "summary" : "import",
         "description" : "",
-        "operationId" : "login",
+        "operationId" : "importUniverse",
         "parameters" : [ {
-          "in" : "body",
-          "name" : "loginFormData",
-          "description" : "login form data",
+          "name" : "cUUID",
+          "in" : "path",
           "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CustomerLoginFormData"
-          }
+          "type" : "string",
+          "format" : "uuid"
         } ],
         "responses" : {
           "200" : {
@@ -200,31 +255,338 @@
         }
       }
     },
-    "/api/v1/insecure_login" : {
+    "/api/v1/customers/{cUUID}/tasks" : {
       "get" : {
-        "summary" : "insecureLogin",
+        "tags" : [ "Customer Task" ],
+        "summary" : "List task",
         "description" : "",
-        "operationId" : "insecure_login",
-        "parameters" : [ ],
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "type" : "object"
+              "type" : "object",
+              "additionalProperties" : {
+                "$ref" : "#/definitions/Customer Task Data"
+              }
             }
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       }
     },
-    "/api/v1/logout" : {
+    "/api/v1/customers/{cUUID}/tasks/{tUUID}" : {
       "get" : {
-        "operationId" : "logout",
-        "parameters" : [ ],
+        "tags" : [ "Customer Task" ],
+        "summary" : "Status of task",
+        "description" : "",
+        "operationId" : "taskStatus",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "tUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "type" : "object"
+              }
+            }
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      },
+      "post" : {
+        "tags" : [ "Customer Task" ],
+        "summary" : "Retry task",
+        "description" : "",
+        "operationId" : "retryTask",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "tUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UniverseResp"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tasks" : {
+      "get" : {
+        "tags" : [ "Customer Task" ],
+        "summary" : "Universe task",
+        "description" : "",
+        "operationId" : "universeTasks",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "$ref" : "#/definitions/Customer Task Data"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/tasks/{tUUID}/failed" : {
+      "get" : {
+        "tags" : [ "Customer Task" ],
+        "summary" : "Get failed sub task",
+        "description" : "",
+        "operationId" : "failedSubtasks",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "tUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones/{azUUID}" : {
+      "delete" : {
+        "tags" : [ "AvailabilityZone" ],
+        "summary" : "deleteAZ",
+        "description" : "",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "azUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
+      "get" : {
+        "tags" : [ "AvailabilityZone" ],
+        "summary" : "listAZ",
+        "description" : "",
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/AvailabilityZone"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      },
+      "post" : {
+        "tags" : [ "AvailabilityZone" ],
+        "summary" : "createAZ",
+        "description" : "",
+        "operationId" : "create",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "azFormData",
+          "description" : "az form data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AvailabilityZoneFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "$ref" : "#/definitions/AvailabilityZone"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/runtime_config/{scope}" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "listScopes",
+        "description" : "Lists all (including empty scopes) runtime config scopes for current customer. List includes the Global scope that spans multiple customers, scope for customer specific overrides for current customer and one scope each for each universe and provider.",
+        "operationId" : "getConfig",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "scope",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "includeInherited",
+          "in" : "query",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RuntimeConfigFormData"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       }
     },
     "/api/v1/customers/{cUUID}/runtime_config/{scope}/key/{key}" : {
@@ -335,36 +697,21 @@
         } ]
       }
     },
-    "/api/v1/customers/{cUUID}/runtime_config/{scope}" : {
+    "/api/v1/runtime_config/mutable_keys" : {
       "get" : {
         "tags" : [ "RuntimeConfig" ],
-        "summary" : "listScopes",
-        "description" : "Lists all (including empty scopes) runtime config scopes for current customer. List includes the Global scope that spans multiple customers, scope for customer specific overrides for current customer and one scope each for each universe and provider.",
-        "operationId" : "getConfig",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "scope",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "includeInherited",
-          "in" : "query",
-          "required" : false,
-          "type" : "boolean",
-          "default" : false
-        } ],
+        "summary" : "listKeys",
+        "description" : "List all the mutable runtime config keys",
+        "operationId" : "listKeys",
+        "parameters" : [ ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/RuntimeConfigFormData"
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              }
             }
           }
         },
@@ -399,429 +746,10 @@
         } ]
       }
     },
-    "/api/v1/runtime_config/mutable_keys" : {
+    "/api/v1/customers/{cUUID}/users/{uUUID}" : {
       "get" : {
-        "tags" : [ "RuntimeConfig" ],
-        "summary" : "listKeys",
-        "description" : "List all the mutable runtime config keys",
-        "operationId" : "listKeys",
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "type" : "string"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/certificates/{name}" : {
-      "get" : {
-        "operationId" : "get",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "name",
-          "in" : "path",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/certificates/{rUUID}" : {
-      "post" : {
-        "summary" : "TODO",
-        "description" : "",
-        "operationId" : "getClientCert",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      },
-      "delete" : {
-        "operationId" : "delete",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/certificates" : {
-      "get" : {
-        "operationId" : "list",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      },
-      "post" : {
-        "summary" : "upload",
-        "description" : "",
-        "operationId" : "upload",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "string",
-              "format" : "uuid"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/certificates/{rUUID}/download" : {
-      "get" : {
-        "operationId" : "getRootCert",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/certificates/{rUUID}/update_empty_cert" : {
-      "post" : {
-        "summary" : "update empty certs",
-        "description" : "",
-        "operationId" : "updateEmptyCustomCert",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/CertificateInfo"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/import" : {
-      "post" : {
-        "summary" : "import",
-        "description" : "",
-        "operationId" : "importUniverse",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers" : {
-      "get" : {
-        "tags" : [ "Provider" ],
-        "summary" : "listProvider",
-        "description" : "",
-        "operationId" : "list",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "$ref" : "#/definitions/Provider"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      },
-      "post" : {
-        "tags" : [ "Provider" ],
-        "summary" : "createProvider",
-        "description" : "",
-        "operationId" : "create",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "providerFormData",
-          "description" : "provider form data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CloudProviderFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Provider"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/initialize" : {
-      "get" : {
-        "tags" : [ "Provider" ],
-        "summary" : "refreshPricing",
-        "description" : "Refresh Provider pricing info",
-        "operationId" : "initialize",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/bootstrap" : {
-      "post" : {
-        "tags" : [ "Provider" ],
-        "summary" : "bootstrap",
-        "description" : "",
-        "operationId" : "bootstrap",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "body",
-          "description" : "bootstrap params",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CloudBootstrapParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YWTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/kubernetes" : {
-      "post" : {
-        "tags" : [ "Provider" ],
-        "operationId" : "createKubernetes",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/suggested_kubernetes_config" : {
-      "get" : {
-        "tags" : [ "Provider" ],
-        "summary" : "getSuggestedKubernetesConfigs",
-        "description" : " Performs discovery of region, zones, pull secret, storageClass when running inside a Kubernetes cluster. Returns the discovered information as a JSON, which is similar to the one which is passed to the createKubernetes method.",
-        "operationId" : "getSuggestedKubernetesConfigs",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/KubernetesProviderFormData"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
-      "put" : {
-        "tags" : [ "Provider" ],
-        "summary" : "editProvider",
-        "description" : "",
-        "operationId" : "edit",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "EditProviderFormData",
-          "description" : "edit provider form data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/EditProviderRequest"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Provider"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}" : {
-      "get" : {
-        "tags" : [ "Customer" ],
-        "summary" : "Get customer by UUID",
+        "tags" : [ "Users" ],
+        "summary" : "User detail by UUID",
         "description" : "",
         "operationId" : "index",
         "parameters" : [ {
@@ -830,12 +758,18 @@
           "required" : true,
           "type" : "string",
           "format" : "uuid"
+        }, {
+          "name" : "uUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/CustomerDetailsData"
+              "$ref" : "#/definitions/Users"
             }
           }
         },
@@ -844,10 +778,10 @@
         } ]
       },
       "put" : {
-        "tags" : [ "Customer" ],
-        "summary" : "Update customer by UUID",
+        "tags" : [ "Users" ],
+        "summary" : "Change role of user by UUID",
         "description" : "",
-        "operationId" : "update",
+        "operationId" : "changeRole",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -855,19 +789,22 @@
           "type" : "string",
           "format" : "uuid"
         }, {
-          "in" : "body",
-          "name" : "Customer",
-          "description" : "Customer data to be update",
+          "name" : "uUUID",
+          "in" : "path",
           "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertingFormData"
-          }
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "role",
+          "in" : "query",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Customer"
+              "$ref" : "#/definitions/YWSuccess"
             }
           }
         },
@@ -876,160 +813,8 @@
         } ]
       },
       "delete" : {
-        "tags" : [ "Customer" ],
-        "summary" : "Delete customer by UUID",
-        "description" : "",
-        "operationId" : "delete",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/CustomerDeleteData"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers" : {
-      "get" : {
-        "tags" : [ "Customer" ],
-        "summary" : "List customer",
-        "description" : "",
-        "operationId" : "list",
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "type" : "string"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/features" : {
-      "put" : {
-        "tags" : [ "Customer" ],
-        "summary" : "Upsert features of customer by UUID",
-        "description" : "",
-        "operationId" : "upsertFeatures",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "Feature",
-          "description" : "Feature to be upsert",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/FeatureUpdateFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object",
-              "additionalProperties" : {
-                "type" : "object"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/host_info" : {
-      "get" : {
-        "tags" : [ "Customer" ],
-        "summary" : "Get host info by customer UUID",
-        "description" : "",
-        "operationId" : "getHostInfo",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object",
-              "additionalProperties" : {
-                "type" : "object"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/metrics" : {
-      "post" : {
-        "tags" : [ "Customer" ],
-        "summary" : "Add metrics of customer by UUID",
-        "description" : "",
-        "operationId" : "metrics",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "Metrics",
-          "description" : "Metrics to be added",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/MetricQueryParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object",
-              "additionalProperties" : {
-                "type" : "object"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones/{azUUID}" : {
-      "delete" : {
-        "tags" : [ "AvailabilityZone" ],
-        "summary" : "deleteAZ",
+        "tags" : [ "Users" ],
+        "summary" : "Delete customer",
         "description" : "",
         "operationId" : "delete",
         "parameters" : [ {
@@ -1039,19 +824,7 @@
           "type" : "string",
           "format" : "uuid"
         }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "azUUID",
+          "name" : "uUUID",
           "in" : "path",
           "required" : true,
           "type" : "string",
@@ -1061,7 +834,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "type" : "object"
+              "$ref" : "#/definitions/YWSuccess"
             }
           }
         },
@@ -1070,26 +843,14 @@
         } ]
       }
     },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
+    "/api/v1/customers/{cUUID}/users" : {
       "get" : {
-        "tags" : [ "AvailabilityZone" ],
-        "summary" : "listAZ",
+        "tags" : [ "Users" ],
+        "summary" : "List of Users",
         "description" : "",
         "operationId" : "list",
         "parameters" : [ {
           "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
           "in" : "path",
           "required" : true,
           "type" : "string",
@@ -1101,7 +862,7 @@
             "schema" : {
               "type" : "array",
               "items" : {
-                "$ref" : "#/definitions/AvailabilityZone"
+                "$ref" : "#/definitions/Users"
               }
             }
           }
@@ -1111,8 +872,8 @@
         } ]
       },
       "post" : {
-        "tags" : [ "AvailabilityZone" ],
-        "summary" : "createAZ",
+        "tags" : [ "Users" ],
+        "summary" : "Create User",
         "description" : "",
         "operationId" : "create",
         "parameters" : [ {
@@ -1122,34 +883,59 @@
           "type" : "string",
           "format" : "uuid"
         }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "rUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
           "in" : "body",
-          "name" : "azFormData",
-          "description" : "az form data",
+          "name" : "User",
+          "description" : "Users data to be created",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/AvailabilityZoneFormData"
+            "$ref" : "#/definitions/User Register"
           }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "type" : "object",
-              "additionalProperties" : {
-                "$ref" : "#/definitions/AvailabilityZone"
-              }
+              "$ref" : "#/definitions/Users"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/users/{uUUID}/change_password" : {
+      "put" : {
+        "tags" : [ "Users" ],
+        "summary" : "Chnage password of User",
+        "description" : "",
+        "operationId" : "changePassword",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "Users",
+          "description" : "Users data to be updated",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/User Register"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWSuccess"
             }
           }
         },
@@ -1304,6 +1090,230 @@
         } ]
       }
     },
+    "/api/v1/customers/{cUUID}/providers1" : {
+      "post" : {
+        "tags" : [ "Provider1" ],
+        "summary" : "createProvider",
+        "description" : "",
+        "operationId" : "create",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "CreateProviderRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Provider"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers" : {
+      "get" : {
+        "tags" : [ "Provider1" ],
+        "summary" : "listProvider",
+        "description" : "",
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/Provider"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      },
+      "post" : {
+        "tags" : [ "Provider" ],
+        "operationId" : "create",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/bootstrap" : {
+      "post" : {
+        "tags" : [ "Provider" ],
+        "operationId" : "bootstrap",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/initialize" : {
+      "get" : {
+        "tags" : [ "Provider" ],
+        "summary" : "refreshPricing",
+        "description" : "Refresh Provider pricing info",
+        "operationId" : "initialize",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
+      "put" : {
+        "tags" : [ "Provider" ],
+        "summary" : "editProvider",
+        "description" : "",
+        "operationId" : "edit",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "EditProviderFormData",
+          "description" : "edit provider form data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/EditProviderRequest"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Provider"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/kubernetes" : {
+      "post" : {
+        "tags" : [ "Provider" ],
+        "operationId" : "createKubernetes",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/suggested_kubernetes_config" : {
+      "get" : {
+        "tags" : [ "Provider" ],
+        "summary" : "getSuggestedKubernetesConfigs",
+        "description" : " Performs discovery of region, zones, pull secret, storageClass when running inside a Kubernetes cluster. Returns the discovered information as a JSON, which is similar to the one which is passed to the createKubernetes method.",
+        "operationId" : "getSuggestedKubernetesConfigs",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/KubernetesProviderFormData"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universe_configure" : {
       "post" : {
         "tags" : [ "Universe" ],
@@ -1322,6 +1332,38 @@
             "description" : "successful operation",
             "schema" : {
               "$ref" : "#/definitions/UniverseDefinitionTaskParams"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
+      "post" : {
+        "tags" : [ "Universe" ],
+        "summary" : "setUniverse",
+        "description" : "",
+        "operationId" : "setUniverseKey",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UniverseResp"
             }
           }
         },
@@ -1550,6 +1592,46 @@
         } ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade" : {
+      "post" : {
+        "tags" : [ "Universe" ],
+        "summary" : "Upgrade  the universe",
+        "description" : "",
+        "operationId" : "upgrade",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "upgrade_params",
+          "description" : "upgrade params",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UpgradeParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/setup_universe_2dc" : {
       "put" : {
         "tags" : [ "Universe" ],
@@ -1599,7 +1681,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UniverseResourceDetails"
+              "$ref" : "#/definitions/UniverseResource"
             }
           }
         },
@@ -1663,7 +1745,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UniverseResourceDetails"
+              "$ref" : "#/definitions/UniverseResource"
             }
           }
         },
@@ -1817,7 +1899,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UniverseResourceDetails"
+              "$ref" : "#/definitions/UniverseResource"
             }
           }
         },
@@ -2276,12 +2358,36 @@
         } ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade" : {
-      "post" : {
-        "tags" : [ "Universe" ],
-        "summary" : "Upgrade  the universe",
+    "/api/v1/customers/{cUUID}" : {
+      "get" : {
+        "tags" : [ "Customer" ],
+        "summary" : "Get customer by UUID",
         "description" : "",
-        "operationId" : "upgrade",
+        "operationId" : "index",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Customer Detail"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      },
+      "put" : {
+        "tags" : [ "Customer" ],
+        "summary" : "Update customer by UUID",
+        "description" : "",
+        "operationId" : "update",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2289,25 +2395,43 @@
           "type" : "string",
           "format" : "uuid"
         }, {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
           "in" : "body",
-          "name" : "upgrade_params",
-          "description" : "upgrade params",
+          "name" : "Customer",
+          "description" : "Customer data to be updated",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/UpgradeParams"
+            "$ref" : "#/definitions/Alerts"
           }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "type" : "object"
+              "$ref" : "#/definitions/Customer"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      },
+      "delete" : {
+        "tags" : [ "Customer" ],
+        "summary" : "Delete customer by UUID",
+        "description" : "",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWSuccess"
             }
           }
         },
@@ -2316,12 +2440,36 @@
         } ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
-      "post" : {
-        "tags" : [ "Universe" ],
-        "summary" : "setUniverse",
+    "/api/v1/customers" : {
+      "get" : {
+        "tags" : [ "Customer" ],
+        "summary" : "List customer",
         "description" : "",
-        "operationId" : "setUniverseKey",
+        "operationId" : "list",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "type" : "string",
+                "format" : "uuid"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/metrics" : {
+      "post" : {
+        "tags" : [ "Customer" ],
+        "summary" : "Add metrics of customer by UUID",
+        "description" : "",
+        "operationId" : "metrics",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2329,7 +2477,75 @@
           "type" : "string",
           "format" : "uuid"
         }, {
-          "name" : "uniUUID",
+          "in" : "body",
+          "name" : "Metrics",
+          "description" : "Metrics to be added",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Metrics"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/features" : {
+      "put" : {
+        "tags" : [ "Customer" ],
+        "summary" : "Upsert features of customer by UUID",
+        "description" : "",
+        "operationId" : "upsertFeatures",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "Feature",
+          "description" : "Feature to be upserted",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/FeatureUpdateFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/host_info" : {
+      "get" : {
+        "tags" : [ "Customer" ],
+        "summary" : "Get host info by customer UUID",
+        "description" : "",
+        "operationId" : "getHostInfo",
+        "parameters" : [ {
+          "name" : "cUUID",
           "in" : "path",
           "required" : true,
           "type" : "string",
@@ -2339,13 +2555,173 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UniverseResp"
+              "type" : "object",
+              "additionalProperties" : {
+                "type" : "object"
+              }
             }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/certificates/{name}" : {
+      "get" : {
+        "operationId" : "get",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "name",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/certificates/{rUUID}" : {
+      "post" : {
+        "summary" : "TODO",
+        "description" : "",
+        "operationId" : "getClientCert",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      },
+      "delete" : {
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/certificates" : {
+      "get" : {
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      },
+      "post" : {
+        "summary" : "upload",
+        "description" : "",
+        "operationId" : "upload",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/certificates/{rUUID}/download" : {
+      "get" : {
+        "operationId" : "getRootCert",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{cUUID}/certificates/{rUUID}/update_empty_cert" : {
+      "post" : {
+        "summary" : "update empty certs",
+        "description" : "",
+        "operationId" : "updateEmptyCustomCert",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "rUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CertificateInfo"
+            }
+          }
+        }
       }
     }
   },
@@ -2367,6 +2743,195 @@
         },
         "password" : {
           "type" : "string"
+        }
+      }
+    },
+    "Customer Task Data" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "Customer Task UUID"
+        },
+        "title" : {
+          "type" : "string",
+          "example" : "Deleted Universe : test-universe",
+          "description" : "Customer Task title"
+        },
+        "percentComplete" : {
+          "type" : "integer",
+          "format" : "int32",
+          "example" : 100,
+          "description" : "Customer Task percentage completed"
+        },
+        "createTime" : {
+          "type" : "string",
+          "format" : "date-time",
+          "example" : "1624295417405",
+          "description" : "Customer Task creation time"
+        },
+        "completionTime" : {
+          "type" : "string",
+          "format" : "date-time",
+          "example" : "1624295417405",
+          "description" : "Customer Task completion time"
+        },
+        "target" : {
+          "type" : "string",
+          "example" : "Universe",
+          "description" : "Customer Task target"
+        },
+        "targetUUID" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "Customer Task target UUID"
+        },
+        "type" : {
+          "type" : "string",
+          "example" : "Delete",
+          "description" : "Customer Task type"
+        },
+        "status" : {
+          "type" : "string",
+          "example" : "Complete",
+          "description" : "Customer Task status"
+        }
+      },
+      "description" : "Customer Task data"
+    },
+    "UniverseResp" : {
+      "type" : "object",
+      "properties" : {
+        "universeUUID" : {
+          "type" : "string",
+          "description" : "Universe UUID"
+        },
+        "name" : {
+          "type" : "string",
+          "description" : "Universe name"
+        },
+        "creationDate" : {
+          "type" : "string",
+          "description" : "Creation time"
+        },
+        "version" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "Version"
+        },
+        "dnsName" : {
+          "type" : "string",
+          "description" : "DNS name"
+        },
+        "universeDetails" : {
+          "type" : "object",
+          "description" : "Universe Details",
+          "additionalProperties" : {
+            "type" : "object"
+          }
+        },
+        "universeConfig" : {
+          "type" : "object",
+          "description" : "Universe config",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        },
+        "taskUUID" : {
+          "type" : "string",
+          "description" : "Task UUID"
+        },
+        "sampleAppCommandTxt" : {
+          "type" : "string",
+          "description" : "Sample command"
+        },
+        "pricePerHour" : {
+          "type" : "number",
+          "format" : "double",
+          "description" : "Price"
+        }
+      },
+      "description" : "Universe Resp"
+    },
+    "YWSuccess" : {
+      "type" : "object",
+      "properties" : {
+        "success" : {
+          "type" : "boolean",
+          "description" : "If API succeeded"
+        },
+        "message" : {
+          "type" : "string",
+          "description" : "API response mssage. Feild will be present only if there is any message"
+        }
+      }
+    },
+    "AvailabilityZone" : {
+      "type" : "object",
+      "required" : [ "code", "name" ],
+      "properties" : {
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "AZ uuid",
+          "readOnly" : true
+        },
+        "code" : {
+          "type" : "string",
+          "example" : "AWS",
+          "description" : "AZ code"
+        },
+        "name" : {
+          "type" : "string",
+          "example" : "south-east-1",
+          "description" : "AZ name"
+        },
+        "active" : {
+          "type" : "boolean",
+          "description" : "AZ is active or not",
+          "readOnly" : true
+        },
+        "subnet" : {
+          "type" : "string",
+          "example" : "subnet id",
+          "description" : "AZ Subnet"
+        },
+        "kubeconfigPath" : {
+          "type" : "string",
+          "description" : "Kubernetes Config path",
+          "readOnly" : true
+        }
+      },
+      "description" : "Availability Zone of regions."
+    },
+    "Availability Zones" : {
+      "type" : "object",
+      "properties" : {
+        "code" : {
+          "type" : "string",
+          "description" : "Az code"
+        },
+        "name" : {
+          "type" : "string",
+          "description" : "Az name"
+        },
+        "subnet" : {
+          "type" : "string",
+          "description" : "Az subnet"
+        }
+      },
+      "description" : "Availability Zones."
+    },
+    "AvailabilityZoneFormData" : {
+      "type" : "object",
+      "required" : [ "availabilityZones" ],
+      "properties" : {
+        "availabilityZones" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/Availability Zones"
+          }
         }
       }
     },
@@ -2420,16 +2985,13 @@
         }
       }
     },
-    "ArrayNode" : {
+    "JsonNode" : {
       "type" : "object",
       "required" : [ "array", "bigDecimal", "bigInteger", "binary", "boolean", "containerNode", "double", "float", "floatingPointNumber", "int", "integralNumber", "long", "missingNode", "nodeType", "null", "number", "object", "pojo", "short", "textual", "valueNode" ],
       "properties" : {
         "nodeType" : {
           "type" : "string",
           "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ]
-        },
-        "array" : {
-          "type" : "boolean"
         },
         "object" : {
           "type" : "boolean"
@@ -2482,6 +3044,9 @@
         "binary" : {
           "type" : "boolean"
         },
+        "array" : {
+          "type" : "boolean"
+        },
         "null" : {
           "type" : "boolean"
         },
@@ -2490,171 +3055,290 @@
         }
       }
     },
-    "CertificateInfo" : {
+    "Users" : {
       "type" : "object",
-      "required" : [ "certType", "certificate", "checksum", "customCertInfo", "customerUUID", "expiryDate", "inUse", "label", "privateKey", "startDate", "universeDetails", "uuid" ],
+      "required" : [ "email" ],
       "properties" : {
         "uuid" : {
           "type" : "string",
-          "format" : "uuid"
+          "format" : "uuid",
+          "description" : "User uuid",
+          "readOnly" : true
         },
         "customerUUID" : {
           "type" : "string",
-          "format" : "uuid"
+          "format" : "uuid",
+          "description" : "Customer uuid",
+          "readOnly" : true
         },
-        "label" : {
-          "type" : "string"
-        },
-        "startDate" : {
+        "email" : {
           "type" : "string",
-          "format" : "date-time"
+          "example" : "username1@email.com",
+          "description" : "User email id"
         },
-        "expiryDate" : {
+        "creationDate" : {
           "type" : "string",
-          "format" : "date-time"
+          "format" : "date-time",
+          "example" : "2021-06-17 15:00:05",
+          "description" : "Creation time",
+          "readOnly" : true
         },
-        "privateKey" : {
-          "type" : "string"
-        },
-        "certificate" : {
-          "type" : "string"
-        },
-        "certType" : {
+        "authTokenIssueDate" : {
           "type" : "string",
-          "enum" : [ "SelfSigned", "CustomCertHostPath" ]
+          "format" : "date-time",
+          "example" : "1624255408795",
+          "description" : "Token issued date",
+          "readOnly" : true
         },
-        "checksum" : {
-          "type" : "string"
+        "features" : {
+          "description" : "Features",
+          "readOnly" : true,
+          "$ref" : "#/definitions/JsonNode"
         },
-        "customCertInfo" : {
-          "$ref" : "#/definitions/CustomCertInfo"
+        "role" : {
+          "type" : "string",
+          "description" : "User role",
+          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ]
         },
-        "inUse" : {
-          "type" : "boolean"
-        },
-        "universeDetails" : {
-          "$ref" : "#/definitions/ArrayNode"
+        "isPrimary" : {
+          "type" : "boolean",
+          "description" : "User is primary user or not"
         }
-      }
+      },
+      "description" : "Users associated customers."
     },
-    "CustomCertInfo" : {
+    "User Register" : {
       "type" : "object",
-      "required" : [ "clientCertPath", "clientKeyPath", "nodeCertPath", "nodeKeyPath", "rootCertPath" ],
       "properties" : {
-        "nodeCertPath" : {
-          "type" : "string"
-        },
-        "nodeKeyPath" : {
-          "type" : "string"
-        },
-        "rootCertPath" : {
-          "type" : "string"
-        },
-        "clientCertPath" : {
-          "type" : "string"
-        },
-        "clientKeyPath" : {
-          "type" : "string"
-        }
-      }
-    },
-    "CloudBootstrapParams" : {
-      "type" : "object",
-      "required" : [ "airGapInstall", "customHostCidrs", "destVpcId", "errorString", "hostVpcId", "hostVpcRegion", "keyPairName", "perRegionMetadata", "providerUUID", "sshPort", "sshPrivateKeyContent", "sshUser" ],
-      "properties" : {
-        "errorString" : {
-          "type" : "string"
-        },
-        "providerUUID" : {
+        "email" : {
           "type" : "string",
-          "format" : "uuid"
+          "example" : "test@gmail.com",
+          "description" : "User email address"
         },
-        "perRegionMetadata" : {
+        "password" : {
+          "type" : "string",
+          "example" : "Test@1234",
+          "description" : "User password"
+        },
+        "confirmPassword" : {
+          "type" : "string",
+          "example" : "Test@1234",
+          "description" : "User password"
+        },
+        "features" : {
           "type" : "object",
+          "description" : "User Features",
           "additionalProperties" : {
-            "$ref" : "#/definitions/PerRegionMetadata"
+            "type" : "object"
           }
         },
-        "keyPairName" : {
-          "type" : "string"
-        },
-        "sshPrivateKeyContent" : {
-          "type" : "string"
-        },
-        "sshUser" : {
-          "type" : "string"
-        },
-        "airGapInstall" : {
-          "type" : "boolean"
-        },
-        "sshPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "hostVpcId" : {
-          "type" : "string"
-        },
-        "hostVpcRegion" : {
-          "type" : "string"
-        },
-        "customHostCidrs" : {
-          "type" : "array",
-          "items" : {
-            "type" : "string"
-          }
-        },
-        "destVpcId" : {
-          "type" : "string"
+        "role" : {
+          "type" : "string",
+          "example" : "Admin",
+          "description" : "User role",
+          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ]
         }
-      }
+      },
+      "description" : "User registration data"
     },
-    "PerRegionMetadata" : {
+    "Region" : {
       "type" : "object",
-      "required" : [ "azToSubnetIds", "customImageId", "customSecurityGroupId", "subnetId", "vpcCidr", "vpcId" ],
-      "properties" : {
-        "vpcId" : {
-          "type" : "string"
-        },
-        "vpcCidr" : {
-          "type" : "string"
-        },
-        "azToSubnetIds" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        },
-        "subnetId" : {
-          "type" : "string"
-        },
-        "customImageId" : {
-          "type" : "string"
-        },
-        "customSecurityGroupId" : {
-          "type" : "string"
-        }
-      }
-    },
-    "Provider" : {
-      "type" : "object",
-      "required" : [ "active", "cloudParams", "code", "customerUUID", "hostedZoneId", "hostedZoneName", "name", "uuid" ],
+      "required" : [ "securityGroupId", "vnetName", "zones" ],
       "properties" : {
         "uuid" : {
           "type" : "string",
-          "format" : "uuid"
+          "format" : "uuid",
+          "description" : "Region uuid",
+          "readOnly" : true
         },
+        "code" : {
+          "type" : "string",
+          "example" : "us-west-2",
+          "description" : "Cloud provider region code",
+          "readOnly" : true
+        },
+        "name" : {
+          "type" : "string",
+          "example" : "TODO",
+          "description" : "Cloud provider region name"
+        },
+        "ybImage" : {
+          "type" : "string",
+          "example" : "TODO",
+          "description" : "The AMI to be used in this region."
+        },
+        "longitude" : {
+          "type" : "number",
+          "format" : "double",
+          "example" : -120.01,
+          "description" : "Longitude of this region",
+          "readOnly" : true
+        },
+        "latitude" : {
+          "type" : "number",
+          "format" : "double",
+          "example" : 37.22,
+          "description" : "Latitude of this region",
+          "readOnly" : true
+        },
+        "zones" : {
+          "type" : "array",
+          "uniqueItems" : true,
+          "items" : {
+            "$ref" : "#/definitions/AvailabilityZone"
+          }
+        },
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnetName" : {
+          "type" : "string"
+        },
+        "config" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "string"
+          }
+        }
+      },
+      "description" : "Region within a given provider. Typically this will map to a single cloud provider region"
+    },
+    "RegionFormData" : {
+      "type" : "object",
+      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
+      "properties" : {
         "code" : {
           "type" : "string"
         },
         "name" : {
           "type" : "string"
         },
-        "active" : {
+        "ybImage" : {
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "type" : "string"
+        },
+        "destVpcId" : {
+          "type" : "string"
+        },
+        "latitude" : {
+          "type" : "number",
+          "format" : "double"
+        },
+        "longitude" : {
+          "type" : "number",
+          "format" : "double"
+        }
+      }
+    },
+    "Generic error response from Yugawware Platform API" : {
+      "type" : "object",
+      "required" : [ "success" ],
+      "properties" : {
+        "success" : {
           "type" : "boolean"
+        },
+        "error" : {
+          "type" : "string",
+          "example" : "There was a problem creating universe",
+          "description" : "User visible unstructurred error message"
+        }
+      }
+    },
+    "YWTask" : {
+      "type" : "object",
+      "properties" : {
+        "taskUUID" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "Task UUID"
+        },
+        "resourceUUID" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "UUID of the resource being modified  by the task",
+          "readOnly" : true
+        }
+      }
+    },
+    "Provider" : {
+      "type" : "object",
+      "required" : [ "hostedZoneId", "hostedZoneName", "regions" ],
+      "properties" : {
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "Provide uuid",
+          "readOnly" : true
+        },
+        "code" : {
+          "type" : "string",
+          "description" : "Cloud Provider code"
+        },
+        "name" : {
+          "type" : "string",
+          "description" : "Cloud Provider code"
+        },
+        "active" : {
+          "type" : "boolean",
+          "description" : "Cloud Provider code",
+          "readOnly" : true
         },
         "customerUUID" : {
           "type" : "string",
-          "format" : "uuid"
+          "format" : "uuid",
+          "description" : "Cloud Provider code",
+          "readOnly" : true
+        },
+        "regions" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/Region"
+          }
+        },
+        "keyPairName" : {
+          "type" : "string",
+          "description" : "Transient property - only present in mutate API request"
+        },
+        "sshPrivateKeyContent" : {
+          "type" : "string",
+          "description" : "Transient property - only present in mutate API request"
+        },
+        "sshUser" : {
+          "type" : "string",
+          "description" : "Transient property - only present in mutate API request"
+        },
+        "airGapInstall" : {
+          "type" : "boolean",
+          "description" : "Transient property - only present in mutate API request"
+        },
+        "sshPort" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "Transient property - only present in mutate API request"
+        },
+        "hostVpcId" : {
+          "type" : "string",
+          "description" : "Transient property - only present in mutate API request"
+        },
+        "hostVpcRegion" : {
+          "type" : "string",
+          "description" : "Transient property - only present in mutate API request"
+        },
+        "customHostCidrs" : {
+          "type" : "array",
+          "description" : "Transient property - only present in mutate API request",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "destVpcId" : {
+          "type" : "string",
+          "description" : "Transient property - only present in mutate API request"
         },
         "hostedZoneName" : {
           "type" : "string"
@@ -2662,56 +3346,32 @@
         "hostedZoneId" : {
           "type" : "string"
         },
-        "cloudParams" : {
-          "$ref" : "#/definitions/CloudBootstrapParams"
-        },
         "config" : {
           "type" : "object",
-          "readOnly" : true,
           "additionalProperties" : {
             "type" : "string"
           }
         }
       }
     },
-    "CloudProviderFormData" : {
+    "EditProviderRequest" : {
       "type" : "object",
-      "required" : [ "active", "code", "config", "name", "region" ],
+      "required" : [ "config", "hostedZoneId" ],
       "properties" : {
-        "code" : {
-          "type" : "string",
-          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ]
-        },
-        "name" : {
+        "hostedZoneId" : {
           "type" : "string"
-        },
-        "active" : {
-          "type" : "boolean"
         },
         "config" : {
           "type" : "object",
           "additionalProperties" : {
             "type" : "string"
           }
-        },
-        "region" : {
-          "type" : "string"
-        }
-      }
-    },
-    "YWTask" : {
-      "type" : "object",
-      "required" : [ "taskUUID" ],
-      "properties" : {
-        "taskUUID" : {
-          "type" : "string",
-          "format" : "uuid"
         }
       }
     },
     "KubernetesProviderFormData" : {
       "type" : "object",
-      "required" : [ "active", "code", "config", "name", "region", "regionList" ],
+      "required" : [ "code", "config", "name", "region", "regionList" ],
       "properties" : {
         "code" : {
           "type" : "string",
@@ -2719,9 +3379,6 @@
         },
         "name" : {
           "type" : "string"
-        },
-        "active" : {
-          "type" : "boolean"
         },
         "config" : {
           "type" : "object",
@@ -2787,478 +3444,6 @@
           "additionalProperties" : {
             "type" : "string"
           }
-        }
-      }
-    },
-    "EditProviderRequest" : {
-      "type" : "object",
-      "required" : [ "config", "hostedZoneId" ],
-      "properties" : {
-        "hostedZoneId" : {
-          "type" : "string"
-        },
-        "config" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        }
-      }
-    },
-    "AlertingData" : {
-      "type" : "object",
-      "required" : [ "alertingEmail", "checkIntervalMs", "enableClockSkew", "reportBackupFailures", "reportOnlyErrors", "sendAlertsToYb", "statusUpdateIntervalMs" ],
-      "properties" : {
-        "alertingEmail" : {
-          "type" : "string"
-        },
-        "sendAlertsToYb" : {
-          "type" : "boolean"
-        },
-        "checkIntervalMs" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "statusUpdateIntervalMs" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "reportOnlyErrors" : {
-          "type" : "boolean"
-        },
-        "reportBackupFailures" : {
-          "type" : "boolean"
-        },
-        "enableClockSkew" : {
-          "type" : "boolean"
-        }
-      }
-    },
-    "CustomerDetailsData" : {
-      "type" : "object",
-      "required" : [ "alertingData", "callhomeLevel", "code", "creationDate", "customerId", "features", "name", "process_start_time", "smtpData", "universeUUIDs", "uuid" ],
-      "properties" : {
-        "uuid" : {
-          "type" : "string"
-        },
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "creationDate" : {
-          "type" : "string"
-        },
-        "features" : {
-          "$ref" : "#/definitions/JsonNode"
-        },
-        "universeUUIDs" : {
-          "type" : "array",
-          "items" : {
-            "type" : "string"
-          }
-        },
-        "process_start_time" : {
-          "type" : "string"
-        },
-        "customerId" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "alertingData" : {
-          "$ref" : "#/definitions/AlertingData"
-        },
-        "smtpData" : {
-          "$ref" : "#/definitions/SmtpData"
-        },
-        "callhomeLevel" : {
-          "type" : "string"
-        }
-      }
-    },
-    "JsonNode" : {
-      "type" : "object",
-      "required" : [ "array", "bigDecimal", "bigInteger", "binary", "boolean", "containerNode", "double", "float", "floatingPointNumber", "int", "integralNumber", "long", "missingNode", "nodeType", "null", "number", "object", "pojo", "short", "textual", "valueNode" ],
-      "properties" : {
-        "object" : {
-          "type" : "boolean"
-        },
-        "nodeType" : {
-          "type" : "string",
-          "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ]
-        },
-        "valueNode" : {
-          "type" : "boolean"
-        },
-        "containerNode" : {
-          "type" : "boolean"
-        },
-        "missingNode" : {
-          "type" : "boolean"
-        },
-        "pojo" : {
-          "type" : "boolean"
-        },
-        "number" : {
-          "type" : "boolean"
-        },
-        "integralNumber" : {
-          "type" : "boolean"
-        },
-        "floatingPointNumber" : {
-          "type" : "boolean"
-        },
-        "short" : {
-          "type" : "boolean"
-        },
-        "int" : {
-          "type" : "boolean"
-        },
-        "long" : {
-          "type" : "boolean"
-        },
-        "double" : {
-          "type" : "boolean"
-        },
-        "bigDecimal" : {
-          "type" : "boolean"
-        },
-        "bigInteger" : {
-          "type" : "boolean"
-        },
-        "textual" : {
-          "type" : "boolean"
-        },
-        "boolean" : {
-          "type" : "boolean"
-        },
-        "binary" : {
-          "type" : "boolean"
-        },
-        "array" : {
-          "type" : "boolean"
-        },
-        "null" : {
-          "type" : "boolean"
-        },
-        "float" : {
-          "type" : "boolean"
-        }
-      }
-    },
-    "SmtpData" : {
-      "type" : "object",
-      "required" : [ "emailFrom", "smtpPassword", "smtpPort", "smtpServer", "smtpUsername", "useSSL", "useTLS" ],
-      "properties" : {
-        "smtpServer" : {
-          "type" : "string"
-        },
-        "smtpPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "emailFrom" : {
-          "type" : "string"
-        },
-        "smtpUsername" : {
-          "type" : "string"
-        },
-        "smtpPassword" : {
-          "type" : "string"
-        },
-        "useSSL" : {
-          "type" : "boolean"
-        },
-        "useTLS" : {
-          "type" : "boolean"
-        }
-      }
-    },
-    "Customer" : {
-      "type" : "object",
-      "required" : [ "code", "name" ],
-      "properties" : {
-        "uuid" : {
-          "type" : "string",
-          "format" : "uuid",
-          "description" : "Customer uuid",
-          "readOnly" : true
-        },
-        "code" : {
-          "type" : "string",
-          "example" : "admin",
-          "description" : "Customer code"
-        },
-        "name" : {
-          "type" : "string",
-          "example" : "sridhar",
-          "description" : "Name of customer"
-        },
-        "creationDate" : {
-          "type" : "string",
-          "format" : "date-time",
-          "example" : "2021-06-17 15:00:05",
-          "description" : "Creation time",
-          "readOnly" : true
-        },
-        "features" : {
-          "description" : "Features",
-          "readOnly" : true,
-          "$ref" : "#/definitions/JsonNode"
-        },
-        "universeUUIDs" : {
-          "type" : "array",
-          "example" : "[\"c3595ca7-68a3-47f0-b1b2-1725886d5ed5\", \"9e0bb733-556c-4935-83dd-6b742a2c32e6\"]",
-          "description" : "Universe UUIDs",
-          "readOnly" : true,
-          "uniqueItems" : true,
-          "items" : {
-            "type" : "string",
-            "format" : "uuid"
-          }
-        },
-        "customerId" : {
-          "type" : "integer",
-          "format" : "int64",
-          "example" : 1,
-          "description" : "Customer id",
-          "readOnly" : true
-        }
-      },
-      "description" : "Customers features and Universe UUID."
-    },
-    "AlertingFormData" : {
-      "type" : "object",
-      "required" : [ "alertingData", "callhomeLevel", "code", "confirmPassword", "email", "features", "name", "password", "smtpData" ],
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "email" : {
-          "type" : "string"
-        },
-        "password" : {
-          "type" : "string"
-        },
-        "confirmPassword" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "features" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "object"
-          }
-        },
-        "alertingData" : {
-          "$ref" : "#/definitions/AlertingData"
-        },
-        "smtpData" : {
-          "$ref" : "#/definitions/SmtpData"
-        },
-        "callhomeLevel" : {
-          "type" : "string"
-        }
-      }
-    },
-    "CustomerDeleteData" : {
-      "type" : "object",
-      "required" : [ "success" ],
-      "properties" : {
-        "success" : {
-          "type" : "boolean"
-        }
-      }
-    },
-    "FeatureUpdateFormData" : {
-      "type" : "object",
-      "required" : [ "features" ],
-      "properties" : {
-        "features" : {
-          "$ref" : "#/definitions/JsonNode"
-        }
-      }
-    },
-    "MetricQueryParams" : {
-      "type" : "object",
-      "required" : [ "end", "metrics", "nodeName", "nodePrefix", "start" ],
-      "properties" : {
-        "metrics" : {
-          "type" : "array",
-          "items" : {
-            "type" : "string"
-          }
-        },
-        "start" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "end" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "nodePrefix" : {
-          "type" : "string"
-        },
-        "nodeName" : {
-          "type" : "string"
-        }
-      }
-    },
-    "AvailabilityZone" : {
-      "type" : "object",
-      "required" : [ "active", "code", "kubeconfigPath", "name", "subnet", "uuid" ],
-      "properties" : {
-        "uuid" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "active" : {
-          "type" : "boolean"
-        },
-        "subnet" : {
-          "type" : "string"
-        },
-        "kubeconfigPath" : {
-          "type" : "string"
-        }
-      }
-    },
-    "AvailabilityZoneData" : {
-      "type" : "object",
-      "required" : [ "code", "name", "subnet" ],
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "subnet" : {
-          "type" : "string"
-        }
-      }
-    },
-    "AvailabilityZoneFormData" : {
-      "type" : "object",
-      "required" : [ "availabilityZones" ],
-      "properties" : {
-        "availabilityZones" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/AvailabilityZoneData"
-          }
-        }
-      }
-    },
-    "Region" : {
-      "type" : "object",
-      "required" : [ "active", "code", "details", "latitude", "longitude", "name", "securityGroupId", "uuid", "vnetName", "ybImage", "zones" ],
-      "properties" : {
-        "uuid" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "code" : {
-          "type" : "string",
-          "example" : "us-west-2",
-          "description" : "Cloud provider region code"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "type" : "string"
-        },
-        "longitude" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "latitude" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "zones" : {
-          "type" : "array",
-          "uniqueItems" : true,
-          "items" : {
-            "$ref" : "#/definitions/AvailabilityZone"
-          }
-        },
-        "active" : {
-          "type" : "boolean"
-        },
-        "details" : {
-          "$ref" : "#/definitions/JsonNode"
-        },
-        "securityGroupId" : {
-          "type" : "string"
-        },
-        "vnetName" : {
-          "type" : "string"
-        },
-        "config" : {
-          "type" : "object",
-          "readOnly" : true,
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        }
-      },
-      "description" : "Region within a given provider. Typically this will map to a single cloud provider region"
-    },
-    "RegionFormData" : {
-      "type" : "object",
-      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "type" : "string"
-        },
-        "hostVpcRegion" : {
-          "type" : "string"
-        },
-        "hostVpcId" : {
-          "type" : "string"
-        },
-        "destVpcId" : {
-          "type" : "string"
-        },
-        "latitude" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "longitude" : {
-          "type" : "number",
-          "format" : "double"
-        }
-      }
-    },
-    "Generic error response from Yugawware Platform API" : {
-      "type" : "object",
-      "required" : [ "success" ],
-      "properties" : {
-        "success" : {
-          "type" : "boolean"
-        },
-        "error" : {
-          "type" : "string",
-          "example" : "There was a problem creating universe",
-          "description" : "User visible unstructurred error message"
         }
       }
     },
@@ -3834,329 +4019,6 @@
         }
       }
     },
-    "NodeDetailsResp" : {
-      "type" : "object",
-      "required" : [ "azUuid", "cloudInfo", "cronsActive", "isMaster", "isRedisServer", "isTserver", "isYqlServer", "isYsqlServer", "machineImage", "masterHttpPort", "masterRpcPort", "nodeExporterPort", "nodeIdx", "nodeName", "nodeUuid", "placementUuid", "redisServerHttpPort", "redisServerRpcPort", "state", "tserverHttpPort", "tserverRpcPort", "yqlServerHttpPort", "yqlServerRpcPort", "ysqlServerHttpPort", "ysqlServerRpcPort" ],
-      "properties" : {
-        "nodeIdx" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "nodeName" : {
-          "type" : "string"
-        },
-        "nodeUuid" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "cloudInfo" : {
-          "$ref" : "#/definitions/CloudSpecificInfo"
-        },
-        "azUuid" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "placementUuid" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "machineImage" : {
-          "type" : "string"
-        },
-        "state" : {
-          "type" : "string",
-          "enum" : [ "ToBeAdded", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls" ]
-        },
-        "isMaster" : {
-          "type" : "boolean"
-        },
-        "masterHttpPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "masterRpcPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "isTserver" : {
-          "type" : "boolean"
-        },
-        "tserverHttpPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "tserverRpcPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "isRedisServer" : {
-          "type" : "boolean"
-        },
-        "redisServerHttpPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "redisServerRpcPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "isYqlServer" : {
-          "type" : "boolean"
-        },
-        "yqlServerHttpPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "yqlServerRpcPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "isYsqlServer" : {
-          "type" : "boolean"
-        },
-        "ysqlServerHttpPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "ysqlServerRpcPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "nodeExporterPort" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "cronsActive" : {
-          "type" : "boolean"
-        },
-        "allowedActions" : {
-          "type" : "array",
-          "readOnly" : true,
-          "uniqueItems" : true,
-          "items" : {
-            "type" : "string",
-            "enum" : [ "ADD", "REMOVE", "START", "STOP", "DELETE", "QUERY", "RELEASE", "START_MASTER" ]
-          }
-        }
-      }
-    },
-    "UniverseDefinitionTaskParamsResp" : {
-      "type" : "object",
-      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "cmkArn", "communicationPorts", "currentClusterType", "deviceInfo", "encryptionAtRestConfig", "errorString", "expectedUniverseVersion", "extraDependencies", "firstTry", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodeExporterUser", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "universeUUID", "updateInProgress", "updateSucceeded", "userAZSelected" ],
-      "properties" : {
-        "errorString" : {
-          "type" : "string"
-        },
-        "nodeExporterUser" : {
-          "type" : "string"
-        },
-        "deviceInfo" : {
-          "$ref" : "#/definitions/DeviceInfo"
-        },
-        "universeUUID" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "expectedUniverseVersion" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "cmkArn" : {
-          "type" : "string"
-        },
-        "encryptionAtRestConfig" : {
-          "$ref" : "#/definitions/EncryptionAtRestConfig"
-        },
-        "nodeDetailsSet" : {
-          "type" : "array",
-          "readOnly" : true,
-          "uniqueItems" : true,
-          "items" : {
-            "$ref" : "#/definitions/NodeDetailsResp"
-          }
-        },
-        "communicationPorts" : {
-          "$ref" : "#/definitions/CommunicationPorts"
-        },
-        "extraDependencies" : {
-          "$ref" : "#/definitions/ExtraDependencies"
-        },
-        "firstTry" : {
-          "type" : "boolean"
-        },
-        "clusters" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/Cluster"
-          }
-        },
-        "currentClusterType" : {
-          "type" : "string",
-          "enum" : [ "PRIMARY", "ASYNC" ]
-        },
-        "nodePrefix" : {
-          "type" : "string"
-        },
-        "rootCA" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "clientRootCA" : {
-          "type" : "string",
-          "format" : "uuid"
-        },
-        "rootAndClientRootCASame" : {
-          "type" : "boolean"
-        },
-        "userAZSelected" : {
-          "type" : "boolean"
-        },
-        "resetAZConfig" : {
-          "type" : "boolean"
-        },
-        "updateInProgress" : {
-          "type" : "boolean"
-        },
-        "backupInProgress" : {
-          "type" : "boolean"
-        },
-        "updateSucceeded" : {
-          "type" : "boolean"
-        },
-        "universePaused" : {
-          "type" : "boolean"
-        },
-        "nextClusterIndex" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "allowInsecure" : {
-          "type" : "boolean"
-        },
-        "setTxnTableWaitCountFlag" : {
-          "type" : "boolean"
-        },
-        "itestS3PackagePath" : {
-          "type" : "string"
-        },
-        "remotePackagePath" : {
-          "type" : "string"
-        },
-        "importedState" : {
-          "type" : "string",
-          "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ]
-        },
-        "capability" : {
-          "type" : "string",
-          "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ]
-        }
-      }
-    },
-    "UniverseResourceDetails" : {
-      "type" : "object",
-      "required" : [ "azList", "ebsPricePerHour", "gp3FreePiops", "gp3FreeThroughput", "memSizeGB", "numCores", "numNodes", "pricePerHour", "volumeCount", "volumeSizeGB" ],
-      "properties" : {
-        "pricePerHour" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "ebsPricePerHour" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "numCores" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "memSizeGB" : {
-          "type" : "number",
-          "format" : "double"
-        },
-        "volumeCount" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "volumeSizeGB" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "numNodes" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "gp3FreePiops" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "gp3FreeThroughput" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "azList" : {
-          "type" : "array",
-          "uniqueItems" : true,
-          "items" : {
-            "type" : "string"
-          }
-        }
-      }
-    },
-    "UniverseResp" : {
-      "type" : "object",
-      "required" : [ "creationDate", "dnsName", "name", "pricePerHour", "resources", "sampleAppCommandTxt", "taskUUID", "universeConfig", "universeDetails", "universeUUID", "version" ],
-      "properties" : {
-        "universeUUID" : {
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "creationDate" : {
-          "type" : "string"
-        },
-        "version" : {
-          "type" : "integer",
-          "format" : "int32"
-        },
-        "dnsName" : {
-          "type" : "string"
-        },
-        "resources" : {
-          "$ref" : "#/definitions/UniverseResourceDetails"
-        },
-        "universeDetails" : {
-          "$ref" : "#/definitions/UniverseDefinitionTaskParamsResp"
-        },
-        "universeConfig" : {
-          "type" : "object",
-          "additionalProperties" : {
-            "type" : "string"
-          }
-        },
-        "taskUUID" : {
-          "type" : "string"
-        },
-        "sampleAppCommandTxt" : {
-          "type" : "string"
-        },
-        "pricePerHour" : {
-          "type" : "number",
-          "format" : "double"
-        }
-      }
-    },
-    "YWSuccess" : {
-      "type" : "object",
-      "required" : [ "message", "success" ],
-      "properties" : {
-        "success" : {
-          "type" : "boolean"
-        },
-        "message" : {
-          "type" : "string"
-        }
-      }
-    },
     "UpgradeParams" : {
       "type" : "object",
       "required" : [ "allowInsecure", "backupInProgress", "capability", "certUUID", "clientRootCA", "clusters", "cmkArn", "communicationPorts", "currentClusterType", "deviceInfo", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "encryptionAtRestConfig", "errorString", "expectedUniverseVersion", "extraDependencies", "firstTry", "forceVMImageUpgrade", "importedState", "itestS3PackagePath", "machineImages", "masterGFlags", "nextClusterIndex", "nodeDetailsSet", "nodeExporterUser", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "rotateRoot", "setTxnTableWaitCountFlag", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "taskType", "tserverGFlags", "universePaused", "universeUUID", "updateInProgress", "updateSucceeded", "upgradeOption", "userAZSelected", "ybSoftwareVersion" ],
@@ -4318,6 +4180,488 @@
         "upgradeOption" : {
           "type" : "string",
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ]
+        }
+      }
+    },
+    "UniverseResource" : {
+      "type" : "object",
+      "properties" : {
+        "pricePerHour" : {
+          "type" : "number",
+          "format" : "double",
+          "description" : "Price per hour"
+        },
+        "ebsPricePerHour" : {
+          "type" : "number",
+          "format" : "double",
+          "description" : "EBS price per hour"
+        },
+        "numCores" : {
+          "type" : "number",
+          "format" : "double",
+          "description" : "Numbers of cores"
+        },
+        "memSizeGB" : {
+          "type" : "number",
+          "format" : "double",
+          "description" : "Memory GB"
+        },
+        "volumeCount" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "Volume count"
+        },
+        "volumeSizeGB" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "Volume in GB"
+        },
+        "numNodes" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "Numbers of node"
+        },
+        "gp3FreePiops" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "gp3 free piops"
+        },
+        "gp3FreeThroughput" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "gp3 free throughput"
+        },
+        "azList" : {
+          "type" : "array",
+          "description" : "Azs",
+          "uniqueItems" : true,
+          "items" : {
+            "type" : "string"
+          }
+        }
+      },
+      "description" : "Universe Resource"
+    },
+    "Alert Detail" : {
+      "type" : "object",
+      "properties" : {
+        "alertingEmail" : {
+          "type" : "string",
+          "example" : "test@gmail.com",
+          "description" : "Alert email id"
+        },
+        "sendAlertsToYb" : {
+          "type" : "boolean",
+          "description" : "Is alert has sent to YB"
+        },
+        "checkIntervalMs" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Alert interval"
+        },
+        "statusUpdateIntervalMs" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Status update of alert interval"
+        },
+        "reportOnlyErrors" : {
+          "type" : "boolean",
+          "description" : "Is alert is just for error"
+        },
+        "reportBackupFailures" : {
+          "type" : "boolean",
+          "description" : "Is alert needed for backup failure"
+        },
+        "enableClockSkew" : {
+          "type" : "boolean",
+          "description" : "Is Clock skew is enabled"
+        }
+      },
+      "description" : "Alerts associated with customers"
+    },
+    "Customer Detail" : {
+      "type" : "object",
+      "required" : [ "code", "name" ],
+      "properties" : {
+        "uuid" : {
+          "type" : "string",
+          "description" : "User uuid",
+          "readOnly" : true
+        },
+        "code" : {
+          "type" : "string",
+          "example" : "admin",
+          "description" : "Customer code"
+        },
+        "name" : {
+          "type" : "string",
+          "example" : "sridhar",
+          "description" : "Name of customer"
+        },
+        "creationDate" : {
+          "type" : "string",
+          "format" : "date-time",
+          "example" : "2021-06-17 15:00:05",
+          "description" : "Creation time",
+          "readOnly" : true
+        },
+        "features" : {
+          "description" : "Features",
+          "readOnly" : true,
+          "$ref" : "#/definitions/JsonNode"
+        },
+        "universeUUIDs" : {
+          "type" : "array",
+          "example" : "[\"c3595ca7-68a3-47f0-b1b2-1725886d5ed5\", \"9e0bb733-556c-4935-83dd-6b742a2c32e6\"]",
+          "description" : "Associated Universe Id's",
+          "readOnly" : true,
+          "items" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        },
+        "customerId" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "Customer id",
+          "readOnly" : true
+        },
+        "alertingData" : {
+          "description" : "Alerts",
+          "readOnly" : true,
+          "$ref" : "#/definitions/Alert Detail"
+        },
+        "smtpData" : {
+          "description" : "SMTP",
+          "readOnly" : true,
+          "$ref" : "#/definitions/SMPT"
+        },
+        "callhomeLevel" : {
+          "type" : "string",
+          "example" : "MEDIUM",
+          "description" : "Call home level",
+          "readOnly" : true
+        }
+      },
+      "description" : "Customers features and Universe UUID."
+    },
+    "SMPT" : {
+      "type" : "object",
+      "properties" : {
+        "smtpServer" : {
+          "type" : "string",
+          "example" : "smtp.gmail.com",
+          "description" : "smtp server"
+        },
+        "smtpPort" : {
+          "type" : "integer",
+          "format" : "int32",
+          "example" : 465,
+          "description" : "SMPT port number"
+        },
+        "emailFrom" : {
+          "type" : "string",
+          "example" : "test@gmail.com",
+          "description" : "SMTP email id"
+        },
+        "smtpUsername" : {
+          "type" : "string",
+          "example" : "testsmtp",
+          "description" : "SMTP email username"
+        },
+        "smtpPassword" : {
+          "type" : "string",
+          "example" : "XurenRknsc",
+          "description" : "SMTP password"
+        },
+        "useSSL" : {
+          "type" : "boolean",
+          "example" : true,
+          "description" : "SMTP SSL"
+        },
+        "useTLS" : {
+          "type" : "boolean",
+          "example" : false,
+          "description" : "SMTP TSL"
+        }
+      },
+      "description" : "Customers features and Universe UUID."
+    },
+    "Customer" : {
+      "type" : "object",
+      "required" : [ "code", "name" ],
+      "properties" : {
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "Customer uuid",
+          "readOnly" : true
+        },
+        "code" : {
+          "type" : "string",
+          "example" : "admin",
+          "description" : "Customer code"
+        },
+        "name" : {
+          "type" : "string",
+          "example" : "sridhar",
+          "description" : "Name of customer"
+        },
+        "creationDate" : {
+          "type" : "string",
+          "format" : "date-time",
+          "example" : "2021-06-17 15:00:05",
+          "description" : "Creation time",
+          "readOnly" : true
+        },
+        "features" : {
+          "description" : "Features",
+          "readOnly" : true,
+          "$ref" : "#/definitions/JsonNode"
+        },
+        "universeUUIDs" : {
+          "type" : "array",
+          "example" : "[\"c3595ca7-68a3-47f0-b1b2-1725886d5ed5\", \"9e0bb733-556c-4935-83dd-6b742a2c32e6\"]",
+          "description" : "Universe UUIDs",
+          "readOnly" : true,
+          "uniqueItems" : true,
+          "items" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        },
+        "customerId" : {
+          "type" : "integer",
+          "format" : "int64",
+          "example" : 1,
+          "description" : "Customer id",
+          "readOnly" : true
+        }
+      },
+      "description" : "Customers features and Universe UUID."
+    },
+    "Alerts" : {
+      "type" : "object",
+      "required" : [ "alertingData", "callhomeLevel", "smtpData" ],
+      "properties" : {
+        "code" : {
+          "type" : "string",
+          "description" : "Alert code"
+        },
+        "email" : {
+          "type" : "string",
+          "example" : "test@gmail.com",
+          "description" : "Alert email"
+        },
+        "password" : {
+          "type" : "string",
+          "example" : "XurenRknsc",
+          "description" : "Email password"
+        },
+        "confirmPassword" : {
+          "type" : "string",
+          "example" : "XurenRknsc",
+          "description" : "Email password"
+        },
+        "name" : {
+          "type" : "string",
+          "example" : "Test alert",
+          "description" : "Alert name"
+        },
+        "features" : {
+          "type" : "object",
+          "description" : "Feature",
+          "additionalProperties" : {
+            "type" : "object"
+          }
+        },
+        "alertingData" : {
+          "$ref" : "#/definitions/Alert Detail"
+        },
+        "smtpData" : {
+          "$ref" : "#/definitions/SMPT"
+        },
+        "callhomeLevel" : {
+          "type" : "string"
+        }
+      },
+      "description" : "Alerts associated with customers"
+    },
+    "Metrics" : {
+      "type" : "object",
+      "properties" : {
+        "metrics" : {
+          "type" : "array",
+          "description" : "metrics",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "start" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Start time"
+        },
+        "end" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "End time"
+        },
+        "nodePrefix" : {
+          "type" : "string",
+          "description" : "Node prefix"
+        },
+        "nodeName" : {
+          "type" : "string",
+          "description" : "Node name"
+        }
+      },
+      "description" : "Metrics details"
+    },
+    "FeatureUpdateFormData" : {
+      "type" : "object",
+      "required" : [ "features" ],
+      "properties" : {
+        "features" : {
+          "$ref" : "#/definitions/JsonNode"
+        }
+      }
+    },
+    "ArrayNode" : {
+      "type" : "object",
+      "required" : [ "array", "bigDecimal", "bigInteger", "binary", "boolean", "containerNode", "double", "float", "floatingPointNumber", "int", "integralNumber", "long", "missingNode", "nodeType", "null", "number", "object", "pojo", "short", "textual", "valueNode" ],
+      "properties" : {
+        "nodeType" : {
+          "type" : "string",
+          "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ]
+        },
+        "array" : {
+          "type" : "boolean"
+        },
+        "object" : {
+          "type" : "boolean"
+        },
+        "valueNode" : {
+          "type" : "boolean"
+        },
+        "containerNode" : {
+          "type" : "boolean"
+        },
+        "missingNode" : {
+          "type" : "boolean"
+        },
+        "pojo" : {
+          "type" : "boolean"
+        },
+        "number" : {
+          "type" : "boolean"
+        },
+        "integralNumber" : {
+          "type" : "boolean"
+        },
+        "floatingPointNumber" : {
+          "type" : "boolean"
+        },
+        "short" : {
+          "type" : "boolean"
+        },
+        "int" : {
+          "type" : "boolean"
+        },
+        "long" : {
+          "type" : "boolean"
+        },
+        "double" : {
+          "type" : "boolean"
+        },
+        "bigDecimal" : {
+          "type" : "boolean"
+        },
+        "bigInteger" : {
+          "type" : "boolean"
+        },
+        "textual" : {
+          "type" : "boolean"
+        },
+        "boolean" : {
+          "type" : "boolean"
+        },
+        "binary" : {
+          "type" : "boolean"
+        },
+        "null" : {
+          "type" : "boolean"
+        },
+        "float" : {
+          "type" : "boolean"
+        }
+      }
+    },
+    "CertificateInfo" : {
+      "type" : "object",
+      "required" : [ "certType", "certificate", "checksum", "customCertInfo", "customerUUID", "expiryDate", "inUse", "label", "privateKey", "startDate", "universeDetails", "uuid" ],
+      "properties" : {
+        "uuid" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "customerUUID" : {
+          "type" : "string",
+          "format" : "uuid"
+        },
+        "label" : {
+          "type" : "string"
+        },
+        "startDate" : {
+          "type" : "string",
+          "format" : "date-time"
+        },
+        "expiryDate" : {
+          "type" : "string",
+          "format" : "date-time"
+        },
+        "privateKey" : {
+          "type" : "string"
+        },
+        "certificate" : {
+          "type" : "string"
+        },
+        "certType" : {
+          "type" : "string",
+          "enum" : [ "SelfSigned", "CustomCertHostPath" ]
+        },
+        "checksum" : {
+          "type" : "string"
+        },
+        "customCertInfo" : {
+          "$ref" : "#/definitions/CustomCertInfo"
+        },
+        "universeDetails" : {
+          "$ref" : "#/definitions/ArrayNode"
+        },
+        "inUse" : {
+          "type" : "boolean"
+        }
+      }
+    },
+    "CustomCertInfo" : {
+      "type" : "object",
+      "required" : [ "clientCertPath", "clientKeyPath", "nodeCertPath", "nodeKeyPath", "rootCertPath" ],
+      "properties" : {
+        "nodeCertPath" : {
+          "type" : "string"
+        },
+        "nodeKeyPath" : {
+          "type" : "string"
+        },
+        "rootCertPath" : {
+          "type" : "string"
+        },
+        "clientCertPath" : {
+          "type" : "string"
+        },
+        "clientKeyPath" : {
+          "type" : "string"
         }
       }
     }

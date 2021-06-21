@@ -25,7 +25,6 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 @Entity
 @ApiModel(description = "Customers features and Universe UUID.")
@@ -64,7 +63,6 @@ public class Customer extends Model {
   @ApiModelProperty(
       value = "Customer code",
       example = "admin",
-      accessMode = READ_WRITE,
       required = true,
       allowableValues = "range[-infinity, 15]",
       dataType = "java.lang.String")
@@ -76,7 +74,6 @@ public class Customer extends Model {
   @ApiModelProperty(
       value = "Name of customer",
       example = "sridhar",
-      accessMode = READ_WRITE,
       required = true,
       allowableValues = "range[3, 356]",
       dataType = "java.lang.String")

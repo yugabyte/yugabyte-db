@@ -11,6 +11,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -20,27 +21,47 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.Play;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@ApiModel(description = "Universe Resp")
 public class UniverseResp {
 
   public static final Logger LOG = LoggerFactory.getLogger(UniverseResp.class);
 
+  @ApiModelProperty(value = "Universe UUID")
   public final String universeUUID;
+
+  @ApiModelProperty(value = "Universe name")
   public final String name;
+
+  @ApiModelProperty(value = "Creation time")
   public final String creationDate;
+
+  @ApiModelProperty(value = "Version")
   public final int version;
+
+  @ApiModelProperty(value = "DNS name")
   public final String dnsName;
 
+  @JsonIgnore
+  @ApiModelProperty(value = "Universe Resources", dataType = "java.util.Map")
   public final UniverseResourceDetails resources;
 
+  @ApiModelProperty(value = "Universe Details", dataType = "java.util.Map")
   public final UniverseDefinitionTaskParamsResp universeDetails;
+
+  @ApiModelProperty(value = "Universe config")
   public final Map<String, String> universeConfig;
+
+  @ApiModelProperty(value = "Task UUID")
   public final String taskUUID;
+
+  @ApiModelProperty(value = "Sample command")
   public final String sampleAppCommandTxt;
 
   public UniverseResp(Universe entity) {
@@ -59,13 +80,13 @@ public class UniverseResp {
     dnsName = entity.getDnsName();
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
     this.taskUUID = taskUUID == null ? null : taskUUID.toString();
-    Collection<NodeDetails> nodes = entity.getUniverseDetails().nodeDetailsSet;
     this.resources = resources;
     universeConfig = entity.getConfig();
     this.sampleAppCommandTxt = this.getManifest(entity);
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources
+  @ApiModelProperty(value = "Price")
   public Double getPricePerHour() {
     return resources == null ? null : resources.pricePerHour;
   }
