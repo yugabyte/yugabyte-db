@@ -80,4 +80,4 @@ For regular indexes, there are scan flags like `SK_SEARCHISNULL` and
 
 ## multicolumn
 
-Multicolumn will be disabled in the near-term.  TODO
+Multicolumn will be disabled in the near-term.  Design is TODO.
