@@ -25,6 +25,19 @@ writes, extract the scan entries for each item and write
 
     [scan entry, basectid]
 
+For example, given `ybgin` index on `a int[]` and insert `pk='foo', a={1,3,5}`,
+write
+
+    [1, 'foo']
+    [3, 'foo']
+    [5, 'foo']
+
+to the index and
+
+    ['foo'] -> '{1,3,5}'
+
+to the base table.
+
 ### select
 
 `amgettuple` is used for `ybgin`, unlike `amgetbitmap` for `gin`.  Since `gin`
