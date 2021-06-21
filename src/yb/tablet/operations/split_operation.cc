@@ -28,34 +28,27 @@ using namespace std::literals;
 namespace yb {
 namespace tablet {
 
-SplitOperationState::SplitOperationState(
-    Tablet* tablet, TabletSplitter* tablet_splitter, const tserver::SplitTabletRequestPB* request)
-    : OperationState(tablet),
-      tablet_splitter_(tablet_splitter),
-      request_(request) {
-  if (!tablet_splitter) {
-    LOG(FATAL) << "tablet_splitter is not set for tablet " << tablet->tablet_id();
-  }
+template <>
+void RequestTraits<tserver::SplitTabletRequestPB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, tserver::SplitTabletRequestPB* request) {
+  replicate->set_allocated_split_request(request);
 }
 
-std::string SplitOperationState::ToString() const {
-  auto req = request();
-  return Format("SplitOperationState [$0]", !req ? "(none)"s : req->ShortDebugString());
+template <>
+tserver::SplitTabletRequestPB* RequestTraits<tserver::SplitTabletRequestPB>::MutableRequest(
+    consensus::ReplicateMsg* replicate) {
+  return replicate->mutable_split_request();
 }
 
-void SplitOperationState::UpdateRequestFromConsensusRound() {
-  request_ = consensus_round()->replicate_msg()->mutable_split_request();
-}
-
-void SplitOperationState::AddedAsPending() {
+void SplitOperation::AddedAsPending() {
   tablet()->RegisterOperationFilter(this);
 }
 
-void SplitOperationState::RemovedFromPending() {
+void SplitOperation::RemovedFromPending() {
   tablet()->UnregisterOperationFilter(this);
 }
 
-Status SplitOperationState::RejectionStatus(
+Status SplitOperation::RejectionStatus(
     OpId split_op_id, OpId rejected_op_id, consensus::OperationType op_type,
     const TabletId& child1, const TabletId& child2) {
   auto status = STATUS_EC_FORMAT(
@@ -68,7 +61,7 @@ Status SplitOperationState::RejectionStatus(
 
 // Returns whether Raft operation of op_type is allowed to be added to Raft log of the tablet
 // for which split tablet Raft operation has been already added to Raft log.
-bool SplitOperationState::ShouldAllowOpAfterSplitTablet(const consensus::OperationType op_type) {
+bool SplitOperation::ShouldAllowOpAfterSplitTablet(const consensus::OperationType op_type) {
   // Old tablet remains running for remote bootstrap purposes for some time and could receive
   // Raft operations.
 
@@ -92,7 +85,7 @@ bool SplitOperationState::ShouldAllowOpAfterSplitTablet(const consensus::Operati
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);
 }
 
-Status SplitOperationState::CheckOperationAllowed(
+Status SplitOperation::CheckOperationAllowed(
     const OpId& id, consensus::OperationType op_type) const {
   if (id == op_id() || ShouldAllowOpAfterSplitTablet(op_type)) {
     return Status::OK();
@@ -104,13 +97,6 @@ Status SplitOperationState::CheckOperationAllowed(
   // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
   return RejectionStatus(
       op_id(), id, op_type, request()->new_tablet1_id(), request()->new_tablet2_id());
-}
-
-consensus::ReplicateMsgPtr SplitOperation::NewReplicateMsg() {
-  auto result = std::make_shared<consensus::ReplicateMsg>();
-  result->set_op_type(consensus::SPLIT_OP);
-  *result->mutable_split_request() = *state()->request();
-  return result;
 }
 
 Status SplitOperation::Prepare() {
@@ -125,11 +111,7 @@ Status SplitOperation::DoAborted(const Status& status) {
 
 Status SplitOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   VLOG_WITH_PREFIX(2) << "Apply";
-  return state()->tablet_splitter().ApplyTabletSplit(state(), /* raft_log= */ nullptr);
-}
-
-std::string SplitOperation::ToString() const {
-  return Format("SplitOperation { state: $0 }", *state());
+  return tablet_splitter().ApplyTabletSplit(this, /* raft_log= */ nullptr);
 }
 
 }  // namespace tablet

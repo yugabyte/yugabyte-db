@@ -64,13 +64,13 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   // As usual negative leader_term means that this operation was replicated at the follower.
   CHECKED_STATUS CreateReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS DeleteReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS ListSnapshots(
       const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);

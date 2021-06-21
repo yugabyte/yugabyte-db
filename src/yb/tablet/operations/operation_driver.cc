@@ -99,17 +99,16 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
 
   if (term == OpId::kUnknownTerm) {
     if (operation_) {
-      op_id_copy_.store(operation_->state()->op_id(), boost::memory_order_release);
+      op_id_copy_.store(operation_->op_id(), boost::memory_order_release);
     }
     replication_state_ = REPLICATING;
   } else {
     if (consensus_) {  // sometimes NULL in tests
-      // Unretained is required to avoid a refcount cycle.
       consensus::ReplicateMsgPtr replicate_msg = operation_->NewReplicateMsg();
       auto round = make_scoped_refptr<ConsensusRound>(consensus_, std::move(replicate_msg));
       round->BindToTerm(term);
       round->SetCallback(this);
-      mutable_state()->set_consensus_round(std::move(round));
+      mutable_operation()->set_consensus_round(std::move(round));
     }
   }
 
@@ -119,7 +118,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
   }
 
   if (term == OpId::kUnknownTerm && operation_) {
-    operation_->state()->AddedToFollower();
+    operation_->AddedToFollower();
   }
 
   return result;
@@ -129,12 +128,12 @@ yb::OpId OperationDriver::GetOpId() {
   return op_id_copy_.load(boost::memory_order_acquire);
 }
 
-const OperationState* OperationDriver::state() const {
-  return operation_ != nullptr ? operation_->state() : nullptr;
+const Operation* OperationDriver::operation() const {
+  return operation_.get();
 }
 
-OperationState* OperationDriver::mutable_state() {
-  return operation_ != nullptr ? operation_->state() : nullptr;
+Operation* OperationDriver::mutable_operation() {
+  return operation_.get();
 }
 
 OperationType OperationDriver::operation_type() const {
@@ -165,8 +164,8 @@ void OperationDriver::ExecuteAsync() {
   auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
   if (delay != 0 &&
       operation_type() == OperationType::kWrite &&
-      operation_->state()->tablet()->tablet_id() != master::kSysCatalogTabletId) {
-    LOG(INFO) << "T " << operation_->state()->tablet()->tablet_id()
+      operation_->tablet()->tablet_id() != master::kSysCatalogTabletId) {
+    LOG(INFO) << "T " << operation_->tablet()->tablet_id()
               << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n" << GetStackTrace();
     std::this_thread::sleep_for(1ms * delay);
   }
@@ -187,8 +186,7 @@ void OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
 
-  auto* state = operation_->state();
-  state->AddedToLeader(op_id, committed_op_id);
+  operation_->AddedToLeader(op_id, committed_op_id);
 
   StartOperation();
 }
@@ -386,7 +384,7 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
     auto status = operation_->Replicated(leader_term);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
-        << ", request: " << operation_->state()->request()->ShortDebugString();
+        << ", request: " << operation_->request()->ShortDebugString();
     operation_tracker_->Release(this, applied_op_ids);
   }
 }
@@ -433,8 +431,8 @@ std::string OperationDriver::LogPrefix() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     repl_state_copy = replication_state_;
     prep_state_copy = prepare_state_;
-    ts_string = state() && state()->has_hybrid_time()
-        ? state()->hybrid_time().ToString() : "No hybrid_time";
+    ts_string = operation_ && operation_->has_hybrid_time()
+        ? operation_->hybrid_time().ToString() : "No hybrid_time";
     operation_type = this->operation_type();
   }
 
@@ -452,11 +450,11 @@ int64_t OperationDriver::SpaceUsed() {
   if (!operation_) {
     return 0;
   }
-  auto consensus_round = operation_->state()->consensus_round();
+  auto consensus_round = operation_->consensus_round();
   if (consensus_round) {
     return consensus_round->replicate_msg()->SpaceUsedLong();
   }
-  return state()->request()->SpaceUsedLong();
+  return operation()->request()->SpaceUsedLong();
 }
 
 }  // namespace tablet

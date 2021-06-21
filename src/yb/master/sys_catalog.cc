@@ -640,13 +640,14 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   }
 
   auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &writer->req(), resp.get());
-  operation_state->set_completion_callback(
+  auto operation = std::make_unique<tablet::WriteOperation>(
+      writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
+      tablet_peer()->tablet(), resp.get());
+  *operation->AllocateRequest() = writer->req();
+  operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
-  tablet_peer()->WriteAsync(
-      std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
+  tablet_peer()->WriteAsync(std::move(operation));
   peer_write_count->Increment();
 
   {

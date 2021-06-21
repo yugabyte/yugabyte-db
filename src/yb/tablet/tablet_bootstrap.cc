@@ -101,9 +101,6 @@ DEFINE_test_flag(int32, tablet_bootstrap_delay_ms, 0,
 namespace yb {
 namespace tablet {
 
-struct ReplayState;
-class WriteOperationState;
-
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -899,17 +896,17 @@ class TabletBootstrap {
   CHECKED_STATUS PlayTabletSnapshotRequest(ReplicateMsg* replicate_msg) {
     TabletSnapshotOpRequestPB* const snapshot = replicate_msg->mutable_snapshot_request();
 
-    SnapshotOperationState tx_state(tablet_.get(), snapshot);
-    tx_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    SnapshotOperation operation(tablet_.get(), snapshot);
+    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
-    return tx_state.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
+    return operation.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
 
   CHECKED_STATUS PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {
-    HistoryCutoffOperationState state(
+    HistoryCutoffOperation operation(
         tablet_.get(), replicate_msg->mutable_history_cutoff());
 
-    return state.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
+    return operation.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
 
   CHECKED_STATUS PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
@@ -926,9 +923,9 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    SplitOperationState state(tablet_.get(), data_.tablet_init_data.tablet_splitter, split_request);
-    state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
-    return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(&state, log_.get());
+    SplitOperation operation(tablet_.get(), data_.tablet_init_data.tablet_splitter, split_request);
+    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(&operation, log_.get());
 
     // TODO(tsplit): In scope of https://github.com/yugabyte/yugabyte-db/issues/1461 add integration
     // tests for:
@@ -1328,12 +1325,13 @@ class TabletBootstrap {
 
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
-    WriteOperationState operation_state(nullptr, write, nullptr);
-    operation_state.set_op_id(OpId::FromPB(replicate_msg->id()));
+    WriteOperation operation(OpId::kUnknownTerm, CoarseTimePoint::max(), /* context */ nullptr);
+    *operation.AllocateRequest() = *write;
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
-    operation_state.set_hybrid_time(hybrid_time);
+    operation.set_hybrid_time(hybrid_time);
 
-    auto op_id = operation_state.op_id();
+    auto op_id = operation.op_id();
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
 
     if (test_hooks_ &&
@@ -1347,7 +1345,7 @@ class TabletBootstrap {
     }
 
     auto apply_status = tablet_->ApplyRowOperations(
-        &operation_state, already_applied_to_regular_db);
+        &operation, already_applied_to_regular_db);
     // Failure is regular case, since could happen because transaction was aborted, while
     // replicating its intents.
     LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
@@ -1365,30 +1363,30 @@ class TabletBootstrap {
       RETURN_NOT_OK(SchemaFromPB(request->schema(), &schema));
     }
 
-    ChangeMetadataOperationState operation_state(request);
+    ChangeMetadataOperation operation(request);
 
     // If table id isn't in metadata, ignore the replay as the table might've been dropped.
-    auto table_info = meta_->GetTableInfo(operation_state.table_id());
+    auto table_info = meta_->GetTableInfo(operation.table_id());
     if (!table_info.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Table ID " << operation_state.table_id()
+      LOG_WITH_PREFIX(WARNING) << "Table ID " << operation.table_id()
           << " not found in metadata, skipping this ChangeMetadataRequest";
       return Status::OK();
     }
 
     RETURN_NOT_OK(tablet_->CreatePreparedChangeMetadata(
-        &operation_state, request->has_schema() ? &schema : nullptr));
+        &operation, request->has_schema() ? &schema : nullptr));
 
     if (request->has_schema()) {
       // Apply the alter schema to the tablet.
-      RETURN_NOT_OK_PREPEND(tablet_->AlterSchema(&operation_state), "Failed to AlterSchema:");
+      RETURN_NOT_OK_PREPEND(tablet_->AlterSchema(&operation), "Failed to AlterSchema:");
 
       // Also update the log information. Normally, the AlterSchema() call above takes care of this,
       // but our new log isn't hooked up to the tablet yet.
-      log_->SetSchemaForNextLogSegment(schema, operation_state.schema_version());
+      log_->SetSchemaForNextLogSegment(schema, operation.schema_version());
     }
 
     if (request->has_wal_retention_secs()) {
-      RETURN_NOT_OK_PREPEND(tablet_->AlterWalRetentionSecs(&operation_state),
+      RETURN_NOT_OK_PREPEND(tablet_->AlterWalRetentionSecs(&operation),
                             "Failed to alter wal retention secs");
       log_->set_wal_retention_secs(request->wal_retention_secs());
     }
@@ -1427,9 +1425,9 @@ class TabletBootstrap {
   CHECKED_STATUS PlayTruncateRequest(ReplicateMsg* replicate_msg) {
     TruncateRequestPB* req = replicate_msg->mutable_truncate_request();
 
-    TruncateOperationState operation_state(nullptr, req);
+    TruncateOperation operation(tablet_.get(), req);
 
-    Status s = tablet_->Truncate(&operation_state);
+    Status s = tablet_->Truncate(&operation);
 
     RETURN_NOT_OK_PREPEND(s, "Failed to Truncate:");
 
@@ -1441,11 +1439,11 @@ class TabletBootstrap {
     SCHECK(replicate_msg->has_hybrid_time(),
            Corruption, "A transaction update request must have a hybrid time");
 
-    UpdateTxnOperationState operation_state(
+    UpdateTxnOperation operation(
         /* tablet */ nullptr, replicate_msg->mutable_transaction_state());
-    operation_state.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
-    operation_state.set_hybrid_time(hybrid_time);
+    operation.set_hybrid_time(hybrid_time);
 
     auto op_id = OpId::FromPB(replicate_msg->id());
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
@@ -1462,10 +1460,10 @@ class TabletBootstrap {
     if (transaction_participant) {
       TransactionParticipant::ReplicatedData replicated_data = {
         .leader_term = yb::OpId::kUnknownTerm,
-        .state = *operation_state.request(),
-        .op_id = operation_state.op_id(),
-        .hybrid_time = operation_state.hybrid_time(),
-        .sealed = operation_state.request()->sealed(),
+        .state = *operation.request(),
+        .op_id = operation.op_id(),
+        .hybrid_time = operation.hybrid_time(),
+        .sealed = operation.request()->sealed(),
         .already_applied_to_regular_db = already_applied_to_regular_db
       };
       return transaction_participant->ProcessReplicated(replicated_data);
@@ -1478,10 +1476,10 @@ class TabletBootstrap {
           "No transaction coordinator or participant, cannot process a transaction update request");
     }
     TransactionCoordinator::ReplicatedData replicated_data = {
-        yb::OpId::kUnknownTerm,
-        *operation_state.request(),
-        operation_state.op_id(),
-        operation_state.hybrid_time()
+        .leader_term = yb::OpId::kUnknownTerm,
+        .state = *operation.request(),
+        .op_id = operation.op_id(),
+        .hybrid_time = operation.hybrid_time(),
     };
     return transaction_coordinator->ProcessReplicated(replicated_data);
   }

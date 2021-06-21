@@ -83,7 +83,6 @@ using strings::Substitute;
 using tablet::YBTabletTest;
 using tablet::TabletPeer;
 using tablet::RaftGroupReplicaSuperBlockPB;
-using tablet::WriteOperationState;
 
 const int64_t kLeaderTerm = 1;
 
@@ -206,10 +205,13 @@ class RemoteBootstrapTest : public YBTabletTest {
       WriteResponsePB resp;
       CountDownLatch latch(1);
 
-      auto state = std::make_unique<WriteOperationState>(tablet_peer_->tablet(), &req, &resp);
-      state->set_completion_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
-      tablet_peer_->WriteAsync(
-          std::move(state), kLeaderTerm, CoarseTimePoint::max() /* deadline */);
+      auto operation = std::make_unique<tablet::WriteOperation>(
+          kLeaderTerm, CoarseTimePoint::max() /* deadline */, tablet_peer_.get(),
+          tablet_peer_->tablet(), &resp);
+      *operation->AllocateRequest() = req;
+      operation->set_completion_callback(
+          tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
+      tablet_peer_->WriteAsync(std::move(operation));
       latch.Wait();
       ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
       ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp.ql_response_batch(0).status()) <<

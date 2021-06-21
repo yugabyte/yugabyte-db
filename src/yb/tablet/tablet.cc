@@ -1029,33 +1029,33 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 }
 
 Status Tablet::ApplyRowOperations(
-    WriteOperationState* operation_state, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+    WriteOperation* operation, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   const auto& write_request =
-      operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
+      operation->consensus_round() && operation->consensus_round()->replicate_msg()
           // Online case.
-          ? operation_state->consensus_round()->replicate_msg()->write_request()
+          ? operation->consensus_round()->replicate_msg()->write_request()
           // Bootstrap case.
-          : *operation_state->request();
+          : *operation->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
     metrics_->rows_inserted->IncrementBy(write_request.write_batch().write_pairs().size());
   }
 
-  return ApplyOperationState(
-      *operation_state, write_request.batch_idx(), put_batch, already_applied_to_regular_db);
+  return ApplyOperation(
+      *operation, write_request.batch_idx(), put_batch, already_applied_to_regular_db);
 }
 
-Status Tablet::ApplyOperationState(
-    const OperationState& operation_state, int64_t batch_idx,
+Status Tablet::ApplyOperation(
+    const Operation& operation, int64_t batch_idx,
     const docdb::KeyValueWriteBatchPB& write_batch,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
-  auto hybrid_time = operation_state.WriteHybridTime();
+  auto hybrid_time = operation.WriteHybridTime();
 
   docdb::ConsensusFrontiers frontiers;
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
   auto frontiers_ptr =
-      InitFrontiers(operation_state.op_id(), operation_state.hybrid_time(), &frontiers);
+      InitFrontiers(operation.op_id(), operation.hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(
       batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
@@ -1233,7 +1233,7 @@ void Tablet::KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteOperation> op
   docdb::DocOperations& doc_ops = operation->doc_ops();
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   WriteRequestPB batch_request;
-  SetupKeyValueBatch(operation->request(), &batch_request);
+  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
   auto* redis_write_batch = batch_request.mutable_redis_write_batch();
 
   doc_ops.reserve(redis_write_batch->size());
@@ -1375,7 +1375,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
 
   docdb::DocOperations& doc_ops = operation->doc_ops();
   WriteRequestPB batch_request;
-  SetupKeyValueBatch(operation->request(), &batch_request);
+  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
   auto* ql_write_batch = batch_request.mutable_ql_write_batch();
 
   doc_ops.reserve(ql_write_batch->size());
@@ -1463,7 +1463,7 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
       // If the QL write op returns a rowblock, move the op to the transaction state to return the
       // rows data as a sidecar after the transaction completes.
       doc_ops[i].release();
-      operation->state()->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
+      operation->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
     }
   }
 
@@ -1566,11 +1566,11 @@ void Tablet::UpdateQLIndexesFlushed(
     if (status.IsIOError()) {
       for (const auto& error : flush_status->errors) {
         // return just the first error seen.
-        operation->state()->CompleteWithStatus(error->status());
+        operation->CompleteWithStatus(error->status());
         return;
       }
     }
-    operation->state()->CompleteWithStatus(status);
+    operation->CompleteWithStatus(status);
     return;
   }
 
@@ -1578,7 +1578,7 @@ void Tablet::UpdateQLIndexesFlushed(
   if (txn) {
     auto finish_result = txn->FinishChild();
     if (!finish_result.ok()) {
-      operation->state()->CompleteWithStatus(finish_result.status());
+      operation->CompleteWithStatus(finish_result.status());
       return;
     }
     child_result = std::move(*finish_result);
@@ -1736,7 +1736,7 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
   docdb::DocOperations& doc_ops = operation->doc_ops();
   WriteRequestPB batch_request;
 
-  SetupKeyValueBatch(operation->request(), &batch_request);
+  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
   auto* pgsql_write_batch = batch_request.mutable_pgsql_write_batch();
 
   doc_ops.reserve(pgsql_write_batch->size());
@@ -1810,8 +1810,7 @@ void Tablet::KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteOperation> op
       PgsqlWriteOperation* pgsql_write_op = down_cast<PgsqlWriteOperation*>(doc_ops[i].get());
       // We'll need to return the number of rows inserted, updated, or deleted by each operation.
       doc_ops[i].release();
-      operation->state()->pgsql_write_ops()
-                        ->emplace_back(unique_ptr<PgsqlWriteOperation>(pgsql_write_op));
+      operation->pgsql_write_ops()->emplace_back(unique_ptr<PgsqlWriteOperation>(pgsql_write_op));
     }
 
     WriteOperation::StartSynchronization(std::move(operation), Status::OK());
@@ -1823,12 +1822,12 @@ void Tablet::KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteOperation> op
 void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation) {
   TRACE(__func__);
   if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    operation->state()->CompleteWithStatus(
+    operation->CompleteWithStatus(
         STATUS(NotSupported, "Transaction status table does not support write"));
     return;
   }
 
-  const WriteRequestPB* key_value_write_request = operation->state()->request();
+  const WriteRequestPB* key_value_write_request = operation->request();
   if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
     auto write_permit = GetPermitToWrite(operation->deadline());
     if (!write_permit.ok()) {
@@ -1860,7 +1859,7 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
     if (!key_value_write_request->write_batch().read_pairs().empty()) {
       ScopedRWOperation scoped_operation(&pending_op_counter_);
       if (!scoped_operation.ok()) {
-        operation->state()->CompleteWithStatus(MoveStatus(scoped_operation));
+        operation->CompleteWithStatus(MoveStatus(scoped_operation));
         return;
       }
 
@@ -1879,7 +1878,7 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
   // Just report it as error in release mode.
   LOG(DFATAL) << "Empty write";
 
-  operation->state()->CompleteWithStatus(Status::OK());
+  operation->CompleteWithStatus(Status::OK());
 }
 
 Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick) {
@@ -1991,11 +1990,10 @@ Result<HybridTime> Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoi
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
 }
 
-Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operation_state,
-                                            const Schema* schema) {
+Status Tablet::CreatePreparedChangeMetadata(
+    ChangeMetadataOperation *operation, const Schema* schema) {
   if (schema) {
-    auto key_schema = GetKeySchema(
-        operation_state->has_table_id() ? operation_state->table_id() : "");
+    auto key_schema = GetKeySchema(operation->has_table_id() ? operation->table_id() : "");
     if (!key_schema.KeyEquals(*schema)) {
       return STATUS_FORMAT(
           InvalidArgument,
@@ -2010,7 +2008,7 @@ Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operat
     }
   }
 
-  operation_state->set_schema(schema);
+  operation->set_schema(schema);
   return Status::OK();
 }
 
@@ -2050,50 +2048,52 @@ Status Tablet::MarkBackfillDone(const TableId& table_id) {
   return metadata_->Flush();
 }
 
-Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
+Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
-        operation_state->request()->has_alter_table_id() ?
-        operation_state->request()->alter_table_id() : ""));
+        operation->request()->has_alter_table_id() ?
+        operation->request()->alter_table_id() : ""));
   auto key_schema = current_table_info->schema.CreateKeyProjection();
 
-  RSTATUS_DCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())), IllegalState,
-      "Schema keys cannot be altered");
+  RSTATUS_DCHECK_NE(operation->schema(), static_cast<void*>(nullptr), InvalidArgument,
+                    "Schema could not be null");
+  RSTATUS_DCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation->schema())), InvalidArgument,
+                 "Schema keys cannot be altered");
 
   auto op_pause = PauseReadWriteOperations();
   RETURN_NOT_OK(op_pause);
 
   // If the current version >= new version, there is nothing to do.
-  if (current_table_info->schema_version >= operation_state->schema_version()) {
+  if (current_table_info->schema_version >= operation->schema_version()) {
     LOG_WITH_PREFIX(INFO)
         << "Already running schema version " << current_table_info->schema_version
-        << " got alter request for version " << operation_state->schema_version();
+        << " got alter request for version " << operation->schema_version();
     return Status::OK();
   }
 
   LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema.ToString()
                         << " version " << current_table_info->schema_version
-                        << " to " << operation_state->schema()->ToString()
-                        << " version " << operation_state->schema_version();
+                        << " to " << operation->schema()->ToString()
+                        << " version " << operation->schema_version();
 
   // Find out which columns have been deleted in this schema change, and add them to metadata.
   vector<DeletedColumn> deleted_cols;
   for (const auto& col : current_table_info->schema.column_ids()) {
-    if (operation_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
+    if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
       deleted_cols.emplace_back(col, clock_->Now());
       LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
     }
   }
 
-  metadata_->SetSchema(*operation_state->schema(), operation_state->index_map(), deleted_cols,
-                       operation_state->schema_version(), current_table_info->table_id);
-  if (operation_state->has_new_table_name()) {
-    metadata_->SetTableName(current_table_info->namespace_name, operation_state->new_table_name());
+  metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
+                       operation->schema_version(), current_table_info->table_id);
+  if (operation->has_new_table_name()) {
+    metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
     if (table_metrics_entity_) {
-      table_metrics_entity_->SetAttribute("table_name", operation_state->new_table_name());
+      table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
       table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
     if (tablet_metrics_entity_) {
-      tablet_metrics_entity_->SetAttribute("table_name", operation_state->new_table_name());
+      tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
       tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
   }
@@ -2102,7 +2102,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   ResetYBMetaDataCache();
 
   // Create transaction manager and index table metadata cache for secondary index update.
-  if (!operation_state->index_map().empty()) {
+  if (!operation->index_map().empty()) {
     if (current_table_info->schema.table_properties().is_transactional() && !transaction_manager_) {
       transaction_manager_.emplace(client_future_.get(),
                                    scoped_refptr<server::Clock>(clock_),
@@ -2115,17 +2115,17 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   return metadata_->Flush();
 }
 
-Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state) {
-  if (operation_state->has_wal_retention_secs()) {
+Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
+  if (operation->has_wal_retention_secs()) {
     LOG_WITH_PREFIX(INFO) << "Altering metadata wal_retention_secs from "
                           << metadata_->wal_retention_secs()
-                          << " to " << operation_state->wal_retention_secs();
-    metadata_->set_wal_retention_secs(operation_state->wal_retention_secs());
+                          << " to " << operation->wal_retention_secs();
+    metadata_->set_wal_retention_secs(operation->wal_retention_secs());
     // Flush the updated schema metadata to disk.
     return metadata_->Flush();
   }
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid ChangeMetadataOperationState: $0",
-      operation_state->ToString());
+  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid ChangeMetadataOperation: $0",
+                           operation->ToString());
 }
 
 // Assume that we are already in the Backfilling mode.
@@ -2593,7 +2593,7 @@ Status Tablet::ModifyFlushedFrontier(
   return Flush(FlushMode::kAsync);
 }
 
-Status Tablet::Truncate(TruncateOperationState *state) {
+Status Tablet::Truncate(TruncateOperation* operation) {
   if (metadata_->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     // We use only Raft log for transaction status table.
     return Status::OK();
@@ -2628,8 +2628,8 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   }
 
   docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(state->op_id());
-  frontier.set_hybrid_time(state->hybrid_time());
+  frontier.set_op_id(operation->op_id());
+  frontier.set_hybrid_time(operation->hybrid_time());
   // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
   // different tablet in an arbitrary Raft group, here there is no possibility of the flushed
   // frontier needing to go backwards.
@@ -2837,7 +2837,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
   }
 
   CHECKED_STATUS DoStart() {
-    auto write_batch = operation_->request()->mutable_write_batch();
+    auto write_batch = operation_->mutable_request()->mutable_write_batch();
     isolation_level_ = VERIFY_RESULT(tablet_.GetIsolationLevelFromPB(*write_batch));
     const RowMarkType row_mark_type = GetRowMarkTypeFromPB(*write_batch);
     const auto& metadata = *tablet_.metadata();
@@ -2854,7 +2854,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
     const auto partial_range_key_intents = UsePartialRangeKeyIntents(metadata);
     prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
         operation_->doc_ops(), write_batch->read_pairs(), tablet_.metrics()->write_lock_latency,
-        isolation_level_, operation_->state()->kind(), row_mark_type, transactional_table,
+        isolation_level_, operation_->kind(), row_mark_type, transactional_table,
         operation_->deadline(), partial_range_key_intents, tablet_.shared_lock_manager()));
 
     auto* transaction_participant = tablet_.transaction_participant();
@@ -2988,7 +2988,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
     for (;;) {
       RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
           operation_->doc_ops(), operation_->deadline(), real_read_time, tablet_.doc_db(),
-          operation_->request()->mutable_write_batch(), init_marker_behavior,
+          operation_->mutable_request()->mutable_write_batch(), init_marker_behavior,
           tablet_.monotonic_counter(), &restart_read_ht,
           tablet_.metadata()->table_name()));
 
@@ -3007,7 +3007,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
 
       restart_read_ht = HybridTime();
 
-      operation_->request()->mutable_write_batch()->clear_write_pairs();
+      operation_->mutable_request()->mutable_write_batch()->clear_write_pairs();
 
       for (auto& doc_op : operation_->doc_ops()) {
         doc_op->ClearResponse();
@@ -3026,7 +3026,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
       return Status::OK();
     }
 
-    operation_->state()->ReplaceDocDBLocks(std::move(prepare_result_.lock_batch));
+    operation_->ReplaceDocDBLocks(std::move(prepare_result_.lock_batch));
 
     return Status::OK();
   }
@@ -3510,12 +3510,12 @@ void Tablet::SplitDone() {
 
   completed_split_operation_filter_ = MakeFunctorOperationFilter(
       [this](const OpId& op_id, consensus::OperationType op_type) -> Status {
-    if (SplitOperationState::ShouldAllowOpAfterSplitTablet(op_type)) {
+    if (SplitOperation::ShouldAllowOpAfterSplitTablet(op_type)) {
       return Status::OK();
     }
 
     auto children = metadata_->split_child_tablet_ids();
-    return SplitOperationState::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
+    return SplitOperation::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
   });
   operation_filters_.push_back(*completed_split_operation_filter_);
 
@@ -3532,11 +3532,11 @@ void Tablet::SyncRestoringOperationFilter() {
     }
     restoring_operation_filter_ = MakeFunctorOperationFilter(
         [](const OpId& op_id, consensus::OperationType op_type) -> Status {
-      if (SnapshotOperationState::ShouldAllowOpDuringRestore(op_type)) {
+      if (SnapshotOperation::ShouldAllowOpDuringRestore(op_type)) {
         return Status::OK();
       }
 
-      return SnapshotOperationState::RejectionStatus(op_id, op_type);
+      return SnapshotOperation::RejectionStatus(op_id, op_type);
     });
     operation_filters_.push_back(*restoring_operation_filter_);
   } else {

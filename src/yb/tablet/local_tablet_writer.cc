@@ -51,10 +51,10 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
   }
   req_.mutable_ql_write_batch()->Swap(batch);
 
-  auto state = std::make_unique<WriteOperationState>(tablet_, &req_, &resp_);
   auto operation = std::make_unique<WriteOperation>(
-      std::move(state), OpId::kUnknownTerm, ScopedOperation(),
-      CoarseTimePoint::max() /* deadline */, this);
+      OpId::kUnknownTerm, CoarseTimePoint::max() /* deadline */, this,
+      tablet_, &resp_);
+  *operation->AllocateRequest() = req_;
   write_promise_ = std::promise<Status>();
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 
@@ -62,13 +62,13 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
 }
 
 void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t term) {
-  auto state = down_cast<WriteOperationState*>(operation->state());
+  auto state = down_cast<WriteOperation*>(operation.get());
   OpId op_id(term, Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
 
   auto hybrid_time = tablet_->mvcc_manager()->AddLeaderPending(op_id);
   state->set_hybrid_time(hybrid_time);
 
-  // Create a "fake" OpId and set it in the OperationState for anchoring.
+  // Create a "fake" OpId and set it in the Operation for anchoring.
   state->set_op_id(op_id);
 
   CHECK_OK(tablet_->ApplyRowOperations(state));

@@ -786,8 +786,7 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   }
 }
 
-Status TSTabletManager::ApplyTabletSplit(
-    tablet::SplitOperationState* op_state, log::Log* raft_log) {
+Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log::Log* raft_log) {
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_apply_tablet_split_op)) {
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
   }
@@ -796,20 +795,20 @@ Status TSTabletManager::ApplyTabletSplit(
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
-  auto* tablet = CHECK_NOTNULL(op_state->tablet());
+  auto* tablet = CHECK_NOTNULL(operation->tablet());
   const auto tablet_id = tablet->tablet_id();
-  const auto* request = op_state->request();
+  const auto* request = operation->request();
   SCHECK_EQ(
       request->tablet_id(), tablet_id, IllegalState,
       Format(
           "Unexpected SPLIT_OP $0 designated for tablet $1 to be applied to tablet $2",
-          op_state->op_id(), request->tablet_id(), tablet_id));
+          operation->op_id(), request->tablet_id(), tablet_id));
   SCHECK(
       tablet_id != request->new_tablet1_id() && tablet_id != request->new_tablet2_id(),
       IllegalState,
       Format(
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
-          op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
+          operation->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation apply started";
 
@@ -834,7 +833,8 @@ Status TSTabletManager::ApplyTabletSplit(
 
   if (FLAGS_TEST_apply_tablet_split_inject_delay_ms > 0) {
     LOG(INFO) << "TEST: ApplyTabletSplit: injecting delay of "
-              << FLAGS_TEST_apply_tablet_split_inject_delay_ms << " ms for " << AsString(*op_state);
+              << FLAGS_TEST_apply_tablet_split_inject_delay_ms << " ms for "
+              << AsString(*operation);
     std::this_thread::sleep_for(FLAGS_TEST_apply_tablet_split_inject_delay_ms * 1ms);
     LOG(INFO) << "TEST: ApplyTabletSplit: delay finished";
   }
@@ -864,8 +864,8 @@ Status TSTabletManager::ApplyTabletSplit(
 
     // Copy raft group metadata.
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
-        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, op_state->op_id(),
-        op_state->hybrid_time()));
+        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, operation->op_id(),
+        operation->hybrid_time()));
     LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
                           << " tablet: " << new_tablet_id;
 
@@ -885,7 +885,7 @@ Status TSTabletManager::ApplyTabletSplit(
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
   }
 
-  meta.SetSplitDone(op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id());
+  meta.SetSplitDone(operation->op_id(), request->new_tablet1_id(), request->new_tablet2_id());
   RETURN_NOT_OK(meta.Flush());
 
   tablet->SplitDone();

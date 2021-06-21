@@ -67,10 +67,10 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
   tserver::ChangeMetadataRequestPB req;
   req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
-  ChangeMetadataOperationState operation_state(nullptr, nullptr, &req);
-  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(&operation_state, &schema));
-  ASSERT_OK(tablet()->AlterSchema(&operation_state));
-  operation_state.Release();
+  ChangeMetadataOperation operation(nullptr, nullptr, &req);
+  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(&operation, &schema));
+  ASSERT_OK(tablet()->AlterSchema(&operation));
+  operation.Release();
 }
 
 Status IterateToStringList(

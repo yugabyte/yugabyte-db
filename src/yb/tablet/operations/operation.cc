@@ -49,35 +49,38 @@ using consensus::DriverType;
 using tserver::TabletServerError;
 using tserver::TabletServerErrorPB;
 
-Operation::Operation(std::unique_ptr<OperationState> state,
-                     OperationType operation_type)
-    : state_(std::move(state)),
-      operation_type_(operation_type) {
+Operation::Operation(OperationType operation_type, Tablet* tablet)
+    : operation_type_(operation_type), tablet_(tablet) {
 }
 
+Operation::~Operation() {}
+
 std::string Operation::LogPrefix() const {
-  return Format("T $0 $1: ", state()->tablet()->tablet_id(), this);
+  return Format("T $0 $1: ", tablet()->tablet_id(), this);
 }
+
+std::string Operation::ToString() const {
+  return Format("{ type: $0 consensus_round: $1 }", operation_type(), consensus_round());
+}
+
 
 Status Operation::Replicated(int64_t leader_term) {
   Status complete_status = Status::OK();
   RETURN_NOT_OK(DoReplicated(leader_term, &complete_status));
-  auto state = this->state();
-  state->Replicated();
-  state->Release();
-  state->CompleteWithStatus(complete_status);
+  Replicated();
+  Release();
+  CompleteWithStatus(complete_status);
   return Status::OK();
 }
 
 void Operation::Aborted(const Status& status) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << status;
-  auto state = this->state();
-  state->Aborted();
-  state->Release();
-  state->CompleteWithStatus(DoAborted(status));
+  Aborted();
+  Release();
+  CompleteWithStatus(DoAborted(status));
 }
 
-void OperationState::CompleteWithStatus(const Status& status) const {
+void Operation::CompleteWithStatus(const Status& status) const {
   bool expected = false;
   if (!complete_.compare_exchange_strong(expected, true)) {
     LOG_WITH_PREFIX(DFATAL) << __func__ << " called twice, new status: " << status;
@@ -88,40 +91,24 @@ void OperationState::CompleteWithStatus(const Status& status) const {
   }
 }
 
-OperationState::OperationState(Tablet* tablet)
-    : tablet_(tablet) {
-}
-
-void OperationState::set_consensus_round(const consensus::ConsensusRoundPtr& consensus_round) {
+void Operation::set_consensus_round(const consensus::ConsensusRoundPtr& consensus_round) {
   consensus_round_ = consensus_round;
-  op_id_ = consensus_round_->id();
+  set_op_id(consensus_round_->id());
   UpdateRequestFromConsensusRound();
 }
 
-OperationState::~OperationState() {
-}
-
-void OperationState::set_hybrid_time(const HybridTime& hybrid_time) {
+void Operation::set_hybrid_time(const HybridTime& hybrid_time) {
   // make sure we set the hybrid_time only once
   std::lock_guard<simple_spinlock> l(mutex_);
   DCHECK(!hybrid_time_.is_valid());
   hybrid_time_ = hybrid_time;
 }
 
-std::string OperationState::LogPrefix() const {
-  return Format("$0: ", this);
-}
-
-HybridTime OperationState::WriteHybridTime() const {
+HybridTime Operation::WriteHybridTime() const {
   return hybrid_time();
 }
 
-std::string OperationState::ConsensusRoundAsString() const {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  return AsString(consensus_round());
-}
-
-void OperationState::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
+void Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   HybridTime hybrid_time;
   if (use_mvcc()) {
     hybrid_time = tablet_->mvcc_manager()->AddLeaderPending(op_id);
@@ -143,7 +130,7 @@ void OperationState::AddedToLeader(const OpId& op_id, const OpId& committed_op_i
   AddedAsPending();
 }
 
-void OperationState::AddedToFollower() {
+void Operation::AddedToFollower() {
   if (use_mvcc()) {
     tablet()->mvcc_manager()->AddFollowerPending(hybrid_time(), op_id());
   }
@@ -151,7 +138,7 @@ void OperationState::AddedToFollower() {
   AddedAsPending();
 }
 
-void OperationState::Aborted() {
+void Operation::Aborted() {
   if (use_mvcc()) {
     auto hybrid_time = hybrid_time_even_if_unset();
     if (hybrid_time.is_valid()) {
@@ -162,7 +149,7 @@ void OperationState::Aborted() {
   RemovedFromPending();
 }
 
-void OperationState::Replicated() {
+void Operation::Replicated() {
   if (use_mvcc()) {
     tablet()->mvcc_manager()->Replicated(hybrid_time(), op_id());
   }
@@ -170,10 +157,10 @@ void OperationState::Replicated() {
   RemovedFromPending();
 }
 
-void OperationState::Release() {
+void Operation::Release() {
 }
 
-void ExclusiveSchemaOperationStateBase::ReleasePermitToken() {
+void ExclusiveSchemaOperationBase::ReleasePermitToken() {
   permit_token_.Reset();
   TRACE("Released permit token");
 }

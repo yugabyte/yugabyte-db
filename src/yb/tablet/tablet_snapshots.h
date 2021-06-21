@@ -49,18 +49,18 @@ class TabletSnapshots : public TabletComponent {
   explicit TabletSnapshots(Tablet* tablet);
 
   // Create snapshot for this tablet.
-  CHECKED_STATUS Create(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Create(SnapshotOperation* operation);
 
   CHECKED_STATUS Create(const CreateSnapshotData& data);
 
   // Restore snapshot for this tablet. In addition to backup/restore, this is used for initial
   // syscatalog RocksDB creation without the initdb overhead.
-  CHECKED_STATUS Restore(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Restore(SnapshotOperation* operation);
 
   // Delete snapshot for this tablet.
-  CHECKED_STATUS Delete(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Delete(SnapshotOperation* operation);
 
-  CHECKED_STATUS RestoreFinished(SnapshotOperationState* tx_state);
+  CHECKED_STATUS RestoreFinished(SnapshotOperation* operation);
 
   // Prepares the operation context for a snapshot operation.
   CHECKED_STATUS Prepare(SnapshotOperation* operation);
@@ -96,7 +96,7 @@ class TabletSnapshots : public TabletComponent {
       const docdb::ConsensusFrontier& frontier);
 
   // Applies specified snapshot operation.
-  CHECKED_STATUS Apply(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Apply(SnapshotOperation* operation);
 
   CHECKED_STATUS CleanupSnapshotDir(const std::string& dir);
   Env& env();

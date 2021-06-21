@@ -171,7 +171,7 @@ bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
 }
 
 Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
-    const tablet::SnapshotOperationState& state) const {
+    const tablet::SnapshotOperation& operation) const {
   if (!schedule_id_) {
     static Status result(STATUS(Uninitialized, ""));
     return result;
@@ -179,9 +179,9 @@ Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
 
   return tablet::CreateSnapshotData {
     .snapshot_hybrid_time = snapshot_hybrid_time_,
-    .hybrid_time = state.hybrid_time(),
-    .op_id = state.op_id(),
-    .snapshot_dir = VERIFY_RESULT(state.GetSnapshotDir()),
+    .hybrid_time = operation.hybrid_time(),
+    .op_id = operation.op_id(),
+    .snapshot_dir = VERIFY_RESULT(operation.GetSnapshotDir()),
     .schedule_id = schedule_id_,
   };
 }

@@ -118,7 +118,7 @@ class TransactionParticipantContext {
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual bool IsLeader() = 0;
   virtual void SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
+      std::unique_ptr<UpdateTxnOperation> state, int64_t term) = 0;
 
   // Returns hybrid time that lower than any future transaction apply record.
   virtual HybridTime SafeTimeForTransactionParticipant() = 0;
@@ -182,7 +182,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
   void Cleanup(TransactionIdSet&& set) override;
 

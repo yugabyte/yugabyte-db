@@ -63,18 +63,14 @@ void SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term,
     SnapshotCoordinatorContext* context,
     const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
-  tserver::WriteRequestPB empty_write_request;
-  auto state = std::make_unique<tablet::WriteOperationState>(
-      /* tablet= */ nullptr, &empty_write_request);
+  auto operation = std::make_unique<tablet::WriteOperation>(
+      leader_term, CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
+      /* context */ nullptr, /* tablet= */ nullptr);
   if (synchronizer) {
-    state->set_completion_callback(
+    operation->set_completion_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
   }
-  auto& request = *state->mutable_request();
-  *request.mutable_write_batch() = std::move(write_batch);
-  auto operation = std::make_unique<tablet::WriteOperation>(
-      std::move(state), yb::OpId::kUnknownTerm, ScopedOperation(),
-      CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms, /* context */ nullptr);
+  *operation->AllocateRequest()->mutable_write_batch() = std::move(write_batch);
   context->Submit(std::move(operation), leader_term);
 }
 
@@ -168,13 +164,13 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   CHECKED_STATUS CreateReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) {
+      int64_t leader_term, const tablet::SnapshotOperation& operation) {
     // TODO(txn_backup) retain logs with this operation while doing snapshot
-    auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(state.request()->snapshot_id()));
+    auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
 
-    VLOG(1) << __func__ << "(" << id << ", " << state.ToString() << ")";
+    VLOG(1) << __func__ << "(" << id << ", " << operation.ToString() << ")";
 
-    auto snapshot = std::make_unique<SnapshotState>(&context_, id, *state.request());
+    auto snapshot = std::make_unique<SnapshotState>(&context_, id, *operation.request());
 
     TabletSnapshotOperations operations;
     docdb::KeyValueWriteBatchPB write_batch;
@@ -190,7 +186,7 @@ class MasterSnapshotCoordinator::Impl {
       if (leader_term >= 0) {
         (**emplace_result.first).PrepareOperations(&operations);
       }
-      auto temp = (**emplace_result.first).SysCatalogSnapshotData(state);
+      auto temp = (**emplace_result.first).SysCatalogSnapshotData(operation);
       if (temp.ok()) {
         sys_catalog_snapshot_data = *temp;
       } else if (!temp.status().IsUninitialized()) {
@@ -198,7 +194,7 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    RETURN_NOT_OK(state.tablet()->ApplyOperationState(state, /* batch_idx= */ -1, write_batch));
+    RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));
     if (sys_catalog_snapshot_data) {
       RETURN_NOT_OK(context_.CreateSysCatalogSnapshot(*sys_catalog_snapshot_data));
     }
@@ -336,8 +332,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   CHECKED_STATUS DeleteReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) {
-    auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(state.request()->snapshot_id()));
+      int64_t leader_term, const tablet::SnapshotOperation& operation) {
+    auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
     VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
 
     docdb::KeyValueWriteBatchPB write_batch;
@@ -352,7 +348,7 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    RETURN_NOT_OK(state.tablet()->ApplyOperationState(state, /* batch_idx= */ -1, write_batch));
+    RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));
 
     ExecuteOperations(operations, leader_term);
 
@@ -360,14 +356,14 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) {
+      int64_t leader_term, const tablet::SnapshotOperation& operation) {
     auto restoration = std::make_shared<SnapshotScheduleRestoration>(SnapshotScheduleRestoration {
-      .snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(state.request()->snapshot_id())),
-      .restore_at = HybridTime::FromPB(state.request()->snapshot_hybrid_time()),
+      .snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id())),
+      .restore_at = HybridTime::FromPB(operation.request()->snapshot_hybrid_time()),
       .restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(
-          state.request()->restoration_id())),
-      .op_id = state.op_id(),
-      .write_time = state.hybrid_time(),
+          operation.request()->restoration_id())),
+      .op_id = operation.op_id(),
+      .write_time = operation.hybrid_time(),
       .term = leader_term,
     });
     {
@@ -840,8 +836,8 @@ class MasterSnapshotCoordinator::Impl {
       const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
       HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id, int64_t leader_term,
       tablet::OperationCompletionCallback completion_clbk) {
-    auto operation_state = std::make_unique<tablet::SnapshotOperationState>(/* tablet= */ nullptr);
-    auto request = operation_state->AllocateRequest();
+    auto operation = std::make_unique<tablet::SnapshotOperation>(/* tablet= */ nullptr);
+    auto request = operation->AllocateRequest();
 
     VLOG(1) << __func__ << "(" << AsString(entries) << ", " << imported << ", " << schedule_id
             << ", " << snapshot_id << ")";
@@ -867,8 +863,7 @@ class MasterSnapshotCoordinator::Impl {
 
     request->mutable_extra_data()->PackFrom(entries);
 
-    operation_state->set_completion_callback(std::move(completion_clbk));
-    auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
+    operation->set_completion_callback(std::move(completion_clbk));
 
     context_.Submit(std::move(operation), leader_term);
 
@@ -877,13 +872,13 @@ class MasterSnapshotCoordinator::Impl {
 
   void SubmitDelete(const TxnSnapshotId& snapshot_id, int64_t leader_term,
                     const std::shared_ptr<Synchronizer>& synchronizer) {
-    auto operation_state = std::make_unique<tablet::SnapshotOperationState>(nullptr);
-    auto request = operation_state->AllocateRequest();
+    auto operation = std::make_unique<tablet::SnapshotOperation>(nullptr);
+    auto request = operation->AllocateRequest();
 
     request->set_operation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER);
     request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
 
-    operation_state->set_completion_callback(
+    operation->set_completion_callback(
         [this, wsynchronizer = std::weak_ptr<Synchronizer>(synchronizer), snapshot_id]
         (const Status& status) {
           auto synchronizer = wsynchronizer.lock();
@@ -894,7 +889,6 @@ class MasterSnapshotCoordinator::Impl {
             DeleteSnapshotAborted(status, snapshot_id);
           }
         });
-    auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
 
     context_.Submit(std::move(operation), leader_term);
   }
@@ -902,8 +896,8 @@ class MasterSnapshotCoordinator::Impl {
   void SubmitRestore(const TxnSnapshotId& snapshot_id, HybridTime restore_at,
                      const TxnSnapshotRestorationId& restoration_id, int64_t leader_term,
                      const std::shared_ptr<Synchronizer>& synchronizer) {
-    auto operation_state = std::make_unique<tablet::SnapshotOperationState>(nullptr);
-    auto request = operation_state->AllocateRequest();
+    auto operation = std::make_unique<tablet::SnapshotOperation>(nullptr);
+    auto request = operation->AllocateRequest();
 
     request->set_operation(tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG);
     request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
@@ -912,9 +906,8 @@ class MasterSnapshotCoordinator::Impl {
       request->set_restoration_id(restoration_id.data(), restoration_id.size());
     }
 
-    operation_state->set_completion_callback(
+    operation->set_completion_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
-    auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
 
     context_.Submit(std::move(operation), leader_term);
   }
@@ -1143,18 +1136,18 @@ Result<TxnSnapshotId> MasterSnapshotCoordinator::Create(
 }
 
 Status MasterSnapshotCoordinator::CreateReplicated(
-    int64_t leader_term, const tablet::SnapshotOperationState& state) {
-  return impl_->CreateReplicated(leader_term, state);
+    int64_t leader_term, const tablet::SnapshotOperation& operation) {
+  return impl_->CreateReplicated(leader_term, operation);
 }
 
 Status MasterSnapshotCoordinator::DeleteReplicated(
-    int64_t leader_term, const tablet::SnapshotOperationState& state) {
-  return impl_->DeleteReplicated(leader_term, state);
+    int64_t leader_term, const tablet::SnapshotOperation& operation) {
+  return impl_->DeleteReplicated(leader_term, operation);
 }
 
 Status MasterSnapshotCoordinator::RestoreSysCatalogReplicated(
-    int64_t leader_term, const tablet::SnapshotOperationState& state) {
-  return impl_->RestoreSysCatalogReplicated(leader_term, state);
+    int64_t leader_term, const tablet::SnapshotOperation& operation) {
+  return impl_->RestoreSysCatalogReplicated(leader_term, operation);
 }
 
 Status MasterSnapshotCoordinator::ListSnapshots(
