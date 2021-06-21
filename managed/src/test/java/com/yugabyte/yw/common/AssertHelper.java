@@ -21,7 +21,7 @@ import static play.test.Helpers.contentAsString;
 
 public class AssertHelper {
   public static void assertOk(Result result) {
-    assertEquals(OK, result.status());
+    assertEquals(contentAsString(result), OK, result.status());
   }
 
   public static void assertBadRequest(Result result, String errorStr) {

@@ -81,9 +81,7 @@ public class YsqlQueryExecutor {
               .put("count", p.getUpdateCount());
         }
       }
-    } catch (SQLException e) {
-      response.put("error", e.getMessage());
-    } catch (Exception e) {
+    } catch (SQLException | RuntimeException e) {
       response.put("error", e.getMessage());
     }
     return response;
