@@ -101,3 +101,18 @@ Upstream postgres has a default option called "fastupdate" that writes rows to
 a buffer (called pending list) before flushing to disk for performance
 purposes.  YB won't do this in the first iteration, and it may never do it at
 all since, in a multi-node setup, this list needs to be cached on all nodes.
+
+## extensions
+
+Some extensions extend gin:
+
+- `btree_gin`: add opclasses to support ordinary types (no element extraction)
+  so that they can be pseudo-included in gin indexes, which don't allow
+  included columns
+- `hstore`: add opclass to support `hstore` type
+- `intarray`: add opclass to support faster and more operators on `_int4`
+  (`int4` array) type without nulls
+- `pg_trgm`: add opclass to support trigram text search on `text` type
+
+A `ybgin` equivalent can be created for each.  Creating the system objects is
+simple, but the underlying implementation may need to be rewritten.
