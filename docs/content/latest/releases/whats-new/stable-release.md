@@ -47,7 +47,7 @@ This bug does not affect version 2.4.0.0.
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.4.5.0-b12
+docker pull yugabytedb/yugabyte:2.4.5.0-b18
 ```
 
 ### Improvements
