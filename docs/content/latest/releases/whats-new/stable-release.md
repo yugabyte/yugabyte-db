@@ -27,7 +27,7 @@ This bug does not affect version 2.4.0.0.
 
 {{< /warning >}}
 
-## v2.4.5.0 - June 18, 2021
+## v2.4.5.0 - June 21, 2021
 
 ### Downloads
 
