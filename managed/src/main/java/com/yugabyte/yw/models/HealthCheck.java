@@ -2,8 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import javax.persistence.Column;
@@ -17,7 +18,6 @@ import io.ebean.*;
 import io.ebean.annotation.DbJson;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import play.data.validation.Constraints;
@@ -26,6 +26,23 @@ import play.libs.Json;
 @Entity
 public class HealthCheck extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheck.class);
+
+  public static class details {
+    public static class nodeData {
+      public String node;
+      public String process;
+      public String timestamp;
+      public String node_name;
+      public Boolean has_error;
+      public List<String> details;
+      public String message;
+    }
+
+    public Date timestamp;
+    public List<nodeData> data = new ArrayList<>();
+    public String yb_version;
+    public Boolean error;
+  }
 
   // The max number of records to keep per universe.
   public static final int RECORD_LIMIT = 10;
@@ -43,15 +60,12 @@ public class HealthCheck extends Model {
   @DbJson
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
-  public  Map<String, Object>  detailsJson;
+  public details detailsJson;
 
   public boolean hasError() {
-    Map<String, Object>  details = detailsJson;
-    Object hasErrorField = details.get(FIELD_HAS_ERROR);
-    ObjectMapper objMapper = new ObjectMapper();
-    JsonNode node = objMapper.convertValue(hasErrorField, JsonNode.class);
+    details details = detailsJson;
     // Only return true if we have the top-level has_error field with a value of true.
-    return node != null && node.asBoolean();
+    return details.error;
   }
 
   public static final Finder<UUID, HealthCheck> find =
@@ -72,7 +86,7 @@ public class HealthCheck extends Model {
     check.customerId = customerId;
     // Validate it is correct JSON.
     ObjectMapper objMapper = new ObjectMapper();
-    Map<String, Object> features = objMapper.convertValue(Json.parse(details), new TypeReference<Map<String, Object>>(){});
+    details features = objMapper.convertValue(Json.parse(details), new TypeReference<details>() {});
     check.detailsJson = features;
     // Save the object.
     check.save();
