@@ -395,7 +395,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 }
 
 void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
-  operation->state()->SetTablet(tablet_peer()->tablet());
+  operation->SetTablet(tablet_peer()->tablet());
   tablet_peer()->Submit(std::move(operation), leader_term);
 }
 
