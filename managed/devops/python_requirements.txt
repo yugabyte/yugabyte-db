@@ -18,8 +18,8 @@
 #
 # TODO: see if we can move to using Pundler (https://github.com/Deepwalker/pundler) instead.
 
-ansible==2.2.3.0
-ansible-vault==1.0.4
+ansible==2.5.4
+ansible-vault==1.2.0
 awscli==1.11.1
 azure-common==1.1.25
 azure-mgmt-compute==12.1.0
@@ -37,6 +37,7 @@ google-api-python-client==1.10.0
 google-api-core==1.22.0
 google-auth==1.19.2
 ipaddr==2.1.11
+mitogen==0.2.9
 oauth2client<4.0.0  # GCP SDK seems to require version <4 of oauth2client: https://goo.gl/7uC34W
 paramiko==2.4.2
 pycryptodome==3.6.1

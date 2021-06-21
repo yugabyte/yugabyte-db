@@ -11,11 +11,10 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
@@ -23,10 +22,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Singleton;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import play.libs.Json;
@@ -55,9 +51,8 @@ public class CloudQueryHelper extends DevopsBase {
         "current-host");
   }
 
-  public JsonNode getRegions(UUID providerUUID) {
-    Provider p = Provider.get(providerUUID);
-    List<String> commandArgs = new ArrayList<String>();
+  public List<String> getRegionCodes(Provider p) {
+    List<String> commandArgs = new ArrayList<>();
     if (p.code.equals("gcp")) {
       // TODO: ideally we shouldn't have this hardcoded string present in multiple places.
       String potentialGcpNetwork = p.getConfig().get("CUSTOM_GCE_NETWORK");
@@ -66,7 +61,12 @@ public class CloudQueryHelper extends DevopsBase {
         commandArgs.add(potentialGcpNetwork);
       }
     }
-    return execAndParseCommandCloud(providerUUID, "regions", commandArgs);
+    JsonNode regionInfo = execAndParseCommandCloud(p.uuid, "regions", commandArgs);
+    List<String> regionCodes = ImmutableList.of();
+    if (regionInfo instanceof ArrayNode) {
+      regionCodes = Json.fromJson(regionInfo, List.class);
+    }
+    return regionCodes;
   }
 
   public JsonNode getZones(UUID regionUUID) {
@@ -126,6 +126,13 @@ public class CloudQueryHelper extends DevopsBase {
       commandArgs.add(customPayload);
     }
     return execAndParseCommandRegion(regionList.get(0).uuid, "instance_types", commandArgs);
+  }
+
+  public JsonNode getMachineImages(UUID providerUUID, Region region) {
+    List<String> commandArgs = new ArrayList<String>();
+    commandArgs.add("--regions");
+    commandArgs.add(region.code);
+    return execAndParseCommandCloud(providerUUID, "ami", commandArgs);
   }
 
   public JsonNode queryVpcs(UUID regionUUID) {

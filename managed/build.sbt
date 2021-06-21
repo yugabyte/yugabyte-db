@@ -90,7 +90,8 @@ def clean_venv(baseDirectory: File): Int = {
 
 def build_venv(baseDirectory: File): Int = {
   ybLog("Building virtual env...")
-  Process("./bin/install_python_requirements.sh", baseDirectory / "devops")!
+  Process("./bin/install_python_requirements.sh", baseDirectory / "devops").!
+  Process("./bin/install_ansible_requirements.sh --force", baseDirectory / "devops").!
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -169,7 +170,8 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
-  "commons-codec" % "commons-codec" % "1.15"
+  "commons-codec" % "commons-codec" % "1.15",
+  "com.google.cloud" % "google-cloud-storage" % "1.115.0"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -288,7 +290,8 @@ runPlatform := {
 libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
 
 libraryDependencies ++= Seq(
-  "org.webjars" % "swagger-ui" % "3.43.0",
+  // We wont use swagger-ui jar since we want to change some of the assets:
+  //  "org.webjars" % "swagger-ui" % "3.43.0",
   "io.swagger" %% "swagger-play2" % "1.6.1",
   "io.swagger" %% "swagger-scala-module" % "1.0.5",
   "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.8"

@@ -15,6 +15,7 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
@@ -64,7 +65,11 @@ public class FakeDBApplication extends WithApplication {
 
   public Application provideApplication(Map<String, Object> additionalConfiguration) {
 
-    return new GuiceApplicationBuilder()
+    GuiceApplicationBuilder guiceApplicationBuilder = new GuiceApplicationBuilder();
+    if (!isSwaggerEnabled()) {
+      guiceApplicationBuilder.disable(SwaggerModule.class);
+    }
+    return guiceApplicationBuilder
         .configure(additionalConfiguration)
         .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
@@ -93,6 +98,10 @@ public class FakeDBApplication extends WithApplication {
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
         .overrides(bind(TableManager.class).toInstance(mockTableManager))
         .build();
+  }
+
+  protected boolean isSwaggerEnabled() {
+    return false;
   }
 
   public Application getApp() {

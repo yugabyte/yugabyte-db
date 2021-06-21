@@ -1,16 +1,16 @@
 ---
 title: JSON Support
 headerTitle: JSON Support
-linkTitle: JSON Support
+linkTitle: JSON support
 description: JSON Support in YugabyteDB.
 headcontent: JSON Support in YugabyteDB.
 image: <div class="icon"><i class="fas fa-file-invoice"></i></div>
 menu:
   latest:
-    name: JSON Support
+    name: JSON support
     identifier: explore-json-support-2-ycql
     parent: explore
-    weight: 232
+    weight: 260
 isTocNested: true
 showAsideToc: true
 ---

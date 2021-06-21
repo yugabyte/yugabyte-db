@@ -55,7 +55,7 @@ public class AllowedActionsHelper {
   private boolean isNodeActionAllowed(NodeActionType nodeActionType) {
     String nodeActionAllowedErr = nodeActionErrOrNull(nodeActionType);
     if (nodeActionAllowedErr != null) {
-      LOG.debug(nodeActionAllowedErr);
+      LOG.trace(nodeActionAllowedErr);
       return false;
     }
     return true;

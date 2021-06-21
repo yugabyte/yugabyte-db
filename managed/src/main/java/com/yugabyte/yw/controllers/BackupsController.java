@@ -101,9 +101,11 @@ public class BackupsController extends AuthenticatedController {
     Backup newBackup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     LOG.info(
-        "Submitted task to restore table backup to {}.{}, task uuid = {}.",
+        "Submitted task to RESTORE table backup to {}.{} with config {} from {}, task uuid = {}.",
         taskParams.getKeyspace(),
         taskParams.getTableName(),
+        storageConfig.configName,
+        taskParams.storageLocation,
         taskUUID);
     newBackup.setTaskUUID(taskUUID);
     if (taskParams.getTableName() != null) {
@@ -180,7 +182,7 @@ public class BackupsController extends AuthenticatedController {
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
           CustomerTask.create(
               customer,
-              uuid,
+              backup.getBackupInfo().universeUUID,
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,

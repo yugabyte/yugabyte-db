@@ -1259,7 +1259,7 @@ BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
                              const std::string& start_key)
     : RetryingTSRpcTask(backfill_tablet->master(),
                         backfill_tablet->threadpool(),
-                        gscoped_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
+                        std::unique_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
                         backfill_tablet->tablet()->table().get()),
       indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
       backfill_tablet_(backfill_tablet),

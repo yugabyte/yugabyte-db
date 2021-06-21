@@ -602,7 +602,7 @@ void InternalStats::DumpDBStats(std::string* value) {
   uint64_t wal_bytes = GetDBStats(InternalDBStatsType::WAL_FILE_BYTES);
   uint64_t wal_synced = GetDBStats(InternalDBStatsType::WAL_FILE_SYNCED);
   uint64_t write_with_wal = GetDBStats(InternalDBStatsType::WRITE_WITH_WAL);
-  uint64_t write_stall_micros = GetDBStats(InternalDBStatsType::WRITE_STALL_MICROS);
+  uint64_t write_stall_micros = 0;
   uint64_t compact_bytes_read = 0;
   uint64_t compact_bytes_write = 0;
   uint64_t compact_micros = 0;

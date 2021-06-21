@@ -4,8 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.icegreen.greenmail.util.GreenMail;
 import com.icegreen.greenmail.util.ServerSetup;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
+import com.yugabyte.yw.common.alerts.SmtpData;
 
 public class EmailFixtures {
   public static final String EMAIL_USER_NAME = "Billy";
@@ -34,7 +33,7 @@ public class EmailFixtures {
   }
 
   public static SmtpData createSmtpData() {
-    CustomerRegisterFormData.SmtpData smtpData = new CustomerRegisterFormData.SmtpData();
+    SmtpData smtpData = new SmtpData();
     smtpData.smtpUsername = EMAIL_USER_NAME;
     smtpData.smtpPassword = EMAIL_USER_PASSWORD;
     smtpData.smtpServer = EMAIL_HOST;

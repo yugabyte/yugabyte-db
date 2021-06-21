@@ -161,6 +161,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         String pullSecret = this.getPullSecret();
         if (pullSecret != null) {
           response = kubernetesManager.applySecret(config, taskParams().namespace, pullSecret);
+        } else {
+          LOG.debug("Pull secret is missing, skipping the pull secret creation.");
         }
         break;
       case HELM_INSTALL:

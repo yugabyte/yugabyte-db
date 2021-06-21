@@ -506,7 +506,7 @@ TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
   auto count = client_messenger_->max_concurrent_requests() * 4;
   CountDownLatch latch(count);
   for (size_t i = 0; i < count; i++) {
-    gscoped_ptr<AsyncSleep> sleep(new AsyncSleep);
+    auto sleep = std::make_unique<AsyncSleep>();
     sleep->rpc.set_timeout(10s);
     sleep->req.set_sleep_micros(500 * 1000); // 100ms
     p.SleepAsync(sleep->req, &sleep->resp, &sleep->rpc, [&latch]() { latch.CountDown(); });

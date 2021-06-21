@@ -15,11 +15,14 @@
 
 #include "yb/client/ql-dml-test-base.h"
 
+#include "yb/common/json_util.h"
+
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 
 #include "yb/master/master_backup.pb.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/date_time.h"
@@ -38,6 +41,7 @@ const std::string kClusterName = "yugacluster";
 
 constexpr auto kInterval = 6s;
 constexpr auto kRetention = 10min;
+constexpr auto kHistoryRetentionIntervalSec = 5;
 
 } // namespace
 
@@ -47,9 +51,19 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     auto out = VERIFY_RESULT(id.empty() ? CallJsonAdmin("list_snapshot_schedules")
                                         : CallJsonAdmin("list_snapshot_schedules", id));
     auto schedules = VERIFY_RESULT(Get(&out, "schedules")).get().GetArray();
-    SCHECK_EQ(schedules.Size(), 1, IllegalState, "Wrong schedules number");
+    if (schedules.Empty()) {
+      return STATUS(NotFound, "Snapshot schedule not found");
+    }
+    SCHECK_EQ(schedules.Size(), 1, NotFound, "Wrong schedules number");
     rapidjson::Document result;
     result.CopyFrom(schedules[0], result.GetAllocator());
+    return result;
+  }
+
+  Result<rapidjson::Document> ListSnapshots() {
+    auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshots", "JSON"));
+    rapidjson::Document result;
+    result.CopyFrom(VERIFY_RESULT(Get(&out, "snapshots")).get(), result.GetAllocator());
     return result;
   }
 
@@ -111,7 +125,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   virtual std::vector<std::string> ExtraTSFlags() {
-    return {};
+    return { Format("--timestamp_history_retention_interval_sec=$0", kHistoryRetentionIntervalSec),
+             "--history_cutoff_propagation_interval_ms=1000" };
   }
 
   std::vector<std::string> ExtraMasterFlags() {
@@ -120,21 +135,22 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
              "--snapshot_coordinator_poll_interval_ms=500" };
   }
 
-  Result<std::string> PrepareQl(MonoDelta retention = kRetention) {
+  Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
     RETURN_NOT_OK(PrepareCommon());
 
     LOG(INFO) << "Create namespace";
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(
         client::kTableName.namespace_name(), client::kTableName.namespace_type()));
 
-    return CreateSnapshotScheduleAndWaitSnapshot(client::kTableName.namespace_name(), retention);
+    return CreateSnapshotScheduleAndWaitSnapshot(
+        client::kTableName.namespace_name(), interval, retention);
   }
 
   Result<std::string> CreateSnapshotScheduleAndWaitSnapshot(
-      const std::string& filter, MonoDelta retention) {
+      const std::string& filter, MonoDelta interval, MonoDelta retention) {
     LOG(INFO) << "Create snapshot schedule";
     std::string schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(
-        kInterval, retention, filter));
+        interval, retention, filter));
 
     LOG(INFO) << "Wait snapshot schedule";
     RETURN_NOT_OK(WaitScheduleSnapshot(30s, schedule_id));
@@ -149,7 +165,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", client::kTableName.namespace_name()));
 
     return CreateSnapshotScheduleAndWaitSnapshot(
-        "ysql." + client::kTableName.namespace_name(), kRetention);
+        "ysql." + client::kTableName.namespace_name(), kInterval, kRetention);
   }
 
   Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string()) {
@@ -165,7 +181,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         "CREATE KEYSPACE IF NOT EXISTS $0", client::kTableName.namespace_name())));
 
     return CreateSnapshotScheduleAndWaitSnapshot(
-        "ycql." + client::kTableName.namespace_name(), kRetention);
+        "ycql." + client::kTableName.namespace_name(), kInterval, kRetention);
   }
 
   template <class... Args>
@@ -178,6 +194,14 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     std::string schedule_id = VERIFY_RESULT(Get(out, "schedule_id")).get().GetString();
     LOG(INFO) << "Schedule id: " << schedule_id;
     return schedule_id;
+  }
+
+  CHECKED_STATUS DeleteSnapshotSchedule(const std::string& schedule_id) {
+    auto out = VERIFY_RESULT(CallJsonAdmin("delete_snapshot_schedule", schedule_id));
+
+    SCHECK_EQ(VERIFY_RESULT(Get(out, "schedule_id")).get().GetString(), schedule_id, IllegalState,
+              "Deleted wrong schedule");
+    return Status::OK();
   }
 
   void TestUndeleteTable(bool restart_masters);
@@ -236,6 +260,90 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
   LOG(INFO) << "Restore at: " << last_snapshot_time.ToFormattedString();
 
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, last_snapshot_time));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, Delete) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention));
+
+  auto session = client_->NewSession();
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  LOG(INFO) << "Write values";
+  const auto kKeys = Range(100);
+  for (auto i : kKeys) {
+    ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, i, -i));
+  }
+
+  for (auto i : kKeys) {
+    ASSERT_OK(client::kv_table_test::DeleteRow(&table_, session, i));
+  }
+
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+
+  ASSERT_OK(WaitFor([this, schedule_id]() -> Result<bool> {
+    auto schedule = GetSnapshotSchedule();
+    if (!schedule.ok()) {
+      if (schedule.status().IsNotFound()) {
+        return true;
+      }
+      return schedule.status();
+    }
+
+    auto& options = VERIFY_RESULT(Get(*schedule, "options")).get();
+    auto delete_time = VERIFY_RESULT(Get(options, "delete_time")).get().GetString();
+    LOG(INFO) << "Delete time: " << delete_time;
+    return false;
+  }, 10s * kTimeMultiplier, "Snapshot schedule cleaned up"));
+
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        auto snapshots_json = VERIFY_RESULT(ListSnapshots());
+        auto snapshots = snapshots_json.GetArray();
+        LOG(INFO) << "Snapshots left: " << snapshots.Size();
+        return snapshots.Empty();
+      },
+      10s * kTimeMultiplier, "Snapshots cleaned up"));
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    for (auto* tserver : cluster_->tserver_daemons()) {
+      auto proxy = cluster_->GetProxy<tserver::TabletServerAdminServiceProxy>(tserver);
+      tserver::FlushTabletsRequestPB req;
+      req.set_dest_uuid(tserver->uuid());
+      req.set_all_tablets(true);
+      tserver::FlushTabletsResponsePB resp;
+      rpc::RpcController controller;
+      controller.set_timeout(30s);
+      RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
+
+      req.set_is_compaction(true);
+      controller.Reset();
+      RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
+    }
+
+    for (auto* tserver : cluster_->tserver_daemons()) {
+      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(tserver);
+      tserver::ListTabletsRequestPB req;
+      tserver::ListTabletsResponsePB resp;
+
+      rpc::RpcController controller;
+      controller.set_timeout(30s);
+
+      RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+
+      for (const auto& tablet : resp.status_and_schema()) {
+        if (tablet.tablet_status().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+          continue;
+        }
+        if (tablet.tablet_status().sst_files_disk_size() != 0) {
+          LOG(INFO) << "Tablet status: " << tablet.tablet_status().ShortDebugString();
+          return false;
+        }
+      }
+    }
+    return true;
+  }, 1s * kHistoryRetentionIntervalSec * kTimeMultiplier, "Compact SST files"));
 }
 
 void YbAdminSnapshotScheduleTest::TestUndeleteTable(bool restart_masters) {
@@ -297,7 +405,7 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTableWithRestart) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
-  auto schedule_id = ASSERT_RESULT(PrepareQl(kInterval));
+  auto schedule_id = ASSERT_RESULT(PrepareQl(kInterval, kInterval));
 
   auto session = client_->NewSession();
   LOG(INFO) << "Create table";
@@ -597,6 +705,88 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestore, YbAdminSnapshotConsist
         }
       }
     }
+  }
+}
+
+// Write multiple transactions and restore.
+// Then check that we don't have partially applied transaction.
+TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotConsistentRestoreTest) {
+  constexpr int kBatchSize = 10;
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"
+                              "WITH transactions = { 'enabled' : true }"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), &conn] {
+    const int kConcurrency = 10;
+    std::string expr = "BEGIN TRANSACTION ";
+    for (ATTRIBUTE_UNUSED int i : Range(kBatchSize)) {
+      expr += "INSERT INTO test_table (k1) VALUES (?); ";
+    }
+    expr += "END TRANSACTION;";
+    auto prepared = ASSERT_RESULT(conn.Prepare(expr));
+    int base = 0;
+    std::vector<CassandraFuture> futures;
+    while (!stop.load(std::memory_order_acquire)) {
+      auto filter = [](CassandraFuture& future) {
+        if (!future.Ready()) {
+          return false;
+        }
+        auto status = future.Wait();
+        if (!status.ok() && !status.IsTimedOut()) {
+          EXPECT_OK(status);
+        }
+        return true;
+      };
+      ASSERT_NO_FATALS(EraseIf(filter, &futures));
+      if (futures.size() < kConcurrency) {
+        auto stmt = prepared.Bind();
+        for (int i : Range(kBatchSize)) {
+          stmt.Bind(i, base + i);
+        }
+        base += kBatchSize;
+        futures.push_back(conn.ExecuteGetFuture(stmt));
+      }
+    }
+  });
+
+  std::this_thread::sleep_for(250ms);
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  std::this_thread::sleep_for(250ms);
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  thread_holder.WaitAndStop(250ms);
+
+  std::vector<int> keys;
+  for (;;) {
+    keys.clear();
+    auto result = conn.ExecuteWithResult("SELECT * FROM test_table");
+    if (!result.ok()) {
+      LOG(WARNING) << "Select failed: " << result.status();
+      continue;
+    }
+
+    auto iter = result->CreateIterator();
+    while (iter.Next()) {
+      auto row = iter.Row();
+      int key = row.Value(0).As<int32_t>();
+      keys.push_back(key);
+    }
+    break;
+  }
+
+  std::sort(keys.begin(), keys.end());
+  // Check that we have whole batches only.
+  // Actually this check is little bit relaxed, but it is enough to catch the bug.
+  for (size_t i : Range(keys.size())) {
+    ASSERT_EQ(keys[i] % kBatchSize, i % kBatchSize)
+        << "i: " << i << ", key: " << keys[i] << ", batch: "
+        << AsString(RangeOfSize<size_t>((i / kBatchSize - 1) * kBatchSize, kBatchSize * 3)[keys]);
   }
 }
 

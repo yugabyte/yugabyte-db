@@ -8,52 +8,26 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.RunInShellFormData;
-import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.io.FileUtils;
@@ -83,50 +57,26 @@ import play.test.WithApplication;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.FakeApiHelper.*;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
-import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
-import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
+import static com.yugabyte.yw.common.PlacementInfoUtil.*;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static junit.framework.TestCase.assertFalse;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
@@ -139,6 +89,8 @@ public class UniverseControllerTest extends WithApplication {
 
   @Mock private play.Configuration mockAppConfig;
 
+  private AlertConfigurationWriter alertConfigurationWriter;
+  private HealthChecker healthChecker;
   private Customer customer;
   private Users user;
   private KmsConfig kmsConfig;
@@ -154,6 +106,8 @@ public class UniverseControllerTest extends WithApplication {
   private ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  private Config mockRuntimeConfig;
+  private RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Override
   protected Application provideApplication() {
@@ -169,6 +123,16 @@ public class UniverseControllerTest extends WithApplication {
     mockShellProcessHandler = mock(ShellProcessHandler.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockRuntimeConfig = mock(Config.class);
+    mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
+    alertConfigurationWriter = mock(AlertConfigurationWriter.class);
+    healthChecker = mock(HealthChecker.class);
+
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
+    when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
+    when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockRuntimeConfig);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
+
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
@@ -182,6 +146,9 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
+        .overrides(bind(RuntimeConfigFactory.class).toInstance(mockRuntimeConfigFactory))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(alertConfigurationWriter))
+        .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .build();
   }
 
@@ -316,10 +283,8 @@ public class UniverseControllerTest extends WithApplication {
     customer.save();
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/update_backup_state";
-    Result result =
-        assertThrows(YWServiceException.class, () -> doRequestWithAuthToken("PUT", url, authToken))
-            .getResult();
-    assertBadRequest(result, "Invalid Query: Need to specify markActive value");
+    Result result = doRequestWithAuthToken("PUT", url, authToken);
+    assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -550,7 +515,20 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testUniverseCreateWithSelfSignedTLS() {
+  @Parameters({
+    "true, false, false, false, false",
+    "true, true, false, true, false",
+    "true, false, true, true, true",
+    "true, true, true, true, true",
+    "false, false, true, false, true",
+    "false, true, true, true, true",
+  })
+  public void testUniverseCreateForSelfSignedTLS(
+      boolean rootAndClientRootCASame,
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt,
+      boolean rootCAExists,
+      boolean clientRootCAExists) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
             Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
@@ -569,8 +547,8 @@ public class UniverseControllerTest extends WithApplication {
         Json.newObject()
             .put("universeName", "SingleUserUniverse")
             .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", true)
-            .put("enableClientToNodeEncrypt", true)
+            .put("enableNodeToNodeEncrypt", enableNodeToNodeEncrypt)
+            .put("enableClientToNodeEncrypt", enableClientToNodeEncrypt)
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
@@ -584,6 +562,7 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject().put("nodePrefix", "demo-node");
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", Json.newArray());
+    bodyJson.put("rootAndClientRootCASame", rootAndClientRootCASame);
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -594,56 +573,10 @@ public class UniverseControllerTest extends WithApplication {
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
     UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
-    assertNotNull(taskParam.rootCA);
-    assertAuditEntry(1, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseCreateWithoutSelfSignedTLS() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-
-    Provider p = ModelFactory.awsProvider(customer);
-    String accessKeyCode = "someKeyCode";
-    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    ObjectNode bodyJson = Json.newObject();
-    ObjectNode userIntentJson =
-        Json.newObject()
-            .put("universeName", "SingleUserUniverse")
-            .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", false)
-            .put("enableClientToNodeEncrypt", false)
-            .put("replicationFactor", 3)
-            .put("numNodes", 3)
-            .put("provider", p.uuid.toString())
-            .put("accessKeyCode", accessKeyCode);
-
-    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
-    userIntentJson.set("regionList", regionList);
-    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", Json.newArray());
-
-    String url = "/api/customers/" + customer.uuid + "/universes";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    ArgumentCaptor<UniverseTaskParams> taskParams =
-        ArgumentCaptor.forClass(UniverseTaskParams.class);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertValue(json, "taskUUID", fakeTaskUUID.toString());
-    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
-    UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
-    assertNull(taskParam.rootCA);
+    if (rootCAExists) assertNotNull(taskParam.rootCA);
+    else assertNull(taskParam.rootCA);
+    if (clientRootCAExists) assertNotNull(taskParam.clientRootCA);
+    else assertNull(taskParam.clientRootCA);
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -1012,6 +945,128 @@ public class UniverseControllerTest extends WithApplication {
         CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(customerTask);
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  private ObjectNode setupVMImageUpgradeParams(UUID uUUID, Provider p, String instanceType) {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    ObjectNode bodyJson = getValidPayload(uUUID, "Rolling");
+    bodyJson.put("taskType", UpgradeUniverse.UpgradeTaskType.VMImage.toString());
+    InstanceType i =
+        InstanceType.upsert(p.uuid, instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("numNodes", 3)
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("providerType", p.code)
+            .put("provider", p.uuid.toString());
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+
+    return bodyJson;
+  }
+
+  @Test
+  public void testVMImageUpgradeWithUnsupportedProvider() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
+
+    Provider p = ModelFactory.onpremProvider(customer);
+    ObjectNode bodyJson = setupVMImageUpgradeParams(uUUID, p, "type.small");
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+
+    assertBadRequest(result, "VM image upgrade is only supported for AWS / GCP");
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testVMImageUpgradeWithEphemerals() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
+
+    Provider p = ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = setupVMImageUpgradeParams(uUUID, p, "i3.xlarge");
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+
+    assertBadRequest(result, "Cannot upgrade a universe with ephemeral storage");
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testVMImageUpgradeWithNoImage() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
+
+    Provider p = ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = setupVMImageUpgradeParams(uUUID, p, "c5.xlarge");
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+
+    assertBadRequest(result, "machineImages param is required for taskType: VMImage");
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testVMImageUpgradeValidParams() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Universe u = createUniverse(customer.getCustomerId());
+    Provider p = ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = setupVMImageUpgradeParams(u.universeUUID, p, "c5.xlarge");
+    ObjectNode images = Json.newObject();
+    UUID r = UUID.randomUUID();
+    images.put(r.toString(), "image-" + r.toString());
+    bodyJson.set("machineImages", images);
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), any(UniverseTaskParams.class));
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeVMImage)));
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -1570,13 +1625,14 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testFindByNameWithUniverseNameExists() {
+  public void testFindWithUniverseNameExists() {
     Universe u = createUniverse("TestUniverse", customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/find/" + u.name;
-    Result result =
-        assertThrows(YWServiceException.class, () -> doRequestWithAuthToken("GET", url, authToken))
-            .getResult();
-    assertBadRequest(result, "Universe already exists");
+    String url = "/api/customers/" + customer.uuid + "/universes/find?name=" + u.name;
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 1);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1592,11 +1648,15 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testFindByNameWithUniverseDoesNotExist() {
+  public void testFindWithUniverseDoesNotExist() {
     createUniverse(customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse";
+    String url = "/api/customers/" + customer.uuid + "/universes/find?name=FakeUniverse";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 0);
     assertAuditEntry(0, customer.uuid);
   }
 

@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@Api("Region")
+@Api(value = "Region", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RegionController extends AuthenticatedController {
   @Inject FormFactory formFactory;
 
@@ -77,7 +77,9 @@ public class RegionController extends AuthenticatedController {
       List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.uuid, 1);
       for (Region region : regionList) {
         ObjectNode regionNode = (ObjectNode) Json.toJson(region);
-        regionNode.set("provider", Json.toJson(provider));
+        ObjectNode providerForRegion = (ObjectNode) Json.toJson(provider);
+        providerForRegion.remove("regions"); // to Avoid recursion
+        regionNode.set("provider", providerForRegion);
         resultArray.add(regionNode);
       }
     }

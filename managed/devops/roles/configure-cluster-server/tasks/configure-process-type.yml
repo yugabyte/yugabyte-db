@@ -1,0 +1,97 @@
+- assert:
+    that:
+      - yb_process_type is defined
+
+- name: Setup | Create config directory for {{ yb_process_type }}
+  file:
+    path: "{{ yb_conf_dir }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+
+- set_fact:
+    _mount_points: "{{ mount_points.split(',') }}"
+  when: _mount_points is not defined
+
+- set_fact:
+    _mount_logs_dir: "{{ _mount_points[0] }}/yb-data/{{ yb_process_type }}/logs"
+
+- name: Setup | Create {{ yb_process_type }} logs directory
+  file:
+    path: "{{ _mount_logs_dir }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+
+- name: Setup | Symlink {{ yb_process_type }} logs directory
+  file:
+    src: "{{ _mount_logs_dir }}"
+    dest: "{{ yb_logs_dir }}"
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    state: link
+
+- name: Configure | Remove {{ yb_process_type }} gflags
+  file:
+    path: "{{ yb_conf_file }}"
+    state: absent
+  when: replace_gflags is defined
+  tags:
+    - override_gflags
+
+- set_fact:
+    _gflags: "{{ common_gflags | combine(process_specific_gflags[yb_process_type]) }}"
+  tags:
+    - override_gflags
+
+- set_fact:
+    _gflags: "{{ _gflags | combine(dict(extra_gflags)) }}"
+  when: extra_gflags is defined
+  tags:
+    - override_gflags
+
+- name: Configure | Set {{ yb_process_type }} gflags
+  lineinfile:
+    dest: "{{ yb_conf_file }}"
+    regexp: "^--{{ item.key }}=(.*)"
+    line: "--{{item.key}}={{item.value}}"
+    create: yes
+  with_dict: "{{ gflags | default(_gflags) }}"
+  tags:
+    - override_gflags
+
+- name: Configure | Delete {{ yb_process_type }} gflags
+  lineinfile:
+    dest: "{{ yb_conf_file }}"
+    regexp: "^--{{ item }}=(.*)"
+    state: absent
+  with_items: "{{ gflags_to_remove }}"
+  when: gflags_to_remove is defined
+  tags:
+    - override_gflags
+
+- name: Configure | Delete {{ yb_process_type }} gflags
+  lineinfile:
+    dest: "{{ yb_conf_file }}"
+    regexp: "^--{{ item }}=(.*)"
+    state: absent
+  with_items: "{{ gflags_to_remove }}"
+  when: gflags_to_remove is defined
+  tags:
+    - override_gflags
+
+- name: Setup cron to check liveness of {{ yb_process_type }}
+  cron:
+    name: "Check liveness of {{ yb_process_type }}"
+    minute: "*/1"
+    user: "{{ user_name }}"
+    job: >
+      {{ yb_bin_dir }}/yb-server-ctl.sh {{ yb_process_type }} cron-check ||
+      {{ yb_bin_dir }}/yb-server-ctl.sh {{ yb_process_type }} start
+  register: cron_result
+  failed_when:
+    - cron_result is failed
+    - cloud_type != "onprem"

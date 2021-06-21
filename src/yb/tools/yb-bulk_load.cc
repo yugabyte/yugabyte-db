@@ -141,7 +141,7 @@ class BulkLoad {
   std::unique_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;
   unique_ptr<YBPartitionGenerator> partition_generator_;
-  gscoped_ptr<ThreadPool> thread_pool_;
+  std::unique_ptr<ThreadPool> thread_pool_;
   unique_ptr<BulkLoadDocDBUtil> db_fixture_;
 };
 

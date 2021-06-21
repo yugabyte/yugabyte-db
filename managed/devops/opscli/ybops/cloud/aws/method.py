@@ -10,16 +10,26 @@
 
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
-    AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod
+    AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
-    delete_dns_record_set, list_dns_record_set
+    delete_dns_record_set, list_dns_record_set, ROOT_VOLUME_LABEL
 
 import json
 import os
 import logging
-import glob
-import subprocess
+
+
+class AwsReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
+    def __init__(self, base_command):
+        super(AwsReplaceRootVolumeMethod, self).__init__(base_command)
+
+    def _mount_root_volume(self, host_info, volume):
+        self.cloud.mount_disk(host_info, volume, ROOT_VOLUME_LABEL)
+
+    def _host_info_with_current_root_volume(self, args, host_info):
+        return (host_info, host_info["root_volume"])
 
 
 class AwsListInstancesMethod(ListInstancesMethod):
@@ -113,6 +123,26 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
         self.extra_vars["cmk_res_name"] = args.cmk_res_name
+
+
+class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
+    def __init__(self, base_command):
+        super(AwsCreateRootVolumesMethod, self).__init__(base_command)
+        self.provision_method = AwsProvisionInstancesMethod(base_command)
+
+    def create_master_volume(self, args):
+        args.auto_delete_boot_disk = False
+        args.num_volumes = 0
+        args.instance_tags = None
+
+        self.provision_method.create_method.run_ansible_create(args)
+        host_info = self.cloud.get_host_info(args)
+
+        self.delete_instance(args, host_info["id"])
+        return host_info["root_volume"]
+
+    def delete_instance(self, args, instance_id):
+        self.cloud.delete_instance(args.region, instance_id)
 
 
 class AwsDestroyInstancesMethod(DestroyInstancesMethod):

@@ -38,7 +38,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -119,12 +118,12 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     opts.num_masters = num_masters;
     FLAGS_replication_factor = replication_factor;
     opts.cluster_id = "producer";
-    producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(Env::Default(), opts);
+    producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
     RETURN_NOT_OK(producer_cluster()->StartSync());
     RETURN_NOT_OK(producer_cluster()->WaitForTabletServerCount(replication_factor));
 
     opts.cluster_id = "consumer";
-    consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(Env::Default(), opts);
+    consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
     RETURN_NOT_OK(consumer_cluster()->StartSync());
     RETURN_NOT_OK(consumer_cluster()->WaitForTabletServerCount(replication_factor));
 
@@ -1510,9 +1509,9 @@ TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
 
-  AssertLoggedWaitFor([&]() {
+  ASSERT_OK(LoggedWaitFor([&]() {
     return GetSuccessfulWriteOps(consumer_cluster()) == expected_num_writes;
-  }, MonoDelta::FromSeconds(60), "Wait for all batches to finish.");
+  }, MonoDelta::FromSeconds(60), "Wait for all batches to finish."));
 
   // Verify that both clusters have the same records.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));

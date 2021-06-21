@@ -428,7 +428,7 @@ class Log : public RefCountedThreadSafe<Log> {
   uint32_t schema_version_;
 
   // The currently active segment being written.
-  gscoped_ptr<WritableLogSegment> active_segment_;
+  std::unique_ptr<WritableLogSegment> active_segment_;
 
   // The current (active) segment sequence number. Initialized in the Log constructor based on
   // LogOptions.
@@ -515,7 +515,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
-  gscoped_ptr<LogMetrics> metrics_;
+  std::unique_ptr<LogMetrics> metrics_;
 
   // The cached on-disk size of the log, used to track its size even if it has been closed.
   std::atomic<uint64_t> on_disk_size_;

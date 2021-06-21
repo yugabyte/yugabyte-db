@@ -38,7 +38,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
@@ -88,7 +87,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     YBMiniClusterTestBase::SetUp();
 
-    cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+    cluster_.reset(new MiniCluster(MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
   }
 
