@@ -739,4 +739,41 @@ public class UniverseTest extends FakeDBApplication {
     assertFalse(actions.contains(NodeActionType.REMOVE));
     assertFalse(actions.contains(NodeActionType.STOP));
   }
+
+  private AsyncReplicationRelationship setupAsyncReplicationRelationship(
+      Universe source, Universe target) {
+    UUID sourceTableUUID = UUID.randomUUID();
+    UUID targetTableUUID = UUID.randomUUID();
+
+    return AsyncReplicationRelationship.create(
+        source, sourceTableUUID, target, targetTableUUID, false);
+  }
+
+  @Test
+  public void testGetSourceAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+    AsyncReplicationRelationship relationship = setupAsyncReplicationRelationship(source, target);
+
+    source.refresh();
+
+    assertEquals(1, source.sourceAsyncReplicationRelationships.size());
+    assertEquals(relationship, source.sourceAsyncReplicationRelationships.get(0));
+
+    assertTrue(source.targetAsyncReplicationRelationships.isEmpty());
+  }
+
+  @Test
+  public void testGetTargetAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+    AsyncReplicationRelationship relationship = setupAsyncReplicationRelationship(source, target);
+
+    target.refresh();
+
+    assertEquals(1, target.targetAsyncReplicationRelationships.size());
+    assertEquals(relationship, target.targetAsyncReplicationRelationships.get(0));
+
+    assertTrue(target.sourceAsyncReplicationRelationships.isEmpty());
+  }
 }

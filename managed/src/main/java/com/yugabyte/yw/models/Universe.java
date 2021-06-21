@@ -112,6 +112,12 @@ public class Universe extends Model {
 
   private UniverseDefinitionTaskParams universeDetails;
 
+  @OneToMany(mappedBy = "sourceUniverse", cascade = CascadeType.ALL)
+  public List<AsyncReplicationRelationship> sourceAsyncReplicationRelationships;
+
+  @OneToMany(mappedBy = "targetUniverse", cascade = CascadeType.ALL)
+  public List<AsyncReplicationRelationship> targetAsyncReplicationRelationships;
+
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
     universeDetails = details;
   }

@@ -186,7 +186,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testDestoryKubernetesUniverseWithUpdateInProgress() {
+  public void testDestroyKubernetesUniverseWithUpdateInProgress() {
     setupUniverse(true);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
