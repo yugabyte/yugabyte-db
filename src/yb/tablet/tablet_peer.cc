@@ -106,27 +106,24 @@ DECLARE_int32(ysql_transaction_abort_timeout_ms);
 namespace yb {
 namespace tablet {
 
-METRIC_DEFINE_histogram(table, op_prepare_queue_length, "Operation Prepare Queue Length",
+METRIC_DEFINE_coarse_histogram(table, op_prepare_queue_length, "Operation Prepare Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be prepared within this tablet. "
                         "High queue lengths indicate that the server is unable to process "
-                        "operations as fast as they are being written to the WAL.",
-                        10000, 2);
+                        "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(table, op_prepare_queue_time, "Operation Prepare Queue Time",
+METRIC_DEFINE_coarse_histogram(table, op_prepare_queue_time, "Operation Prepare Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the prepare queue before being "
                         "processed. High queue times indicate that the server is unable to "
-                        "process operations as fast as they are being written to the WAL.",
-                        10000000, 2);
+                        "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(table, op_prepare_run_time, "Operation Prepare Run Time",
+METRIC_DEFINE_coarse_histogram(table, op_prepare_run_time, "Operation Prepare Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being prepared in the tablet. "
                         "High values may indicate that the server is under-provisioned or "
                         "that operations are experiencing high contention with one another for "
-                        "locks.",
-                        10000000, 2);
+                        "locks.");
 
 using consensus::Consensus;
 using consensus::ConsensusBootstrapInfo;
@@ -416,13 +413,13 @@ const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
   return consensus_->CommittedConfig();
 }
 
-bool TabletPeer::StartShutdown() {
+bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
     if (tablet_) {
-      tablet_->StartShutdown();
+      tablet_->StartShutdown(is_drop_table);
     }
   }
 
@@ -532,7 +529,7 @@ void TabletPeer::WaitUntilShutdown() {
 }
 
 Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  bool isShutdownInitiated = StartShutdown();
+  bool isShutdownInitiated = StartShutdown(is_drop_table);
 
   RETURN_NOT_OK(AbortSQLTransactions());
 

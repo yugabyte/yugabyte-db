@@ -20,7 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.Play;
-import java.util.Collection;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -40,7 +40,7 @@ public class UniverseResp {
 
   public final UniverseDefinitionTaskParamsResp universeDetails;
   public final Map<String, String> universeConfig;
-  public final String taskUUID;
+  public final UUID taskUUID;
   public final String sampleAppCommandTxt;
 
   public UniverseResp(Universe entity) {
@@ -58,8 +58,7 @@ public class UniverseResp {
     version = entity.version;
     dnsName = entity.getDnsName();
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
-    this.taskUUID = taskUUID == null ? null : taskUUID.toString();
-    Collection<NodeDetails> nodes = entity.getUniverseDetails().nodeDetailsSet;
+    this.taskUUID = taskUUID;
     this.resources = resources;
     universeConfig = entity.getConfig();
     this.sampleAppCommandTxt = this.getManifest(entity);
@@ -133,10 +132,11 @@ public class UniverseResp {
                     + "--workload CassandraKeyValue --nodes <nodes> --ssl_cert /home/root.crt")
                 .replace(
                     "<root_cert_content>",
-                    universe.getUniverseDetails().clientRootCA != null
+                    universe.getUniverseDetails().rootAndClientRootCASame
                         ? CertificateHelper.getCertPEMFileContents(
-                            universe.getUniverseDetails().clientRootCA)
-                        : "")
+                            universe.getUniverseDetails().rootCA)
+                        : CertificateHelper.getCertPEMFileContents(
+                            universe.getUniverseDetails().clientRootCA))
                 .replace("<nodes>", nodeBuilder.toString());
       }
       sampleAppCommand = sampleAppCommand.replace("<file_name>", randomFileName);

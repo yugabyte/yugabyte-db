@@ -81,7 +81,7 @@ class StatisticsMetricPrototypes {
           ::yb::MetricPrototype::CtorArgs(
               "table", hist_name.c_str(), description.c_str(), yb::MetricUnit::kMicroseconds,
               description.c_str(), yb::MetricLevel::kInfo),
-          1000000000LU, 2));
+          2, 1));
     }
 
     for (size_t i = 0; i < kNumTickers; i++) {

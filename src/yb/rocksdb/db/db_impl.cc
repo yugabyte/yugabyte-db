@@ -285,6 +285,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         manual_compaction_->status = status;
       }
     }
+    compaction_->ReleaseCompactionFiles(status);
     LOG_IF_WITH_PREFIX(DFATAL, db_impl_->compaction_tasks_.erase(this) != 1)
         << "Aborted unknown compaction task: " << SerialNo();
     if (db_impl_->compaction_tasks_.empty()) {
@@ -676,6 +677,20 @@ void DBImpl::StartShutdown() {
   TaskPriorityUpdater task_priority_updater(this);
   {
     InstrumentedMutexLock lock(&mutex_);
+    task_priority_updater.Prepare();
+  }
+  task_priority_updater.Apply();
+  if (db_options_.priority_thread_pool_for_compactions_and_flushes) {
+    db_options_.priority_thread_pool_for_compactions_and_flushes->Remove(this);
+  }
+}
+
+DBImpl::~DBImpl() {
+  StartShutdown();
+
+  TaskPriorityUpdater task_priority_updater(this);
+  {
+    InstrumentedMutexLock lock(&mutex_);
 
     if (has_unpersisted_data_) {
       for (auto cfd : *versions_->GetColumnFamilySet()) {
@@ -705,10 +720,6 @@ void DBImpl::StartShutdown() {
   if (db_options_.priority_thread_pool_for_compactions_and_flushes) {
     db_options_.priority_thread_pool_for_compactions_and_flushes->Remove(this);
   }
-}
-
-DBImpl::~DBImpl() {
-  StartShutdown();
 
   int compactions_unscheduled = env_->UnSchedule(this, Env::Priority::LOW);
   int flushes_unscheduled = env_->UnSchedule(this, Env::Priority::HIGH);
@@ -5298,7 +5309,6 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
   uint64_t time_delayed = 0;
   bool delayed = false;
   {
-    StopWatch sw(env_, stats_, WRITE_STALL, &time_delayed);
     auto delay = write_controller_.GetDelay(env_, num_bytes);
     if (delay > 0) {
       mutex_.Unlock();
@@ -5309,15 +5319,16 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
       mutex_.Lock();
     }
 
-    while (bg_error_.ok() && write_controller_.IsStopped()) {
+    // If we are shutting down, background job that make WriteController stopped could be aborted
+    // and never release WriteControllerToken, so we need to check IsShuttingDown to not stuck here
+    // in this case.
+    while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
       TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
   if (delayed) {
-    default_cf_internal_stats_->AddDBStats(InternalDBStatsType::WRITE_STALL_MICROS,
-                                           time_delayed);
     RecordTick(stats_, STALL_MICROS, time_delayed);
   }
 

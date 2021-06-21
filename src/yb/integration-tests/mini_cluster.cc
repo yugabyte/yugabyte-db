@@ -48,6 +48,7 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/rate_limiter.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
@@ -81,6 +82,7 @@ DECLARE_int32(ts_admin_svc_num_threads);
 DECLARE_int32(ts_consensus_svc_num_threads);
 DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(replication_factor);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(use_private_ip);
 DECLARE_int32(load_balancer_initial_delay_secs);
 
@@ -1018,6 +1020,20 @@ Result<int> ServerWithLeaders(MiniCluster* cluster) {
     }
   }
   return STATUS(NotFound, "No tablet server with leaders");
+}
+
+void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t bytes_per_sec) {
+  LOG(INFO) << "Setting FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec to: " << bytes_per_sec
+            << " and updating compact/flush rate in existing tablets";
+  FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = bytes_per_sec;
+  for (auto& tablet_peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    auto tablet = tablet_peer->shared_tablet();
+    for (auto* db : { tablet->TEST_db(), tablet->TEST_intents_db() }) {
+      if (db) {
+        db->GetDBOptions().rate_limiter->SetBytesPerSecond(bytes_per_sec);
+      }
+    }
+  }
 }
 
 }  // namespace yb

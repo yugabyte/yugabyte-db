@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -183,6 +184,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "azu");
     bodyJson.put("name", "Microsoft");
+    bodyJson.put("config", NullNode.getInstance());
     Result result = createProvider(bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -282,6 +284,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertFalse(config.isEmpty());
       // We should technically check the actual content, but the keys are different between the
       // input payload and the saved config.
+      // (TODO: Then check the expected keys :) )
       if (code.equals("gcp")) {
         assertEquals(configFileJson.size(), config.size());
       } else {
@@ -824,15 +827,15 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
         .thenReturn(fakeTaskUUID);
-    when(mockCloudQueryHelper.getRegions(provider.uuid))
-        .thenReturn(Json.parse("[\"region1\",\"region2\"]"));
+    when(mockCloudQueryHelper.getRegionCodes(provider))
+        .thenReturn(ImmutableList.of("region1", "region2"));
     Result result = bootstrapProvider(bodyJson, provider);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
     assertNotNull(json.get("taskUUID"));
     // TODO(bogdan): figure out a better way to inspect what tasks and with what params get started.
-    verify(mockCloudQueryHelper, times(expectCallToGetRegions ? 1 : 0)).getRegions(provider.uuid);
+    verify(mockCloudQueryHelper, times(expectCallToGetRegions ? 1 : 0)).getRegionCodes(provider);
   }
 
   private void mockDnsManagerListSuccess() {

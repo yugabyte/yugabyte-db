@@ -50,8 +50,10 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     mockClient = mock(YBClient.class);
+    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
     } catch (Exception e) {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -97,8 +99,9 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
-          TaskType.SetNodeState,
+          TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
@@ -106,36 +109,42 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
-          Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()));
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
           TaskType.SetNodeState,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.UpdateNodeProcess,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
+          TaskType.SwamperTargetsFileUpdate,
+          // The following four tasks comes from "MasterInfoUpdateTask" and must be done
+          // after tserver is added
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
-          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Starting")),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -143,7 +152,6 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private void assertStartNodeSequence(
@@ -196,7 +204,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -224,7 +232,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
