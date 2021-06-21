@@ -1,10 +1,7 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
@@ -21,6 +18,8 @@ import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static io.ebean.Ebean.*;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
@@ -30,64 +29,67 @@ import static play.mvc.Http.Status.BAD_REQUEST;
         "Region within a given provider. Typically this will map to a "
             + "single cloud provider region")
 public class Region extends Model {
-  private static final String SECURITY_GROUP_KEY = "sg_id";
+  public static final String SECURITY_GROUP_KEY = "sg_id";
   private static final String VNET_KEY = "vnet";
 
-  @Id public UUID uuid;
+  @Id
+  @ApiModelProperty(value = "Region uuid", accessMode = READ_ONLY)
+  public UUID uuid;
 
   @Column(length = 25, nullable = false)
-  @ApiModelProperty(value = "Cloud provider region code", example = "us-west-2", required = true)
+  @ApiModelProperty(
+      value = "Cloud provider region code",
+      example = "us-west-2",
+      accessMode = READ_ONLY)
   public String code;
 
   @Column(length = 100, nullable = false)
-  @Constraints.Required
+  @ApiModelProperty(value = "Cloud provider region name", example = "TODO", accessMode = READ_WRITE)
   public String name;
 
-  // The AMI to be used in this region.
-  @Constraints.Required public String ybImage;
+  @ApiModelProperty(
+      value = "The AMI to be used in this region.",
+      example = "TODO",
+      accessMode = READ_WRITE)
+  public String ybImage;
 
   @Column(columnDefinition = "float")
+  @ApiModelProperty(value = "Longitude of this region", example = "-120.01", accessMode = READ_ONLY)
+  @Constraints.Min(-180)
+  @Constraints.Max(180)
   public double longitude = -90;
 
   @Column(columnDefinition = "float")
+  @ApiModelProperty(value = "Latitude of this region", example = "37.22", accessMode = READ_ONLY)
+  @Constraints.Min(-90)
+  @Constraints.Max(90)
   public double latitude = -90;
 
-  public void setLatLon(double latitude, double longitude) {
-    if (latitude < -90 || latitude > 90) {
-      throw new IllegalArgumentException("Invalid Latitude Value, it should be between -90 to 90");
-    }
-    if (longitude < -180 || longitude > 180) {
-      throw new IllegalArgumentException(
-          "Invalid Longitude Value, it should be between -180 to 180");
-    }
-
-    this.latitude = latitude;
-    this.longitude = longitude;
-    this.save();
-  }
-
-  @Constraints.Required
   @Column(nullable = false)
   @ManyToOne
-  @JsonBackReference
+  @JsonBackReference("provider-regions")
   public Provider provider;
 
   @OneToMany(cascade = CascadeType.ALL)
+  @JsonManagedReference("region-zones")
   public Set<AvailabilityZone> zones;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
   public Boolean active = true;
 
+  @JsonIgnore
   public Boolean isActive() {
     return active;
   }
 
+  @JsonIgnore
   public void setActiveFlag(Boolean active) {
     this.active = active;
   }
 
   @DbJson
   @Column(columnDefinition = "TEXT")
+  @JsonIgnore
   public JsonNode details;
 
   public void setSecurityGroupId(String securityGroupId) {
@@ -95,7 +97,6 @@ public class Region extends Model {
       details = Json.newObject();
     }
     ((ObjectNode) details).put(SECURITY_GROUP_KEY, securityGroupId);
-    save();
   }
 
   public String getSecurityGroupId() {
@@ -111,7 +112,6 @@ public class Region extends Model {
       details = Json.newObject();
     }
     ((ObjectNode) details).put(VNET_KEY, vnetName);
-    save();
   }
 
   public String getVnetName() {
@@ -126,13 +126,13 @@ public class Region extends Model {
   @Column(columnDefinition = "TEXT")
   public JsonNode config;
 
+  @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
     for (String key : configMap.keySet()) {
       currConfig.put(key, configMap.get(key));
     }
     this.config = Json.toJson(currConfig);
-    this.save();
   }
 
   @JsonProperty("config")

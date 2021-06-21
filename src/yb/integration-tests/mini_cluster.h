@@ -336,6 +336,10 @@ CHECKED_STATUS SetupConnectivity(
     MiniCluster* cluster, int idx1, int idx2, Connectivity connectivity);
 Result<int> ServerWithLeaders(MiniCluster* cluster);
 
+// Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter
+// for already created tablets.
+void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
+
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */
