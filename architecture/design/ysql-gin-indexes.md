@@ -94,3 +94,10 @@ For regular indexes, there are scan flags like `SK_SEARCHISNULL` and
 ## multicolumn
 
 Multicolumn will be disabled in the near-term.  Design is TODO.
+
+## fastupdate
+
+Upstream postgres has a default option called "fastupdate" that writes rows to
+a buffer (called pending list) before flushing to disk for performance
+purposes.  YB won't do this in the first iteration, and it may never do it at
+all since, in a multi-node setup, this list needs to be cached on all nodes.
