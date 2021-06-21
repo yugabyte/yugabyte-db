@@ -41,7 +41,7 @@ public class HealthCheck extends Model {
     public Date timestamp;
     public List<nodeData> data = new ArrayList<>();
     public String yb_version;
-    public Boolean error;
+    public Boolean has_error;
   }
 
   // The max number of records to keep per universe.
@@ -63,9 +63,12 @@ public class HealthCheck extends Model {
   public details detailsJson;
 
   public boolean hasError() {
-    details details = detailsJson;
-    // Only return true if we have the top-level has_error field with a value of true.
-    return details.error;
+    try {
+      // Only return true if we have the top-level has_error field with a value of true.
+      return detailsJson.has_error;
+    } catch (NullPointerException e) {
+      return false;
+    }
   }
 
   public static final Finder<UUID, HealthCheck> find =
