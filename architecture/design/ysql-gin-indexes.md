@@ -37,8 +37,8 @@ one scan key and one scan entry is given, so the query can be like
     basectid := get_from_idx(scan entry)
     return get_from_tab(basectid)
 
-A more complicated one is one key and two entries where both are required.  In
-this case, we can scan using one entry and recheck the condition afterward.
+A more complicated case is one key and two entries where both are required.  We
+can scan using one entry and recheck the condition afterward.
 
 For now, rechecking the condition is always done, even if it may not be
 necessary.
@@ -66,9 +66,8 @@ not.  For GIN, there's more to distinguish, so they are categorized as follows:
 - empty item: no elements in the container (e.g. `ARRAY[]`)
 - null item: the container itself is null (i.e. `null`)
 
-DocDB does not support null categories, so either it will have to be extended
-or a workaround needs to be found to support these null categories.  We can't
-just smash all the null categories into one because of search modes...
+DocDB does not support null categories, so we can add a new value type
+specifically for GIN nulls.
 
 ## search modes
 
