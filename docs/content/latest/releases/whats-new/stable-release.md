@@ -47,7 +47,7 @@ This bug does not affect version 2.4.0.0.
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.4.5.0-b18
+docker pull yugabytedb/yugabyte:2.4.5.0-b19
 ```
 
 ### Improvements
@@ -67,7 +67,7 @@ N/A
 * [[4437](https://github.com/yugabyte/yugabyte-db/issues/4437)] [[8731](https://github.com/yugabyte/yugabyte-db/issues/8731)] [DocDB] disabled bloom filters for master tablet and fixed DocDbAwareV2FilterPolicy compatibility for range-partitioned co-located tables
 * [[6096](https://github.com/yugabyte/yugabyte-db/issues/6096)] [YSQL] Fix crash during bootstrap when replaying WAL of deleted colocated table
 * [[6482](https://github.com/yugabyte/yugabyte-db/issues/6482)] Fix timeout handling when getting safe time in a RF1 cluster
-* [[7641](https://github.com/yugabyte/yugabyte-db/issues/7641)] (This commit has been removed from release 2.4.5.0.) YCQL: Fix checks in index update path that determine full row removal.
+* [[7641](https://github.com/yugabyte/yugabyte-db/issues/7641)] [[8834](https://github.com/yugabyte/yugabyte-db/issues/8834)] [YCQL] Remove incorrect CHECK condition added in D10931 (in [2.4.2.0](#v2-4-2-0-may-3-2021) release)
 * [[8204](https://github.com/yugabyte/yugabyte-db/issues/8204)] [Ybase] GetLoadMoveCompletionPercent returns an incorrect 100% if tservers haven't heartbeated their tablet reports
 * [[8390](https://github.com/yugabyte/yugabyte-db/issues/8390)] Fix NPE Handling for indexed_table_id
 * [[8591](https://github.com/yugabyte/yugabyte-db/issues/8591)] [DocDB] Add protection against missing UserFrontiers in older SST files during intents cleanup
