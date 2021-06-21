@@ -33,7 +33,8 @@ else to it.
 ### insert
 
 `yb_aminsert` is used instead of `aminsert` for Yugabyte.  To support index
-writes, extract the scan entries for each item and write
+writes, extract the scan entries (reuse code from upstream) for each item and
+write
 
     [scan entry, basectid]
 
@@ -56,8 +57,9 @@ to the base table.
 uses bitmap scan but `ybgin` doesn't, the implementation here is most
 different.
 
-Given a query, extract the scan keys and entries.  In the simplest case, only
-one scan key and one scan entry is given, so the query can be like
+Given a query, extract the scan keys and entries (reuse code from upstream).
+In the simplest case, only one scan key and one scan entry is given, so the
+query can be like
 
     basectid := get_from_idx(scan entry)
     return get_from_tab(basectid)
