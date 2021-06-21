@@ -561,7 +561,7 @@ Notice, too, that the caption for the `SELECT` output has vanished.
 
 Here is the best practical approach to producing a coherent report:
 
--  Program your own stopwatch explicitly when you do systematic timing tests.
+- Program your own stopwatch explicitly when you do systematic timing tests.
 - Program a function (and especially a table function) from which you can `SELECT` to produce output from a PL/pgSQL execution.
 
 The explicitly programmed stopwatch needs to implement a memo for noting the wall-clock time when it's started. While a (temporary) table would work, this would bring an installation-time nuisance cost and a Heisenberg effect. It's better, therefore, to use this device to start the stopwatch:
