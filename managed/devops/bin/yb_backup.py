@@ -673,6 +673,10 @@ class YBBackup:
             help="Whether ysql authentication is required. If specified, will connect using local "
                  "UNIX socket as the host. Overrides --local_ysql_dump_binary to always "
                  "use remote binary.")
+        parser.add_argument(
+            '--disable_checksums', action='store_true',
+            help="Whether checksums will be created and checked. If specified, will skip using "
+                 "checksums.")
 
         backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
@@ -1489,18 +1493,19 @@ class YBBackup:
         :param tserver_ip: tserver ip from which the data needs to be uploaded.
         :param snapshot_dir: The snapshot directory on the tserver from which we need to upload.
         """
-        logging.info('Creating check-sum for %s on tablet server %s' % (
-                     snapshot_dir, tserver_ip))
-        create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir)
-
         target_tablet_filepath = os.path.join(snapshot_filepath, 'tablet-%s' % (tablet_id))
-        target_checksum_filepath = checksum_path(target_tablet_filepath)
-        snapshot_dir_checksum = checksum_path(strip_dir(snapshot_dir))
-        logging.info('Uploading %s from tablet server %s to %s URL %s' % (
-                     snapshot_dir_checksum, tserver_ip, self.args.storage_type,
-                     target_checksum_filepath))
-        upload_checksum_cmd = self.storage.upload_file_cmd(
-            snapshot_dir_checksum, target_checksum_filepath)
+        if not self.args.disable_checksums:
+            logging.info('Creating check-sum for %s on tablet server %s' % (
+                         snapshot_dir, tserver_ip))
+            create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir)
+
+            target_checksum_filepath = checksum_path(target_tablet_filepath)
+            snapshot_dir_checksum = checksum_path(strip_dir(snapshot_dir))
+            logging.info('Uploading %s from tablet server %s to %s URL %s' % (
+                         snapshot_dir_checksum, tserver_ip, self.args.storage_type,
+                         target_checksum_filepath))
+            upload_checksum_cmd = self.storage.upload_file_cmd(
+                snapshot_dir_checksum, target_checksum_filepath)
 
         target_filepath = target_tablet_filepath + '/'
         logging.info('Uploading %s from tablet server %s to %s URL %s' % (
@@ -1508,10 +1513,11 @@ class YBBackup:
         upload_tablet_cmd = self.storage.upload_dir_cmd(snapshot_dir, target_filepath)
 
         # Commands to be run on TSes over ssh for uploading the tablet backup.
-        # 1. Create check-sum file (via sha256sum tool).
-        parallel_commands.add_args(create_checksum_cmd, tserver_ip)
-        # 2. Upload check-sum file.
-        parallel_commands.add_args(tuple(upload_checksum_cmd), tserver_ip)
+        if not self.args.disable_checksums:
+            # 1. Create check-sum file (via sha256sum tool).
+            parallel_commands.add_args(create_checksum_cmd, tserver_ip)
+            # 2. Upload check-sum file.
+            parallel_commands.add_args(tuple(upload_checksum_cmd), tserver_ip)
         # 3. Upload tablet folder.
         parallel_commands.add_args(tuple(upload_tablet_cmd), tserver_ip)
 
@@ -1559,13 +1565,14 @@ class YBBackup:
         parallel_commands.add_args(tuple(mkdircmd), tserver_ip)
         # 3. Download tablet folder.
         parallel_commands.add_args(tuple(cmd), tserver_ip)
-        # 4. Download check-sum file.
-        parallel_commands.add_args(tuple(cmd_checksum), tserver_ip)
-        # 5. Create new check-sum file.
-        parallel_commands.add_args(create_checksum_cmd, tserver_ip)
-        # 6. Compare check-sum files.
-        parallel_commands.add_args(check_checksum_cmd, tserver_ip)
-        parallel_commands.use_last_fn_result_as_command_result()
+        if not self.args.disable_checksums:
+            # 4. Download check-sum file.
+            parallel_commands.add_args(tuple(cmd_checksum), tserver_ip)
+            # 5. Create new check-sum file.
+            parallel_commands.add_args(create_checksum_cmd, tserver_ip)
+            # 6. Compare check-sum files.
+            parallel_commands.add_args(check_checksum_cmd, tserver_ip)
+            parallel_commands.use_last_fn_result_as_command_result()
         # 7. Move the backup in place.
         parallel_commands.add_args(tuple(mvcmd), tserver_ip)
 
@@ -1695,13 +1702,14 @@ class YBBackup:
                 raise BackupException(
                     "Could not find metadata file at '{}'".format(src_path))
 
-            logging.info('Creating check-sum for %s' % (src_path))
-            self.run_program(
-                self.create_checksum_cmd(src_path, src_checksum_path))
+            if not self.args.disable_checksums:
+                logging.info('Creating check-sum for %s' % (src_path))
+                self.run_program(
+                    self.create_checksum_cmd(src_path, src_checksum_path))
 
-            logging.info('Uploading %s to %s' % (src_checksum_path, dest_checksum_path))
-            self.run_program(
-                self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path))
+                logging.info('Uploading %s to %s' % (src_checksum_path, dest_checksum_path))
+                self.run_program(
+                    self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path))
 
             logging.info('Uploading %s to %s' % (src_path, dest_path))
             self.run_program(
@@ -1709,17 +1717,19 @@ class YBBackup:
         else:
             server_ip = self.get_leader_master_ip()
 
-            logging.info('Creating check-sum for %s on tablet server %s' % (
-                         src_path, server_ip))
-            self.run_ssh_cmd(
-                self.create_checksum_cmd(src_path, src_checksum_path),
-                server_ip)
+            if not self.args.disable_checksums:
+                logging.info('Creating check-sum for %s on tablet server %s' % (
+                             src_path, server_ip))
+                self.run_ssh_cmd(
+                    self.create_checksum_cmd(src_path, src_checksum_path),
+                    server_ip)
 
-            logging.info('Uploading %s from tablet server %s to %s URL %s' % (
-                         src_checksum_path, server_ip, self.args.storage_type, dest_checksum_path))
-            self.run_ssh_cmd(
-                self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path),
-                server_ip)
+                logging.info('Uploading %s from tablet server %s to %s URL %s' % (
+                             src_checksum_path, server_ip,
+                             self.args.storage_type, dest_checksum_path))
+                self.run_ssh_cmd(
+                    self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path),
+                    server_ip)
 
             logging.info('Uploading %s from tablet server %s to %s URL %s' % (
                          src_path, server_ip, self.args.storage_type, dest_path))
@@ -1888,37 +1898,39 @@ class YBBackup:
         Download the file from the external source to the local temporary folder.
         """
         if self.args.local_yb_admin_binary:
-            checksum_downloaded = checksum_path_downloaded(target_path)
-            self.run_program(
-                self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded))
+            if not self.args.disable_checksums:
+                checksum_downloaded = checksum_path_downloaded(target_path)
+                self.run_program(
+                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded))
             self.run_program(
                 self.storage.download_file_cmd(src_path, target_path))
 
-            self.run_program(
-                self.create_checksum_cmd(target_path, checksum_path(target_path)))
-
-            check_checksum_res = self.run_program(
-                compare_checksums_cmd(checksum_downloaded,
-                                      checksum_path(target_path))).strip()
+            if not self.args.disable_checksums:
+                self.run_program(
+                    self.create_checksum_cmd(target_path, checksum_path(target_path)))
+                check_checksum_res = self.run_program(
+                    compare_checksums_cmd(checksum_downloaded,
+                                          checksum_path(target_path))).strip()
         else:
             server_ip = self.get_leader_master_ip()
-            checksum_downloaded = checksum_path_downloaded(target_path)
-            self.run_ssh_cmd(
-                self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
-                server_ip)
+            if not self.args.disable_checksums:
+                checksum_downloaded = checksum_path_downloaded(target_path)
+                self.run_ssh_cmd(
+                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
+                    server_ip)
             self.run_ssh_cmd(
                 self.storage.download_file_cmd(src_path, target_path),
                 server_ip)
 
-            self.run_ssh_cmd(
-                self.create_checksum_cmd(target_path, checksum_path(target_path)),
-                server_ip)
+            if not self.args.disable_checksums:
+                self.run_ssh_cmd(
+                    self.create_checksum_cmd(target_path, checksum_path(target_path)),
+                    server_ip)
+                check_checksum_res = self.run_ssh_cmd(
+                    compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
+                    server_ip).strip()
 
-            check_checksum_res = self.run_ssh_cmd(
-                compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
-                server_ip).strip()
-
-        if check_checksum_res != 'correct':
+        if (not self.args.disable_checksums) and check_checksum_res != 'correct':
             raise BackupException('Check-sum for {} is {}'.format(
                 target_path, check_checksum_res))
 
@@ -2103,10 +2115,11 @@ class YBBackup:
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(pool)
 
-        for k in results:
-            v = results[k].strip()
-            if v != 'correct':
-                raise BackupException('Check-sum for "{}" is {}'.format(k, v))
+        if not self.args.disable_checksums:
+            for k in results:
+                v = results[k].strip()
+                if v != 'correct':
+                    raise BackupException('Check-sum for "{}" is {}'.format(k, v))
 
         return tserver_to_deleted_tablets
 
