@@ -53,7 +53,7 @@ tombstone records.  This is similar to insert.
 
 ### update
 
-For now, this does a delete than insert.  This may be inefficient for `ybgin`
+For now, this does a delete then insert.  This may be inefficient for `ybgin`
 since updating one row can mean multiple deletes and inserts when only a few
 would have sufficed.
 
