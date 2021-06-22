@@ -70,7 +70,7 @@ For regular indexes and tables, nulls are binary: an item is either null or not.
 
 - null key: a null element inside the container (e.g. `ARRAY[null]`)
 - empty item: no elements in the container (e.g. `ARRAY[]`)
-- null item: the container itself is null (i.e. `null`)
+- null item: the container itself is `null`
 
 DocDB does not support null categories, so we can add a new value type specifically for GIN nulls.  For the first iteration, nulls won't be supported.
 
