@@ -82,7 +82,7 @@ For regular indexes, there are scan flags such as `SK_SEARCHISNULL` and `SK_SEAR
 - all: match everything but `GIN_CAT_NULL_ITEM`
 - everything: match everything
 
-## multicolumn
+## Multicolumn
 
 Multicolumn will be disabled in the near-term.  Design is TODO.
 
