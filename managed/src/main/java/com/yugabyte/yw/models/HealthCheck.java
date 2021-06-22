@@ -18,8 +18,6 @@ import io.ebean.*;
 import io.ebean.annotation.DbJson;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -34,7 +32,7 @@ public class HealthCheck extends Model {
       public String process;
       public String timestamp;
       public String node_name;
-      public Boolean has_error = false;
+      public Boolean has_error;
       public List<String> details;
       public String message;
     }
@@ -42,15 +40,13 @@ public class HealthCheck extends Model {
     public Date timestamp;
     public List<NodeData> data = new ArrayList<>();
     public String yb_version;
+    // TODO: This was done as some test is using error field. Reconcile this.
     @JsonAlias({"error", "has_error"})
-    public Boolean has_error;
+    public Boolean has_error = false;
   }
 
   // The max number of records to keep per universe.
   public static final int RECORD_LIMIT = 10;
-
-  // Top-level payload field for figuring out if we have errors or not.
-  public static final String FIELD_HAS_ERROR = "has_error";
 
   @EmbeddedId @Constraints.Required public HealthCheckKey idKey;
 
@@ -62,10 +58,13 @@ public class HealthCheck extends Model {
   @DbJson
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
-  public Details detailsJson;
+  public Details detailsJson = new Details();
 
   public boolean hasError() {
+    if (detailsJson != null) {
       return detailsJson.has_error;
+    }
+    return false;
   }
 
   public static final Finder<UUID, HealthCheck> find =
@@ -84,10 +83,7 @@ public class HealthCheck extends Model {
     HealthCheck check = new HealthCheck();
     check.idKey = HealthCheckKey.create(universeUUID);
     check.customerId = customerId;
-    // Validate it is correct JSON.
-    // ObjectMapper objMapper = new ObjectMapper();
-    Details features =Json.fromJson(Json.parse(details), Details.class);
-    // Details features = objMapper.convertValue(Json.parse(details), new TypeReference<Details>() {});
+    Details features = Json.fromJson(Json.parse(details), Details.class);
     check.detailsJson = features;
     // Save the object.
     check.save();
