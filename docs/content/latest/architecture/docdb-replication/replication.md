@@ -22,7 +22,7 @@ DocDB automatically replicates data synchronously in order to survive failures w
 
 ### Fault domains
 
-A fault domains are comprised of a group of nodes that are prone to correlated failures. Examples of fault domains are:
+A fault domain comprises a group of nodes that are prone to correlated failures. Examples of fault domains are:
 
 * Zones or racks
 * Regions or datacenters

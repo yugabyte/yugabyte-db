@@ -103,7 +103,7 @@ Blocking this transaction and retrying it after the other transaction completes 
 # Update should succeed since row
 # was explicitly locked.
 UPDATE t SET v='v1.2' WHERE k='k1';
-# Commit fails.
+# Commit succeeds.
 COMMIT;
     </code></pre>
     </td>
