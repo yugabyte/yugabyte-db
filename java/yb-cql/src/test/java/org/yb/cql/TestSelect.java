@@ -2262,4 +2262,47 @@ public class TestSelect extends BaseCQLTest {
         "{\"class\":\"org.apache.cassandra.locator.SimpleStrategy\"," +
         "\"replication_factor\":\"3\"}");
   }
+
+  @Test
+  public void testInClauseWithTokenRange() throws Exception {
+    // Test 1: #9032 Ensure all partitions honour token conditions.
+    session.execute("create table test (h1 int primary key, v1 int);");
+    session.execute("insert into test (h1, v1) values (1, 2)");
+    session.execute("insert into test (h1, v1) values (2, 3)");
+    session.execute("insert into test (h1, v1) values (5, 6)");
+
+    Set<Long> partition_keys = new HashSet<Long>();
+    for (Row row : session.execute("select h1, token(h1) from test;")) {
+      partition_keys.add(row.getLong(1));
+    }
+    // We know for sure that the tokens for 1, 2, 5 are -7921831744544702464,
+    // 4666855113862676480 and -8470426474153771008. We want to pick anything other than that.
+    assertFalse(partition_keys.contains(new Long(1)));
+
+    // Note that we test with 2 hash column values 2 and 5 after 1 in the IN clause. This is to
+    // confirm that both the lower_bound and the upper_bound of token() range are passed on to later
+    // requests for IN clause partitions. If we were to test with only in (1, 2), tests would still
+    // pass if hypothetically the db code missed to pass the lower_bound to later requests.
+    ResultSet res = session.execute("select * from test where token(h1) >= 1 and token(h1) <= 1 " +
+      "and h1 in (1, 2, 5);");
+
+    // The below assertion confirms that all point get queries (i.e., for h1 = 1, 2), the token()
+    // conditions are honoured.
+    assertTrue("No rows should be returned", res.all().isEmpty());
+
+    // Test 2: Ensure that all partitions use the same token conditions
+    // i.e., an op for one partition key might change the token range's lower and upper bound to be
+    // the same as the partition key of that op (as an optimization). But ops for subsequent
+    // partitions should use the original token ranges.
+    //
+    // For example, if the above statement didn't hold true, the op for h1=2 would use
+    // lower and upper bound as -7921831744544702464 (which is the hash code for h1=1). And in
+    // that case it would return just a single row i.e., for the first partition key h1=1.
+    //
+    // -7921831744544702464 is the hash code for 1
+    // -4666855113862676480 is the hash code for 2
+    assertQueryRowsUnordered("select * from test where token(h1) >= -7921831744544702464 " +
+      "and token(h1) <= 4666855113862676480 and h1 in (1, 2);",
+      "Row[1, 2]", "Row[2, 3]");
+  }
 }
