@@ -75,7 +75,7 @@ class SnapshotState : public StateWithTablets {
   }
 
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
-      const tablet::SnapshotOperationState& state) const;
+      const tablet::SnapshotOperation& operation) const;
 
   std::string ToString() const;
   CHECKED_STATUS ToPB(SnapshotInfoPB* out);

@@ -113,20 +113,6 @@ class MaintenanceOpStats;
 
 namespace tablet {
 
-class ChangeMetadataOperationState;
-class ScopedReadOperation;
-class TabletRetentionPolicy;
-class TransactionCoordinator;
-class TransactionCoordinatorContext;
-class TransactionParticipant;
-class TruncateOperationState;
-class WriteOperationState;
-
-struct TabletMetrics;
-struct TransactionApplyData;
-
-using docdb::LockBatch;
-
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
@@ -279,11 +265,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Apply all of the row operations associated with this transaction.
   CHECKED_STATUS ApplyRowOperations(
-      WriteOperationState* operation_state,
+      WriteOperation* operation,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
-  CHECKED_STATUS ApplyOperationState(
-      const OperationState& operation_state, int64_t batch_idx,
+  CHECKED_STATUS ApplyOperation(
+      const Operation& operation, int64_t batch_idx,
       const docdb::KeyValueWriteBatchPB& write_batch,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
@@ -378,18 +364,18 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
   CHECKED_STATUS CreatePreparedChangeMetadata(
-      ChangeMetadataOperationState *operation_state,
+      ChangeMetadataOperation* operation,
       const Schema* schema);
 
   // Apply the Schema of the specified operation.
-  CHECKED_STATUS AlterSchema(ChangeMetadataOperationState* operation_state);
+  CHECKED_STATUS AlterSchema(ChangeMetadataOperation* operation);
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that major compactions can now garbage collect delete markers.
   CHECKED_STATUS MarkBackfillDone(const TableId& table_id = "");
 
   // Change wal_retention_secs in the metadata.
-  CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state);
+  CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
   // Apply replicated add table operation.
   CHECKED_STATUS AddTable(const TableInfoPB& table_info);
@@ -398,7 +384,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS RemoveTable(const std::string& table_id);
 
   // Truncate this tablet by resetting the content of RocksDB.
-  CHECKED_STATUS Truncate(TruncateOperationState* state);
+  CHECKED_STATUS Truncate(TruncateOperation* operation);
 
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
