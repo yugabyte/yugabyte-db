@@ -60,7 +60,7 @@ For the first iteration, rechecking the condition is always done, even if it may
 
     [scan entry, basectid] -> tombstone
 
-### update
+### Update
 
 An update operation does a delete then insert. This may be inefficient for `ybgin` since updating one row can mean many deletes and inserts when only a few would have sufficed.
 
