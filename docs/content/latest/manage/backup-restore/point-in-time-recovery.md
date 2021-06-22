@@ -118,15 +118,11 @@ The following table provides a quick comparison of the intended usage patterns.
 
 This feature is in active development. YSQL and YCQL support different features, as detailed in the sections that follow.
 
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
-
-* Support for undoing YSQL metadata operations, such as CREATE, ALTER, TRUNCATE, or DROP TABLE
-* YCQL roles and permissions
-* Automatic tablet splitting and point-in-time recovery do not yet work well together.
-
 ### YSQL limitations
 
 Currently, you can **restore data only**. The feature doesn't support metadata; in other words, restoring past operations such as CREATE, ALTER, TRUNCATE, and DROP TABLE is unsupported.
+
+Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Support for undoing certain metadata operations is forthcoming.
 
 ### YCQL limitations
 
@@ -136,3 +132,8 @@ Currently, you can recover from the following YCQL operations:
 * CREATE and DROP TABLE
 * ALTER TABLE (including ADD, DROP, and RENAME COLUMN)
 * CREATE and DROP INDEX
+
+Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
+
+* YCQL roles and permissions
+* Support for automatic tablet splitting
