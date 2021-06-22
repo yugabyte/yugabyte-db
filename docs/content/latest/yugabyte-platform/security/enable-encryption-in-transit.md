@@ -80,7 +80,7 @@ You can enable TLS using your own certificates, as follows:
 
 ## Custom CA-Signed Self-Provided Certificates
 
-For universes created with an on-premise cloud provider, instead of using self-signed certificates, you can use third-party certificates from external CAs. The third-party CA root certificate must be configured in the platform and the node keys. You have to copy the certificates to the appropriate database nodes using the procedure described in [How to Use Custom CA-Signed Certificates to Enable TLS](#how-to-use-custom-ca-signed-certificates-to-enable-tls). 
+For universes created with an on-premise cloud provider, instead of using self-signed certificates, you can use third-party certificates from external CAs. The third-party CA root certificate must be configured in the platform. You have to copy the custom CA root certificate, node certificate, and node key to the appropriate database nodes using the procedure described in [How to Use Custom CA-Signed Certificates to Enable TLS](#how-to-use-custom-ca-signed-certificates-to-enable-tls). 
 
 The certificates must meet the following criteria: 
 
