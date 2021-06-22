@@ -298,7 +298,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     authToken,
                     data));
     AssertHelper.assertBadRequest(
-        result, "Unable to update alert receiver: Slack parameters: channel is empty.");
+        result, "Unable to update alert receiver: Slack parameters: username is empty.");
   }
 
   @Test
