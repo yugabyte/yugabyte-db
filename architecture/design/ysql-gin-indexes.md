@@ -74,7 +74,7 @@ For regular indexes and tables, nulls are binary: an item is either null or not.
 
 DocDB does not support null categories, so we can add a new value type specifically for GIN nulls.  For the first iteration, nulls won't be supported.
 
-## search modes
+## Search modes
 
 For regular indexes, there are scan flags such as `SK_SEARCHISNULL` and `SK_SEARCHARRAY`.  For GIN, there are search modes:
 
