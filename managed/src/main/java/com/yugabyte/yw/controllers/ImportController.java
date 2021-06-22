@@ -33,6 +33,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -42,6 +43,8 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ListTabletServersResponse;
@@ -55,9 +58,10 @@ import play.mvc.Result;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
-
-import io.swagger.annotations.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 
 @Api
 public class ImportController extends AuthenticatedController {
@@ -123,7 +127,7 @@ public class ImportController extends AuthenticatedController {
         case IMPORTED_TSERVERS:
           return finishUniverseImport(importForm, customer, results);
         case FINISHED:
-          return ApiResponse.success(results);
+          return YWResults.withRawData(results);
         default:
           return ApiResponse.error(
               BAD_REQUEST, "Unknown current state: " + importForm.currentState.toString());
@@ -314,7 +318,7 @@ public class ImportController extends AuthenticatedController {
     results.put("universeName", universeName);
     results.put("masterAddresses", masterAddresses);
 
-    return ApiResponse.success(results);
+    return YWResults.withRawData(results);
   }
 
   private void setImportedState(Universe universe, ImportedState newState) {
@@ -463,7 +467,7 @@ public class ImportController extends AuthenticatedController {
     results.put("masterAddresses", masterAddresses);
     results.put("universeName", importForm.universeName);
 
-    return ApiResponse.success(results);
+    return YWResults.withRawData(results);
   }
 
   /**
@@ -569,7 +573,7 @@ public class ImportController extends AuthenticatedController {
 
     LOG.info("Completed " + universe.universeUUID + " import.");
 
-    return ApiResponse.success(results);
+    return YWResults.withRawData(results);
   }
 
   /**

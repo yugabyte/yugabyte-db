@@ -3,7 +3,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
@@ -70,7 +69,7 @@ public class CertificateController extends AuthenticatedController {
             certType,
             customCertInfo);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(certUUID);
+    return YWResults.withData(certUUID);
   }
 
   @ApiOperation(value = "TODO")
@@ -86,7 +85,7 @@ public class CertificateController extends AuthenticatedController {
         CertificateHelper.createClientCertificate(
             rootCA, null, formData.get().username, certStart, certExpiry);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(result);
+    return YWResults.withRawData(result);
   }
 
   public Result getRootCert(UUID customerUUID, UUID rootCA) {
@@ -97,17 +96,17 @@ public class CertificateController extends AuthenticatedController {
     auditService().createAuditEntry(ctx(), request());
     ObjectNode result = Json.newObject();
     result.put(CertificateHelper.ROOT_CERT, certContents);
-    return ApiResponse.success(result);
+    return YWResults.withRawData(result);
   }
 
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    return ApiResponse.success(certs);
+    return YWResults.withData(certs);
   }
 
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
-    return ApiResponse.success(cert.uuid);
+    return YWResults.withData(cert.uuid);
   }
 
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
@@ -124,6 +123,6 @@ public class CertificateController extends AuthenticatedController {
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(rootCA, customerUUID);
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
     certificate.setCustomCertInfo(customCertInfo, rootCA, customerUUID);
-    return ApiResponse.success(certificate);
+    return YWResults.withData(certificate);
   }
 }

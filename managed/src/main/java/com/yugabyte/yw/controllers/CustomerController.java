@@ -28,11 +28,11 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -44,8 +44,6 @@ import play.mvc.Result;
 
 import java.util.*;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.ApiResponse.success;
 
 @Api
 public class CustomerController extends AuthenticatedController {
@@ -183,7 +181,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(Json.toJson(customer));
   }
 
-  @ApiOperation(value = "deleteCustomer", response = Object.class)
+  @ApiOperation(value = "deleteCustomer", response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -192,14 +190,12 @@ public class CustomerController extends AuthenticatedController {
       user.delete();
     }
 
-    if (customer.delete()) {
-      ObjectNode responseJson = Json.newObject();
-      auditService().createAuditEntry(ctx(), request());
-      responseJson.put("success", true);
-      return success(responseJson);
+    if (!customer.delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
-    throw new YWServiceException(
-        INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
+    auditService().createAuditEntry(ctx(), request());
+    return YWResults.YWSuccess.empty();
   }
 
   public Result upsertFeatures(UUID customerUUID) {
@@ -290,7 +286,7 @@ public class CustomerController extends AuthenticatedController {
     if (response.has("error")) {
       throw new YWServiceException(BAD_REQUEST, response.get("error"));
     }
-    return success(response);
+    return YWResults.withRawData(response);
   }
 
   private String getNamespacesFilter(Customer customer, String nodePrefix) {
@@ -346,7 +342,7 @@ public class CustomerController extends AuthenticatedController {
     hostInfo.put(
         Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null));
 
-    return success(hostInfo);
+    return YWResults.withRawData(hostInfo);
   }
 
   private HashMap<String, HashMap<String, String>> getFilterOverrides(
