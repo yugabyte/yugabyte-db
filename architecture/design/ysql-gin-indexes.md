@@ -1,8 +1,8 @@
 # YSQL GIN indexes
 
-As of v2.6 and v2.7, Yugabyte supports only one type of index access method for DocDB-backed relations: `lsm`.  This simply maps columns to the primary key of the base table.
+As of v2.6 and v2.7, Yugabyte supports only one type of index access method for DocDB-backed relations: `lsm`. This simply maps columns to the primary key of the base table.
 
-Generalized inverted indexes map elements inside container columns to the primary key of the base table.  To support GIN, we add a new access method `ybgin` and implement the access method API.  A lot of the work can be borrowed from the upstream PostgreSQL `gin` access method.
+Generalized inverted indexes map elements inside container columns to the primary key of the base table. To support GIN, we add a new access method `ybgin` and implement the access method API. A lot of the work can be borrowed from the upstream PostgreSQL `gin` access method.
 
 ## opclasses
 
@@ -21,11 +21,11 @@ We can just duplicate these for the `ybgin` access method and reference the same
 
 ### Build
 
-`ambuild` and `yb_ambackfill` are used for `CREATE INDEX` with and without online schema changes.  They both read from the base table and insert to the index table.  Therefore, this is a superset of `yb_aminsert`.
+`ambuild` and `yb_ambackfill` are used for `CREATE INDEX` with and without online schema changes. They both read from the base table and insert to the index table. Therefore, this is a superset of `yb_aminsert`.
 
 ### Insert
 
-`yb_aminsert` is used instead of `aminsert` for Yugabyte.  To support index writes, extract the scan entries (reuse code from upstream) for each item and write
+`yb_aminsert` is used instead of `aminsert` for Yugabyte. To support index writes, extract the scan entries (reuse code from upstream) for each item and write
 
     [scan entry, basectid]
 
@@ -43,20 +43,20 @@ to the base table.
 
 ### Select
 
-`amgettuple` is used for `ybgin`, unlike `amgetbitmap` for `gin`.  Since `gin` uses bitmap scan but `ybgin` doesn't, the implementation here is most different.
+`amgettuple` is used for `ybgin`, unlike `amgetbitmap` for `gin`. Since `gin` uses bitmap scan but `ybgin` doesn't, the implementation here is most different.
 
-Given a query, extract the scan keys and entries (reuse code from upstream).  In the simplest case, only one scan key and one scan entry is given, so the query can be like
+Given a query, extract the scan keys and entries (reuse code from upstream). In the simplest case, only one scan key and one scan entry is given, so the query can be like
 
     basectid := get_from_idx(scan entry)
     return get_from_tab(basectid)
 
-A more complicated case is one key and two entries where both are required.  We can scan using one entry and recheck the condition afterward.
+A more complicated case is one key and two entries where both are required. We can scan using one entry and recheck the condition afterward.
 
 For the first iteration, rechecking the condition is always done, even if it may not be necessary.
 
 ### Delete
 
-`yb_amdelete` is used.  Upstream postgres doesn't have a delete because it relies on vacuum, but we don't have that, so we need to explicitly write tombstone records.  This is similar to insert.
+`yb_amdelete` is used. Upstream postgres doesn't have a delete because it relies on vacuum, but we don't have that, so we need to explicitly write tombstone records. This is similar to insert.
 
     [scan entry, basectid] -> tombstone
 
@@ -66,17 +66,17 @@ An update operation does a delete then insert. This may be inefficient for `ybgi
 
 ## Null categories
 
-For regular indexes and tables, nulls are binary: an item is either null or not.  For GIN, there's more to distinguish, so they are categorized as follows:
+For regular indexes and tables, nulls are binary: an item is either null or not. For GIN, there's more to distinguish, so they are categorized as follows:
 
 - null key: a null element inside the container (for example, `ARRAY[null]`)
 - empty item: no elements in the container (for example, `ARRAY[]`)
 - null item: the container itself is `null`
 
-DocDB does not support null categories, so we can add a new value type specifically for GIN nulls.  For the first iteration, nulls won't be supported.
+DocDB does not support null categories, so we can add a new value type specifically for GIN nulls. For the first iteration, nulls won't be supported.
 
 ## Search modes
 
-For regular indexes, there are scan flags such as `SK_SEARCHISNULL` and `SK_SEARCHARRAY`.  For GIN, there are search modes:
+For regular indexes, there are scan flags such as `SK_SEARCHISNULL` and `SK_SEARCHARRAY`. For GIN, there are search modes:
 
 - include empty: also match `GIN_CAT_EMPTY_ITEM`
 - all: match everything but `GIN_CAT_NULL_ITEM`
@@ -99,7 +99,7 @@ Some extensions extend gin:
 - [`intarray`][ext-intarray]: add opclass to support faster and more operators on `_int4` (`int4` array) type without nulls
 - [`pg_trgm`][ext-pg-trgm]: add opclass to support trigram text search on `text` type
 
-A `ybgin` equivalent can be created for each.  Creating the system objects is simple, but the underlying implementation may need to be rewritten.
+A `ybgin` equivalent can be created for each. Creating the system objects is simple, but the underlying implementation may need to be rewritten.
 
 [ext-btree-gin]: https://www.postgresql.org/docs/current/btree-gin.html
 [ext-hstore]: https://www.postgresql.org/docs/current/hstore.html
