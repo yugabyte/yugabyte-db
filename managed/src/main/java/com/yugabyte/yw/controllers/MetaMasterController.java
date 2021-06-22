@@ -2,35 +2,29 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.mvc.Controller;
 import play.mvc.Result;
+
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 
@@ -48,7 +42,7 @@ public class MetaMasterController extends Controller {
     for (NodeDetails node : universe.getMasters()) {
       masters.add(MasterNode.fromUniverseNode(node));
     }
-    return ApiResponse.success(masters);
+    return YWResults.withData(masters);
   }
 
   public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
@@ -77,18 +71,18 @@ public class MetaMasterController extends Controller {
     // instead of the POD ip.
     String serviceIPPort = getKuberenetesServiceIPPort(type, universe);
     if (serviceIPPort != null) {
-      return ApiResponse.success(serviceIPPort);
+      return YWResults.withData(serviceIPPort);
     }
 
     switch (type) {
       case MASTER:
-        return ApiResponse.success(universe.getMasterAddresses());
+        return YWResults.withData(universe.getMasterAddresses());
       case YQLSERVER:
-        return ApiResponse.success(universe.getYQLServerAddresses());
+        return YWResults.withData(universe.getYQLServerAddresses());
       case YSQLSERVER:
-        return ApiResponse.success(universe.getYSQLServerAddresses());
+        return YWResults.withData(universe.getYSQLServerAddresses());
       case REDISSERVER:
-        return ApiResponse.success(universe.getRedisServerAddresses());
+        return YWResults.withData(universe.getRedisServerAddresses());
       default:
         throw new IllegalArgumentException("Unexpected type " + type);
     }

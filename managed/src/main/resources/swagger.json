@@ -916,7 +916,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "type" : "object"
+              "$ref" : "#/definitions/YWSuccess"
             }
           }
         }
@@ -2840,6 +2840,18 @@
         }
       }
     },
+    "YWSuccess" : {
+      "type" : "object",
+      "required" : [ "message", "success" ],
+      "properties" : {
+        "success" : {
+          "type" : "boolean"
+        },
+        "message" : {
+          "type" : "string"
+        }
+      }
+    },
     "EditProviderRequest" : {
       "type" : "object",
       "required" : [ "config", "hostedZoneId" ],
@@ -3712,18 +3724,6 @@
         "upgradeOption" : {
           "type" : "string",
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ]
-        }
-      }
-    },
-    "YWSuccess" : {
-      "type" : "object",
-      "required" : [ "message", "success" ],
-      "properties" : {
-        "success" : {
-          "type" : "boolean"
-        },
-        "message" : {
-          "type" : "string"
         }
       }
     },
