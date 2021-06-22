@@ -64,7 +64,7 @@ For the first iteration, rechecking the condition is always done, even if it may
 
 This does a delete then insert.  This may be inefficient for `ybgin` since updating one row can mean multiple deletes and inserts when only a few would have sufficed.
 
-## null categories
+## Null categories
 
 For regular indexes and tables, nulls are binary: an item is either null or not.  For GIN, there's more to distinguish, so they are categorized as follows:
 
