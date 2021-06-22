@@ -220,7 +220,6 @@ typedef struct
     char *objectName;           /* Fully qualified object identification */
     const char *commandText;    /* sourceText / queryString */
     ParamListInfo paramList;    /* QueryDesc/ProcessUtility parameters */
-    const Relation *intoRel;    /* Create table/matview into rel info */
 
     bool granted;               /* Audit role has object permissions? */
     bool logged;                /* Track if we have logged this event, used
@@ -1263,42 +1262,6 @@ pgaudit_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
                 stackItem->auditEvent.logStmtLevel = LOGSTMT_ALL;
                 stackItem->auditEvent.commandTag = T_SelectStmt;
                 stackItem->auditEvent.command = CMDTAG_SELECT;
-
-                /*
-                 * If there is an into relation then log an insert. This is
-                 * required because tables newly created by "create table as"
-                 * or "create materialized view" do not call ExecCheckRTPerms()
-                 * so log_select_dml() will not be called by our hook.
-                 */
-                if (stackItem->next != NULL &&
-                    stackItem->next->auditEvent.intoRel != NULL)
-                {
-                    /* Get the audit oid if the role exists */
-                    auditOid = get_role_oid(auditRole, true);
-
-                    /*
-                     * Log DML if the audit role is valid or session logging is
-                     * enabled
-                     */
-                    if ((auditOid != InvalidOid || auditLogBitmap != 0) &&
-                        !IsAbortedTransactionBlockState())
-                    {
-                        /* Construct an RTE for the into relation */
-                        RangeTblEntry *rangeTabls;
-
-                        rangeTabls = makeNode(RangeTblEntry);
-                        rangeTabls->rtekind = RTE_RELATION;
-                        rangeTabls->relid = RelationGetRelid(
-                            stackItem->next->auditEvent.intoRel);
-                        rangeTabls->relkind =
-                            stackItem->next->auditEvent.intoRel.relkind;
-                        rangeTabls->rellockmode = RowExclusiveLock;
-                        rangeTabls->requiredPerms = ACL_INSERT;
-
-                        log_select_dml(auditOid, rangeTabls);
-                    }
-                }
-
                 break;
 
             case CMD_INSERT:
@@ -1430,18 +1393,6 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
         stackItem->auditEvent.commandTag = nodeTag(pstmt->utilityStmt);
         stackItem->auditEvent.command = CreateCommandTag(pstmt->utilityStmt);
         stackItem->auditEvent.commandText = queryString;
-
-        /*
-         * Store the relation inserted into for "create table as" and "create
-         * materialized view". This will be used later to generate the insert
-         * audit log.
-         */
-        if (stackItem->auditEvent.command == CMDTAG_CREATE_TABLE_AS ||
-            stackItem->auditEvent.command == CMDTAG_CREATE_MATERIALIZED_VIEW)
-        {
-            stackItem->auditEvent->intoRel =
-                ((CreateTableAsStmt *) parsetree)->into->rel;
-        }
 
         /*
          * If this is a DO block log it before calling the next ProcessUtility
