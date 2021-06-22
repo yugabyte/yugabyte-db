@@ -100,8 +100,15 @@ public class UniverseResp {
     // If node to client TLS is enabled.
     if (cluster.userIntent.enableClientToNodeEncrypt) {
       String randomFileName = UUID.randomUUID().toString();
+      UUID certUUID =
+          universe.getUniverseDetails().rootAndClientRootCASame
+              ? universe.getUniverseDetails().rootCA
+              : universe.getUniverseDetails().clientRootCA;
+      if (certUUID == null) {
+        LOG.warn("!!! CertUUID cannot be null when TLS is enabled !!!");
+      }
       if (isKubernetesProvider) {
-        String certContent = CertificateHelper.getCertPEM(universe.getUniverseDetails().rootCA);
+        String certContent = certUUID == null ? "" : CertificateHelper.getCertPEM(certUUID);
         Yaml yaml = new Yaml();
         String sampleAppCommandTxt =
             yaml.dump(
@@ -132,11 +139,7 @@ public class UniverseResp {
                     + "--workload CassandraKeyValue --nodes <nodes> --ssl_cert /home/root.crt")
                 .replace(
                     "<root_cert_content>",
-                    universe.getUniverseDetails().rootAndClientRootCASame
-                        ? CertificateHelper.getCertPEMFileContents(
-                            universe.getUniverseDetails().rootCA)
-                        : CertificateHelper.getCertPEMFileContents(
-                            universe.getUniverseDetails().clientRootCA))
+                    certUUID == null ? "" : CertificateHelper.getCertPEMFileContents(certUUID))
                 .replace("<nodes>", nodeBuilder.toString());
       }
       sampleAppCommand = sampleAppCommand.replace("<file_name>", randomFileName);
