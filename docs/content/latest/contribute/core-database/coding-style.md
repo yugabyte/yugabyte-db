@@ -523,7 +523,7 @@ Our build scripts enable thread safety analysis for Clang version 11 and above; 
 
 ### Unused C++ features
 
-**MIKHAIL** do we have anything for this section? See, for example, [this list from ClickHouse](https://clickhouse.tech/docs/en/development/style/#unused-features-of-c).
+In most of our code, we don't use C++ exceptions. However, in some cases, we still have to use C++ standard library functions that throw exceptions, and we catch those exceptions as early as possible and convert them to `Status` or `Result` return values.
 
 ### Other related coding guidelines for C++
 
