@@ -45,7 +45,7 @@ The different deployments are explained in the sections below.
         <div class="title">Synchronous Replication</div>
       </div>
       <div class="body">
-          Achieve synchronous replication across 3 or more regions in YugabyteDB.
+          Achieve synchronous replication across three or more regions in YugabyteDB.
       </div>
     </a>
   </div>
@@ -57,7 +57,7 @@ The different deployments are explained in the sections below.
         <div class="title">Asynchronous Replication</div>
       </div>
       <div class="body">
-          Achieve asynchronous replication across 2 or more regions in YugabyteDB.
+          Achieve asynchronous replication across two or more regions in YugabyteDB.
       </div>
     </a>
   </div>
@@ -69,7 +69,19 @@ The different deployments are explained in the sections below.
         <div class="title">Row-Level Geo-Partitioning</div>
       </div>
       <div class="body">
-          Using row-level geo-partitioning in YugabyteDB.
+          Use row-level geo-partitioning in YugabyteDB.
+      </div>
+    </a>
+  </div>
+  
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="read-replicas/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
+        <div class="title">Read Replicas</div>
+      </div>
+      <div class="body">
+          Use read replicas in YCQL to lower latency and improve performance.
       </div>
     </a>
   </div>
