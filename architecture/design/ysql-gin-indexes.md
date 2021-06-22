@@ -92,9 +92,9 @@ The upstream PostgreSQL "fastupdate" option writes rows to a buffer (called pend
 
 ## Extensions
 
-Some extensions extend gin:
+Some extensions extend `gin`:
 
-- [`btree_gin`][ext-btree-gin]: add opclasses to support ordinary types (no element extraction) so that they can be pseudo-included in gin indexes, which don't allow included columns
+- [`btree_gin`][ext-btree-gin]: add opclasses to support ordinary types (no element extraction) so that they can be pseudo-included in `gin` indexes, which don't allow included columns
 - [`hstore`][ext-hstore]: add opclass to support `hstore` type
 - [`intarray`][ext-intarray]: add opclass to support faster and more operators on `_int4` (`int4` array) type without nulls
 - [`pg_trgm`][ext-pg-trgm]: add opclass to support trigram text search on `text` type
