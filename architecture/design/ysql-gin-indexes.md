@@ -54,7 +54,7 @@ A more complicated case is one key and two entries where both are required.  We 
 
 For the first iteration, rechecking the condition is always done, even if it may not be necessary.
 
-### delete
+### Delete
 
 `yb_amdelete` is used.  Upstream postgres doesn't have a delete because it relies on vacuum, but we don't have that, so we need to explicitly write tombstone records.  This is similar to insert.
 
