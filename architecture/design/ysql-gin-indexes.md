@@ -41,7 +41,7 @@ to the index and
 
 to the base table.
 
-### select
+### Select
 
 `amgettuple` is used for `ybgin`, unlike `amgetbitmap` for `gin`.  Since `gin` uses bitmap scan but `ybgin` doesn't, the implementation here is most different.
 
