@@ -29,8 +29,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
         "Region within a given provider. Typically this will map to a "
             + "single cloud provider region")
 public class Region extends Model {
-  private static final String SECURITY_GROUP_KEY = "sg_id";
-  private static final String VNET_KEY = "vnet";
 
   @Id public UUID uuid;
 
@@ -87,7 +85,7 @@ public class Region extends Model {
 
   class RegionDetails {
     public String sg_id; // Security group ID.
-    public String vet; // Vnet key.
+    public String vnet; // Vnet key.
   }
 
   @DbJson
@@ -114,13 +112,13 @@ public class Region extends Model {
     if (details == null) {
       details = new RegionDetails();
     }
-    details.vet = vnetName;
+    details.vnet = vnetName;
     save();
   }
 
   public String getVnetName() {
     if (details != null) {
-      String vnetNode = details.vet;
+      String vnetNode = details.vnet;
       return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
     }
     return null;
@@ -128,7 +126,7 @@ public class Region extends Model {
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public Map<String, String> config;
+  private Map<String, String> config;
 
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
