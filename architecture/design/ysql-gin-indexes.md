@@ -84,7 +84,7 @@ For regular indexes, there are scan flags such as `SK_SEARCHISNULL` and `SK_SEAR
 
 ## Multicolumn
 
-Multicolumn will be disabled in the near-term.  Design is TODO.
+Multicolumn will be disabled in the first iteration, and the design is forthcoming.
 
 ## fastupdate
 
