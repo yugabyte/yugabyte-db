@@ -197,6 +197,8 @@ Realtime Poll starts on http://localhost:3000.
 
 Open a separate tab, navigate to http://localhost:3000, and cast a vote for React. The chart updates automatically using GraphQL Subscriptions.
 
+![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-realtime-poll.png)
+
 To verify the data being committed to the Yugabyte Cloud instance, run the following subscription query on the **API** tab of the Hasura Cloud project console:
 
 ```sh
