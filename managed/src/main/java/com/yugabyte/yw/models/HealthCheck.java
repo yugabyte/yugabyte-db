@@ -28,21 +28,20 @@ import play.libs.Json;
 public class HealthCheck extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheck.class);
 
-  public static class details {
-    public static class nodeData {
+  public static class Details {
+    public static class NodeData {
       public String node;
       public String process;
       public String timestamp;
       public String node_name;
-      public Boolean has_error;
+      public Boolean has_error = false;
       public List<String> details;
       public String message;
     }
 
     public Date timestamp;
-    public List<nodeData> data = new ArrayList<>();
+    public List<NodeData> data = new ArrayList<>();
     public String yb_version;
-
     @JsonAlias({"error", "has_error"})
     public Boolean has_error;
   }
@@ -63,15 +62,10 @@ public class HealthCheck extends Model {
   @DbJson
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
-  public details detailsJson;
+  public Details detailsJson;
 
   public boolean hasError() {
-    try {
-      // Only return true if we have the top-level has_error field with a value of true.
       return detailsJson.has_error;
-    } catch (NullPointerException e) {
-      return false;
-    }
   }
 
   public static final Finder<UUID, HealthCheck> find =
@@ -91,8 +85,9 @@ public class HealthCheck extends Model {
     check.idKey = HealthCheckKey.create(universeUUID);
     check.customerId = customerId;
     // Validate it is correct JSON.
-    ObjectMapper objMapper = new ObjectMapper();
-    details features = objMapper.convertValue(Json.parse(details), new TypeReference<details>() {});
+    // ObjectMapper objMapper = new ObjectMapper();
+    Details features =Json.fromJson(Json.parse(details), Details.class);
+    // Details features = objMapper.convertValue(Json.parse(details), new TypeReference<Details>() {});
     check.detailsJson = features;
     // Save the object.
     check.save();
