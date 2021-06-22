@@ -6,7 +6,7 @@ Generalized inverted indexes map elements inside container columns to the primar
 
 ## opclasses
 
-Upstream postgres comes with the following [`gin` opclasses][opclasses]:
+Upstream PostgreSQL comes with the following [`gin` opclasses][opclasses]:
 
 - `tsvector_ops`: map `tsvector` to `text`
 - `array_ops`: map `anyarray` to `anyelement`
