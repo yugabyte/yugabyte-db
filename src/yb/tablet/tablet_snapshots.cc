@@ -65,13 +65,13 @@ Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
   return Status::OK();
 }
 
-Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
+Status TabletSnapshots::Create(SnapshotOperation* operation) {
   return Create(CreateSnapshotData {
-    .snapshot_hybrid_time = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time()),
-    .hybrid_time = tx_state->hybrid_time(),
-    .op_id = tx_state->op_id(),
-    .snapshot_dir = VERIFY_RESULT(tx_state->GetSnapshotDir()),
-    .schedule_id = TryFullyDecodeSnapshotScheduleId(tx_state->request()->schedule_id()),
+    .snapshot_hybrid_time = HybridTime::FromPB(operation->request()->snapshot_hybrid_time()),
+    .hybrid_time = operation->hybrid_time(),
+    .op_id = operation->op_id(),
+    .snapshot_dir = VERIFY_RESULT(operation->GetSnapshotDir()),
+    .schedule_id = TryFullyDecodeSnapshotScheduleId(operation->request()->schedule_id()),
   });
 }
 
@@ -203,9 +203,9 @@ Status TabletSnapshots::CleanupSnapshotDir(const std::string& dir) {
   return Status::OK();
 }
 
-Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
-  const std::string snapshot_dir = VERIFY_RESULT(tx_state->GetSnapshotDir());
-  const auto& request = *tx_state->request();
+Status TabletSnapshots::Restore(SnapshotOperation* operation) {
+  const std::string snapshot_dir = VERIFY_RESULT(operation->GetSnapshotDir());
+  const auto& request = *operation->request();
   auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
   auto restoration_id = TryFullyDecodeTxnSnapshotRestorationId(request.restoration_id());
 
@@ -218,8 +218,8 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   }
 
   docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(tx_state->op_id());
-  frontier.set_hybrid_time(tx_state->hybrid_time());
+  frontier.set_op_id(operation->op_id());
+  frontier.set_hybrid_time(operation->hybrid_time());
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();
@@ -338,9 +338,9 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
   return dest_dir;
 }
 
-Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
+Status TabletSnapshots::Delete(SnapshotOperation* operation) {
   const std::string top_snapshots_dir = metadata().snapshots_dir();
-  const auto& snapshot_id = tx_state->request()->snapshot_id();
+  const auto& snapshot_id = operation->request()->snapshot_id();
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
   const std::string snapshot_dir = JoinPathSegments(
       top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
@@ -363,8 +363,8 @@ Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
   }
 
   docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(tx_state->op_id());
-  frontier.set_hybrid_time(tx_state->hybrid_time());
+  frontier.set_op_id(operation->op_id());
+  frontier.set_hybrid_time(operation->hybrid_time());
   // Here we are just recording the fact that we've executed the "delete snapshot" Raft operation
   // so that it won't get replayed if we crash. No need to force the flushed frontier to be the
   // exact value set above.
@@ -427,10 +427,10 @@ Status TabletSnapshots::CreateDirectories(const string& rocksdb_dir, FsManager* 
   return Status::OK();
 }
 
-Status TabletSnapshots::RestoreFinished(SnapshotOperationState* tx_state) {
+Status TabletSnapshots::RestoreFinished(SnapshotOperation* operation) {
   return tablet().RestoreFinished(
-      VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(tx_state->request()->restoration_id())),
-      HybridTime::FromPB(tx_state->request()->restoration_hybrid_time()));
+      VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(operation->request()->restoration_id())),
+      HybridTime::FromPB(operation->request()->restoration_hybrid_time()));
 }
 
 } // namespace tablet
