@@ -21,7 +21,7 @@ We can just duplicate these for the `ybgin` access method and reference the same
 
 ### build
 
-`ambuild` and `yb_ambackfill` are used for `CREATE INDEX` with and without online schema changes.  They both read from the base table and insert to the index table.  Therefore, this is a superset of `yb_aminsert`.  There's not much else to it.
+`ambuild` and `yb_ambackfill` are used for `CREATE INDEX` with and without online schema changes.  They both read from the base table and insert to the index table.  Therefore, this is a superset of `yb_aminsert`.
 
 ### insert
 
