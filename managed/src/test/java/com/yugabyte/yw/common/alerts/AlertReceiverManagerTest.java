@@ -7,6 +7,7 @@ import static org.junit.Assert.assertThrows;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
+import com.yugabyte.yw.common.alerts.impl.AlertReceiverSlack;
 import com.yugabyte.yw.models.AlertReceiver.TargetType;
 import java.util.EnumSet;
 import org.junit.Test;
@@ -18,9 +19,12 @@ import org.mockito.junit.MockitoJUnitRunner;
 @RunWith(MockitoJUnitRunner.class)
 public class AlertReceiverManagerTest extends FakeDBApplication {
 
-  private static final EnumSet<TargetType> IMPLEMENTED_TYPES = EnumSet.of(TargetType.Email);
+  private static final EnumSet<TargetType> IMPLEMENTED_TYPES =
+      EnumSet.of(TargetType.Email, TargetType.Slack);
 
   @Mock private AlertReceiverEmail emailReceiver;
+
+  @Mock private AlertReceiverSlack slackReceiver;
 
   @InjectMocks private AlertReceiverManager receiversManager;
 

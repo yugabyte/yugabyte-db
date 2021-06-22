@@ -172,7 +172,8 @@ libraryDependencies ++= Seq(
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "1.115.0",
-  "org.projectlombok" % "lombok" % "1.18.20"
+  "org.projectlombok" % "lombok" % "1.18.20",
+  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test
 )
 // Clear default resolvers.
 appResolvers := None

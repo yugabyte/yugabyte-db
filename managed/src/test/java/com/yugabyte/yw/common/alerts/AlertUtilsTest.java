@@ -74,7 +74,7 @@ public class AlertUtilsTest extends FakeDBApplication {
     params.textTemplate = TEXT_TEMPLATE;
     params.titleTemplate = TITLE_TEMPLATE;
 
-    params.channel = "channel";
+    params.username = "username";
     params.webhookUrl = "hook-url";
     params.iconUrl = "icon-url";
 

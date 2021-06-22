@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.alerts;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
+import com.yugabyte.yw.common.alerts.impl.AlertReceiverSlack;
 import com.yugabyte.yw.models.AlertReceiver.TargetType;
 import java.util.EnumMap;
 import java.util.Optional;
@@ -16,8 +17,10 @@ public class AlertReceiverManager {
       new EnumMap<>(TargetType.class);
 
   @Inject
-  public AlertReceiverManager(AlertReceiverEmail alertReceiverEmail) {
+  public AlertReceiverManager(
+      AlertReceiverEmail alertReceiverEmail, AlertReceiverSlack alertReceiverSlack) {
     receiversMap.put(TargetType.Email, alertReceiverEmail);
+    receiversMap.put(TargetType.Slack, alertReceiverSlack);
     // TODO: Add other implementations here.
   }
 

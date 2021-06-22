@@ -13,7 +13,7 @@ import org.apache.commons.validator.routines.UrlValidator;
 @JsonTypeName("Slack")
 public class AlertReceiverSlackParams extends AlertReceiverParams {
 
-  public String channel;
+  public String username;
 
   public String webhookUrl;
 
@@ -22,8 +22,8 @@ public class AlertReceiverSlackParams extends AlertReceiverParams {
   public void validate() throws YWValidateException {
     super.validate();
 
-    if (StringUtils.isEmpty(channel)) {
-      throw new YWValidateException("Slack parameters: channel is empty.");
+    if (StringUtils.isEmpty(username)) {
+      throw new YWValidateException("Slack parameters: username is empty.");
     }
 
     UrlValidator urlValidator = new UrlValidator();

@@ -17,7 +17,7 @@ public class AlertReceiverSlackParamsTest {
   @Test
   // @formatter:off
   @Parameters({
-    "null, null, null, Slack parameters: channel is empty.",
+    "null, null, null, Slack parameters: username is empty.",
     "channel, null, null, Slack parameters: incorrect WebHook url.",
     "channel, incorrect url, null, Slack parameters: incorrect WebHook url.",
     "channel, http://www.google.com, null, null",
@@ -26,13 +26,13 @@ public class AlertReceiverSlackParamsTest {
   })
   // @formatter:on
   public void testValidate(
-      @Nullable String channel,
+      @Nullable String username,
       @Nullable String webHookUrl,
       @Nullable String iconUrl,
       @Nullable String expectedError)
       throws YWValidateException {
     AlertReceiverSlackParams params = new AlertReceiverSlackParams();
-    params.channel = channel;
+    params.username = username;
     params.webhookUrl = webHookUrl;
     params.iconUrl = iconUrl;
     if (expectedError != null) {
