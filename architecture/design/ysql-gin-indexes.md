@@ -76,7 +76,7 @@ DocDB does not support null categories, so we can add a new value type specifica
 
 ## search modes
 
-For regular indexes, there are scan flags like `SK_SEARCHISNULL` and `SK_SEARCHARRAY`.  For GIN, there are search modes:
+For regular indexes, there are scan flags such as `SK_SEARCHISNULL` and `SK_SEARCHARRAY`.  For GIN, there are search modes:
 
 - include empty: also match `GIN_CAT_EMPTY_ITEM`
 - all: match everything but `GIN_CAT_NULL_ITEM`
