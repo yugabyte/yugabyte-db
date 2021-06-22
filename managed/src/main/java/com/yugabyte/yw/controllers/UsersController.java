@@ -4,11 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.forms.YWResults;
@@ -46,7 +44,7 @@ public class UsersController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-    return ApiResponse.success(user);
+    return YWResults.withData(user);
   }
 
   /**
@@ -57,7 +55,7 @@ public class UsersController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
-    return ApiResponse.success(users);
+    return YWResults.withData(users);
   }
 
   /**
@@ -72,16 +70,12 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
-    Result passwordCheckResult =
-        passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (passwordCheckResult != null) {
-      return passwordCheckResult;
-    }
+    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
     Users user =
         Users.create(formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID);
     updateFeatures(user);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
-    return ApiResponse.success(user);
+    return YWResults.withData(user);
   }
 
   /**
@@ -107,10 +101,8 @@ public class UsersController extends AuthenticatedController {
               userUUID.toString(), customerUUID.toString()));
     }
     if (user.delete()) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("success", true);
       auditService().createAuditEntry(ctx(), request());
-      return ApiResponse.success(responseJson);
+      return YWResults.YWSuccess.empty();
     } else {
       throw new YWServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
@@ -167,11 +159,7 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
-    Result passwordCheckResult =
-        passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (passwordCheckResult != null) {
-      return passwordCheckResult;
-    }
+    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
     if (formData.getEmail().equals(user.email)) {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());

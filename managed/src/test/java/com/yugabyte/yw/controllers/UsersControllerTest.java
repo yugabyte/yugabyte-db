@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.util.List;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
@@ -139,17 +140,15 @@ public class UsersControllerTest extends FakeDBApplication {
     assertEquals(testUser1.getRole(), Role.SuperAdmin);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    route(
-                        fakeRequest(
-                                "PUT",
-                                String.format(
-                                    "%s/%s?role=ReadOnly",
-                                    String.format(baseRoute, customer1.uuid), testUser1.uuid))
-                            .cookie(validCookie)))
-            .getResult();
+        assertYWSE(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "%s/%s?role=ReadOnly",
+                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        .cookie(validCookie)));
     assertEquals(result.status(), BAD_REQUEST);
   }
 
@@ -214,14 +213,16 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("role", "Admin");
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
-        route(
-            fakeRequest(
-                    "PUT",
-                    String.format(
-                        "%s/%s/change_password",
-                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
-                .cookie(validCookie)
-                .bodyJson(params));
+        assertYWSE(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "%s/%s/change_password",
+                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
   }
 
@@ -234,10 +235,12 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("confirmPassword", "new-password");
     params.put("role", "ReadOnly");
     Result result =
-        route(
-            fakeRequest("POST", String.format(baseRoute, customer1.uuid))
-                .cookie(validCookie)
-                .bodyJson(params));
+        assertYWSE(
+            () ->
+                route(
+                    fakeRequest("POST", String.format(baseRoute, customer1.uuid))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
   }
 }

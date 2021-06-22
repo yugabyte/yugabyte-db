@@ -3,8 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import org.slf4j.Logger;
@@ -22,7 +21,7 @@ public class ScheduleController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     List<Schedule> schedules = Schedule.getAllActiveByCustomerUUID(customerUUID);
-    return ApiResponse.success(schedules);
+    return YWResults.withData(schedules);
   }
 
   public Result delete(UUID customerUUID, UUID scheduleUUID) {
@@ -33,8 +32,7 @@ public class ScheduleController extends AuthenticatedController {
     schedule.stopSchedule();
 
     ObjectNode responseJson = Json.newObject();
-    responseJson.put("success", true);
     auditService().createAuditEntry(ctx(), request());
-    return ApiResponse.success(responseJson);
+    return YWResults.YWSuccess.empty();
   }
 }

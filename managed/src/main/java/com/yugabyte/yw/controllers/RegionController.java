@@ -12,7 +12,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.forms.RegionFormData;
-import com.yugabyte.yw.forms.YWError;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -51,7 +51,7 @@ public class RegionController extends AuthenticatedController {
       @io.swagger.annotations.ApiResponse(
           code = 500,
           message = "If there was a server or database issue when listing the regions",
-          response = YWError.class))
+          response = YWResults.YWError.class))
   public Result list(UUID customerUUID, UUID providerUUID) {
     List<Region> regionList = null;
 
@@ -62,7 +62,7 @@ public class RegionController extends AuthenticatedController {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to list regions");
     }
-    return ApiResponse.success(regionList);
+    return YWResults.withData(regionList);
   }
 
   @ApiOperation(
@@ -177,7 +177,7 @@ public class RegionController extends AuthenticatedController {
                 provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
       }
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return ApiResponse.success(region);
+      return YWResults.withData(region);
     } catch (Exception e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create region: " + regionCode);
@@ -208,8 +208,7 @@ public class RegionController extends AuthenticatedController {
     }
 
     ObjectNode responseJson = Json.newObject();
-    responseJson.put("success", true);
     auditService().createAuditEntry(ctx(), request());
-    return ApiResponse.success(responseJson);
+    return YWResults.YWSuccess.empty();
   }
 }

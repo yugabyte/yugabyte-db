@@ -213,20 +213,12 @@ public class AlertControllerTest extends FakeDBApplication {
   @Test
   public void testCreateDefinition_ErrorResult() {
     UUID customerUUID = UUID.randomUUID();
-    Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> controller.createDefinition(customerUUID, UUID.randomUUID()))
-            .getResult();
+    Result result = assertYWSE(() -> controller.createDefinition(customerUUID, UUID.randomUUID()));
     AssertHelper.assertBadRequest(result, "Invalid Customer UUID:" + customerUUID);
 
     Form<AlertDefinitionFormData> form = mock(Form.class);
     when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
-    result =
-        assertThrows(
-                YWServiceException.class,
-                () -> controller.createDefinition(customer.uuid, UUID.randomUUID()))
-            .getResult();
+    result = assertYWSE(() -> controller.createDefinition(customer.uuid, UUID.randomUUID()));
     assertEquals(BAD_REQUEST, result.status());
   }
 
@@ -247,17 +239,12 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertDefinition_ErrorResult() {
     UUID customerUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> controller.getAlertDefinition(customerUUID, UUID.randomUUID(), ALERT_NAME))
-            .getResult();
+        assertYWSE(
+            () -> controller.getAlertDefinition(customerUUID, UUID.randomUUID(), ALERT_NAME));
     AssertHelper.assertBadRequest(result, "Invalid Customer UUID:" + customerUUID);
     result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_NAME))
-            .getResult();
+        assertYWSE(
+            () -> controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_NAME));
     AssertHelper.assertBadRequest(
         result,
         ALERT_NAME
@@ -297,17 +284,10 @@ public class AlertControllerTest extends FakeDBApplication {
     UUID definitionUUID = UUID.randomUUID();
     UUID customerUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> controller.updateAlertDefinition(customerUUID, definitionUUID))
-            .getResult();
+        assertYWSE(() -> controller.updateAlertDefinition(customerUUID, definitionUUID));
     AssertHelper.assertBadRequest(result, "Invalid Customer UUID:" + customerUUID);
 
-    result =
-        assertThrows(
-                YWServiceException.class,
-                () -> controller.updateAlertDefinition(customer.uuid, definitionUUID))
-            .getResult();
+    result = assertYWSE(() -> controller.updateAlertDefinition(customer.uuid, definitionUUID));
     AssertHelper.assertBadRequest(result, "Invalid Alert Definition UUID: " + definitionUUID);
   }
 
@@ -377,15 +357,13 @@ public class AlertControllerTest extends FakeDBApplication {
     ObjectNode data = Json.newObject();
     data.put("params", Json.toJson(new AlertReceiverEmailParams()));
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doRequestWithAuthTokenAndBody(
-                        "POST",
-                        "/api/customers/" + customer.uuid + "/alert_receivers",
-                        authToken,
-                        data))
-            .getResult();
+        assertYWSE(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    "/api/customers/" + customer.uuid + "/alert_receivers",
+                    authToken,
+                    data));
 
     AssertHelper.assertBadRequest(
         result, "Unable to create alert receiver: Email parameters: destinations are empty.");
@@ -413,14 +391,12 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertReceiver_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doRequestWithAuthToken(
-                        "GET",
-                        "/api/customers/" + customer.uuid + "/alert_receivers/" + uuid.toString(),
-                        authToken))
-            .getResult();
+        assertYWSE(
+            () ->
+                doRequestWithAuthToken(
+                    "GET",
+                    "/api/customers/" + customer.uuid + "/alert_receivers/" + uuid.toString(),
+                    authToken));
     AssertHelper.assertBadRequest(result, "Invalid Alert Receiver UUID: " + uuid.toString());
   }
 
@@ -466,18 +442,16 @@ public class AlertControllerTest extends FakeDBApplication {
         .put("params", Json.toJson(createdReceiver.getParams()));
 
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doRequestWithAuthTokenAndBody(
-                        "PUT",
-                        "/api/customers/"
-                            + customer.uuid
-                            + "/alert_receivers/"
-                            + createdReceiver.getUuid().toString(),
-                        authToken,
-                        data))
-            .getResult();
+        assertYWSE(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT",
+                    "/api/customers/"
+                        + customer.uuid
+                        + "/alert_receivers/"
+                        + createdReceiver.getUuid().toString(),
+                    authToken,
+                    data));
     AssertHelper.assertBadRequest(
         result, "Unable to update alert receiver: Slack parameters: channel is empty.");
   }
@@ -506,14 +480,12 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testDeleteAlertReceiver_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doRequestWithAuthToken(
-                        "DELETE",
-                        "/api/customers/" + customer.uuid + "/alert_receivers/" + uuid.toString(),
-                        authToken))
-            .getResult();
+        assertYWSE(
+            () ->
+                doRequestWithAuthToken(
+                    "DELETE",
+                    "/api/customers/" + customer.uuid + "/alert_receivers/" + uuid.toString(),
+                    authToken));
     AssertHelper.assertBadRequest(result, "Invalid Alert Receiver UUID: " + uuid.toString());
   }
 
@@ -572,15 +544,10 @@ public class AlertControllerTest extends FakeDBApplication {
     data.put("definitionUUID", UUID.randomUUID().toString())
         .put("receiverUUID", UUID.randomUUID().toString());
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doRequestWithAuthTokenAndBody(
-                        "POST",
-                        "/api/customers/" + customer.uuid + "/alert_routes",
-                        authToken,
-                        data))
-            .getResult();
+        assertYWSE(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", "/api/customers/" + customer.uuid + "/alert_routes", authToken, data));
 
     AssertHelper.assertBadRequest(result, "Unable to create alert route.");
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
@@ -607,14 +574,12 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertRoute_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doRequestWithAuthToken(
-                        "GET",
-                        "/api/customers/" + customer.uuid + "/alert_routes/" + uuid.toString(),
-                        authToken))
-            .getResult();
+        assertYWSE(
+            () ->
+                doRequestWithAuthToken(
+                    "GET",
+                    "/api/customers/" + customer.uuid + "/alert_routes/" + uuid.toString(),
+                    authToken));
     AssertHelper.assertBadRequest(result, "Invalid Alert Route UUID: " + uuid.toString());
   }
 
@@ -642,14 +607,12 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testDeleteAlertRoute_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doRequestWithAuthToken(
-                        "DELETE",
-                        "/api/customers/" + customer.uuid + "/alert_routes/" + uuid.toString(),
-                        authToken))
-            .getResult();
+        assertYWSE(
+            () ->
+                doRequestWithAuthToken(
+                    "DELETE",
+                    "/api/customers/" + customer.uuid + "/alert_routes/" + uuid.toString(),
+                    authToken));
     AssertHelper.assertBadRequest(result, "Invalid Alert Route UUID: " + uuid.toString());
   }
 

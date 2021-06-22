@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -58,7 +57,7 @@ public class BackupsController extends AuthenticatedController {
         backup.setBackupInfo(params);
       }
     }
-    return ApiResponse.success(backups);
+    return YWResults.withData(backups);
   }
 
   public Result restore(UUID customerUUID, UUID universeUUID) {

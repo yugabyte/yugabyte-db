@@ -175,7 +175,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testGetNodeWithInvalidUuid() {
     UUID uuid = UUID.randomUUID();
-    Result r = assertThrows(YWServiceException.class, () -> getNode(uuid)).getResult();
+    Result r = assertYWSE(() -> getNode(uuid));
     String expectedError = "Invalid Node UUID: " + uuid;
     assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.uuid);
@@ -206,7 +206,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testListByZoneWrongZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = assertThrows(YWServiceException.class, () -> listByZone(wrongUuid)).getResult();
+    Result r = assertYWSE(() -> listByZone(wrongUuid));
     String expectedError = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, expectedError);
     assertAuditEntry(0, customer.uuid);
@@ -253,9 +253,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateFailureDuplicateIp() {
-    Result failedReq =
-        assertThrows(YWServiceException.class, () -> createNode(zone.uuid, node.getDetails()))
-            .getResult();
+    Result failedReq = assertYWSE(() -> createNode(zone.uuid, node.getDetails()));
     checkNotOk(failedReq, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -263,9 +261,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testCreateFailureInvalidZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r =
-        assertThrows(YWServiceException.class, () -> createNode(wrongUuid, node.getDetails()))
-            .getResult();
+    Result r = assertYWSE(() -> createNode(wrongUuid, node.getDetails()));
     String error = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, error);
     assertAuditEntry(0, customer.uuid);
@@ -282,21 +278,14 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstanceWithInvalidProviderValidInstanceIP() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result r =
-        assertThrows(
-                YWServiceException.class,
-                () -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP))
-            .getResult();
+    Result r = assertYWSE(() -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP));
     assertBadRequest(r, "Cannot find universe " + invalidProviderUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteInstanceWithValidProviderInvalidInstanceIP() {
-    Result r =
-        assertThrows(
-                YWServiceException.class, () -> deleteInstance(customer.uuid, provider.uuid, "abc"))
-            .getResult();
+    Result r = assertYWSE(() -> deleteInstance(customer.uuid, provider.uuid, "abc"));
     assertBadRequest(r, "Node Not Found");
     assertAuditEntry(0, customer.uuid);
   }
@@ -327,16 +316,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
     Result r =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    performNodeAction(
-                        customer.uuid,
-                        universe.universeUUID,
-                        "host-n1",
-                        NodeActionType.DELETE,
-                        true))
-            .getResult();
+        assertYWSE(
+            () ->
+                performNodeAction(
+                    customer.uuid, universe.universeUUID, "host-n1", NodeActionType.DELETE, true));
     assertBadRequest(r, "{\"nodeAction\":[\"This field is required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
@@ -349,12 +332,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       customer.save();
       verify(mockCommissioner, times(0)).submit(any(), any());
       Result r =
-          assertThrows(
-                  YWServiceException.class,
-                  () ->
-                      performNodeAction(
-                          customer.uuid, u.universeUUID, "fake-n1", nodeActionType, true))
-              .getResult();
+          assertYWSE(
+              () ->
+                  performNodeAction(
+                      customer.uuid, u.universeUUID, "fake-n1", nodeActionType, true));
       assertBadRequest(r, "Invalid Node fake-n1 for Universe");
       assertAuditEntry(0, customer.uuid);
     }
@@ -411,16 +392,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
     NodeDetails curNode = nodes.iterator().next();
     Result invalidRemove =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    performNodeAction(
-                        customer.uuid,
-                        u.universeUUID,
-                        curNode.nodeName,
-                        NodeActionType.REMOVE,
-                        false))
-            .getResult();
+        assertYWSE(
+            () ->
+                performNodeAction(
+                    customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REMOVE, false));
     assertBadRequest(
         invalidRemove,
         "Cannot REMOVE "
@@ -428,16 +403,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
 
     Result invalidStop =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    performNodeAction(
-                        customer.uuid,
-                        u.universeUUID,
-                        curNode.nodeName,
-                        NodeActionType.STOP,
-                        false))
-            .getResult();
+        assertYWSE(
+            () ->
+                performNodeAction(
+                    customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.STOP, false));
     assertBadRequest(
         invalidStop,
         "Cannot STOP "

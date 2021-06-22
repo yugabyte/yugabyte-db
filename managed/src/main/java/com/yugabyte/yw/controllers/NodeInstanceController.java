@@ -7,8 +7,8 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
@@ -44,7 +44,7 @@ public class NodeInstanceController extends AuthenticatedController {
   public Result get(UUID customerUuid, UUID nodeUuid) {
     Customer.getOrBadRequest(customerUuid);
     NodeInstance node = NodeInstance.getOrBadRequest(nodeUuid);
-    return ApiResponse.success(node);
+    return YWResults.withData(node);
   }
 
   /**
@@ -60,7 +60,7 @@ public class NodeInstanceController extends AuthenticatedController {
 
     try {
       List<NodeInstance> nodes = NodeInstance.listByZone(zoneUuid, null /* instanceTypeCode */);
-      return ApiResponse.success(nodes);
+      return YWResults.withData(nodes);
     } catch (Exception e) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
@@ -73,7 +73,7 @@ public class NodeInstanceController extends AuthenticatedController {
     } catch (Exception e) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return ApiResponse.success(regionList);
+    return YWResults.withData(regionList);
   }
 
   /**
@@ -99,7 +99,7 @@ public class NodeInstanceController extends AuthenticatedController {
     }
     if (nodes.size() > 0) {
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return ApiResponse.success(nodes);
+      return YWResults.withData(nodes);
     }
     throw new YWServiceException(
         BAD_REQUEST, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");

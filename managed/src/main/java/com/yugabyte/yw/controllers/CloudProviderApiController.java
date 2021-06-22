@@ -14,14 +14,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.*;
-import play.Logger;
 import play.mvc.Result;
 
 import java.io.IOException;
@@ -36,7 +34,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
-    return ApiResponse.success(Provider.getAll(customerUUID));
+    return YWResults.withData(Provider.getAll(customerUUID));
   }
 
   // This endpoint we are using only for deleting provider for integration test purpose. our

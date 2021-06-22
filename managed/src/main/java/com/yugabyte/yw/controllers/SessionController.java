@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -351,11 +352,8 @@ public class SessionController extends Controller {
       if (isSuper) {
         role = Role.SuperAdmin;
       }
-      Result passwordCheckResult =
-          passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-      if (passwordCheckResult != null) {
-        return passwordCheckResult;
-      }
+      passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
+
       Users user =
           Users.create(
               data.getEmail(), data.getPassword(), role, cust.uuid, /* Primary user*/ true);
@@ -397,11 +395,11 @@ public class SessionController extends Controller {
     int customerCount = Customer.find.all().size();
     ObjectNode response = Json.newObject();
     response.put("count", customerCount);
-    return ApiResponse.success(response);
+    return YWResults.withRawData(response);
   }
 
   public Result appVersion() {
-    return ApiResponse.success(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
+    return YWResults.withData(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
   }
 
   @With(TokenAuthenticator.class)
@@ -427,7 +425,7 @@ public class SessionController extends Controller {
       }
       result.put("lines", lines);
 
-      return ApiResponse.success(result);
+      return YWResults.withRawData(result);
     } catch (IOException ex) {
       LOG.error("Log file open failed.", ex);
       return ApiResponse.error(

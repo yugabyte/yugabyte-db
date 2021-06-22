@@ -11,11 +11,15 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import play.libs.Json;
 import play.mvc.Result;
+import play.mvc.Results;
 
 import java.util.List;
 import java.util.UUID;
@@ -24,11 +28,50 @@ import static play.mvc.Results.ok;
 
 public class YWResults {
 
+  /**
+   * @deprecated Ypu should not be using this method. This is only for legacy code that used raw
+   *     json in response body. Try to come up with concrete type for your response instead of just
+   *     `JsonNode`
+   */
+  @Deprecated
+  public static Result withRawData(JsonNode rawJson) {
+    return Results.ok(rawJson);
+  }
+
+  /**
+   * This is a replacement for ApiResponse.success
+   *
+   * @param data - to be serialized to json and returned
+   */
+  public static Result withData(Object data) {
+    return Results.ok(Json.toJson(data));
+  }
+
+  @ApiModel("Generic error response from Yugawware Platform API")
+  public static class YWError {
+    public boolean success = false;
+
+    @ApiModelProperty(
+        value = "User visible unstructurred error message",
+        example = "There was a problem creating universe")
+    public String error;
+
+    // for json deserialization
+    public YWError() {}
+
+    public YWError(String error) {
+      this.error = error;
+    }
+  }
+
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class YWStructuredError {
-    public final boolean success = false;
+    public boolean success = false;
 
-    public final JsonNode error;
+    public JsonNode error;
+
+    // for json deserialization
+    YWStructuredError() {}
 
     public YWStructuredError(JsonNode err) {
       error = err;

@@ -10,8 +10,6 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
-import static play.mvc.Http.Status.OK;
-
 public class ApiResponse {
   public static final Logger LOG = LoggerFactory.getLogger(ApiResponse.class);
 
@@ -22,11 +20,8 @@ public class ApiResponse {
     return Results.status(status, errorJSON(message));
   }
 
-  public static Result success(Object message) {
-    return Results.status(OK, Json.toJson(message));
-  }
-
   /** @deprecated Instead throw {@link YWServiceException} */
+  @Deprecated
   public static JsonNode errorJSON(Object message) {
     ObjectNode jsonMsg = Json.newObject();
 

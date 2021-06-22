@@ -12,17 +12,16 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.google.common.collect.ImmutableSet;
+import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -32,14 +31,8 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.Base64;
+import java.util.*;
 import java.util.function.Function;
-import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.Objects;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class EncryptionAtRestController extends AuthenticatedController {
@@ -138,7 +131,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
           BAD_REQUEST,
           String.format("No KMS configuration found for config %s", configUUID.toString()));
     }
-    return ApiResponse.success(kmsConfig);
+    return YWResults.withRawData(kmsConfig);
   }
 
   public Result listKMSConfigs(UUID customerUUID) {
@@ -172,7 +165,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
 
-    return ApiResponse.success(kmsConfigs);
+    return YWResults.withData(kmsConfigs);
   }
 
   public Result deleteKMSConfig(UUID customerUUID, UUID configUUID) {
@@ -222,7 +215,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .put("reference", keyRef)
             .put("value", Base64.getEncoder().encodeToString(recoveredKey));
     auditService().createAuditEntry(ctx(), request(), formData);
-    return ApiResponse.success(result);
+    return YWResults.withRawData(result);
   }
 
   public byte[] getRecoveredKeyOrBadRequest(UUID universeUUID, UUID configUUID, byte[] keyRef) {
@@ -240,7 +233,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         String.format(
             "Retrieving key ref history for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
-    return ApiResponse.success(
+    return YWResults.withData(
         KmsHistory.getAllTargetKeyRefs(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY)
             .stream()
             .map(
@@ -277,6 +270,6 @@ public class EncryptionAtRestController extends AuthenticatedController {
               "Could not retrieve key service for customer %s and universe %s",
               customerUUID.toString(), universeUUID.toString()));
     }
-    return ApiResponse.success(Json.newObject().put("reference", keyRef));
+    return YWResults.withRawData(Json.newObject().put("reference", keyRef));
   }
 }

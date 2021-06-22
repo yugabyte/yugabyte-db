@@ -13,7 +13,6 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.*;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -105,9 +104,9 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Finding Universe with name {}.", name);
     Optional<Universe> universe = Universe.maybeGetUniverseByName(name);
     if (universe.isPresent()) {
-      return ApiResponse.success(Collections.singletonList(universe.get().universeUUID));
+      return YWResults.withData(Collections.singletonList(universe.get().universeUUID));
     }
-    return ApiResponse.success(Collections.emptyList());
+    return YWResults.withData(Collections.emptyList());
   }
 
   @ApiOperation(value = "setDatabaseCredentials", response = YWSuccess.class)
@@ -173,8 +172,8 @@ public class UniverseController extends AuthenticatedController {
 
   @ApiOperation(
       value = "run command in shell",
-      notes = "This operation is no longer supported sue to security reasons",
-      response = YWError.class)
+      notes = "This operation is no longer supported due to security reasons",
+      response = YWResults.YWError.class)
   public Result runInShell(UUID customerUUID, UUID universeUUID) {
     throw new YWServiceException(BAD_REQUEST, DEPRECATED);
   }
@@ -195,7 +194,7 @@ public class UniverseController extends AuthenticatedController {
 
     JsonNode queryResult = validateRequestAndExecuteQuery(universe, formData.get());
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(queryResult);
+    return YWResults.withRawData(queryResult);
   }
 
   private JsonNode validateRequestAndExecuteQuery(
@@ -271,7 +270,7 @@ public class UniverseController extends AuthenticatedController {
 
     configure(customer, taskParams);
 
-    return ApiResponse.success(taskParams);
+    return YWResults.withData(taskParams);
   }
 
   private void configure(Customer customer, UniverseConfigureTaskParams taskParams) {
@@ -314,7 +313,7 @@ public class UniverseController extends AuthenticatedController {
   public Result getUniverseResources(UUID customerUUID) {
     UniverseDefinitionTaskParams taskParams =
         bindFormDataToTaskParams(request(), UniverseDefinitionTaskParams.class);
-    return ApiResponse.success(getUniverseResources(taskParams));
+    return YWResults.withData(getUniverseResources(taskParams));
   }
 
   private UniverseResourceDetails getUniverseResources(UniverseDefinitionTaskParams taskParams) {
@@ -359,7 +358,7 @@ public class UniverseController extends AuthenticatedController {
             customer, bindFormDataToTaskParams(request(), UniverseDefinitionTaskParams.class));
 
     auditService().createAuditEntryWithReqBody(ctx(), universeResp.taskUUID);
-    return ApiResponse.success(universeResp);
+    return YWResults.withData(universeResp);
   }
 
   private UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
@@ -609,7 +608,7 @@ public class UniverseController extends AuthenticatedController {
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     UniverseResp resp = createResp(universe, taskUUID);
-    return ApiResponse.success(resp);
+    return YWResults.withData(resp);
   }
 
   private UUID setUniverseKey(
@@ -743,7 +742,7 @@ public class UniverseController extends AuthenticatedController {
 
     UUID taskUUID = toggleTls(customer, universe, requestParams);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData), taskUUID);
-    return ApiResponse.success(createResp(universe, taskUUID));
+    return YWResults.withData(createResp(universe, taskUUID));
   }
 
   private UUID toggleTls(Customer customer, Universe universe, ToggleTlsParams requestParams) {
@@ -756,7 +755,7 @@ public class UniverseController extends AuthenticatedController {
         universe.universeUUID,
         customer.uuid);
 
-    YWError error = requestParams.verifyParams(universeDetails);
+    YWResults.YWError error = requestParams.verifyParams(universeDetails);
     if (error != null) {
       throw new YWServiceException(
           BAD_REQUEST, error.error + " - for universe: " + universe.universeUUID);
@@ -884,7 +883,7 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UUID taskUUID = update(customer, universe);
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return ApiResponse.success(createResp(universe, taskUUID));
+    return YWResults.withData(createResp(universe, taskUUID));
   }
 
   private UUID update(Customer customer, Universe universe) {
@@ -1014,7 +1013,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Finding Universe with name {}.", name);
       return findByName(name);
     }
-    return ApiResponse.success(list(customer));
+    return YWResults.withData(list(customer));
   }
 
   private List<UniverseResp> list(Customer customer) {
@@ -1029,8 +1028,8 @@ public class UniverseController extends AuthenticatedController {
 
   private Result findByName(String name) {
     return Universe.maybeGetUniverseByName(name)
-        .map(value -> ApiResponse.success(Collections.singletonList(createResp(value, null))))
-        .orElseGet(() -> ApiResponse.success(Collections.emptyList()));
+        .map(value -> YWResults.withData(Collections.singletonList(createResp(value, null))))
+        .orElseGet(() -> YWResults.withData(Collections.emptyList()));
   }
 
   /**
@@ -1125,7 +1124,7 @@ public class UniverseController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    return ApiResponse.success(createResp(universe, null));
+    return YWResults.withData(createResp(universe, null));
   }
 
   @ApiOperation(value = "Pause the universe", response = YWResults.YWTask.class)
@@ -1292,7 +1291,7 @@ public class UniverseController extends AuthenticatedController {
     UUID taskUUID = createCluster(customer, universe);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return ApiResponse.success(createResp(universe, taskUUID));
+    return YWResults.withData(createResp(universe, taskUUID));
   }
 
   private UUID createCluster(Customer customer, Universe universe) {
@@ -1401,7 +1400,7 @@ public class UniverseController extends AuthenticatedController {
     UUID taskUUID = clusterDelete(customer, universe, clusterUUID, isForceDelete);
 
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return ApiResponse.success(createResp(universe, taskUUID));
+    return YWResults.withData(createResp(universe, taskUUID));
   }
 
   private UUID clusterDelete(
@@ -1459,7 +1458,7 @@ public class UniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    return ApiResponse.success(
+    return YWResults.withData(
         UniverseResourceDetails.create(
             universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf()));
   }
@@ -1469,7 +1468,7 @@ public class UniverseController extends AuthenticatedController {
       response = UniverseResourceDetails.class)
   public Result universeListCost(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    return ApiResponse.success(universeListCost(customer));
+    return YWResults.withData(universeListCost(customer));
   }
 
   private List<UniverseResourceDetails> universeListCost(Customer customer) {
@@ -1738,7 +1737,7 @@ public class UniverseController extends AuthenticatedController {
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     List<String> detailsList = healthCheck(universeUUID);
-    return ApiResponse.success(detailsList);
+    return YWResults.withData(detailsList);
   }
 
   private List<String> healthCheck(UUID universeUUID) {
@@ -1769,7 +1768,7 @@ public class UniverseController extends AuthenticatedController {
 
     HostAndPort leaderMasterHostAndPort = getMasterLeaderIP(universe);
     ObjectNode result = Json.newObject().put("privateIP", leaderMasterHostAndPort.getHost());
-    return ApiResponse.success(result);
+    return YWResults.withRawData(result);
   }
 
   private HostAndPort getMasterLeaderIP(Universe universe) {

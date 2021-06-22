@@ -5,62 +5,39 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.Model;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
-
-import io.ebean.Model;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
-import play.test.WithApplication;
-import play.test.Helpers;
 
 import java.util.Calendar;
-import java.util.stream.IntStream;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
 import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.CoreMatchers.equalTo;
 import static org.junit.Assert.*;
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
-import org.mockito.InjectMocks;
+import static play.mvc.Http.Status.*;
+import static play.test.Helpers.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CustomerTaskControllerTest extends FakeDBApplication {
@@ -420,12 +397,10 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     String authToken = user.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    FakeApiHelper.doRequestWithAuthToken(
-                        "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken))
-            .getResult();
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken(
+                    "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken));
 
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));

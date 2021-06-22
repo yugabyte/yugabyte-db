@@ -2,24 +2,24 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.UUID;
-
-import org.yb.client.ListTabletServersResponse;
-
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 import play.mvc.Result;
+
+import java.util.UUID;
 
 public class TabletServerController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
@@ -92,6 +92,6 @@ public class TabletServerController extends AuthenticatedController {
       LOG.error("Failed to get list of tablet servers in universe " + universeUUID, e);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return ApiResponse.success(response);
+    return YWResults.withRawData(response);
   }
 }

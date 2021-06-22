@@ -219,10 +219,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
     editUnivBody.set(
         "clusters", Json.newArray().add(Json.newObject().set("userIntent", userIntentJson)));
     result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("PUT", universeUrl, authToken, editUnivBody))
-            .getResult();
+        assertYWSE(
+            () -> doRequestWithAuthTokenAndBody("PUT", universeUrl, authToken, editUnivBody));
     assertBadRequest(result, "cannot be edited");
 
     // Node ops should fail.
@@ -252,11 +250,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertValue(Json.toJson(deleteTaskInfo), "taskState", "Success");
     assertAuditEntry(numAuditsExpected + 1, customer.uuid);
 
-    result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthToken("GET", universeUrl, authToken))
-            .getResult();
+    result = assertYWSE(() -> doRequestWithAuthToken("GET", universeUrl, authToken));
     String expectedResult = String.format("Cannot find universe %s", univUUID);
     assertBadRequest(result, expectedResult);
 

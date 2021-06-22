@@ -13,7 +13,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
@@ -33,6 +32,7 @@ import play.test.Helpers;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static org.junit.Assert.*;
@@ -113,21 +113,13 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   public void key() {
-    assertEquals(
-        NOT_FOUND,
-        assertThrows(YWServiceException.class, () -> getGCInterval(defaultUniverse.universeUUID))
-            .getResult()
-            .status());
+    assertEquals(NOT_FOUND, assertYWSE(() -> getGCInterval(defaultUniverse.universeUUID)).status());
     String newInterval = "2 days";
     Result result = setGCInterval(newInterval, defaultUniverse.universeUUID);
     assertEquals(OK, result.status());
     assertEquals(newInterval, contentAsString(getGCInterval(defaultUniverse.universeUUID)));
     assertEquals(OK, deleteGCInterval(defaultUniverse.universeUUID).status());
-    assertEquals(
-        NOT_FOUND,
-        assertThrows(YWServiceException.class, () -> getGCInterval(defaultUniverse.universeUUID))
-            .getResult()
-            .status());
+    assertEquals(NOT_FOUND, assertYWSE(() -> getGCInterval(defaultUniverse.universeUUID)).status());
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
