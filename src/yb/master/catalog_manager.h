@@ -810,6 +810,8 @@ class CatalogManager :
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
+  BlacklistSet BlacklistSetFromPB() const;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1532,8 +1534,6 @@ class CatalogManager :
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   ServerRegistrationPB server_registration_;
-
-  BlacklistSet BlacklistSetFromPB() const;
 
   TabletSplitManager tablet_split_manager_;
 

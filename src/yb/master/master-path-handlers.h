@@ -74,6 +74,16 @@ class MasterPathHandlers {
   const string kYBLightBlue = "#3eb1cc";
   const string kYBGray = "#5e647a";
 
+  const vector<string> kYBColorList = {
+    "#30307F", "#36B8F5",
+    "#BB43BC", "#43BFC2", "#90948E",
+    "#1C7180", "#EEA95F", "#3590D9",
+    "#F0679E", "#707B8E", "#800000",
+    "#F08080", "#FF8C00", "#7CFC00",
+    "#D2691E", "#696969", "#FFD700",
+    "#B8860B", "#006400", "#FF6347"
+  };
+
   CHECKED_STATUS Register(Webserver* server);
 
   string BytesToHumanReadable (uint64_t bytes);
@@ -115,9 +125,27 @@ class MasterPathHandlers {
     typedef std::map<std::string, ZoneTree> RegionTree;
     typedef std::map<std::string, RegionTree> CloudTree;
   };
-
   // Map of tserver UUID -> TabletCounts
   typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
+
+  struct ReplicaInfo {
+    consensus::RaftPeerPB::Role role;
+    TabletId tablet_id;
+
+    ReplicaInfo(const consensus::RaftPeerPB::Role& role, const TabletId& tablet_id) {
+      this->role = role;
+      this->tablet_id = tablet_id;
+    }
+  };
+
+  // Map of table id -> tablet list for a tserver.
+  typedef std::unordered_map<std::string, vector<ReplicaInfo>> PerTServerTableTree;
+
+  // Map of tserver UUID -> its table tree.
+  typedef std::unordered_map<std::string, PerTServerTableTree> TServerTree;
+
+  // Map of zone -> its tserver tree.
+  typedef std::unordered_map<std::string, TServerTree> ZoneToTServer;
 
   const string table_type_[kNumTypes] = {"User", "Index", "Colocated", "System"};
 
@@ -178,9 +206,12 @@ class MasterPathHandlers {
                                         Webserver::WebResponse *resp);
   void HandleVersionInfoDump(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
   void HandleLBStatistics(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);
+
+  CHECKED_STATUS CalculateTServerTree(TServerTree* tserver_tree);
 
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 
