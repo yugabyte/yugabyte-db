@@ -21,9 +21,9 @@ backports.ssl-match-hostname==3.7.0.1
 backports.tempfile==1.0
 backports.weakref==1.0.post1
 bcrypt==3.1.7
-boto3==1.17.97
+boto3==1.17.98
 boto==2.49.0
-botocore==1.20.97
+botocore==1.20.98
 cached-property==1.5.2
 cachetools==3.1.1
 certifi==2021.5.30
@@ -41,10 +41,10 @@ enum34==1.1.10
 fabric==2.2.1
 functools32==3.2.3.post2
 futures==3.3.0
-google-api-core==1.30.0
-google-api-python-client==1.12.8
+google-api-core==1.22.0
+google-api-python-client==1.10.0
 google-auth-httplib2==0.1.0
-google-auth==1.31.0
+google-auth==1.19.2
 googleapis-common-protos==1.52.0
 graphviz==0.16
 httplib2==0.19.1
@@ -60,7 +60,6 @@ msrest==0.6.21
 msrestazure==0.6.4
 oauth2client==3.0.0
 oauthlib==3.1.0
-packaging==20.9
 paramiko==2.4.2
 protobuf==3.17.3
 pyasn1-modules==0.2.8
