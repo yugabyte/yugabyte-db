@@ -2,67 +2,27 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
 import org.junit.Test;
-import org.mindrot.jbcrypt.BCrypt;
-import org.mockito.ArgumentCaptor;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
-import play.test.Helpers;
-import play.test.WithApplication;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.io.IOException;
 import java.util.UUID;
-import java.io.*;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.Users.Role;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.*;
-import static play.inject.Bindings.bind;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.*;
 import static play.test.Helpers.*;
-import static org.junit.Assert.*;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.fakeRequest;
 
 public class AuditControllerTest extends FakeDBApplication {
   String baseRoute = "/api/customers/%s/";
@@ -133,13 +93,11 @@ public class AuditControllerTest extends FakeDBApplication {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_info";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    route(
-                        fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
-                            .cookie(validCookie)))
-            .getResult();
+        assertYWSE(
+            () ->
+                route(
+                    fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
+                        .cookie(validCookie)));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }
@@ -162,13 +120,11 @@ public class AuditControllerTest extends FakeDBApplication {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_user";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    route(
-                        fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
-                            .cookie(validCookie)))
-            .getResult();
+        assertYWSE(
+            () ->
+                route(
+                    fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
+                        .cookie(validCookie)));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }

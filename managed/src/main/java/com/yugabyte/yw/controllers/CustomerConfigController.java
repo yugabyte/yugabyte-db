@@ -6,15 +6,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertManager;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -41,7 +39,7 @@ public class CustomerConfigController extends AuthenticatedController {
 
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
     auditService().createAuditEntry(ctx(), request(), formData);
-    return ApiResponse.success(customerConfig);
+    return YWResults.withData(customerConfig);
   }
 
   public Result delete(UUID customerUUID, UUID configUUID) {
@@ -53,7 +51,7 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   public Result list(UUID customerUUID) {
-    return ApiResponse.success(CustomerConfig.getAll(customerUUID));
+    return YWResults.withData(CustomerConfig.getAll(customerUUID));
   }
 
   public Result edit(UUID customerUUID, UUID configUUID) {
@@ -78,6 +76,6 @@ public class CustomerConfigController extends AuthenticatedController {
     config.name = formData.get("name").textValue();
     config.update();
     auditService().createAuditEntry(ctx(), request());
-    return ApiResponse.success(config);
+    return YWResults.withData(config);
   }
 }
