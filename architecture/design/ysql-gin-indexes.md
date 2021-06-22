@@ -68,7 +68,7 @@ An update operation does a delete then insert. This may be inefficient for `ybgi
 
 For regular indexes and tables, nulls are binary: an item is either null or not.  For GIN, there's more to distinguish, so they are categorized as follows:
 
-- null key: a null element inside the container (e.g. `ARRAY[null]`)
+- null key: a null element inside the container (for example, `ARRAY[null]`)
 - empty item: no elements in the container (e.g. `ARRAY[]`)
 - null item: the container itself is `null`
 
