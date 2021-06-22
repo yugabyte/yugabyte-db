@@ -88,7 +88,7 @@ Multicolumn will be disabled in the near-term.  Design is TODO.
 
 ## fastupdate
 
-Upstream postgres has a default option called "fastupdate" that writes rows to a buffer (called pending list) before flushing to disk for performance purposes.  YB won't do this in the first iteration, and it may never do it at all since, in a multi-node setup, this list needs to be cached on all nodes.  For the first iteration, disallow it.
+The upstream PostgreSQL "fastupdate" option writes rows to a buffer (called pending list) before flushing to disk for performance purposes. We're not implementing this in the first iteration. Moreover, since in a multi-node setup the list needs to be cached on all nodes, we may never support it.
 
 ## Extensions
 
