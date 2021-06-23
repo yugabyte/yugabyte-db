@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertReceiver;
@@ -26,8 +25,10 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Singleton
 public class AlertManager {
@@ -47,8 +48,6 @@ public class AlertManager {
   }
 
   public static final UUID DEFAULT_ALERT_RECEIVER_UUID = new UUID(0, 0);
-
-  @VisibleForTesting static final UUID DEFAULT_ALERT_ROUTE_UUID = new UUID(0, 0);
 
   /**
    * A method to run a state transition for a given alert
@@ -87,34 +86,37 @@ public class AlertManager {
     return alert;
   }
 
+  private List<AlertRoute> getRoutesByAlert(Alert alert) {
+    // TODO:
+    return Collections.emptyList();
+  }
+
   public void sendNotification(Alert alert, AlertNotificationReport report) {
     Customer customer = Customer.get(alert.getCustomerUUID());
 
-    List<AlertRoute> routes =
-        alert.getDefinitionUUID() == null
-            ? new ArrayList<>()
-            : AlertRoute.listByDefinition(alert.getDefinitionUUID());
+    List<AlertRoute> routes = getRoutesByAlert(alert);
+    boolean atLeastOneSucceeded = false;
+    List<AlertReceiver> receivers =
+        routes
+            .stream()
+            .flatMap(route -> route.getReceiversList().stream())
+            .collect(Collectors.toList());
 
-    if (routes.isEmpty()) {
-      // Creating default route with email only, w/o saving it to DB.
-      LOG.debug("For alert {} no routes found, using default email.", alert.getUuid());
+    if (receivers.isEmpty()) {
       if (!alert.isSendEmail()) {
         return;
       }
-      routes.add(getDefaultRoute(alert));
+      // Creating default receiver with email only, w/o saving it to DB.
+      LOG.debug("For alert {} no routes/receivers found, using default email.", alert.getUuid());
+      receivers.add(getDefaultReceiver(alert.getCustomerUUID()));
     }
 
-    boolean atLeastOneSucceeded = false;
-    for (AlertRoute route : routes) {
-      AlertReceiver receiver =
-          route.getReceiverUUID() == DEFAULT_ALERT_RECEIVER_UUID
-              ? getDefaultReceiver(alert.getCustomerUUID())
-              : AlertReceiver.get(alert.getCustomerUUID(), route.getReceiverUUID());
+    for (AlertReceiver receiver : receivers) {
       try {
         AlertUtils.validate(receiver);
       } catch (YWValidateException e) {
         if (report.failuresByReceiver(receiver.getUuid()) == 0) {
-          LOG.warn("Route {} skipped: {}", route.getUuid(), e.getMessage(), e);
+          LOG.warn("Receiver {} skipped: {}", receiver.getUuid(), e.getMessage(), e);
         }
         report.failReceiver(receiver.getUuid());
         continue;
@@ -150,18 +152,9 @@ public class AlertManager {
 
     AlertReceiver defaultReceiver = new AlertReceiver();
     defaultReceiver.setUuid(DEFAULT_ALERT_RECEIVER_UUID);
-    defaultReceiver.setCustomerUuid(customerUUID);
+    defaultReceiver.setCustomerUUID(customerUUID);
     defaultReceiver.setParams(params);
     return defaultReceiver;
-  }
-
-  private AlertRoute getDefaultRoute(Alert alert) {
-    LOG.debug("Creating default route.");
-    AlertRoute route = new AlertRoute();
-    route.setUUID(DEFAULT_ALERT_ROUTE_UUID);
-    route.setDefinitionUUID(alert.getDefinitionUUID());
-    route.setReceiverUUID(DEFAULT_ALERT_RECEIVER_UUID);
-    return route;
   }
 
   private void createOrUpdateAlert(Customer c, AlertReceiver receiver, String details) {

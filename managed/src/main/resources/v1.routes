@@ -132,6 +132,7 @@ DELETE  /customers/:cUUID/alert_receivers/:arcUUID                             c
 POST    /customers/:cUUID/alert_routes                                         com.yugabyte.yw.controllers.AlertController.createAlertRoute(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_routes                                         com.yugabyte.yw.controllers.AlertController.listAlertRoutes(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_routes/:artUUID                                com.yugabyte.yw.controllers.AlertController.getAlertRoute(cUUID: java.util.UUID, artUUID: java.util.UUID)
+PUT     /customers/:cUUID/alert_routes/:artUUID                                com.yugabyte.yw.controllers.AlertController.updateAlertRoute(cUUID: java.util.UUID, artUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_routes/:artUUID                                com.yugabyte.yw.controllers.AlertController.deleteAlertRoute(cUUID: java.util.UUID, artUUID: java.util.UUID)
 
 # Access Key API

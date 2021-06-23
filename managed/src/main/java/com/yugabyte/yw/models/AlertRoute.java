@@ -5,22 +5,33 @@ package com.yugabyte.yw.models;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.FetchType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
+import javax.persistence.JoinTable;
+import javax.persistence.ManyToMany;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.YWServiceException;
 
 import io.ebean.Finder;
 import io.ebean.Model;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import play.data.validation.Constraints;
 
+@EqualsAndHashCode(callSuper = false)
+@ToString
 @Entity
 public class AlertRoute extends Model {
 
@@ -29,13 +40,32 @@ public class AlertRoute extends Model {
   @Column(nullable = false, unique = true)
   private UUID uuid;
 
-  @ManyToOne(optional = false)
-  @JoinColumn(name = "definition_uuid")
-  private UUID definitionUUID;
+  @Constraints.Required
+  @Column(nullable = false)
+  private UUID customerUUID;
 
-  @ManyToOne(optional = false)
-  @JoinColumn(name = "receiver_uuid")
-  private UUID receiverUUID;
+  @Constraints.Required
+  @Column(columnDefinition = "Text", length = 255, nullable = false)
+  private String name;
+
+  @ManyToMany(fetch = FetchType.LAZY)
+  @JoinTable(
+      name = "alert_route_group",
+      joinColumns = {
+        @JoinColumn(
+            name = "route_uuid",
+            referencedColumnName = "uuid",
+            nullable = false,
+            updatable = false)
+      },
+      inverseJoinColumns = {
+        @JoinColumn(
+            name = "receiver_uuid",
+            referencedColumnName = "uuid",
+            nullable = false,
+            updatable = false)
+      })
+  private Set<AlertReceiver> receivers;
 
   private static final Finder<UUID, AlertRoute> find =
       new Finder<UUID, AlertRoute>(AlertRoute.class) {};
@@ -46,15 +76,16 @@ public class AlertRoute extends Model {
    * customer UUID.
    *
    * @param customerUUID
-   * @param definitionUUID
-   * @param receiverUUID
+   * @param name
+   * @param receivers
    * @return
    */
-  public static AlertRoute create(UUID customerUUID, UUID definitionUUID, UUID receiverUUID) {
+  public static AlertRoute create(UUID customerUUID, String name, List<AlertReceiver> receivers) {
     AlertRoute route = new AlertRoute();
+    route.customerUUID = customerUUID;
     route.uuid = UUID.randomUUID();
-    route.definitionUUID = definitionUUID;
-    route.receiverUUID = receiverUUID;
+    route.name = name;
+    route.receivers = new HashSet<>(receivers);
     route.save();
     return route;
   }
@@ -67,80 +98,41 @@ public class AlertRoute extends Model {
     this.uuid = uuid;
   }
 
-  public UUID getDefinitionUUID() {
-    return definitionUUID;
+  public String getName() {
+    return name;
   }
 
-  public void setDefinitionUUID(UUID definitionUUID) {
-    this.definitionUUID = definitionUUID;
+  public void setName(String name) {
+    this.name = name;
   }
 
-  public UUID getReceiverUUID() {
-    return receiverUUID;
+  @JsonProperty
+  public List<UUID> getReceivers() {
+    return receivers.stream().map(AlertReceiver::getUuid).collect(Collectors.toList());
   }
 
-  public void setReceiverUUID(UUID receiverUUID) {
-    this.receiverUUID = receiverUUID;
+  @JsonIgnore
+  public List<AlertReceiver> getReceiversList() {
+    return new ArrayList<>(receivers);
   }
 
-  @Override
-  public int hashCode() {
-    return Objects.hash(definitionUUID, receiverUUID, uuid);
+  public void setReceiversList(List<AlertReceiver> receivers) {
+    this.receivers = new HashSet<>(receivers);
   }
 
-  @Override
-  public boolean equals(Object obj) {
-    if (this == obj) {
-      return true;
-    }
-    if (!(obj instanceof AlertRoute)) {
-      return false;
-    }
-    AlertRoute other = (AlertRoute) obj;
-    return Objects.equals(definitionUUID, other.definitionUUID)
-        && Objects.equals(receiverUUID, other.receiverUUID)
-        && Objects.equals(uuid, other.uuid);
+  public static AlertRoute get(UUID customerUUID, UUID routeUUID) {
+    return find.query().where().idEq(routeUUID).eq("customer_uuid", customerUUID).findOne();
   }
 
-  @Override
-  public String toString() {
-    return "AlertRoute [uuid="
-        + uuid
-        + ", definitionUUID="
-        + definitionUUID
-        + ", receiverUUID="
-        + receiverUUID
-        + "]";
-  }
-
-  public static AlertRoute get(UUID routeUUID) {
-    return find.query().where().idEq(routeUUID).findOne();
-  }
-
-  public static AlertRoute getOrBadRequest(UUID routeUUID) {
-    AlertRoute alertRoute = get(routeUUID);
+  public static AlertRoute getOrBadRequest(UUID customerUUID, UUID routeUUID) {
+    AlertRoute alertRoute = get(customerUUID, routeUUID);
     if (alertRoute == null) {
       throw new YWServiceException(BAD_REQUEST, "Invalid Alert Route UUID: " + routeUUID);
     }
     return alertRoute;
   }
 
-  public static List<AlertRoute> listByDefinition(UUID definitionUUID) {
-    return find.query().where().eq("definition_uuid", definitionUUID).findList();
-  }
-
-  public static List<AlertRoute> listByReceiver(UUID receiverUUID) {
-    return find.query().where().eq("receiver_uuid", receiverUUID).findList();
-  }
-
   public static List<AlertRoute> listByCustomer(UUID customerUUID) {
-    Finder<UUID, AlertDefinition> definitionsFinder =
-        new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
-    List<AlertDefinition> definitions =
-        definitionsFinder.query().where().eq("customer_uuid", customerUUID).findList();
-    List<AlertRoute> routes = new ArrayList<>();
-    definitions.forEach(
-        definition -> routes.addAll(AlertRoute.listByDefinition(definition.getUuid())));
-    return routes;
+    return find.query().where().eq("customer_uuid", customerUUID).findList();
   }
 }
