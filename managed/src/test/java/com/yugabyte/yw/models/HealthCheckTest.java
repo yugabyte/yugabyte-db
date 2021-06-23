@@ -91,10 +91,12 @@ public class HealthCheckTest extends FakeDBApplication {
     HealthCheck noDetails = addCheck(universeUUID);
     assertFalse(noDetails.hasError());
 
-    HealthCheck trueError = addCheck(universeUUID, "{\"" + "has_error" + "\": true}");
+    HealthCheck trueError =
+        addCheck(universeUUID, "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": true}");
     assertTrue(trueError.hasError());
 
-    HealthCheck falseError = addCheck(universeUUID, "{\"" + "has_error" + "\": false}");
+    HealthCheck falseError =
+        addCheck(universeUUID, "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": false}");
     assertFalse(falseError.hasError());
   }
 
