@@ -50,7 +50,8 @@ export default class AddCertificateForm extends Component {
       nodeCertPrivate: '',
       clientCertPath: '',
       clientKeyPath: ''
-    }
+    },
+    isDatePickerFocused: false
   };
 
   placeholderObject = {
@@ -374,6 +375,8 @@ export default class AddCertificateForm extends Component {
                     required
                     onDayChange={(val) => props.setFieldValue('certExpiry', val)}
                     pickerComponent={DatePickerInput}
+                    onDayPickerShow={() => this.setState({ isDatePickerFocused: true })}
+                    onDayPickerHide={() => this.setState({ isDatePickerFocused: false })}
                   />
                   <Field
                     name="certContent"
@@ -391,11 +394,9 @@ export default class AddCertificateForm extends Component {
                       required
                       onKeyUp={(e) => this.handleOnKeyUp(e, props)}
                       onBlur={this.handleOnBlur}
-                      className="search"
+                      className={this.state.isDatePickerFocused ? null : 'search'}
                     />
-                    <div className="suggestion">
-                      {this.state.suggestionText['rootCACert']}
-                    </div>
+                    <div className="suggestion">{this.state.suggestionText['rootCACert']}</div>
                   </div>
                   <div className="search-container">
                     <Field
@@ -406,11 +407,9 @@ export default class AddCertificateForm extends Component {
                       required
                       onKeyUp={(e) => this.handleOnKeyUp(e, props)}
                       onBlur={this.handleOnBlur}
-                      className="search"
+                      className={this.state.isDatePickerFocused ? null : 'search'}
                     />
-                    <div className="suggestion">
-                      {this.state.suggestionText['nodeCertPath']}
-                    </div>
+                    <div className="suggestion">{this.state.suggestionText['nodeCertPath']}</div>
                   </div>
                   <div className="search-container">
                     <Field
@@ -423,9 +422,7 @@ export default class AddCertificateForm extends Component {
                       onBlur={this.handleOnBlur}
                       className="search"
                     />
-                    <div className="suggestion">
-                      {this.state.suggestionText['nodeCertPrivate']}
-                    </div>
+                    <div className="suggestion">{this.state.suggestionText['nodeCertPrivate']}</div>
                   </div>
                   <div className="search-container">
                     <Field
@@ -437,9 +434,7 @@ export default class AddCertificateForm extends Component {
                       onBlur={this.handleOnBlur}
                       className="search"
                     />
-                    <div className="suggestion">
-                      {this.state.suggestionText['clientCertPath']}
-                    </div>
+                    <div className="suggestion">{this.state.suggestionText['clientCertPath']}</div>
                   </div>
                   <div className="search-container">
                     <Field
@@ -451,9 +446,7 @@ export default class AddCertificateForm extends Component {
                       onBlur={this.handleOnBlur}
                       className="search"
                     />
-                    <div className="suggestion">
-                      {this.state.suggestionText['clientKeyPath']}
-                    </div>
+                    <div className="suggestion">{this.state.suggestionText['clientKeyPath']}</div>
                   </div>
                   {getPromiseState(addCertificate).isError() &&
                     isNonEmptyObject(addCertificate.error) && (

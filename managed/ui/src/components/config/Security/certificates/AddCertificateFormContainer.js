@@ -27,7 +27,7 @@ const mapDispatchToProps = (dispatch) => {
           });
         } else {
           console.error(
-            'Certificate adding has been failed: ' + JSON.stringify(response.payload.data.error)
+            'Certificate adding has been failed: ' + JSON.stringify(response?.payload?.data?.error)
           );
         }
       });
