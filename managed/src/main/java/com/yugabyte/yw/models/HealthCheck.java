@@ -40,7 +40,7 @@ public class HealthCheck extends Model {
     public Date timestamp;
     public List<NodeData> data = new ArrayList<>();
     public String yb_version;
-    // TODO: This was done as some test is using error field. Reconcile this.
+    // TODO: This was done as HealthCheckerTest is using error field. Reconcile this.
     @JsonAlias({"error", "has_error"})
     public Boolean has_error = false;
   }
