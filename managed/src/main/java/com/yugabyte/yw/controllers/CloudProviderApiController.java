@@ -30,7 +30,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private ValidatingFormFactory formFactory;
 
-  @Inject private CloudProviderService cloudProviderService;
+  @Inject private CloudProviderHandler cloudProviderHandler;
 
   @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
@@ -43,7 +43,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    cloudProviderService.delete(customer, provider);
+    cloudProviderHandler.delete(customer, provider);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
   }
@@ -61,7 +61,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.customerUUID = customerUUID;
     Provider providerEbean =
-        cloudProviderService.createProvider(
+        cloudProviderHandler.createProvider(
             customer,
             Common.CloudType.valueOf(reqProvider.code),
             reqProvider.name,
@@ -70,7 +70,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
     CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
 
-    UUID taskUUID = cloudProviderService.bootstrap(customer, providerEbean, taskParams);
+    UUID taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
     return new YWResults.YWTask(taskUUID, providerEbean.uuid).asResult();
   }
