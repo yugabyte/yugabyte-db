@@ -33,6 +33,7 @@ import java.util.*;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -162,10 +163,8 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     ObjectNode kmsConfigReq =
         Json.newObject().put("base_url", "some_base_url").put("api_key", "some_api_token");
     Result createKMSResult =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq))
-            .getResult();
+        assertYWSE(
+            () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
     assertOk(createKMSResult);
     String url =
         "/api/customers/"
@@ -179,15 +178,74 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
             .put("algorithm", algorithm)
             .put("key_size", Integer.toString(keySize));
     Result createKeyResult =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, createPayload))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, createPayload));
     assertOk(createKeyResult);
     JsonNode json = Json.parse(contentAsString(createKeyResult));
     String keyValue = json.get("value").asText();
     assertEquals(keyValue, mockEncryptionKey);
     assertAuditEntry(2, customer.uuid);
+  }
+
+  @Test
+  public void testCreateSMARTKEYKmsProviderWithInvalidAPIUrl() {
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    ObjectNode kmsConfigReq =
+        Json.newObject().put("base_url", "some_base_url").put("api_key", "some_api_token");
+    Result createKMSResult =
+        assertYWSE(
+            () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
+    assertBadRequest(createKMSResult, "Invalid API URL.");
+  }
+
+  @Test
+  public void testCreateSMARTKEYKmsProviderWithValidAPIUrlButInvalidAPIKey() {
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    ObjectNode kmsConfigReq =
+        Json.newObject()
+            .put("base_url", "api.amer.smartkey.io")
+            .put("api_key", "some_api_token")
+            .put("name", "test");
+    Result createKMSResult =
+        assertYWSE(
+            () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
+    assertBadRequest(createKMSResult, "Invalid API Key.");
+  }
+
+  @Test
+  public void testCreateAwsKmsProviderWithInvalidCreds() {
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
+    ObjectNode kmsConfigReq =
+        Json.newObject()
+            .put(EncryptionAtRestController.AWS_ACCESS_KEY_ID_FIELDNAME, "aws_accesscode")
+            .put(EncryptionAtRestController.AWS_REGION_FIELDNAME, "ap-south-1")
+            .put(EncryptionAtRestController.AWS_SECRET_ACCESS_KEY_FIELDNAME, "aws_secretKey")
+            .put("name", "test");
+    CloudAPI mockCloudAPI = mock(CloudAPI.class);
+    when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
+    Result createKMSResult =
+        assertYWSE(
+            () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
+    assertBadRequest(createKMSResult, "Invalid AWS Credentials.");
+  }
+
+  @Test
+  public void testCreateAwsKmsProviderWithValidCreds() {
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
+    ObjectNode kmsConfigReq =
+        Json.newObject()
+            .put(EncryptionAtRestController.AWS_ACCESS_KEY_ID_FIELDNAME, "valid_accessKey")
+            .put(EncryptionAtRestController.AWS_REGION_FIELDNAME, "ap-south-1")
+            .put(EncryptionAtRestController.AWS_SECRET_ACCESS_KEY_FIELDNAME, "valid_secretKey")
+            .put("name", "test");
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    CloudAPI mockCloudAPI = mock(CloudAPI.class);
+    when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
+    when(mockCloudAPI.isValidCreds(any(), any())).thenReturn(true);
+    Result createKMSResult =
+        doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq);
+    assertOk(createKMSResult);
   }
 
   @Test
@@ -200,10 +258,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
             .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm")
             .put("configUUID", configUUID.toString());
     Result recoverKeyResult =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, body))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, body));
     JsonNode json = Json.parse(contentAsString(recoverKeyResult));
     String expectedErrorMsg =
         String.format("No universe key found for universe %s", universe.universeUUID.toString());

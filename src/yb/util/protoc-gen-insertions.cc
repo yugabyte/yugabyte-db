@@ -38,7 +38,6 @@
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -65,7 +64,7 @@ class InsertAnnotations : public ::google::protobuf::compiler::CodeGenerator {
     string pb_file = path_no_extension + ".pb.cc";
 
     // Actually insert the new #include
-    gscoped_ptr<ZeroCopyOutputStream> inserter(gen_context->OpenForInsert(pb_file, "includes"));
+    std::unique_ptr<ZeroCopyOutputStream> inserter(gen_context->OpenForInsert(pb_file, "includes"));
     Printer printer(inserter.get(), '$');
     printer.Print(kIncludeToInsert);
 

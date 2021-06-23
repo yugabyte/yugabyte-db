@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -58,7 +57,7 @@ public class BackupsController extends AuthenticatedController {
         backup.setBackupInfo(params);
       }
     }
-    return ApiResponse.success(backups);
+    return YWResults.withData(backups);
   }
 
   public Result restore(UUID customerUUID, UUID universeUUID) {
@@ -182,7 +181,7 @@ public class BackupsController extends AuthenticatedController {
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
           CustomerTask.create(
               customer,
-              uuid,
+              backup.getBackupInfo().universeUUID,
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,

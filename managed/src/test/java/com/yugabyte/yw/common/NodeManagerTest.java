@@ -485,7 +485,10 @@ public class NodeManagerTest extends FakeDBApplication {
                 expectedCommand.add(customCertInfo.nodeCertPath);
                 expectedCommand.add("--node_key_path");
                 expectedCommand.add(customCertInfo.nodeKeyPath);
-                if (customCertInfo.clientCertPath != null) {
+                if (customCertInfo.clientCertPath != null
+                    && !customCertInfo.clientCertPath.isEmpty()
+                    && customCertInfo.clientKeyPath != null
+                    && !customCertInfo.clientKeyPath.isEmpty()) {
                   expectedCommand.add("--client_cert_path");
                   expectedCommand.add(customCertInfo.clientCertPath);
                   expectedCommand.add("--client_key_path");
@@ -627,7 +630,10 @@ public class NodeManagerTest extends FakeDBApplication {
               expectedCommand.add(customCertInfo.nodeCertPath);
               expectedCommand.add("--node_key_path");
               expectedCommand.add(customCertInfo.nodeKeyPath);
-              if (customCertInfo.clientCertPath != null) {
+              if (customCertInfo.clientCertPath != null
+                  && !customCertInfo.clientCertPath.isEmpty()
+                  && customCertInfo.clientKeyPath != null
+                  && !customCertInfo.clientKeyPath.isEmpty()) {
                 expectedCommand.add("--client_cert_path");
                 expectedCommand.add(customCertInfo.clientCertPath);
                 expectedCommand.add("--client_key_path");
@@ -926,6 +932,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
     for (TestData t : testData) {
       t.region.setSecurityGroupId(sgId);
+      t.region.save();
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";

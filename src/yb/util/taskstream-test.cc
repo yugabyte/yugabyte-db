@@ -67,11 +67,14 @@ using std::shared_ptr;
 namespace yb {
 
 namespace {
-static Status BuildMinMaxTestPool(int min_threads, int max_threads, gscoped_ptr<ThreadPool> *pool) {
+
+static CHECKED_STATUS BuildMinMaxTestPool(
+    int min_threads, int max_threads, std::unique_ptr<ThreadPool> *pool) {
   return ThreadPoolBuilder("test").set_min_threads(min_threads)
       .set_max_threads(max_threads)
       .Build(pool);
 }
+
 } // anonymous namespace
 
 class TestTaskStream : public ::testing::Test {
@@ -96,7 +99,7 @@ static void SimpleTaskStreamMethod(int* value, std::atomic<int32_t>* counter) {
 
 TEST_F(TestTaskStream, TestSimpleTaskStream) {
   using namespace std::placeholders;
-  gscoped_ptr<ThreadPool> thread_pool;
+  std::unique_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(1, 1, &thread_pool));
 
   std::atomic<int32_t> counter(0);
@@ -117,7 +120,7 @@ TEST_F(TestTaskStream, TestSimpleTaskStream) {
 
 TEST_F(TestTaskStream, TestTwoTaskStreams) {
   using namespace std::placeholders;
-  gscoped_ptr<ThreadPool> thread_pool;
+  std::unique_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(1, 1, &thread_pool));
 
   std::atomic<int32_t> counter0(0);

@@ -38,7 +38,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -1510,9 +1509,9 @@ TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
 
-  AssertLoggedWaitFor([&]() {
+  ASSERT_OK(LoggedWaitFor([&]() {
     return GetSuccessfulWriteOps(consumer_cluster()) == expected_num_writes;
-  }, MonoDelta::FromSeconds(60), "Wait for all batches to finish.");
+  }, MonoDelta::FromSeconds(60), "Wait for all batches to finish."));
 
   // Verify that both clusters have the same records.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));

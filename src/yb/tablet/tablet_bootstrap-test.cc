@@ -198,7 +198,7 @@ class BootstrapTest : public LogTestBase {
   Status RunBootstrapOnTestTablet(const RaftGroupMetadataPtr& meta,
                                   TabletPtr* tablet,
                                   ConsensusBootstrapInfo* boot_info) {
-    gscoped_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
+    std::unique_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
     scoped_refptr<LogAnchorRegistry> log_anchor_registry(new LogAnchorRegistry());
     // Now attempt to recover the log
     TabletOptions tablet_options;

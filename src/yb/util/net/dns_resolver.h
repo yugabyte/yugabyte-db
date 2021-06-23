@@ -34,7 +34,6 @@
 
 #include <vector>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 
 #include "yb/util/async_util.h"

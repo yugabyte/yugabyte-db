@@ -70,7 +70,7 @@ class OperationTrackerTest : public YBTest {
     void UpdateRequestFromConsensusRound() override {
       req_ = consensus_round()->replicate_msg();
     }
-    std::string ToString() const override { return "NoOpOperationState"; }
+    std::string ToString() const override { return "NoOpOperation"; }
    private:
     std::shared_ptr<consensus::ReplicateMsg> req_;
   };

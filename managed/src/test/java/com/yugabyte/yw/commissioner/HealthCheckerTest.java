@@ -141,6 +141,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG", "foo");
     kubernetesProvider.setConfig(config);
+    kubernetesProvider.save();
     // Universe modifies customer, so we need to refresh our in-memory view of this reference.
     defaultCustomer = Customer.get(defaultCustomer.uuid);
     universe =

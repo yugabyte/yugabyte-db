@@ -170,7 +170,8 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
-  "commons-codec" % "commons-codec" % "1.15"
+  "commons-codec" % "commons-codec" % "1.15",
+  "com.google.cloud" % "google-cloud-storage" % "1.115.0"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -217,6 +218,18 @@ lazy val ybClientSnapshotResolver = {
   }
 }
 
+lazy val ybPublicSnapshotResolverDescription =
+    "Public snapshot resolver for yb-client jar"
+
+lazy val ybPublicSnapshotResolver = {
+  if (mavenLocal) {
+    Seq()
+  } else {
+    val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
+    Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
+  }
+}
+
 // Custom remote maven repository to retrieve library dependencies from.
 lazy val ybMvnCacheUrlEnvVarName = "YB_MVN_CACHE_URL"
 lazy val ybMvnCacheUrl = getEnvVar(ybMvnCacheUrlEnvVarName)
@@ -243,7 +256,8 @@ externalResolvers := {
   validateResolver(mavenCacheServerResolver, mavenCacheServerResolverDescription) ++
   validateResolver(ybLocalResolver, ybLocalResolverDescription) ++
   validateResolver(externalResolvers.value, "Default resolver") ++
-  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
+  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription) ++
+  validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
 (Compile / compilePlatform) := {
@@ -289,7 +303,8 @@ runPlatform := {
 libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
 
 libraryDependencies ++= Seq(
-  "org.webjars" % "swagger-ui" % "3.43.0",
+  // We wont use swagger-ui jar since we want to change some of the assets:
+  //  "org.webjars" % "swagger-ui" % "3.43.0",
   "io.swagger" %% "swagger-play2" % "1.6.1",
   "io.swagger" %% "swagger-scala-module" % "1.0.5",
   "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.8"

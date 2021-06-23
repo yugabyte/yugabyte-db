@@ -131,7 +131,7 @@ class ChecksumStepper {
   }
 
   void HandleResponse() {
-    gscoped_ptr<ChecksumStepper> deleter(this);
+    std::unique_ptr<ChecksumStepper> deleter(this);
     Status s = rpc_.status();
     if (s.ok() && resp_.has_error()) {
       s = StatusFromPB(resp_.error().status());
@@ -181,7 +181,7 @@ void RemoteYsckTabletServer::RunTabletChecksumScanAsync(
         const Schema& schema,
         const ChecksumOptions& options,
         const ReportResultCallback& callback) {
-  gscoped_ptr<ChecksumStepper> stepper(
+  std::unique_ptr<ChecksumStepper> stepper(
       new ChecksumStepper(tablet_id, schema, uuid(), options, callback, ts_proxy_));
   stepper->Start();
   ignore_result(stepper.release()); // Deletes self on callback.

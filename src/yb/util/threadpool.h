@@ -41,7 +41,6 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/callback_forward.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/ref_counted.h"
@@ -106,18 +105,15 @@ struct ThreadPoolMetrics {
 //   ...
 //   .Build(...);
 #define THREAD_POOL_METRICS_DEFINE(entity, name, label) \
-    METRIC_DEFINE_histogram(entity, BOOST_PP_CAT(name, _queue_length), \
+    METRIC_DEFINE_coarse_histogram(entity, BOOST_PP_CAT(name, _queue_length), \
         label " Queue Length", yb::MetricUnit::kMicroseconds, \
-        label " - queue length histogram.", \
-        10000000, 2); \
-    METRIC_DEFINE_histogram(entity, BOOST_PP_CAT(name, _queue_time_us), \
+        label " - queue length histogram."); \
+    METRIC_DEFINE_coarse_histogram(entity, BOOST_PP_CAT(name, _queue_time_us), \
         label " Queue Time", yb::MetricUnit::kMicroseconds, \
-        label " - queue time histogram, microseconds.", \
-        10000000, 2); \
-    METRIC_DEFINE_histogram(entity, BOOST_PP_CAT(name, _run_time_us), \
+        label " - queue time histogram, microseconds."); \
+    METRIC_DEFINE_coarse_histogram(entity, BOOST_PP_CAT(name, _run_time_us), \
         label " Run Time", yb::MetricUnit::kMicroseconds, \
-        label " - run time histogram, microseconds.", \
-        10000000, 2)
+        label " - run time histogram, microseconds.")
 
 #define THREAD_POOL_METRICS_INSTANCE(entity, name) { \
       BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _run_time_us)).Instantiate(entity), \
@@ -169,7 +165,6 @@ class ThreadPoolBuilder {
   const MonoDelta& idle_timeout() const { return idle_timeout_; }
 
   // Instantiate a new ThreadPool with the existing builder arguments.
-  CHECKED_STATUS Build(gscoped_ptr<ThreadPool>* pool) const;
   CHECKED_STATUS Build(std::unique_ptr<ThreadPool>* pool) const;
 
  private:
@@ -210,7 +205,7 @@ class ThreadPoolBuilder {
 //    static void Func(int n) { ... }
 //    class Task : public Runnable { ... }
 //
-//    gscoped_ptr<ThreadPool> thread_pool;
+//    std::unique_ptr<ThreadPool> thread_pool;
 //    CHECK_OK(
 //        ThreadPoolBuilder("my_pool")
 //            .set_min_threads(0)

@@ -246,7 +246,8 @@ class CppCassandraDriverTestIndexSlower : public CppCassandraDriverTestIndex {
   std::vector<std::string> ExtraTServerFlags() override {
     auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
     flags.push_back("--TEST_slowdown_backfill_by_ms=3000");
-    flags.push_back("--TEST_yb_num_total_tablets=1");
+    flags.push_back("--ycql_num_tablets=1");
+    flags.push_back("--ysql_num_tablets=1");
     return flags;
   }
 
@@ -351,7 +352,8 @@ class CppCassandraDriverTestIndexNonResponsiveTServers : public CppCassandraDriv
     return {
         "--disable_index_backfill=false",
         "--enable_load_balancing=false",
-        "--TEST_yb_num_total_tablets=18",
+        "--ycql_num_tablets=18",
+        "--ysql_num_tablets=18",
         // Really aggressive timeouts.
         "--index_backfill_rpc_max_retries=1",
         "--index_backfill_rpc_timeout_ms=1",
@@ -1549,12 +1551,12 @@ TEST_F_EX(
     ASSERT_TRUE(!res.ok());
     ASSERT_TRUE(res.status().IsNotFound());
 
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [this, index_table_name]() {
           Result<YBTableInfo> index_table_info = client_->GetYBTableInfo(index_table_name);
           return !index_table_info && index_table_info.status().IsNotFound();
         },
-        10s, "waiting for index to be deleted");
+        10s, "waiting for index to be deleted"));
   }
 }
 
@@ -1751,7 +1753,8 @@ class CppCassandraDriverTestSlowTServer : public CppCassandraDriverTest {
   std::vector<std::string> ExtraTServerFlags() override {
     auto flags = CppCassandraDriverTest::ExtraTServerFlags();
     flags.push_back("--TEST_slowdown_backfill_by_ms=5000");
-    flags.push_back("--TEST_yb_num_total_tablets=1");
+    flags.push_back("--ycql_num_tablets=1");
+    flags.push_back("--ysql_num_tablets=1");
     return flags;
   }
 };
@@ -1870,45 +1873,45 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails, CppCassandraDriver
   ASSERT_TRUE(!res.ok());
   ASSERT_TRUE(res.status().IsNotFound());
 
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, index_table_name]() {
         Result<YBTableInfo> index_table_info = client_->GetYBTableInfo(index_table_name);
         return !index_table_info && index_table_info.status().IsNotFound();
       },
-      10s, "waiting for index to be deleted");
+      10s, "waiting for index to be deleted"));
 
   LOG(INFO)
       << "Inserting more rows -- No collision checking for a failed index.";
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this]() {
         return session_.ExecuteQuery("insert into test_table (k, v) values (-1, 'one');").ok();
       },
-      10s, "insert after unique index creation failed.");
-  AssertLoggedWaitFor(
+      10s, "insert after unique index creation failed."));
+  ASSERT_OK(LoggedWaitFor(
       [this]() {
         return session_.ExecuteQuery("insert into test_table (k, v) values (-3, 'three');").ok();
       },
-      10s, "insert after unique index creation failed.");
-  AssertLoggedWaitFor(
+      10s, "insert after unique index creation failed."));
+  ASSERT_OK(LoggedWaitFor(
       [this]() {
         return session_.ExecuteQuery("insert into test_table (k, v) values (4, 'four');").ok();
       },
-      10s, "insert after unique index creation failed.");
-  AssertLoggedWaitFor(
+      10s, "insert after unique index creation failed."));
+  ASSERT_OK(LoggedWaitFor(
       [this]() {
         return session_.ExecuteQuery("insert into test_table (k, v) values (-4, 'four');").ok();
       },
-      10s, "insert after unique index creation failed.");
-  AssertLoggedWaitFor(
+      10s, "insert after unique index creation failed."));
+  ASSERT_OK(LoggedWaitFor(
       [this]() {
         return session_.ExecuteQuery("insert into test_table (k, v) values (5, 'five');").ok();
       },
-      10s, "insert after unique index creation failed.");
-  AssertLoggedWaitFor(
+      10s, "insert after unique index creation failed."));
+  ASSERT_OK(LoggedWaitFor(
       [this]() {
         return session_.ExecuteQuery("insert into test_table (k, v) values (-5, 'five');").ok();
       },
-      10s, "insert after unique index creation failed.");
+      10s, "insert after unique index creation failed."));
 }
 
 TEST_F_EX(
@@ -2388,7 +2391,7 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
 
 YB_STRONGLY_TYPED_BOOL(RestartTS);
 
-CQLMetrics TestPrepareWithTSRestart(const gscoped_ptr<ExternalMiniCluster>& cluster,
+CQLMetrics TestPrepareWithTSRestart(const std::unique_ptr<ExternalMiniCluster>& cluster,
                                     CassandraSession* session,
                                     RestartTS restart_ts,
                                     const string& local_keyspace = string()) {
@@ -2857,7 +2860,7 @@ TEST_F_EX(CppCassandraDriverTest,
   ASSERT_OK(AddTable());
 
   // Since we don't know when the bg task started, let's wait for a cache update.
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &old_results]() {
         CassandraStatement statement("SELECT * FROM system.partitions");
         auto new_result = session_.ExecuteWithResult(statement);
@@ -2872,7 +2875,7 @@ TEST_F_EX(CppCassandraDriverTest,
         }
         return false;
       },
-      MonoDelta::FromSeconds(kCacheRefreshSecs), "Waiting for cache to refresh");
+      MonoDelta::FromSeconds(kCacheRefreshSecs), "Waiting for cache to refresh"));
 
   // We are now just after a cache update, so we should expect that we only get the cached value
   // for the next kCacheRefreshSecs seconds.

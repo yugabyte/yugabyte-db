@@ -810,6 +810,8 @@ class CatalogManager :
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
+  BlacklistSet BlacklistSetFromPB() const;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1336,7 +1338,7 @@ class CatalogManager :
   // Random number generator used for selecting replica locations.
   ThreadSafeRandom rng_;
 
-  gscoped_ptr<SysCatalogTable> sys_catalog_;
+  std::unique_ptr<SysCatalogTable> sys_catalog_;
 
   // Mutex to avoid concurrent remote bootstrap sessions.
   std::mutex remote_bootstrap_mtx_;
@@ -1347,7 +1349,7 @@ class CatalogManager :
   // Background thread, used to execute the catalog manager tasks
   // like the assignment and cleaner.
   friend class CatalogManagerBgTasks;
-  gscoped_ptr<CatalogManagerBgTasks> background_tasks_;
+  std::unique_ptr<CatalogManagerBgTasks> background_tasks_;
 
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
@@ -1371,10 +1373,10 @@ class CatalogManager :
   // NOTE: Presently, this thread pool must contain only a single
   // thread (to correctly serialize invocations of ElectedAsLeaderCb
   // upon closely timed consecutive elections).
-  gscoped_ptr<ThreadPool> leader_initialization_pool_;
+  std::unique_ptr<ThreadPool> leader_initialization_pool_;
 
   // Thread pool to do the async RPC task work.
-  gscoped_ptr<ThreadPool> async_task_pool_;
+  std::unique_ptr<ThreadPool> async_task_pool_;
 
   // This field is updated when a node becomes leader master,
   // waits for all outstanding uncommitted metadata (table and tablet metadata)
@@ -1532,8 +1534,6 @@ class CatalogManager :
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   ServerRegistrationPB server_registration_;
-
-  BlacklistSet BlacklistSetFromPB() const;
 
   TabletSplitManager tablet_split_manager_;
 

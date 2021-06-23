@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Audit;
+import org.junit.function.ThrowingRunnable;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -20,7 +21,7 @@ import static play.test.Helpers.contentAsString;
 
 public class AssertHelper {
   public static void assertOk(Result result) {
-    assertEquals(OK, result.status());
+    assertEquals(contentAsString(result), OK, result.status());
   }
 
   public static void assertBadRequest(Result result, String errorStr) {
@@ -127,5 +128,9 @@ public class AssertHelper {
     YWResults.YWSuccess ywSuccess =
         Json.fromJson(Json.parse(contentAsString(result)), YWResults.YWSuccess.class);
     assertNull(ywSuccess.message);
+  }
+
+  public static Result assertYWSE(ThrowingRunnable runnable) {
+    return assertThrows(YWServiceException.class, runnable).getResult();
   }
 }

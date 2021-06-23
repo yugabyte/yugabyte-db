@@ -38,7 +38,7 @@ The goals of this feature are as follows.
 
 # Motivation
 
-Traditionally, schema migrations were handled by taking all services down during the upgrade. A migration script would run to apply the new schema. Depending on the exact schema change, there could be a step to transform all the data before the schema migration completes. THe services are brought back online after this.
+Traditionally, schema migrations were handled by taking all services down during the upgrade. A migration script would run to apply the new schema. Depending on the exact schema change, there could be a step to transform all the data before the schema migration completes. The services are brought back online after this.
 
 While the approach is very safe, it leads to a lot of downtime in practice, especially in a distributed SQL database like YugabyteDB for the following reasons:
 
@@ -115,7 +115,7 @@ A schema change from schema S1 → S2 is consistency preserving iff, for any dat
 * any operation op(S2) preserves the consistency of d with respect to schema S1.
 where we use op(Si) to denote an operation parsed, analyzed and executed with respect to schema Si.
 
-*Corollary 1:* If S1 → S2 is consistency-preserving then S1 → S2 is also consistency preserving. This follows trivially from definition 1 as it is symmetric with respect to S1 and S2. 
+*Corollary 1:* If S1 → S2 is consistency-preserving then S2 → S1 is also consistency preserving. This follows trivially from definition 1 as it is symmetric with respect to S1 and S2. 
 
 Now, we can define the notion of preserving consistency for a schema migration.
 
