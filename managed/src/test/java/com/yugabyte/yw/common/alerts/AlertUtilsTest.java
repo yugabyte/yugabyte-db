@@ -2,35 +2,24 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
+import com.yugabyte.yw.common.EmailFixtures;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AlertReceiver.TargetType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 
-import com.yugabyte.yw.common.EmailFixtures;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.AlertReceiver;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertUtilsTest extends FakeDBApplication {
-
-  private static final String ALERT_TEST_MESSAGE = "Test message";
 
   private static final String TEST_TITLE_TEMPLATE = "<b>Title template</b>";
 
@@ -99,14 +88,8 @@ public class AlertUtilsTest extends FakeDBApplication {
   public void testGetNotificationTitle_TemplateInReceiver() {
     Universe universe = ModelFactory.createUniverse();
     AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
-    Alert alert =
-        Alert.create(
-            defaultCustomer.uuid,
-            universe.universeUUID,
-            Alert.TargetType.UniverseType,
-            "errorCode",
-            "Warning",
-            ALERT_TEST_MESSAGE);
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
     alert.setDefinitionUUID(definition.getUuid());
     AlertReceiver receiver = createEmailReceiver();
 
@@ -116,15 +99,7 @@ public class AlertUtilsTest extends FakeDBApplication {
 
   @Test
   public void testGetNotificationTitle_DefaultTitle() {
-    UUID universeUuid = UUID.randomUUID();
-    Alert alert =
-        Alert.create(
-            defaultCustomer.uuid,
-            universeUuid,
-            Alert.TargetType.UniverseType,
-            "errorCode",
-            "Warning",
-            ALERT_TEST_MESSAGE);
+    Alert alert = ModelFactory.createAlert(defaultCustomer);
     AlertReceiver receiver = createEmailReceiverWithEmptyTemplates();
 
     assertEquals(
@@ -136,15 +111,7 @@ public class AlertUtilsTest extends FakeDBApplication {
   public void testGetNotificationText_TemplateInReceiver() {
     Universe universe = ModelFactory.createUniverse();
     AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
-    Alert alert =
-        Alert.create(
-            defaultCustomer.uuid,
-            universe.universeUUID,
-            Alert.TargetType.UniverseType,
-            "errorCode",
-            "Warning",
-            ALERT_TEST_MESSAGE);
-    alert.setDefinitionUUID(definition.getUuid());
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
     AlertReceiver receiver = createEmailReceiver();
     assertEquals(
@@ -153,15 +120,8 @@ public class AlertUtilsTest extends FakeDBApplication {
 
   @Test
   public void testGetNotificationText_DefaultTemplate() {
-    UUID universeUuid = UUID.randomUUID();
-    Alert alert =
-        Alert.create(
-            defaultCustomer.uuid,
-            universeUuid,
-            Alert.TargetType.UniverseType,
-            "errorCode",
-            "Warning",
-            ALERT_TEST_MESSAGE);
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
     AlertReceiver receiver = createEmailReceiverWithEmptyTemplates();
 
     assertEquals(
@@ -174,14 +134,7 @@ public class AlertUtilsTest extends FakeDBApplication {
     Universe universe = ModelFactory.createUniverse();
     AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
 
-    Alert alert =
-        Alert.create(
-            defaultCustomer.uuid,
-            universe.universeUUID,
-            Alert.TargetType.UniverseType,
-            "errorCode",
-            "Warning",
-            ALERT_TEST_MESSAGE);
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
     alert.setDefinitionUUID(definition.getUuid());
 
     List<AlertLabel> labels =
