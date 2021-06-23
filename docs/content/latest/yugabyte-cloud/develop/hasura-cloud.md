@@ -84,4 +84,4 @@ To create a project in Hasura Cloud:
 
 1. Click **Connect Database** and wait for confirmation that the database has connected.
 
-1. Click **View Database**. The schema is empty, and your project is ready to be connected to an application.
+1. Click **View Database**. The schema is empty, and your project is ready to be [connected to an application](../hasura-sample-app/).
