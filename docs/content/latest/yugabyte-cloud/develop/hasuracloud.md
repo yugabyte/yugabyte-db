@@ -14,11 +14,16 @@ showAsideToc: true
 
 Use the [Hasura GraphQL Engine](https://hasura.io) with Yugabyte Cloud to power your GraphQL applications with a distributed SQL database.
 
-The following example demonstrates how to deploy an application on both Hasura Cloud and Yugabyte Cloud using the Hasura sample Realtime Poll application. This application was built using React and is powered by Hasura GraphQL Engine backed by a Yugabyte Cloud YugabyteDB cluster. It has an interface for users to cast a vote on a poll and the results are updated in the on-screen bar chart in real time. 
+This page demonstrates how to deploy an application on Hasura Cloud and Yugabyte Cloud using Hasura's Realtime Poll sample application. This application is built using React and is powered by Hasura GraphQL Engine backed by a Yugabyte Cloud YugabyteDB cluster. It has an interface for users to cast a vote on a poll, and results are updated in an on-screen bar chart in real time.
 
 ## Prerequisites
 
-The example has the following prerequisites.
+The example has the following prerequisites:
+
+* [Yugabyte Cloud account with a free tier cluster](#yugabyte-cloud-account-and-free-tier-cluster)
+* [Hasura Cloud account](#hasura-cloud-account)
+* [Hasura CLI](#hasura-cli)
+* [Realtime Poll application](#realtime-poll-application)
 
 ### Yugabyte Cloud account and Free Tier cluster
 
@@ -26,11 +31,7 @@ Sign up for Yugabyte Cloud on the [Sign Up page](https://cloud.yugabyte.com/regi
 
 Once registered, create a Free Tier cluster by following the steps in [Create clusters](../../create-clusters/).
 
-The database cluster has a default database called `yugabyte` and administrator account called `admin` that we will use in our connection with our Hasura project. You will need the following cluster details:
-
-* password
-* IP address
-* port number
+The cluster has a default database called `yugabyte`, and an administrator account called `admin`. You'll use these in your connection with the Hasura project. To connect, you'll need the `admin` account's password, and the cluster's IP address and port.
 
 To get these details, in the Yugabyte Cloud Console:
 
@@ -38,17 +39,23 @@ To get these details, in the Yugabyte Cloud Console:
 
 1. Click **Connect**.
 
-1. **Copy** and save the details. These are provided in the form `PGPASSWORD=password ./bin/ysqlsh -h ip_address -p port -U admin -d yugabyte`, where password, ip_address, and port correspond to the values.
+1. **Copy** and save the details. These are provided in the form 
+
+    ```output
+    PGPASSWORD=password ./bin/ysqlsh -h ip_address -p port -U admin -d yugabyte
+    ```
+
+    where password, ip_address, and port correspond to the values.
 
 ### Hasura Cloud account
 
 To create a Hasura Cloud account, sign up at <https://cloud.hasura.io>.
 
-For details on using Hasura Cloud, see the [Hasura Cloud documentation](https://hasura.io/docs/latest/graphql/cloud/index.html).
+For details on using Hasura Cloud, refer to the [Hasura Cloud documentation](https://hasura.io/docs/latest/graphql/cloud/index.html).
 
 ### Hasura CLI
 
-We will apply database migrations to our Hasura project using Hasura CLI v.2.0 Beta 2. To install Hasura CLI, refer to [Installing the Hasura CLI](https://hasura.io/docs/latest/graphql/core/hasura-cli/install-hasura-cli.html#install-hasura-cli).
+You apply database migrations to the Hasura project using Hasura CLI v.2.0 Beta 2. To install Hasura CLI, refer to [Installing the Hasura CLI](https://hasura.io/docs/latest/graphql/core/hasura-cli/install-hasura-cli.html#install-hasura-cli).
 
 Once installed, update to the v.2 Beta.
 
@@ -62,7 +69,7 @@ The Realtime Poll application is available from the Yugabyte GraphQL Apps repo.
 
 ```sh
 $ git clone https://github.com/yugabyte/yugabyte-graphql-apps
-cd yugabyte-graphql-apps/realtime-poll
+$ cd yugabyte-graphql-apps/realtime-poll
 ```
 
 ## Create a Hasura project and connect to YugabyteDB
@@ -71,9 +78,13 @@ To create a project in Hasura Cloud:
 
 1. From the Hasura Cloud dashboard, under **Projects**, click **New Project**. 
 
-1. Select **Free Tier**, leave the default region, and enter a project name of “yb-realtime-poll”.<br><br>
+1. Select **Free Tier**, leave the default region, and enter a project name of “yb-realtime-poll”.
 
-    ![Create Hasura project](/images/deploy/yugabyte-cloud/hasura-create-project.png)<br><br>
+    <br/><br/>
+
+    ![Create Hasura project](/images/deploy/yugabyte-cloud/hasura-create-project.png)
+    
+    <br/><br/>
 
     The project details are displayed. The domain for the project is `yb-realtime-poll.hasura.app`.
 
@@ -89,7 +100,7 @@ To create a project in Hasura Cloud:
 
 1. In the Hasura Cloud console, click the **Data** tab.
 
-1. Under **Connect Existing Database**, enter the following details.
+1. Under **Connect Existing Database**, enter the following details:
 
     * **Database Display Name**: yb-realtime-polldb
     * **Data Source Driver**: PostgreSQL
@@ -99,59 +110,78 @@ To create a project in Hasura Cloud:
 
     The Database URL is in the form `postgresql://admin:password@ip_address:port/yugabyte`.
 
-    For example, `postgresql://admin:59jh2hj@35.217.31.152:21301/yugabyte`.<br><br>
+    For example, `postgresql://admin:59jh2hj@35.217.31.152:21301/yugabyte`.
+    
+    <br/><br/>
 
-    ![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-cloud-connect-database.png)<br><br>
+    ![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-cloud-connect-database.png)
 
 1. Click **Connect Database** and wait for confirmation that the database has connected.
 
 1. Click **View Database**. The schema will be empty.
 
-## Set up Realtime Poll and apply migrations
+## Set up and configure Realtime Poll and apply migrations
 
-On your machine, navigate to the `hasura` directory in the sample application directory.
+To configure the Realtime Poll application to use the Hasura Cloud project domain and Admin Secret:
 
-```sh
-$ cd realtime-poll/hasura
-```
+1. On your local machine, navigate to the `hasura` directory in the sample application directory.
 
-Edit the `config.yaml` file by changing the following parameters:
+    ```sh
+    $ cd realtime-poll/hasura
+    ```
 
-* set `endpoint` to `https://yb-realtime-poll.hasura.app`.
-* set `admin_secret` to the **Admin Secret** you copied from the Hasura Cloud project dashboard.
+1. Edit the `config.yaml` file by changing the following parameters:
 
-Navigate to the `migrations` directory in the `hasura` directory.
+    * Set `endpoint` to `https://yb-realtime-poll.hasura.app`.
+    * Set `admin_secret` to the **Admin Secret** you copied from the Hasura Cloud project dashboard.
 
-```sh
-$ cd migrations
-```
+To migrate the tables and views to the Yugabyte database:
 
-Rename the `default` directory to the Database Display Name you assigned to your Yugabyte Cloud database in the Hasura project console (that is, `yb-realtime-polldb`).
+1. Navigate to the `migrations` directory in the `hasura` directory.
 
-```sh
-$ mv default yb-realtime-polldb
-```
+    ```sh
+    $ cd migrations
+    ```
 
-Return to the hasura directory and apply the migration.
+1. Rename the `default` directory to the Database Display Name you assigned to your Yugabyte Cloud database in the Hasura project console (that is, `yb-realtime-polldb`).
 
-```sh
-$ cd ..
-$ hasura migrate apply --database-name yb-realtime-polldb
-```
+    ```sh
+    $ mv default yb-realtime-polldb
+    ```
 
-This creates the tables and views required for the polling application in the database.
+1. Return to the hasura directory and apply the migration.
+
+    ```sh
+    $ cd ..
+    $ hasura migrate apply --database-name yb-realtime-polldb
+    ```
+
+    This creates the tables and views required for the polling application in the database.
+
+Finally, update the Realtime Poll application with the Hasura Cloud project domain and Admin Secret:
+
+1. Navigate to the `src` directory in the sample application directory.
+
+    ```sh
+    $ cd realtime-poll/src
+    ```
+
+1. Edit the `apollo.js` file by changing the following parameters:
+
+    * set the `HASURA_GRAPHQL_ENGINE_HOSTNAME` const to `yb-realtime-poll.hasura.app`.
+    * set the `hasura_secret` variable to the **Admin Secret** you copied from the Hasura Cloud project dashboard.
 
 ## Configure the Hasura project
 
-Return to the **Data** tab in the Hasura Cloud project console. The tables from your application are now listed under **Untracked tables or views**.
+1. Return to the **Data** tab in the Hasura Cloud project console. The tables from your application are now listed under **Untracked tables or views**.
 
-Click **Track All** and **OK** to confirm to allow the tables to be exposed over the GraphQL API.
+1. Click **Track All** and **OK** to confirm to allow the tables to be exposed over the GraphQL API.
 
-Once the console refreshes, **Untracked foreign-key relationships** lists the relationships.
+    Once the console refreshes, **Untracked foreign-key relationships** lists the relationships.
 
-Click **Track All** and **OK** to confirm to allow the relationships to be exposed over the GraphQL API.
+1. Click **Track All** and **OK** to confirm to allow the relationships to be exposed over the GraphQL API.
 
-Add a new Array relationship for the `poll_results` table as follows:
+Next, you need to add a new Array relationship for the `poll_results` table as follows:
 
 1. Select the `poll_results` table.
 
@@ -167,22 +197,9 @@ Add a new Array relationship for the `poll_results` table as follows:
     * Set **Reference Table** to option.
     * Set **From** to `poll_id` and **To** to `poll_id`.<br><br>
 
-    ![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-cloud-relationships-add.png)<br><br>
+    ![Add relationships in Hasura Cloud](/images/deploy/yugabyte-cloud/hasura-cloud-relationships-add.png)<br><br>
 
 1. Click **Save**.
-
-## Configure Realtime Poll 
-
-On your machine, navigate to the `src` directory in the sample application directory.
-
-```sh
-$ cd realtime-poll/src
-```
-
-Edit the `apollo.js` file by changing the following parameters:
-
-* set the `HASURA_GRAPHQL_ENGINE_HOSTNAME` const to `yb-realtime-poll.hasura.app`.
-* set the `hasura_secret` variable to the **Admin Secret** you copied from the Hasura Cloud project dashboard.
 
 ## Run Realtime Poll
 
@@ -193,11 +210,11 @@ $ npm install
 $ npm start
 ```
 
-Realtime Poll starts on http://localhost:3000.
+Realtime Poll starts on <http://localhost:3000>.
 
-Open a separate tab, navigate to http://localhost:3000, and cast a vote for React. The chart updates automatically using GraphQL Subscriptions.
+Open a second browser tab, navigate to <http://localhost:3000>, and cast a vote for React. The chart updates automatically using GraphQL Subscriptions.
 
-![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-realtime-poll.png)
+![Realtime Poll application](/images/deploy/yugabyte-cloud/hasura-realtime-poll.png)
 
 To verify the data being committed to the Yugabyte Cloud instance, run the following subscription query on the **API** tab of the Hasura Cloud project console:
 
