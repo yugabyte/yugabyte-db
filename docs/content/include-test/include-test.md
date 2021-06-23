@@ -29,7 +29,6 @@ from v;
 
 Now try this:
 
-
 ```plpgsql
-{{% includeMarkdown "include.sql" /%}}
+{{% includeCode "include.sql" /%}}
 ```
