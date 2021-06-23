@@ -241,6 +241,14 @@ DEFINE_test_flag(bool, pause_before_post_split_compation, false,
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
                  "Prevents adding the UserFrontier to SST file in order to mimic older files.");
 
+// FLAGS_TEST_disable_getting_user_frontier_from_mem_table is used in conjunction with
+// FLAGS_TEST_disable_adding_user_frontier_to_sst.  Two flags are needed for the case in which
+// we're writing a mixture of SST files with and without UserFrontiers, to ensure that we're
+// not attempting to read the UserFrontier from the MemTable in either case.
+DEFINE_test_flag(bool, disable_getting_user_frontier_from_mem_table, false,
+                 "Prevents checking the MemTable for a UserFrontier for test cases where we are "
+                 "generating SST files without UserFrontiers.");
+
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(consistent_restore);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
@@ -328,7 +336,7 @@ docdb::ConsensusFrontiers* InitFrontiers(const Data& data, docdb::ConsensusFront
 rocksdb::UserFrontierPtr MemTableFrontierFromDb(
     rocksdb::DB* db,
     rocksdb::UpdateUserValueType type) {
-  if (FLAGS_TEST_disable_adding_user_frontier_to_sst) {
+  if (FLAGS_TEST_disable_getting_user_frontier_from_mem_table) {
     return nullptr;
   }
   return db->GetMutableMemTableFrontier(type);

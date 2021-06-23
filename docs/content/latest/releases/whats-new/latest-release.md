@@ -79,7 +79,7 @@ N/A
 
 #### Core Database
 
-**Point-in-time restore progress**
+**Point-in-time recovery progress**
 
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] Add restore_snapshot_schedule to admin
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] Add yb-admin commands to create and list snapshot schedules

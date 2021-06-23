@@ -1,14 +1,15 @@
 ---
-title: Point-in-Time Restore for YCQL
-headerTitle: Point-in-time restore
-linkTitle: Point-in-time restore
+title: Point-in-Time Recovery for YCQL
+headerTitle: Point-in-time recovery
+linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YCQL
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
+- /latest/explore/backup-restore/point-in-time-restore-ycql
 menu:
   latest:
-    identifier: point-in-time-restore
-    parent: backup-restore
+    identifier: explore-point-in-time-recovery-ycql
+    parent: explore
     weight: 704
 isTocNested: true
 showAsideToc: true
@@ -16,26 +17,24 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/point-in-time-restore-ycql" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li >
-    <a href="/latest/manage/backup-restore/point-in-time-restore-ysql" class="nav-link">
+    <a href="/latest/explore/backup-restore/point-in-time-recovery-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
+  <li >
+    <a href="/latest/explore/backup-restore/point-in-time-recovery-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
 </ul>
 
-{{< note>}}
-Refer to [Recovery scenarios](../point-in-time-restore-ysql#recovery-scenarios), [Features](../point-in-time-restore-ysql#features), [Use cases](../point-in-time-restore-ysql#use-cases), and [Limitations](#limitations) for details on this feature.
-{{</ note >}}
+The point-in-time recovery (PITR) feature allows you to restore the state of your cluster's data (and some types of metadata) from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
-## Try out the PITR feature
+Refer to [Features](../../../manage/backup-restore/point-in-time-recovery/#features), [Use cases](../../../manage/backup-restore/point-in-time-recovery/#use-cases), and [Limitations](../../../manage/backup-restore/point-in-time-recovery/#limitations) for details on this feature. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-You can test the PITR feature (BETA) by creating a namespace and populating it, creating a snapshot schedule, and restoring (be sure to check out the [limitations](#limitations)!) from that schedule. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin#backup-and-snapshot-commands) section of the yb-admin documentation.
+You can try out the PITR feature by creating a namespace and populating it, creating a snapshot schedule, and restoring (be sure to check out the [limitations](../../../manage/backup-restore/point-in-time-recovery/#limitations)!) from that schedule.
 
 {{< tip title="Examples are simplified" >}}
 
@@ -43,9 +42,11 @@ The examples on this page are deliberately simple. In many of the scenarios pres
 
 {{< /tip >}}
 
+## Undo data changes
+
 ### Create and snapshot a table
 
-Create and populate a table, look at a timestamp to which you'll restore, and then write a row.
+Create and populate a table, get a timestamp to which you'll restore, and then write a row.
 
 1. Start the YCQL shell and connect to your local instance:
 
@@ -126,33 +127,14 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from an absolute time
 
-1. Get a timestamp. YCQL doesn't have a `now()` function, so use a command such as one of the following. You can also use a [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
+1. Get a timestamp.
 
     ```sh
-    # Ruby: remove the decimal point before using the timestamp
-    $ ruby -e 'puts Time.now.to_f'
+    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
-    1620418801.439626
-    ```
-
-    ```sh
-    # Python: remove the decimal point before using the timestamp
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s.%f")'
-    ```
-
-    ```output
-    1620418817.729963
-    ```
-
-    ```sh
-    # Linux and some other systems (but NOT macOS): use the timestamp as-is
-    $ date +%s%N | cut -b1-16
-    ```
-
-    ```output
-    1620418843757085
+    1620418817729963
     ```
 
 1. Add a row for employee 9999 to the table:
@@ -226,7 +208,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from a relative time
 
-In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago". In this example, you'll delete some data from the existing `employees` table, then restore the state of the database to what it was five minutes prior.
+In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago".
 
 When you specify a relative time, you can specify any or all of _days_, _hours_, _minutes_, and _seconds_. For example:
 
@@ -244,78 +226,7 @@ Relative times can be in any of the following formats (again, note that you can 
 
 **Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
 
-1. Wait at least five minutes after you complete the steps in the previous section. This is so that you can easily use a known relative time for the restore.
-
-1. From the YCQL shell, remove employee 1223 from the table:
-
-    ```sql
-    ycqlsh:pitr> delete from employees where employee_no=1223;
-
-    ycqlsh:pitr> select * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary 
-    -------------+----------------+------------+--------
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-
-    (3 rows)
-    ```
-
-1. At a terminal prompt, restore the snapshot you created earlier:
-
-    ```sh
-    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca minus "5m"
-    ```
-
-    ```output
-    {
-        "snapshot_id": "6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30",
-        "restoration_id": "f4256380-4f63-4937-830f-5be135d97717"
-    }
-    ```
-
-1. Verify the restoration is in `RESTORED` state:
-
-    ```sh
-    $ bin/yb-admin list_snapshots
-    ```
-
-    ```output
-    Snapshot UUID                         State
-    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
-    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
-    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
-    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
-    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
-    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
-    04b1e139-2c78-411d-bf0d-f8ee81263912  COMPLETE
-    6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30  COMPLETE
-    42e84f67-d517-4ed6-b571-d3b11059cfa6  COMPLETE
-    395e3e97-c259-46dd-a3ef-1b5441c6de10  COMPLETE
-    Restoration UUID                      State
-    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
-    f4256380-4f63-4937-830f-5be135d97717  RESTORED
-    ```
-
-1. Verify the data is restored, and employee 1223 is back:
-
-    ```sql
-    ycqlsh:pitr> select * from employees;
-    ```
-
-    ```output
-     employee_no | name           | department | salary
-    -------------+----------------+------------+--------
-            1223 |   Lucille Ball | Operations |  70000
-            1224 | John Zimmerman |      Sales |  60000
-            1221 |     John Smith |  Marketing |  50000
-            1222 |    Bette Davis |      Sales |  55000
-
-    (4 rows)
-    ```
+Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-admin/#restore-snapshot-schedule) for more details.
 
 ## Undo metadata changes
 
@@ -511,17 +422,3 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     CREATE INDEX t1_index ON pitr.employees (employee_no)
         WITH transactions = {'enabled': 'true'};
     ```
-
-## Limitations
-
-This is a BETA feature, and is in active development. Currently, you can recover from the following YCQL operations:
-
-* Data changes
-* CREATE and DROP TABLE
-* ALTER TABLE (including ADD and DROP COLUMN)
-* CREATE and DROP INDEX
-
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
-
-* Recovery from a TRUNCATE TABLE
-* Roles and permissions

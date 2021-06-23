@@ -2,18 +2,16 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.List;
-import java.util.UUID;
-
-import com.yugabyte.yw.common.ApiResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.mvc.Result;
+
+import java.util.List;
+import java.util.UUID;
 
 public class AuditController extends AuthenticatedController {
 
@@ -28,7 +26,7 @@ public class AuditController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     List<Audit> auditList = auditService().getAllUserEntries(user.uuid);
-    return ApiResponse.success(auditList);
+    return YWResults.withData(auditList);
   }
 
   /**
@@ -39,13 +37,13 @@ public class AuditController extends AuthenticatedController {
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
-    return ApiResponse.success(entry);
+    return YWResults.withData(entry);
   }
 
   public Result getUserFromTask(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
     Users user = Users.get(entry.getUserUUID());
-    return ApiResponse.success(user);
+    return YWResults.withData(user);
   }
 }
