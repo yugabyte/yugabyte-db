@@ -174,6 +174,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   while (std::getline(conf_file, line)) {
     lines.push_back(line);
   }
+  conf_file.close();
 
   if (!FLAGS_ysql_pg_conf_csv.empty()) {
     RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &lines));
@@ -577,6 +578,7 @@ CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
       LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
       // If process does not exist, system may return "process does not exist" or
       // "operation not permitted" error. Ignore those errors.
+      postmaster_pid_file.close();
       if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
         return STATUS(RuntimeError, "Unable to kill", Errno(errno));
       }
