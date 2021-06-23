@@ -21,7 +21,7 @@ The example has the following prerequisites:
 * You have created a cluster on Yugabyte Cloud
 * You have created a Hasura project and connected it to your cluster
 
-You will also need the Admin Secret of your Hasura project.
+You will also need the **Admin Secret** of your Hasura project.
 
 For instructions, refer to [Connect Hasura Cloud to Yugabyte Cloud](../hasura-cloud/).
 
@@ -109,7 +109,7 @@ First, expose the tables and relationships to the GraphQL API:
 
 1. Click **Track All** and **OK** to confirm to allow the relationships to be exposed over the GraphQL API.
 
-Next, add a new Array relationship for the `poll_results` table as follows:
+Next, add a new Array relationship for the `poll_results` table called `option` as follows:
 
 1. Select the `poll_results` table.
 
@@ -144,7 +144,22 @@ Open a second browser tab, navigate to <http://localhost:3000>, and cast a vote 
 
 ![Realtime Poll application](/images/deploy/yugabyte-cloud/hasura-realtime-poll.png)
 
-To verify the data being committed to the Yugabyte Cloud instance, run the following subscription query on the **API** tab of the Hasura Cloud project console:
+To verify the data being committed to the Yugabyte Cloud instance, run the following subscription query on the **API** tab of the Hasura Cloud project console to retrieve the Poll ID:
+
+```sh
+query {
+  poll (limit: 10) {
+    id
+    question
+    options (order_by: {id:desc}){
+      id
+      text
+    }
+  }
+}
+```
+
+Note the Poll ID, then run the following query, setting the `pollID` GraphQL Query Variable to the Poll ID you retrieved using the previous query:
 
 ```sh
 subscription getResult($pollId: uuid!) {
@@ -157,4 +172,10 @@ subscription getResult($pollId: uuid!) {
     votes
   }
 }
+```
+
+Set the `$pollID` variable in the Query Variables field.
+
+```sh
+{ "$pollId" : "98277113-a7a2-428c-9c8b-0fe7a91bf42c"}
 ```

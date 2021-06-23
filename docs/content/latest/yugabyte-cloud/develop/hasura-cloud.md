@@ -38,7 +38,7 @@ To get these details, in the Yugabyte Cloud Console:
 
     where password, ip_address, and port correspond to the admin password, IP address, and port.
 
-## Connect the cluster to your Hasura Cloud account
+## Connect the cluster to your Hasura Cloud project
 
 To create a Hasura Cloud account, sign up at <https://cloud.hasura.io>.
 
@@ -76,7 +76,7 @@ To create a project in Hasura Cloud:
 
     The Database URL is in the form `postgresql://admin:password@ip_address:port/yugabyte`.
 
-    For example, `postgresql://admin:59jh2hj@35.217.31.152:21301/yugabyte`.
+    For example, `postgresql://admin:qwerty@12.345.67.890:21301/yugabyte`.
     
     <br/><br/>
 
