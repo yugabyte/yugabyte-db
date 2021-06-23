@@ -1102,13 +1102,31 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
       switch (GetValueState(existing_row, column_id)) {
         case ValueState::kNull: continue;
         case ValueState::kNotNull: return false;
-        case ValueState::kMissing:
-          // In case there exists a row with the same primary key, we definitely need to know if its
-          // columns have value NULL or not. Populate the column before executing this function.
-          RSTATUS_DCHECK(false, InternalError, "CQL proxy should mention all required columns in "
-            "QLWriteRequestPB's column_refs.");
+        case ValueState::kMissing: break;
       }
     }
+
+    #if DCHECK_IS_ON()
+    // If (for all non_pk cols new_row has value NULL/kMissing i.e., the UPDATE statement only sets
+    //     some/all cols to NULL)
+    // then (existing_row should have a value read from docdb for all non_pk
+    //       cols that are kMissing in new_row so that we can decide if the row is deleted or not).
+
+    bool skip_check = false;
+    for (size_t idx = schema_->num_key_columns(); idx < schema_->num_columns(); idx++) {
+        const ColumnId column_id = schema_->column_id(idx);
+        if (GetValueState(new_row, column_id) == ValueState::kNotNull) skip_check = true;
+    }
+
+    if (!skip_check) {
+        for (size_t idx = schema_->num_key_columns(); idx < schema_->num_columns(); idx++) {
+            const ColumnId column_id = schema_->column_id(idx);
+            if (GetValueState(new_row, column_id) == ValueState::kMissing) {
+              DCHECK(GetValueState(existing_row, column_id) != ValueState::kMissing);
+            }
+        }
+    }
+    #endif
 
     return true;
   }

@@ -42,7 +42,6 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -643,7 +642,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   const std::string full_data_dir_;
   std::vector<std::string> extra_flags_;
 
-  gscoped_ptr<Subprocess> process_;
+  std::unique_ptr<Subprocess> process_;
 
   std::unique_ptr<server::ServerStatusPB> status_;
 
@@ -737,11 +736,13 @@ class ExternalTabletServer : public ExternalDaemon {
 
   CHECKED_STATUS Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool set_proxy_addrs = true);
+      bool set_proxy_addrs = true,
+      std::vector<std::pair<string, string>> extra_flags = {});
 
   // Restarts the daemon. Requires that it has previously been shutdown.
   CHECKED_STATUS Restart(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      std::vector<std::pair<string, string>> flags = {});
 
   // IP addresses to bind to.
   const std::string& bind_host() const {

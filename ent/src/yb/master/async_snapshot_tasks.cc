@@ -161,6 +161,9 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   if (snapshot_hybrid_time_) {
     req.set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
   }
+  if (restoration_hybrid_time_) {
+    req.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
+  }
   if (has_metadata_) {
     req.set_schema_version(schema_version_);
     *req.mutable_schema() = schema_;

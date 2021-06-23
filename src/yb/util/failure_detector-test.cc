@@ -35,7 +35,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/failure_detector.h"
 #include "yb/util/locks.h"
@@ -79,7 +78,7 @@ class FailureDetectorTest : public YBTest {
   }
 
   CountDownLatch latch_;
-  gscoped_ptr<RandomizedFailureMonitor> monitor_;
+  std::unique_ptr<RandomizedFailureMonitor> monitor_;
 };
 
 // Tests that we can track a node, that while we notify that we're received messages from

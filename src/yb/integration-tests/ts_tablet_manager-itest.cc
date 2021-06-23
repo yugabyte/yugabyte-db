@@ -100,7 +100,7 @@ class TsTabletManagerITest : public YBTest {
  protected:
   const YBSchema schema_;
 
-  gscoped_ptr<MiniCluster> cluster_;
+  std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<YBClient> client_;
 };

@@ -37,7 +37,6 @@
 #include <vector>
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_service.h"

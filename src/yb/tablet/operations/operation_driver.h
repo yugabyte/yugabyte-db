@@ -157,7 +157,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   OperationType operation_type() const;
 
   // Returns the state of the operation being executed by this driver.
-  const OperationState* state() const;
+  const Operation* operation() const;
 
   const MonoTime& start_time() const { return start_time_; }
 
@@ -190,7 +190,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   consensus::Consensus* consensus() { return consensus_; }
 
   consensus::ConsensusRound* consensus_round() {
-    return mutable_state()->consensus_round();
+    return mutable_operation()->consensus_round();
   }
 
   void SetPropagatedSafeTime(HybridTime safe_time, MvccManager* mvcc) {
@@ -235,7 +235,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   // Returns the mutable state of the operation being executed by
   // this driver.
-  OperationState* mutable_state();
+  Operation* mutable_operation();
 
   // Return a short string indicating where the operation currently is in the
   // state machine.
@@ -252,8 +252,8 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   // A copy of the operation's OpId, set when the operation first
   // receives one from Consensus and uninitialized until then.
-  // TODO(todd): we have three separate copies of this now -- in OperationState,
-  // CommitMsg, and here... we should be able to consolidate!
+  // TODO: we have two separate copies of this now -- in Operation, and here... we should be able
+  // to consolidate!
   boost::atomic<yb::OpId> op_id_copy_{yb::OpId::Invalid()};
 
   // The operation to be executed by this driver.

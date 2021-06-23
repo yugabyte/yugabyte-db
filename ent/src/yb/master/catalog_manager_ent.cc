@@ -395,7 +395,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 }
 
 void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
-  operation->state()->SetTablet(tablet_peer()->tablet());
+  operation->SetTablet(tablet_peer()->tablet());
   tablet_peer()->Submit(std::move(operation), leader_term);
 }
 
@@ -1910,6 +1910,15 @@ Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestP
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
   return snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, resp);
+}
+
+Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
+                                              DeleteSnapshotScheduleResponsePB* resp,
+                                              rpc::RpcContext* rpc) {
+  auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+
+  return snapshot_coordinator_.DeleteSnapshotSchedule(
+      snapshot_schedule_id, leader_ready_term(), rpc->GetClientDeadline());
 }
 
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {

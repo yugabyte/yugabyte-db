@@ -1,8 +1,8 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModelProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -21,51 +22,56 @@ import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name", "code"}))
 @Entity
 public class Provider extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Provider.class);
+  private static final String TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST =
+      "Transient property - only present in mutate API request";
 
-  @Id public UUID uuid;
+  @ApiModelProperty(value = "Provide uuid", accessMode = READ_ONLY)
+  @Id
+  public UUID uuid;
 
+  // TODO: Use Enum
   @Column(nullable = false)
+  @ApiModelProperty(value = "Cloud Provider code", accessMode = READ_WRITE)
+  @Constraints.Required()
   public String code;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Cloud Provider code", accessMode = READ_WRITE)
+  @Constraints.Required()
   public String name;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
+  @ApiModelProperty(value = "Cloud Provider code", accessMode = READ_ONLY)
   public Boolean active = true;
 
-  public Boolean isActive() {
-    return active;
-  }
-
-  public void setActiveFlag(Boolean active) {
-    this.active = active;
-  }
-
   @Column(nullable = false)
+  @ApiModelProperty(value = "Cloud Provider code", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
   public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
       ImmutableSet.of(Common.CloudType.aws, Common.CloudType.azu);
 
+  @JsonIgnore
   public void setCustomerUuid(UUID id) {
     this.customerUUID = id;
   }
 
-  @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private Map<String, String> config;
 
   @OneToMany(cascade = CascadeType.ALL)
-  @JsonBackReference(value = "regions")
-  public Set<Region> regions;
+  @JsonManagedReference(value = "provider-regions")
+  public List<Region> regions;
 
   @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
@@ -75,6 +81,60 @@ public class Provider extends Model {
   @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
   public Set<PriceComponent> priceComponents;
 
+  // Start Transient Properties
+  // TODO: These are all transient fields for now. At present these are stored
+  //  with CliudBootstrap params. We should move them to Provider and persist with
+  //  Provider entity.
+
+  // Custom keypair name to use when spinning up YB nodes.
+  // Default: created and managed by YB.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String keyPairName = null;
+
+  // Custom SSH private key component.
+  // Default: created and managed by YB.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String sshPrivateKeyContent = null;
+
+  // Custom SSH user to login to machines.
+  // Default: created and managed by YB.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String sshUser = null;
+
+  // Whether provider should use airgapped install.
+  // Default: false.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean airGapInstall = false;
+
+  // Port to open for connections on the instance.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public Integer sshPort = 54422;
+
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String hostVpcId = null;
+
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String hostVpcRegion = null;
+
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public List<String> customHostCidrs = new ArrayList<>();
+  // TODO(bogdan): only used/needed for GCP.
+
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String destVpcId = null;
+
+  // End Transient Properties
+
+  @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
     for (String key : configMap.keySet()) {
@@ -258,6 +318,7 @@ public class Provider extends Model {
   // Used for GCP providers to pass down region information. Currently maps regions to
   // their subnets. Only user-input fields should be retrieved here (e.g. zones should
   // not be included for GCP because they're generated from devops).
+  @JsonIgnore
   public CloudBootstrap.Params getCloudParams() {
     CloudBootstrap.Params newParams = new CloudBootstrap.Params();
     newParams.perRegionMetadata = new HashMap<>();

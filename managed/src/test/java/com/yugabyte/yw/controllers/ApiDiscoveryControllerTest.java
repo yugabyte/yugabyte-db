@@ -48,7 +48,7 @@ public class ApiDiscoveryControllerTest extends FakeDBApplication {
   @Test
   public void testApiIndexWithAuthBadRoute() {
     Result result = route(fakeRequest("GET", "/index").cookie(validCookie));
-    assertEquals(NOT_FOUND, result.status());
+    assertEquals(contentAsString(result, mat), NOT_FOUND, result.status());
   }
 
   @Test

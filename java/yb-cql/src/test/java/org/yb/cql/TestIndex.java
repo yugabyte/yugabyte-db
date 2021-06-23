@@ -533,10 +533,13 @@ public class TestIndex extends BaseCQLTest {
     assertIndexUpdate(tableColumnMap, indexColumnMap,
       "update test_update set v2=null where h1=1 and r1=2");
 
+    session.execute("drop table test_update");
+
+    // =========================================================================
+
     // Follow-up test case: Apart from actual bug in #7641, we also test below case:
     //   - UPDATE a row without liveness column. Set only null values on regular columns except a
     //     non-null value on a static column. Index entry should get deleted.
-    session.execute("drop table test_update");
     createTable("create table test_update (h1 int, r1 int, s1 int static, v2 int, v3 int, " +
       "primary key(h1, r1)) ", strongConsistency);
     createIndex("create index i1 on test_update (v3)", strongConsistency);
@@ -547,9 +550,50 @@ public class TestIndex extends BaseCQLTest {
 
     // Perform update - index entry should be removed since tuple is removed in main table.
     session.execute("update test_update set s1=4, v2=null where h1=1 and r1=2");
-    // assertQuery("select * from test_update where v3=null", "");
+    assertQuery("select * from test_update where v3=null", "");
     Set<String> index_tuples = queryTable("i1", indexColumnMap.get("i1"));
     assertTrue(index_tuples.size() == 0);
+    session.execute("drop table test_update");
+
+    // =========================================================================
+
+    // Test case for #8834
+    String create_table_stmt = "CREATE TABLE test_update(h1 uuid PRIMARY KEY," +
+      " v1 int, v2 int, v3 text) WITH default_time_to_live = 0";
+
+    if (strongConsistency)
+      create_table_stmt += " AND transactions = {'enabled': 'true'}";
+
+    session.execute(create_table_stmt);
+    createIndex("CREATE INDEX i1 ON test_update (v2, h1)", strongConsistency);
+
+    tableColumnMap = new HashMap<String, String>() {{put("i1", "v2, h1");}};
+    indexColumnMap = new HashMap<String, String>() {{put("i1", "\"C$_v2\", \"C$_h1\"");}};
+
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+
+    session.execute("drop index i1");
+
+    // Test to ensure below condition in case of a row deletion using
+    // DELETE of some cols/ UPDATE of cols to NULLs -
+    //   A column that is DELETEd or UPDATEd to NULL is still read
+    //   in cql_operation.cc if there is an index on that column. This is to ensure that the old
+    //   index entry for that column is removed.
+    createIndex("CREATE INDEX i1 ON test_update (v3)", strongConsistency);
+    tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1");}};
+    indexColumnMap = new HashMap<String, String>() {{put("i1", "\"C$_v3\", \"C$_h1\"");}};
+
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = NULL where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+
+    // Add the row again and this time do a DELETE.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "DELETE v3 from test_update where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
   }
 
   @Test

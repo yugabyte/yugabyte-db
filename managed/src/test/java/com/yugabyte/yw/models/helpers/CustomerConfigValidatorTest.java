@@ -117,6 +117,26 @@ public class CustomerConfigValidatorTest {
         result.get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME).get(0).asText());
   }
 
+  @Parameters({
+    // BACKUP_LOCATION - incorrect -> disallowed
+    "g://abc, {}, Invalid gsUriPath format: g://abc",
+    // Check empty GCP Credentials Json -> disallowed
+    "gs://test, {}, Invalid GCP Credential Json.",
+  })
+  @Test
+  public void testValidateDataContent_Storage_GCSPreflightCheckValidator(
+      String backupLocation, String crdentialsJson, String expectedMessage) {
+    ObjectNode data = Json.newObject();
+    data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, backupLocation);
+    data.put(CustomerConfigValidator.GCS_CREDENTIALS_JSON_FIELDNAME, crdentialsJson);
+    ObjectNode result =
+        customerConfigValidator.validateDataContent(createFormData("STORAGE", "GCS", data));
+    assertEquals(1, result.size());
+    assertEquals(
+        expectedMessage,
+        result.get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME).get(0).asText());
+  }
+
   private JsonNode createFormData(String type, String name, JsonNode data) {
     ObjectNode formData = Json.newObject();
     formData.put("type", type);
