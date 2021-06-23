@@ -10,25 +10,18 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
-
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClient;
 
+import javax.inject.Inject;
 import java.util.concurrent.TimeUnit;
 
-import play.api.Play;
-
+@Slf4j
 public class WaitForLoadBalance extends AbstractTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(WaitForLoadBalance.class);
-
-  // The YB client to use.
-  private YBClientService ybService = null;
 
   // Timeout for failing to complete load balance. Currently we do no timeout.
   // NOTE: This is similar to WaitForDataMove for blacklist removal.
@@ -39,18 +32,17 @@ public class WaitForLoadBalance extends AbstractTaskBase {
   // start the task of loadbalancing.
   private static final int SLEEP_TIME = 10;
 
+  @Inject
+  protected WaitForLoadBalance(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
+
   // Parameters for data move wait task.
   public static class Params extends UniverseTaskParams {}
 
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 
   @Override
@@ -67,12 +59,12 @@ public class WaitForLoadBalance extends AbstractTaskBase {
     boolean ret = false;
     YBClient client = null;
     try {
-      LOG.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
+      log.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
       client = ybService.getClient(hostPorts, certificate);
       TimeUnit.SECONDS.sleep(SLEEP_TIME);
       ret = client.waitForLoadBalance(TIMEOUT_SERVER_WAIT_MS, numTservers);
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     } finally {
       ybService.closeClient(client, hostPorts);

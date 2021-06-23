@@ -118,8 +118,6 @@ POST    /customers/:cUUID/certificates/:rUUID/update_empty_cert                c
 
 # Alerts API
 GET     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
-PUT     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.upsert(cUUID: java.util.UUID)
-POST    /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.create(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alerts/active                                        com.yugabyte.yw.controllers.AlertController.listActive(cUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/alert_definitions                 com.yugabyte.yw.controllers.AlertController.createDefinition(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_definitions/:uniUUID/:name                     com.yugabyte.yw.controllers.AlertController.getAlertDefinition(cUUID: java.util.UUID, uniUUID: java.util.UUID, name: String)

@@ -2,35 +2,46 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
-import org.junit.Test;
-import org.junit.runner.RunWith;
-
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.Assert.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseTaskBaseTest extends FakeDBApplication {
 
+  @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+
+  @Mock private BaseTaskDependencies baseTaskDependencies;
+
   private static final int NUM_NODES = 3;
-  private TestUniverseTaskBase universeTaskBase = new TestUniverseTaskBase();
+  private TestUniverseTaskBase universeTaskBase;
+
+  @Before
+  public void setup() {
+    universeTaskBase = new TestUniverseTaskBase();
+  }
 
   private List<NodeDetails> setupNodeDetails(CloudType cloudType, String privateIp) {
     List<NodeDetails> nodes = new ArrayList<>();
@@ -93,10 +104,10 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     }
   }
 
-  private static class TestUniverseTaskBase extends UniverseTaskBase {
+  private class TestUniverseTaskBase extends UniverseTaskBase {
 
     public TestUniverseTaskBase() {
-      super();
+      super(baseTaskDependencies);
       subTaskGroupQueue = new SubTaskGroupQueue(UUID.randomUUID());
       taskParams = new UniverseTaskParams();
     }

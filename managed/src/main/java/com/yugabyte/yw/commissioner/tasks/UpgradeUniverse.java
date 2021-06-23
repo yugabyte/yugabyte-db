@@ -10,15 +10,12 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -29,33 +26,25 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import javax.inject.Inject;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopping;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateCert;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToggleTls;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.*;
 
+@Slf4j
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UpgradeUniverse.class);
   // Variable to mark if the loadbalancer state was changed.
   boolean loadbalancerOff = false;
+
+  @Inject
+  protected UpgradeUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Upgrade Task Type
   public enum UpgradeTaskType {
@@ -249,7 +238,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error={}.", getName(), t);
+      log.error("Error executing task {} with error={}.", getName(), t);
 
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // If the task failed, we don't want the loadbalancer to be disabled,
@@ -263,7 +252,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     } finally {
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   // Find the master leader and move it to the end of the list.
@@ -322,8 +311,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
     replaceParams.universeUUID = taskParams().universeUUID;
+    replaceParams.bootDisksPerZone = this.replacementRootVolumes;
 
-    ReplaceRootVolume replaceDiskTask = new ReplaceRootVolume(this.replacementRootVolumes);
+    ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);
     subTaskGroup.addTask(replaceDiskTask);
 
@@ -355,7 +345,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               }
 
               if (numVolumes == 0) {
-                LOG.info("Nothing to upgrade in AZ {}", node.cloudInfo.az);
+                log.info("Nothing to upgrade in AZ {}", node.cloudInfo.az);
                 return;
               }
 
@@ -364,14 +354,15 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               fillSetupParamsForNode(params, userIntent, node);
               params.numVolumes = numVolumes;
               params.machineImage = machineImage;
+              params.bootDisksPerZone = replacementRootVolumes;
 
-              LOG.info(
+              log.info(
                   "Creating {} root volumes using {} in AZ {}",
                   params.numVolumes,
                   params.machineImage,
                   node.cloudInfo.az);
 
-              CreateRootVolumes task = new CreateRootVolumes(this.replacementRootVolumes);
+              CreateRootVolumes task = createTask(CreateRootVolumes.class);
               task.initialize(params);
               subTaskGroup.addTask(task);
             });
@@ -387,7 +378,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     updateNodeDetailsParams.nodeName = node.nodeName;
     updateNodeDetailsParams.details = node;
 
-    UpdateNodeDetails updateNodeTask = new UpdateNodeDetails();
+    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
     updateNodeTask.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(updateNodeTask);
@@ -477,7 +468,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String machineImage = taskParams().machineImages.get(region);
 
         if (!taskParams().forceVMImageUpgrade && machineImage.equals(node.machineImage)) {
-          LOG.info(
+          log.info(
               "Skipping node {} as it's already running on {} and force flag is not set",
               node.nodeName,
               machineImage);
@@ -833,7 +824,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
 
-    UniverseSetTlsParams task = new UniverseSetTlsParams();
+    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
     taskGroup.addTask(task);
 
@@ -918,7 +909,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     }
 
     // Create the Ansible task to get the server info.
-    AnsibleConfigureServers task = new AnsibleConfigureServers();
+    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
 

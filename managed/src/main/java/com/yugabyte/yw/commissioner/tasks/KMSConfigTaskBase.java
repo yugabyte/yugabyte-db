@@ -11,17 +11,23 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.forms.ITaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.api.Play;
+
+import javax.inject.Inject;
 
 public abstract class KMSConfigTaskBase extends AbstractTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(KMSConfigTaskBase.class);
 
-  public EncryptionAtRestManager kmsManager;
+  protected final EncryptionAtRestManager kmsManager;
+
+  @Inject
+  protected KMSConfigTaskBase(
+      BaseTaskDependencies baseTaskDependencies, EncryptionAtRestManager kmsManager) {
+    super(baseTaskDependencies);
+    this.kmsManager = kmsManager;
+  }
 
   @Override
   protected KMSConfigTaskParams taskParams() {
@@ -31,7 +37,6 @@ public abstract class KMSConfigTaskBase extends AbstractTaskBase {
   @Override
   public void initialize(ITaskParams params) {
     super.initialize(params);
-    kmsManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
     // Create the threadpool for the subtasks to use.
     createThreadpool();
   }

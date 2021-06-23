@@ -2,13 +2,13 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 @RunWith(MockitoJUnitRunner.class)
 public class CreateAlertDefinitionsTest extends FakeDBApplication {
 
+  @Mock private BaseTaskDependencies baseTaskDependencies;
   @Mock private RuntimeConfigFactory runtimeConfigFactory;
 
   private AlertDefinitionService alertDefinitionService = new AlertDefinitionService();
@@ -44,6 +45,9 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
+    when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
+    when(baseTaskDependencies.getAlertDefinitionService()).thenReturn(alertDefinitionService);
+
     customer = ModelFactory.testCustomer();
     u = ModelFactory.createUniverse(customer.getCustomerId());
 
@@ -67,16 +71,17 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
 
   @Test
   public void testRunFunctionality_NoDisabledTemplates() {
-    CreateAlertDefinitionsExt alertDefinitionTask = new CreateAlertDefinitionsExt();
-    UniverseTaskParams taskParams = new UniverseTaskParams();
-    taskParams.universeUUID = u.universeUUID;
-    alertDefinitionTask.setParams(taskParams);
 
     when(runtimeConfigFactory.forCustomer(customer)).thenReturn(getApp().config());
     createAlertData(true);
 
+    CreateAlertDefinitions alertDefinitionTask = new CreateAlertDefinitions(baseTaskDependencies);
+    UniverseTaskParams taskParams = new UniverseTaskParams();
+    taskParams.universeUUID = u.universeUUID;
+    alertDefinitionTask.initialize(taskParams);
+
     AlertDefinitionFilter activeDefinitionsFilter =
-        new AlertDefinitionFilter().setCustomerUuid(customer.uuid).setActive(true);
+        AlertDefinitionFilter.builder().customerUuid(customer.uuid).active(true).build();
     assertEquals(0, alertDefinitionService.list(activeDefinitionsFilter).size());
 
     alertDefinitionTask.run();
@@ -92,16 +97,16 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
 
   @Test
   public void testRunFunctionality_ClockSkewTemplateDisabled() {
-    CreateAlertDefinitionsExt alertDefinitionTask = new CreateAlertDefinitionsExt();
+    CreateAlertDefinitions alertDefinitionTask = new CreateAlertDefinitions(baseTaskDependencies);
     UniverseTaskParams taskParams = new UniverseTaskParams();
     taskParams.universeUUID = u.universeUUID;
-    alertDefinitionTask.setParams(taskParams);
+    alertDefinitionTask.initialize(taskParams);
 
     when(runtimeConfigFactory.forCustomer(customer)).thenReturn(getApp().config());
     createAlertData(false);
 
     AlertDefinitionFilter activeDefinitionsFilter =
-        new AlertDefinitionFilter().setCustomerUuid(customer.uuid).setActive(true);
+        AlertDefinitionFilter.builder().customerUuid(customer.uuid).active(true).build();
     assertEquals(0, alertDefinitionService.list(activeDefinitionsFilter).size());
 
     alertDefinitionTask.run();
@@ -116,31 +121,20 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
 
   @Test
   public void testRunFunctionality_NoAlertConfigExist() {
-    CreateAlertDefinitionsExt alertDefinitionTask = new CreateAlertDefinitionsExt();
+    CreateAlertDefinitions alertDefinitionTask = new CreateAlertDefinitions(baseTaskDependencies);
     UniverseTaskParams taskParams = new UniverseTaskParams();
     taskParams.universeUUID = u.universeUUID;
-    alertDefinitionTask.setParams(taskParams);
+    alertDefinitionTask.initialize(taskParams);
 
     when(runtimeConfigFactory.forCustomer(customer)).thenReturn(getApp().config());
 
     AlertDefinitionFilter activeDefinitionsFilter =
-        new AlertDefinitionFilter().setCustomerUuid(customer.uuid).setActive(true);
+        AlertDefinitionFilter.builder().customerUuid(customer.uuid).active(true).build();
     assertEquals(0, alertDefinitionService.list(activeDefinitionsFilter).size());
 
     alertDefinitionTask.run();
 
     List<AlertDefinition> createdDefinitions = alertDefinitionService.list(activeDefinitionsFilter);
     assertEquals(activeDefinitions, createdDefinitions.size());
-  }
-
-  private class CreateAlertDefinitionsExt extends CreateAlertDefinitions {
-
-    private CreateAlertDefinitionsExt() {
-      super(alertDefinitionService, runtimeConfigFactory);
-    }
-
-    public void setParams(ITaskParams taskParams) {
-      this.taskParams = taskParams;
-    }
   }
 }

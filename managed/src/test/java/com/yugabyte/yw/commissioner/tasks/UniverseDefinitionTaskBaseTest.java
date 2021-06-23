@@ -2,17 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodeName;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.checkTagPattern;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -21,20 +11,34 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.checkTagPattern;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodeName;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseDefinitionTaskBaseTest {
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
+
   private Cluster myCluster;
   private NodeDetails myNode;
   private UserIntent userIntent;
+
+  @Mock BaseTaskDependencies baseTaskDependencies;
 
   @Before
   public void setUp() {
@@ -222,9 +226,13 @@ public class UniverseDefinitionTaskBaseTest {
     }
   }
 
-  private static class UniverseDefinitionTaskBaseFake extends UniverseDefinitionTaskBase {
+  private class UniverseDefinitionTaskBaseFake extends UniverseDefinitionTaskBase {
     // The params for this task. Overrides visibility
     public ITaskParams taskParams;
+
+    protected UniverseDefinitionTaskBaseFake() {
+      super(baseTaskDependencies);
+    }
 
     @Override
     public void run() {}

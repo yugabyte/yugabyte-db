@@ -10,24 +10,28 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.List;
-import java.util.UUID;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
+import java.util.UUID;
 
 // Tracks a read only cluster delete intent from a universe.
+@Slf4j
 public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(ReadOnlyClusterDelete.class);
+
+  @Inject
+  protected ReadOnlyClusterDelete(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends UniverseDefinitionTaskParams {
     public UUID clusterUUID;
@@ -40,7 +44,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    LOG.info("Started {} task for uuid={}", getName(), params().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), params().universeUUID);
 
     try {
       // Create the task list sequence.
@@ -85,14 +89,14 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   /**
@@ -108,7 +112,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
     params.universeUUID = taskParams().universeUUID;
     params.clusterUUID = clusterUUID;
     // Create the task to delete cluster ifo.
-    DeleteClusterFromUniverse task = new DeleteClusterFromUniverse();
+    DeleteClusterFromUniverse task = createTask(DeleteClusterFromUniverse.class);
     task.initialize(params);
     // Add it to the task list.
     subTaskGroup.addTask(task);

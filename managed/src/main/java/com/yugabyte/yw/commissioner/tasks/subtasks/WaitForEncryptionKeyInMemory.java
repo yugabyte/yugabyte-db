@@ -10,36 +10,30 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.KmsHistory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.yugabyte.yw.models.Universe;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-import play.api.Play;
 
+import javax.inject.Inject;
+
+@Slf4j
 public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(WaitForEncryptionKeyInMemory.class);
-
-  public YBClientService ybService = null;
-
-  public EncryptionAtRestManager keyManager = null;
 
   public static final int KEY_IN_MEMORY_TIMEOUT = 5000;
 
-  public static class Params extends NodeTaskParams {
-    public HostAndPort nodeAddress;
+  @Inject
+  protected WaitForEncryptionKeyInMemory(
+      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
   }
 
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
-    keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
+  public static class Params extends NodeTaskParams {
+    public HostAndPort nodeAddress;
   }
 
   @Override
@@ -63,7 +57,7 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
               "Timeout occurred waiting for universe encryption key to be set in memory");
         }
       } catch (Exception e) {
-        LOG.error("{} hit error : {}", getName(), e.getMessage());
+        log.error("{} hit error : {}", getName(), e.getMessage());
       } finally {
         ybService.closeClient(client, hostPorts);
       }

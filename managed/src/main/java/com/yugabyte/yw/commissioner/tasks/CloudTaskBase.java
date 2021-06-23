@@ -11,22 +11,23 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Provider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.api.Play;
 
+import javax.inject.Inject;
 import java.util.Map;
 
 public abstract class CloudTaskBase extends AbstractTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CloudTaskBase.class);
-
   private Provider provider;
   protected Map<String, Object> regionMetadata;
+
+  @Inject
+  protected CloudTaskBase(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected CloudTaskParams taskParams() {
@@ -36,7 +37,6 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
   @Override
   public void initialize(ITaskParams params) {
     super.initialize(params);
-    ConfigHelper configHelper = Play.current().injector().instanceOf(ConfigHelper.class);
     // Create the threadpool for the subtasks to use.
     createThreadpool();
     provider = Provider.get(taskParams().providerUUID);

@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -21,25 +22,22 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import javax.inject.Inject;
+import java.util.*;
 
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 // Allows the addition of a node into a universe. Spawns the necessary processes - tserver
 // and/or master and ensures the task waits for the right set of load balance primitives.
+@Slf4j
 public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(AddNodeToUniverse.class);
+
+  @Inject
+  protected AddNodeToUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -48,7 +46,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    LOG.info(
+    log.info(
         "Started {} task for node {} in univ uuid={}",
         getName(),
         taskParams().nodeName,
@@ -67,7 +65,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " in universe " + universe.name;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -79,7 +77,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
                 + ", but is in "
                 + currentNode.state
                 + ", so cannot be added.";
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -142,7 +140,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Bring up any masters, as needed.
         boolean masterAdded = false;
         if (areMastersUnderReplicated(currentNode, universe)) {
-          LOG.info(
+          log.info(
               "Bringing up master for under replicated universe {} ({})",
               universe.universeUUID,
               universe.name);
@@ -214,12 +212,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future updates to the universe.
       unlockUniverseForUpdate(errorString);
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

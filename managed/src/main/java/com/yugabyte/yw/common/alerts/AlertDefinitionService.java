@@ -12,20 +12,19 @@ package com.yugabyte.yw.common.alerts;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Singleton;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+import static com.yugabyte.yw.models.AlertDefinition.createQueryByFilter;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
+@Slf4j
 public class AlertDefinitionService {
-
-  private static final Logger LOG = LoggerFactory.getLogger(AlertDefinitionService.class);
 
   public AlertDefinition create(AlertDefinition definition) {
     if (definition.getUuid() != null) {
@@ -33,32 +32,41 @@ public class AlertDefinitionService {
     }
     definition.generateUUID();
     definition.save();
-    LOG.debug("Alert definition {} created", definition);
+    log.debug("Alert definition {} created", definition);
     return definition;
   }
 
   public AlertDefinition get(UUID uuid) {
-    return list(new AlertDefinitionFilter().setUuid(uuid)).stream().findFirst().orElse(null);
+    if (uuid == null) {
+      throw new IllegalArgumentException("Can't get alert definition by null uuid");
+    }
+    return list(AlertDefinitionFilter.builder().uuids(uuid).build())
+        .stream()
+        .findFirst()
+        .orElse(null);
   }
 
   public AlertDefinition getOrBadRequest(UUID uuid) {
-    return list(new AlertDefinitionFilter().setUuid(uuid))
-        .stream()
-        .findFirst()
-        .orElseThrow(
-            () -> new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid));
+    if (uuid == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid);
+    }
+    AlertDefinition definition = get(uuid);
+    if (definition == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid);
+    }
+    return definition;
   }
 
   public List<AlertDefinition> list(AlertDefinitionFilter filter) {
-    return AlertDefinition.list(filter);
+    return createQueryByFilter(filter).findList();
   }
 
   public List<UUID> listIds(AlertDefinitionFilter filter) {
-    return AlertDefinition.listIds(filter);
+    return createQueryByFilter(filter).findIds();
   }
 
   public void process(AlertDefinitionFilter filter, Consumer<AlertDefinition> consumer) {
-    AlertDefinition.process(filter, consumer);
+    createQueryByFilter(filter).findEach(consumer);
   }
 
   public AlertDefinition update(AlertDefinition definition) {
@@ -70,22 +78,22 @@ public class AlertDefinitionService {
       definition.setConfigWritten(false);
     }
     definition.save();
-    LOG.debug("Alert definition {} updated", definition);
+    log.debug("Alert definition {} updated", definition);
     return definition;
   }
 
   public void delete(UUID uuid) {
     AlertDefinition definition = get(uuid);
     if (definition == null) {
-      LOG.warn("Alert definition {} is already deleted", uuid);
+      log.warn("Alert definition {} is already deleted", uuid);
       return;
     }
     definition.delete();
-    LOG.debug("Alert definition {} deleted", uuid);
+    log.debug("Alert definition {} deleted", uuid);
   }
 
   public void delete(AlertDefinitionFilter filter) {
-    int deleted = AlertDefinition.delete(filter);
-    LOG.debug("{} alert definitions deleted", deleted);
+    int deleted = createQueryByFilter(filter).delete();
+    log.debug("{} alert definitions deleted", deleted);
   }
 }

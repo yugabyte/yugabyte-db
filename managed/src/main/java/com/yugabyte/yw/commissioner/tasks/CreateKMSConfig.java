@@ -10,12 +10,25 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.models.KmsConfig;
+import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
+
+@Slf4j
 public class CreateKMSConfig extends KMSConfigTaskBase {
+
+  @Inject
+  protected CreateKMSConfig(
+      BaseTaskDependencies baseTaskDependencies, EncryptionAtRestManager kmsManager) {
+    super(baseTaskDependencies, kmsManager);
+  }
+
   @Override
   public void run() {
-    LOG.info("Creating KMS Configuration for customer: " + taskParams().customerUUID.toString());
+    log.info("Creating KMS Configuration for customer: " + taskParams().customerUUID.toString());
     KmsConfig createResult =
         kmsManager
             .getServiceInstance(taskParams().kmsProvider.name())

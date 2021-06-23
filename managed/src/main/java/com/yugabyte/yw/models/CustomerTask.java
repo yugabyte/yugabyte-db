@@ -32,25 +32,35 @@ public class CustomerTask extends Model {
 
   public enum TargetType {
     @EnumValue("Universe")
-    Universe,
+    Universe(true),
 
     @EnumValue("Cluster")
-    Cluster,
+    Cluster(true),
 
     @EnumValue("Table")
-    Table,
+    Table(true),
 
     @EnumValue("Provider")
-    Provider,
+    Provider(false),
 
     @EnumValue("Node")
-    Node,
+    Node(true),
 
     @EnumValue("Backup")
-    Backup,
+    Backup(false),
 
     @EnumValue("KMS Configuration")
-    KMSConfiguration,
+    KMSConfiguration(false);
+
+    private final boolean universeTarget;
+
+    TargetType(boolean universeTarget) {
+      this.universeTarget = universeTarget;
+    }
+
+    public boolean isUniverseTarget() {
+      return universeTarget;
+    }
   }
 
   public enum TaskType {

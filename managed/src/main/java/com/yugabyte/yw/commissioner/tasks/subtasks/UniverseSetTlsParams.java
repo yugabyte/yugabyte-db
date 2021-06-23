@@ -2,17 +2,23 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
 import java.util.UUID;
 
+@Slf4j
 public class UniverseSetTlsParams extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UnivSetCertificate.class);
+
+  @Inject
+  protected UniverseSetTlsParams(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends UniverseTaskParams {
     public boolean enableNodeToNodeEncrypt;
@@ -33,7 +39,7 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      LOG.info("Running {}", getName());
+      log.info("Running {}", getName());
 
       // Create the update lambda.
       Universe.UniverseUpdater updater =
@@ -42,7 +48,7 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             if (!universeDetails.updateInProgress) {
               String errMsg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
-              LOG.error(errMsg);
+              log.error(errMsg);
               throw new RuntimeException(errMsg);
             }
 
@@ -63,7 +69,7 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
       saveUniverseDetails(updater);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      LOG.warn(msg, e.getMessage());
+      log.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

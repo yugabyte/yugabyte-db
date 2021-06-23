@@ -12,15 +12,17 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import play.libs.Json;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.Users.Role;
 
@@ -249,19 +251,65 @@ public class ModelFactory {
   }
 
   public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
-    AlertDefinition alertDefinition = new AlertDefinition();
-    alertDefinition.generateUUID();
-    alertDefinition.setCustomerUUID(customer.getUuid());
-    alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
-    alertDefinition.setName("alertDefinition");
-    alertDefinition.setQuery("query < {{ query_threshold }}");
-    alertDefinition.setQueryThreshold(1);
-    alertDefinition.setLabels(AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
-
+    AlertDefinition alertDefinition =
+        new AlertDefinition()
+            .setCustomerUUID(customer.getUuid())
+            .setName("alertDefinition")
+            .setQuery("query < {{ query_threshold }}")
+            .setQueryThreshold(1)
+            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(universe).get())
+            .generateUUID();
     alertDefinition.save();
     return alertDefinition;
   }
 
+  public static Alert createAlert(Customer customer) {
+    return createAlert(customer, null, null, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(Customer customer, Universe universe) {
+    return createAlert(customer, universe, null, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(Customer customer, Universe universe, KnownAlertCodes code) {
+    return createAlert(customer, universe, null, code);
+  }
+
+  public static Alert createAlert(Customer customer, AlertDefinition definition) {
+    return createAlert(customer, null, definition, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(
+      Customer customer, Universe universe, AlertDefinition definition, KnownAlertCodes code) {
+    Alert alert =
+        new Alert()
+            .setCustomerUUID(customer.getUuid())
+            .setErrCode(code)
+            .setType(KnownAlertTypes.Error)
+            .setMessage("Universe on fire!")
+            .setSendEmail(true)
+            .generateUUID();
+    if (definition != null) {
+      alert.setDefinitionUUID(definition.getUuid());
+      List<AlertLabel> labels =
+          definition
+              .getEffectiveLabels()
+              .stream()
+              .map(l -> new AlertLabel(l.getName(), l.getValue()))
+              .collect(Collectors.toList());
+      alert.setLabels(labels);
+    } else {
+      AlertDefinitionLabelsBuilder labelsBuilder = AlertDefinitionLabelsBuilder.create();
+      if (universe != null) {
+        labelsBuilder.appendTarget(universe);
+      } else {
+        labelsBuilder.appendTarget(customer);
+      }
+      alert.setLabels(labelsBuilder.getAlertLabels());
+    }
+    alert.save();
+    return alert;
+  }
   /*
    * KMS Configuration creation helpers.
    */

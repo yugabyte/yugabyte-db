@@ -11,78 +11,102 @@ package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.AlertDefinitionLabel;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
+@Value
+@Builder
 public class AlertDefinitionFilter {
-  private UUID uuid;
-  private UUID customerUuid;
-  private String name;
-  private AlertDefinitionLabel label;
-  private Boolean isActive;
-  private Boolean isConfigWritten;
+  Set<UUID> uuids;
+  UUID customerUuid;
+  String name;
+  AlertDefinitionLabel label;
+  Boolean active;
+  Boolean configWritten;
 
-  public UUID getUuid() {
-    return uuid;
+  // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
+  // checks.
+  public AlertDefinitionFilterBuilder toBuilder() {
+    AlertDefinitionFilterBuilder result = AlertDefinitionFilter.builder();
+    if (uuids != null) {
+      result.uuids(uuids);
+    }
+    if (customerUuid != null) {
+      result.customerUuid(customerUuid);
+    }
+    if (name != null) {
+      result.name(name);
+    }
+    if (label != null) {
+      result.label(label);
+    }
+    if (active != null) {
+      result.active(active);
+    }
+    if (configWritten != null) {
+      result.configWritten(configWritten);
+    }
+    return result;
   }
 
-  public AlertDefinitionFilter setUuid(UUID uuid) {
-    this.uuid = uuid;
-    return this;
-  }
+  public static class AlertDefinitionFilterBuilder {
+    Set<UUID> uuids = new HashSet<>();
+    UUID customerUuid;
+    String name;
+    AlertDefinitionLabel label;
+    Boolean active;
+    Boolean configWritten;
 
-  public UUID getCustomerUuid() {
-    return customerUuid;
-  }
+    public AlertDefinitionFilterBuilder uuids(@NonNull UUID uuid) {
+      this.uuids.add(uuid);
+      return this;
+    }
 
-  public AlertDefinitionFilter setCustomerUuid(UUID customerUuid) {
-    this.customerUuid = customerUuid;
-    return this;
-  }
+    public AlertDefinitionFilterBuilder uuids(@NonNull Collection<UUID> uuids) {
+      this.uuids.addAll(uuids);
+      return this;
+    }
 
-  public String getName() {
-    return name;
-  }
+    public AlertDefinitionFilterBuilder customerUuid(@NonNull UUID customerUuid) {
+      this.customerUuid = customerUuid;
+      return this;
+    }
 
-  public AlertDefinitionFilter setName(String name) {
-    this.name = name;
-    return this;
-  }
+    public AlertDefinitionFilterBuilder name(@NonNull String name) {
+      this.name = name;
+      return this;
+    }
 
-  public AlertDefinitionLabel getLabel() {
-    return label;
-  }
+    public AlertDefinitionFilterBuilder active(@NonNull Boolean active) {
+      this.active = active;
+      return this;
+    }
 
-  public AlertDefinitionFilter setLabel(AlertDefinitionLabel label) {
-    this.label = label;
-    return this;
-  }
+    public AlertDefinitionFilterBuilder configWritten(@NonNull Boolean configWritten) {
+      this.configWritten = configWritten;
+      return this;
+    }
 
-  public AlertDefinitionFilter setLabel(String name, String value) {
-    this.label = new AlertDefinitionLabel(name, value);
-    return this;
-  }
+    public AlertDefinitionFilterBuilder label(
+        @NonNull KnownAlertLabels name, @NonNull String value) {
+      label = new AlertDefinitionLabel(name, value);
+      return this;
+    }
 
-  public AlertDefinitionFilter setLabel(KnownAlertLabels name, String value) {
-    this.label = new AlertDefinitionLabel(name, value);
-    return this;
-  }
+    public AlertDefinitionFilterBuilder label(@NonNull String name, @NonNull String value) {
+      label = new AlertDefinitionLabel(name, value);
+      return this;
+    }
 
-  public Boolean getActive() {
-    return isActive;
-  }
-
-  public AlertDefinitionFilter setActive(Boolean active) {
-    isActive = active;
-    return this;
-  }
-
-  public Boolean getConfigWritten() {
-    return isConfigWritten;
-  }
-
-  public AlertDefinitionFilter setConfigWritten(Boolean configWritten) {
-    isConfigWritten = configWritten;
-    return this;
+    public AlertDefinitionFilterBuilder label(@NonNull AlertDefinitionLabel label) {
+      this.label = label;
+      return this;
+    }
   }
 }

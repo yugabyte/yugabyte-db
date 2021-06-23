@@ -11,31 +11,20 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TableManager;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.BulkImportParams;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.api.Play;
+
+import javax.inject.Inject;
 
 public class BulkImport extends AbstractTaskBase {
-
-  public static final Logger LOG = LoggerFactory.getLogger(BulkImport.class);
-
-  private TableManager tableManager;
+  @Inject
+  protected BulkImport(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected BulkImportParams taskParams() {
     return (BulkImportParams) taskParams;
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    tableManager = Play.current().injector().instanceOf(TableManager.class);
   }
 
   @Override

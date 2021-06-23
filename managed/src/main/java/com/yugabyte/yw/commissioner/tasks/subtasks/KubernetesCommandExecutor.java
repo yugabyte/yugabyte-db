@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -27,9 +28,8 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.Yaml;
-import play.Application;
-import play.Environment;
 import play.libs.Json;
 
 import java.io.BufferedWriter;
@@ -44,6 +44,7 @@ import java.util.regex.Pattern;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 
+@Slf4j
 public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   public enum CommandType {
@@ -89,16 +90,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   private final KubernetesManager kubernetesManager;
 
-  private final Application application;
-
-  private final play.Environment environment;
-
   @Inject
-  public KubernetesCommandExecutor(
-      KubernetesManager kubernetesManager, Application application, Environment environment) {
+  protected KubernetesCommandExecutor(
+      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
+    super(baseTaskDependencies);
     this.kubernetesManager = kubernetesManager;
-    this.application = application;
-    this.environment = environment;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -162,7 +158,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         if (pullSecret != null) {
           response = kubernetesManager.applySecret(config, taskParams().namespace, pullSecret);
         } else {
-          LOG.debug("Pull secret is missing, skipping the pull secret creation.");
+          log.debug("Pull secret is missing, skipping the pull secret creation.");
         }
         break;
       case HELM_INSTALL:
@@ -435,7 +431,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null) {
-      LOG.error(
+      log.error(
           "Unable to fetch InstanceType for {}, {}",
           userIntent.providerType,
           userIntent.instanceType);
@@ -737,7 +733,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       yaml.dump(overrides, bw);
       return tempFile.toAbsolutePath().toString();
     } catch (IOException e) {
-      LOG.error(e.getMessage());
+      log.error(e.getMessage());
       throw new RuntimeException("Error writing Helm Override file!");
     }
   }

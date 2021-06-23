@@ -3,9 +3,15 @@ package com.yugabyte.yw.metrics;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.metrics.data.AlertData;
+import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
+import org.apache.commons.io.IOUtils;
+import org.hamcrest.CoreMatchers;
+import org.hamcrest.Matchers;
 import org.hamcrest.core.IsInstanceOf;
 import org.joda.time.DateTime;
 import org.junit.Before;
@@ -17,15 +23,19 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.*;
 
 import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.*;
@@ -235,5 +245,59 @@ public class MetricQueryHelperTest extends FakeDBApplication {
           Integer.parseInt(capturedQueryParam.get("end").toString()),
           allOf(notNullValue(), equalTo(1481147648)));
     }
+  }
+
+  @Test
+  public void testQueryAlerts() throws IOException {
+    JsonNode responseJson =
+        Json.parse(
+            IOUtils.toString(
+                getClass().getClassLoader().getResourceAsStream("alert/alerts_query.json"),
+                StandardCharsets.UTF_8));
+
+    ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
+
+    when(mockApiHelper.getRequest(anyString())).thenReturn(responseJson);
+    List<AlertData> alerts = metricQueryHelper.queryAlerts();
+    verify(mockApiHelper).getRequest(queryUrl.capture());
+
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/alerts")));
+
+    AlertData alertData =
+        AlertData.builder()
+            .activeAt(
+                ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00")
+                    .withZoneSameInstant(ZoneId.of("UTC")))
+            .annotations(ImmutableMap.of("summary", "Clock Skew Alert for universe Test is firing"))
+            .labels(
+                ImmutableMap.of(
+                    "customer_uuid", "199bccbc-6295-4676-950e-c0049b8adfa9",
+                    "definition_uuid", "199bccbc-6295-4676-950e-c0049b8adfa8",
+                    "definition_name", "Clock Skew Alert"))
+            .state(AlertState.firing)
+            .value(1)
+            .build();
+    assertThat(alerts, Matchers.contains(alertData));
+  }
+
+  @Test
+  public void testQueryAlertsError() throws IOException {
+    JsonNode responseJson =
+        Json.parse(
+            IOUtils.toString(
+                getClass().getClassLoader().getResourceAsStream("alert/alerts_query_error.json"),
+                StandardCharsets.UTF_8));
+
+    ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
+
+    when(mockApiHelper.getRequest(anyString())).thenReturn(responseJson);
+    try {
+      metricQueryHelper.queryAlerts();
+    } catch (Exception e) {
+      assertThat(e, CoreMatchers.instanceOf(RuntimeException.class));
+    }
+    verify(mockApiHelper).getRequest(queryUrl.capture());
+
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/alerts")));
   }
 }

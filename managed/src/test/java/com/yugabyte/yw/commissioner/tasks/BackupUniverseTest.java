@@ -42,6 +42,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
+    super.setUp();
     mockClient = mock(YBClient.class);
     Master.SysClusterConfigEntryPB.Builder configBuilder =
         Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);

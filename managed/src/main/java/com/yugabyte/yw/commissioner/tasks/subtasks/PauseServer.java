@@ -10,16 +10,22 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
+
+@Slf4j
 public class PauseServer extends NodeTaskBase {
+  @Inject
+  protected PauseServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   public static class Params extends NodeTaskParams {
     // IP of node to be paused.
@@ -31,15 +37,13 @@ public class PauseServer extends NodeTaskBase {
     return (PauseServer.Params) taskParams;
   }
 
-  public static final Logger LOG = LoggerFactory.getLogger(PauseServer.class);
-
   private void pauseUniverse(final String nodeName) {
     Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     if (u.getNode(nodeName) == null) {
-      LOG.error("No node in universe with name " + nodeName);
+      log.error("No node in universe with name " + nodeName);
       return;
     }
-    LOG.info("Paused the node " + nodeName + " from universe " + taskParams().universeUUID);
+    log.info("Paused the node " + nodeName + " from universe " + taskParams().universeUUID);
   }
 
   @Override

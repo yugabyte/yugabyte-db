@@ -10,15 +10,21 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
 
-import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import javax.inject.Inject;
 
+@Slf4j
 public class WaitForServer extends ServerSubTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(WaitForServer.class);
+
+  @Inject
+  protected WaitForServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends ServerSubTaskParams {
     // Timeout for the RPC call.
@@ -44,7 +50,7 @@ public class WaitForServer extends ServerSubTaskBase {
 
       ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     } finally {
       closeClient(client);
@@ -52,7 +58,7 @@ public class WaitForServer extends ServerSubTaskBase {
     if (!ret) {
       throw new RuntimeException(getName() + " did not respond to pings in the set time.");
     }
-    LOG.info(
+    log.info(
         "Server {} responded to RPC calls in {} ms",
         (taskParams().nodeName != null) ? taskParams().nodeName : "unknown",
         (System.currentTimeMillis() - startMs));

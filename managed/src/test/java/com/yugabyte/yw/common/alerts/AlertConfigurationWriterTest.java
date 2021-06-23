@@ -84,7 +84,9 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
   public void testSyncActiveDefinition() {
     configurationWriter.syncDefinitions();
 
-    verify(swamperHelper, times(1)).writeAlertDefinition(definition);
+    AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
+
+    verify(swamperHelper, times(1)).writeAlertDefinition(expected);
     verify(queryHelper, times(1)).postManagementCommand("reload");
   }
 
@@ -106,7 +108,9 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
         .thenReturn(ImmutableList.of(missingDefinitionUuid));
     configurationWriter.syncDefinitions();
 
-    verify(swamperHelper, times(1)).writeAlertDefinition(definition);
+    AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
+
+    verify(swamperHelper, times(1)).writeAlertDefinition(expected);
     verify(swamperHelper, times(1)).removeAlertDefinition(missingDefinitionUuid);
     verify(queryHelper, times(1)).postManagementCommand("reload");
   }

@@ -4,8 +4,10 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -28,6 +30,8 @@ public class ExtraMigrationManager extends DevopsBase {
   @Inject TemplateManager templateManager;
 
   @Inject AlertDefinitionService alertDefinitionService;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Override
   protected String getCommandType() {
@@ -61,6 +65,7 @@ public class ExtraMigrationManager extends DevopsBase {
   private void recreateMissedAlertDefinitions() {
     LOG.info("recreateMissedAlertDefinitions");
     for (Customer c : Customer.getAll()) {
+      Config customerConfig = runtimeConfigFactory.forCustomer(c);
       for (UUID universeUUID : Universe.getAllUUIDs(c)) {
         Optional<Universe> u = Universe.maybeGet(universeUUID);
         if (u.isPresent()) {
@@ -69,10 +74,11 @@ public class ExtraMigrationManager extends DevopsBase {
             boolean definitionMissing =
                 alertDefinitionService
                     .list(
-                        new AlertDefinitionFilter()
-                            .setCustomerUuid(c.uuid)
-                            .setName(template.getName())
-                            .setLabel(KnownAlertLabels.UNIVERSE_UUID, universeUUID.toString()))
+                        AlertDefinitionFilter.builder()
+                            .customerUuid(c.uuid)
+                            .name(template.getName())
+                            .label(KnownAlertLabels.UNIVERSE_UUID, universeUUID.toString())
+                            .build())
                     .isEmpty();
             if (template.isCreateOnMigration()
                 && definitionMissing
@@ -81,14 +87,15 @@ public class ExtraMigrationManager extends DevopsBase {
                   "Going to create alert definition for universe {} with name '{}'",
                   universeUUID,
                   template.getName());
-              AlertDefinition alertDefinition = new AlertDefinition();
-              alertDefinition.setCustomerUUID(c.getUuid());
-              alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
-              alertDefinition.setName(template.getName());
-              alertDefinition.setQuery(
-                  template.buildTemplate(universe.getUniverseDetails().nodePrefix));
-              alertDefinition.setLabels(
-                  AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+              AlertDefinition alertDefinition =
+                  new AlertDefinition()
+                      .setCustomerUUID(c.getUuid())
+                      .setName(template.getName())
+                      .setQuery(template.buildTemplate(universe.getUniverseDetails().nodePrefix))
+                      .setQueryThreshold(
+                          customerConfig.getDouble(template.getDefaultThresholdParamName()))
+                      .setLabels(
+                          AlertDefinitionLabelsBuilder.create().appendTarget(universe).get());
               alertDefinitionService.create(alertDefinition);
             }
           }

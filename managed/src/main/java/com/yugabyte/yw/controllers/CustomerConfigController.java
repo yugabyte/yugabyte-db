@@ -5,7 +5,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -22,8 +21,6 @@ public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
 
   @Inject private CustomerConfigValidator configValidator;
-
-  @Inject private AlertManager alertManager;
 
   public Result create(UUID customerUUID) {
     ObjectNode formData = (ObjectNode) request().body().asJson();
@@ -45,7 +42,6 @@ public class CustomerConfigController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID configUUID) {
     CustomerConfig customerConfig = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     customerConfig.deleteOrThrow();
-    alertManager.resolveAlerts(customerUUID, configUUID, "%");
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.withMessage("configUUID deleted");
   }

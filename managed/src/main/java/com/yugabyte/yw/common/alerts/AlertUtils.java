@@ -8,12 +8,11 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-
-import java.lang.reflect.InvocationTargetException;
-
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.InvocationTargetException;
 
 public class AlertUtils {
   public static final Logger LOG = LoggerFactory.getLogger(AlertUtils.class);
@@ -29,15 +28,14 @@ public class AlertUtils {
    * Returns the alert notification title according to the template stored in the alert receiver or
    * default one. Also does all the necessary substitutions using labels from the alert.
    *
-   * @param alert
-   * @param receiver
+   * @param alert Alert
+   * @param receiver Alert Receiver
    * @return the notification title
-   * @throws YWServiceException if a customer with such UUID is not found
    */
   public static String getNotificationTitle(Alert alert, AlertReceiver receiver) {
     String template = receiver.getParams().titleTemplate;
     if (StringUtils.isEmpty(template)) {
-      Customer customer = Customer.getOrBadRequest(alert.customerUUID);
+      Customer customer = Customer.getOrBadRequest(alert.getCustomerUUID());
       return String.format(DEFAULT_ALERT_NOTIFICATION_TITLE, customer.getTag());
     }
     return alertSubstitutions(alert, template);
@@ -69,16 +67,11 @@ public class AlertUtils {
 
   @VisibleForTesting
   static String getDefaultNotificationText(Alert alert) {
-    String universeName = alert.getLabelValue(KnownAlertLabels.UNIVERSE_NAME);
-    if (StringUtils.isNotEmpty(universeName)) {
-      return String.format(
-          "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
-          universeName, alert.getState().getAction(), alert.message);
-    }
-    Customer customer = Customer.getOrBadRequest(alert.customerUUID);
+    String targetType = alert.getLabelValue(KnownAlertLabels.TARGET_TYPE);
+    String targetName = alert.getLabelValue(KnownAlertLabels.TARGET_NAME);
     return String.format(
-        "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
-        customer.name, alert.getState().getAction(), alert.message);
+        "Common failure for %s '%s', state: %s\nFailure details:\n\n%s",
+        targetType, targetName, alert.getState().getAction(), alert.getMessage());
   }
 
   public static Class<?> getAlertParamsClass(AlertReceiver.TargetType targetType) {

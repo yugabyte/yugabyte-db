@@ -48,6 +48,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
+    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     List<TableInfo> tableInfoList = new ArrayList<TableInfo>();
