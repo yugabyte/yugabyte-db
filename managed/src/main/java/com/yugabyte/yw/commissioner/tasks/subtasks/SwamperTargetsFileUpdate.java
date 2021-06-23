@@ -11,20 +11,22 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.UUID;
 
+@Slf4j
 public class SwamperTargetsFileUpdate extends AbstractTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(SwamperTargetsFileUpdate.class);
 
   private final SwamperHelper swamperHelper;
 
   @Inject
-  public SwamperTargetsFileUpdate(SwamperHelper swamperHelper) {
+  protected SwamperTargetsFileUpdate(
+      BaseTaskDependencies baseTaskDependencies, SwamperHelper swamperHelper) {
+    super(baseTaskDependencies);
     this.swamperHelper = swamperHelper;
   }
 
@@ -50,7 +52,7 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
   @Override
   public void run() {
     try {
-      LOG.info("Running {}", getName());
+      log.info("Running {}", getName());
       if (!taskParams().removeFile) {
         swamperHelper.writeUniverseTargetJson(taskParams().universeUUID);
       } else {
@@ -58,7 +60,7 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
       }
     } catch (RuntimeException e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      LOG.error(msg, e);
+      log.error(msg, e);
       throw new RuntimeException(msg);
     }
   }

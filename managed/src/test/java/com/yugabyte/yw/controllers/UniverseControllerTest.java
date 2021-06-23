@@ -89,7 +89,6 @@ public class UniverseControllerTest extends WithApplication {
 
   @Mock private play.Configuration mockAppConfig;
 
-  private AlertConfigurationWriter alertConfigurationWriter;
   private HealthChecker healthChecker;
   private Customer customer;
   private Users user;
@@ -106,6 +105,7 @@ public class UniverseControllerTest extends WithApplication {
   private ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  private AlertConfigurationWriter mockAlertConfigurationWriter;
   private Config mockRuntimeConfig;
   private RuntimeConfigFactory mockRuntimeConfigFactory;
 
@@ -123,9 +123,9 @@ public class UniverseControllerTest extends WithApplication {
     mockShellProcessHandler = mock(ShellProcessHandler.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     mockRuntimeConfig = mock(Config.class);
     mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
-    alertConfigurationWriter = mock(AlertConfigurationWriter.class);
     healthChecker = mock(HealthChecker.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
@@ -146,8 +146,8 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(bind(RuntimeConfigFactory.class).toInstance(mockRuntimeConfigFactory))
-        .overrides(bind(AlertConfigurationWriter.class).toInstance(alertConfigurationWriter))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .build();
   }
