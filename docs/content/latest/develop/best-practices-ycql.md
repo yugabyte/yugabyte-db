@@ -102,7 +102,7 @@ In particular, some list operations (insert at an index and remove elements) req
 ### Use `partition_hash` for large table scans
 
 `partition_hash` function can be handy for querying a subset of the data to get approximate row counts or to breakdown
- full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition_hash) along with a working Python script.
+ full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
 
 ## Miscellaneous
 

@@ -170,7 +170,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   // Starts shutdown process.
   // Returns true if shutdown was just initiated, false if shutdown was already running.
-  MUST_USE_RESULT bool StartShutdown();
+  MUST_USE_RESULT bool StartShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
   // Completes shutdown process and waits for it's completeness.
   void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
@@ -190,22 +190,21 @@ class TabletPeer : public consensus::ConsensusContext,
   CHECKED_STATUS WaitUntilConsensusRunning(const MonoDelta& timeout);
 
   // Submits a write to a tablet and executes it asynchronously.
-  // The caller is expected to build and pass a WriteOperationState that points
+  // The caller is expected to build and pass a WriteOperation that points
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
   // The operation_state is deallocated after use by this function.
-  void WriteAsync(
-      std::unique_ptr<WriteOperationState> operation_state, int64_t term, CoarseTimePoint deadline);
+  void WriteAsync(std::unique_ptr<WriteOperation> operation);
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
 
   void UpdateClock(HybridTime hybrid_time) override;
 
-  std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
+  std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       tserver::TransactionStatePB* request) override;
 
   void SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) override;
+      std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;
 
   HybridTime SafeTimeForTransactionParticipant() override;
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;

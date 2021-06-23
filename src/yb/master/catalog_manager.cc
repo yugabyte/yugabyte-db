@@ -9492,8 +9492,8 @@ void CatalogManager::RebuildYQLSystemPartitions() {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       if (system_partitions_tablet_ != nullptr) {
-        auto s = down_cast<const YQLPartitionsVTable&>(
-            system_partitions_tablet_->QLStorage()).GenerateAndCacheData();
+        auto s = ResultToStatus(down_cast<const YQLPartitionsVTable&>(
+            system_partitions_tablet_->QLStorage()).GenerateAndCacheData());
         if (!s.ok()) {
           LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
         }

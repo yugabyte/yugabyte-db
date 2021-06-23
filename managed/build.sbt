@@ -218,6 +218,18 @@ lazy val ybClientSnapshotResolver = {
   }
 }
 
+lazy val ybPublicSnapshotResolverDescription =
+    "Public snapshot resolver for yb-client jar"
+
+lazy val ybPublicSnapshotResolver = {
+  if (mavenLocal) {
+    Seq()
+  } else {
+    val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
+    Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
+  }
+}
+
 // Custom remote maven repository to retrieve library dependencies from.
 lazy val ybMvnCacheUrlEnvVarName = "YB_MVN_CACHE_URL"
 lazy val ybMvnCacheUrl = getEnvVar(ybMvnCacheUrlEnvVarName)
@@ -244,7 +256,8 @@ externalResolvers := {
   validateResolver(mavenCacheServerResolver, mavenCacheServerResolverDescription) ++
   validateResolver(ybLocalResolver, ybLocalResolverDescription) ++
   validateResolver(externalResolvers.value, "Default resolver") ++
-  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
+  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription) ++
+  validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
 (Compile / compilePlatform) := {

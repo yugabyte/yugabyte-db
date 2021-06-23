@@ -113,20 +113,6 @@ class MaintenanceOpStats;
 
 namespace tablet {
 
-class ChangeMetadataOperationState;
-class ScopedReadOperation;
-class TabletRetentionPolicy;
-class TransactionCoordinator;
-class TransactionCoordinatorContext;
-class TransactionParticipant;
-class TruncateOperationState;
-class WriteOperationState;
-
-struct TabletMetrics;
-struct TransactionApplyData;
-
-using docdb::LockBatch;
-
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
@@ -261,7 +247,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown();
+  bool StartShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::memory_order_acquire);
   }
@@ -279,11 +265,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Apply all of the row operations associated with this transaction.
   CHECKED_STATUS ApplyRowOperations(
-      WriteOperationState* operation_state,
+      WriteOperation* operation,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
-  CHECKED_STATUS ApplyOperationState(
-      const OperationState& operation_state, int64_t batch_idx,
+  CHECKED_STATUS ApplyOperation(
+      const Operation& operation, int64_t batch_idx,
       const docdb::KeyValueWriteBatchPB& write_batch,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
@@ -378,18 +364,18 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
   CHECKED_STATUS CreatePreparedChangeMetadata(
-      ChangeMetadataOperationState *operation_state,
+      ChangeMetadataOperation* operation,
       const Schema* schema);
 
   // Apply the Schema of the specified operation.
-  CHECKED_STATUS AlterSchema(ChangeMetadataOperationState* operation_state);
+  CHECKED_STATUS AlterSchema(ChangeMetadataOperation* operation);
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that major compactions can now garbage collect delete markers.
   CHECKED_STATUS MarkBackfillDone(const TableId& table_id = "");
 
   // Change wal_retention_secs in the metadata.
-  CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state);
+  CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
   // Apply replicated add table operation.
   CHECKED_STATUS AddTable(const TableInfoPB& table_info);
@@ -398,7 +384,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS RemoveTable(const std::string& table_id);
 
   // Truncate this tablet by resetting the content of RocksDB.
-  CHECKED_STATUS Truncate(TruncateOperationState* state);
+  CHECKED_STATUS Truncate(TruncateOperation* operation);
 
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
@@ -713,11 +699,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
   ScopedRWOperationPause PauseReadWriteOperations(Stop stop = Stop::kFalse);
 
-  CHECKED_STATUS ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
+  void StartShutdownRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown);
+
+  CHECKED_STATUS ShutdownRocksDBs(
+      Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
 
   CHECKED_STATUS DoEnableCompactions();
-
-  void PreventCallbacksFromRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown);
 
   std::string LogPrefix() const;
 
@@ -803,10 +790,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<rocksdb::Statistics> regulardb_statistics_;
   std::shared_ptr<rocksdb::Statistics> intentsdb_statistics_;
 
-  // RocksDB database for key-value tables.
+  // RocksDB database instances for key-value tables.
   std::unique_ptr<rocksdb::DB> regular_db_;
-
   std::unique_ptr<rocksdb::DB> intents_db_;
+  std::atomic<bool> rocksdb_shutdown_requested_{false};
 
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;

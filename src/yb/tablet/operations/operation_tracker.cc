@@ -151,7 +151,7 @@ Status OperationTracker::Add(OperationDriver* driver) {
     }
 
     // May be null in unit tests.
-    Tablet* tablet = driver->state()->tablet();
+    Tablet* tablet = driver->operation()->tablet();
 
     string msg = Substitute(
         "Operation failed, tablet $0 operation memory consumption ($1) "
