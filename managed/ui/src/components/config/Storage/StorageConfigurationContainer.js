@@ -16,9 +16,10 @@ import {
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 import { toast } from 'react-toastify';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 
 const customerConfigToasterHandler = (errorMessageObject) => {
-  errorMessageObject instanceof Object
+  isNonEmptyObject(errorMessageObject)
     ? Object.keys(errorMessageObject).forEach((errorKey) => {
         toast.error(
           <ul>
