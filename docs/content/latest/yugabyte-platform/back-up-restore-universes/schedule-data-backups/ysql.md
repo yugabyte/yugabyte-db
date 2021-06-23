@@ -75,4 +75,3 @@ To permanently remove a scheduled backup:
 1. Go to the **Backups** tab for the universe. 
 2. Find the scheduled backup and click **Options**.
 3. Click **Delete schedule**. The scheduled backup is deleted.
-
