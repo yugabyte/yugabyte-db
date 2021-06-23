@@ -144,14 +144,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "create_snapshot_schedule",
       " <snapshot_interval_in_minutes>"
       " <snapshot_retention_in_minutes>"
-      " <table>"
-      " [<table>]...",
+      " <keyspace>",
       [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
         auto interval = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[0])));
         auto retention = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[1])));
         const auto tables = VERIFY_RESULT(ResolveTableNames(
             client, args.begin() + 2, args.end(), TailArgumentsProcessor(), true));
-        return client->CreateSnapshotSchedule(tables, interval, retention);
+        // This is just a paranoid check, should never happen.
+        if (tables.size() != 1 || !tables[0].has_namespace()) {
+          return STATUS(InvalidArgument, "Expecting exactly one keyspace argument");
+        }
+        return client->CreateSnapshotSchedule(tables[0], interval, retention);
       });
 
   RegisterJson(

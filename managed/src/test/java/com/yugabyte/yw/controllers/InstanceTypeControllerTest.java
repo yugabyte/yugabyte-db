@@ -138,11 +138,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testListInstanceTypeWithInvalidProviderUUID() {
     UUID randomUUID = UUID.randomUUID();
-    Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST))
-            .getResult();
+    Result result = assertYWSE(() -> doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -291,10 +287,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     instanceTypeJson.set("idKey", idKey);
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST))
-            .getResult();
+        assertYWSE(() -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -303,11 +296,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testCreateInstanceTypeWithInvalidParams() {
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST))
-            .getResult();
+        assertYWSE(
+            () -> doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST));
     assertErrorNodeValue(Json.parse(contentAsString(result)), "idKey", "This field is required");
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "memSizeGB", "This field is required");
@@ -395,10 +385,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testGetInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST))
-            .getResult();
+        assertYWSE(
+            () -> doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Instance Type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
@@ -409,10 +397,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST))
-            .getResult();
+        assertYWSE(() -> doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -434,11 +419,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testDeleteInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST))
-            .getResult();
+        assertYWSE(
+            () -> doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Instance Type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
@@ -449,10 +431,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST))
-            .getResult();
+        assertYWSE(() -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);

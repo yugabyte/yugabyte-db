@@ -2,9 +2,23 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.*;
+import org.hamcrest.CoreMatchers;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+import play.libs.Json;
+import play.mvc.Result;
+
+import java.util.UUID;
+
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -12,29 +26,6 @@ import static org.junit.Assert.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
-
-import java.util.UUID;
-
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Users;
-import org.hamcrest.CoreMatchers;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-
-import play.libs.Json;
-import play.mvc.Result;
 
 public class AvailabilityZoneControllerTest extends FakeDBApplication {
   Customer defaultCustomer;
@@ -178,9 +169,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             + zoneUUID;
     Result result;
     if (isYWServiceException) {
-      result =
-          assertThrows(YWServiceException.class, () -> FakeApiHelper.doRequest("DELETE", uri))
-              .getResult();
+      result = assertYWSE(() -> FakeApiHelper.doRequest("DELETE", uri));
     } else {
       result = FakeApiHelper.doRequest("DELETE", uri);
     }
@@ -200,9 +189,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             + "/zones";
     Result result;
     if (isYWServiceException) {
-      result =
-          assertThrows(YWServiceException.class, () -> FakeApiHelper.doRequest("GET", uri))
-              .getResult();
+      result = assertYWSE(() -> FakeApiHelper.doRequest("GET", uri));
     } else {
       result = FakeApiHelper.doRequest("GET", uri);
     }
@@ -229,19 +216,13 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     Result result;
     if (azRequestJson != null) {
       if (isYWServiceException) {
-        result =
-            assertThrows(
-                    YWServiceException.class,
-                    () -> FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson))
-                .getResult();
+        result = assertYWSE(() -> FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson));
       } else {
         result = FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson);
       }
     } else {
       if (isYWServiceException) {
-        result =
-            assertThrows(YWServiceException.class, () -> FakeApiHelper.doRequest("POST", uri))
-                .getResult();
+        result = assertYWSE(() -> FakeApiHelper.doRequest("POST", uri));
       } else {
         result = FakeApiHelper.doRequest("POST", uri);
       }

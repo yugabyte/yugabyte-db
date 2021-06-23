@@ -2,19 +2,22 @@
 
 package com.yugabyte.yw.models;
 
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EmbeddedId;
-import javax.persistence.Id;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.ebean.*;
-import com.fasterxml.jackson.databind.JsonNode;
+import io.ebean.annotation.DbJson;
+
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -23,11 +26,27 @@ import play.libs.Json;
 public class HealthCheck extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheck.class);
 
+  public static class Details {
+    public static class NodeData {
+      public String node;
+      public String process;
+      public String timestamp;
+      public String node_name;
+      public Boolean has_error;
+      public List<String> details;
+      public String message;
+    }
+
+    public Date timestamp;
+    public List<NodeData> data = new ArrayList<>();
+    public String yb_version;
+    // TODO: This was done as HealthCheckerTest is using error field. Reconcile this.
+    @JsonAlias({"error", "has_error"})
+    public Boolean has_error = false;
+  }
+
   // The max number of records to keep per universe.
   public static final int RECORD_LIMIT = 10;
-
-  // Top-level payload field for figuring out if we have errors or not.
-  public static final String FIELD_HAS_ERROR = "has_error";
 
   @EmbeddedId @Constraints.Required public HealthCheckKey idKey;
 
@@ -36,15 +55,16 @@ public class HealthCheck extends Model {
 
   // The Json serialized version of the details. This is used only in read from and writing to the
   // DB.
+  @DbJson
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
-  public String detailsJson;
+  public Details detailsJson = new Details();
 
   public boolean hasError() {
-    JsonNode details = Json.parse(detailsJson);
-    JsonNode hasErrorField = details.get(FIELD_HAS_ERROR);
-    // Only return true if we have the top-level has_error field with a value of true.
-    return hasErrorField != null && hasErrorField.asBoolean();
+    if (detailsJson != null) {
+      return detailsJson.has_error;
+    }
+    return false;
   }
 
   public static final Finder<UUID, HealthCheck> find =
@@ -63,8 +83,8 @@ public class HealthCheck extends Model {
     HealthCheck check = new HealthCheck();
     check.idKey = HealthCheckKey.create(universeUUID);
     check.customerId = customerId;
-    // Validate it is correct JSON.
-    check.detailsJson = Json.stringify(Json.parse(details));
+    Details features = Json.fromJson(Json.parse(details), Details.class);
+    check.detailsJson = features;
     // Save the object.
     check.save();
     keepOnlyLast(universeUUID, RECORD_LIMIT);

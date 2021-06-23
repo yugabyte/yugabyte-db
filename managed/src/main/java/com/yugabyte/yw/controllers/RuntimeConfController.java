@@ -12,13 +12,13 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -70,7 +70,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   private Result buildCachedResult() {
-    return ApiResponse.success(mutableKeys);
+    return YWResults.withData(mutableKeys);
   }
 
   private Set<String> buildMutableKeysSet() {
@@ -106,7 +106,7 @@ public class RuntimeConfController extends AuthenticatedController {
               + "specific overrides for current customer and one scope each for each universe and "
               + "provider.")
   public Result listScopes(UUID customerUUID) {
-    return ApiResponse.success(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
+    return YWResults.withData(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
   }
 
   @ApiOperation(
@@ -148,7 +148,7 @@ public class RuntimeConfController extends AuthenticatedController {
       }
     }
 
-    return ApiResponse.success(optScopedConfig.get());
+    return YWResults.withData(optScopedConfig.get());
   }
 
   @ApiOperation(value = "getKey", produces = "text/plain")
