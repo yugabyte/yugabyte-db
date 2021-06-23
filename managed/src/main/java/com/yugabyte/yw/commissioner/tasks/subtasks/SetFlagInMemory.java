@@ -10,32 +10,31 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
-import org.yb.tserver.Tserver.TabletServerErrorPB;
-
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClient;
 
+import javax.inject.Inject;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import play.api.Play;
-
+@Slf4j
 public class SetFlagInMemory extends ServerSubTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(SetFlagInMemory.class);
 
   // The gflag for tserver addresses.
   private static final String TSERVER_MASTER_ADDR_FLAG = "tserver_master_addrs";
 
   // The gflag for master addresses.
   private static final String MASTER_MASTER_ADDR_FLAG = "master_addresses";
+
+  @Inject
+  public SetFlagInMemory(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Parameters for wait task.
   public static class Params extends ServerSubTaskParams {
@@ -85,7 +84,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         }
       }
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     }
     closeClient(client);

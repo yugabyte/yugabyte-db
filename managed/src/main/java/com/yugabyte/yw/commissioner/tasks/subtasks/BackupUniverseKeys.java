@@ -9,22 +9,26 @@
  */
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.api.Play;
+import lombok.extern.slf4j.Slf4j;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import javax.inject.Inject;
 
+@Slf4j
 public class BackupUniverseKeys extends AbstractTaskBase {
-
-  public static final Logger LOG = LoggerFactory.getLogger(BackupUniverseKeys.class);
-
   // The encryption key manager
-  public EncryptionAtRestManager keyManager = null;
+  private final EncryptionAtRestManager keyManager;
+
+  @Inject
+  protected BackupUniverseKeys(
+      BaseTaskDependencies baseTaskDependencies, EncryptionAtRestManager keyManager) {
+    super(baseTaskDependencies);
+    this.keyManager = keyManager;
+  }
 
   @Override
   protected BackupTableParams taskParams() {
@@ -32,20 +36,14 @@ public class BackupUniverseKeys extends AbstractTaskBase {
   }
 
   @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
-  }
-
-  @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
     try {
-      LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
+      log.info("Running {}: hostPorts={}.", getName(), hostPorts);
       keyManager.backupUniverseKeyHistory(taskParams().universeUUID, taskParams().storageLocation);
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage(), e);
+      log.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);
     }
   }
