@@ -14,7 +14,7 @@ showAsideToc: true
 
 Try this:
 
-```plpgsql
+```sql
 set timezone = 'Atlantic/Faeroe';
 with v as (
   select 
@@ -29,6 +29,6 @@ from v;
 
 Now try this:
 
-```plpgsql
-{{% includeCode "include.sql" /%}}
+```sql
+{{% includeCode "include.sql" %}}
 ```
