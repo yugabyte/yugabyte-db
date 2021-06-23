@@ -67,6 +67,9 @@ METRIC_DECLARE_gauge_int64(is_raft_leader);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_CreateTablet);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_DeleteTablet);
 
+DECLARE_int32(ycql_num_tablets);
+DECLARE_int32(yb_num_shards_per_tserver);
+
 namespace yb {
 
 static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
@@ -603,6 +606,77 @@ TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
     Partition::FromPB(tablets[i].partition(), &p);
     ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
   }
+}
+
+TEST_F(CreateTableITest, TestNumTabletsFlags) {
+  // Start an RF 3.
+  const int kNumReplicas = 3;
+  const int kNumTablets = 6;
+  const string kNamespaceName = "my_keyspace";
+  const YQLDatabase kNamespaceType = YQL_DATABASE_CQL;
+  const string kTableName1 = "test-table1";
+  const string kTableName2 = "test-table2";
+  const string kTableName3 = "test-table3";
+
+  // Set the value of the flags.
+  FLAGS_ycql_num_tablets = 1;
+  FLAGS_yb_num_shards_per_tserver = 3;
+  // Start an RF3.
+  ASSERT_NO_FATALS(StartCluster({}, {}, kNumReplicas));
+
+  // Create a namespace for all the tables.
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kNamespaceName, kNamespaceType));
+  // One common schema for all the tables.
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+
+  // Test 1: Create a table with explicit tablet count.
+  YBTableName table_name1(kNamespaceType, kNamespaceName, kTableName1);
+  std::unique_ptr<client::YBTableCreator> table_creator1(client_->NewTableCreator());
+  ASSERT_OK(table_creator1->table_name(table_name1)
+                .schema(&client_schema)
+                .num_tablets(kNumTablets)
+                .wait(true)
+                .Create());
+
+  // Verify that number of tablets is 6 instead of 1.
+  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTablets(
+      table_name1, -1, &tablets, /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse));
+  ASSERT_EQ(tablets.size(), 6);
+
+  // Test 2: Create another table without explicit number of tablets.
+  YBTableName table_name2(kNamespaceType, kNamespaceName, kTableName2);
+  std::unique_ptr<client::YBTableCreator> table_creator2(client_->NewTableCreator());
+  ASSERT_OK(table_creator2->table_name(table_name2)
+                .schema(&client_schema)
+                .wait(true)
+                .Create());
+
+  // Verify that number of tablets is 1.
+  tablets.Clear();
+  ASSERT_OK(client_->GetTablets(
+      table_name2, -1, &tablets, /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Reset the value of the flag.
+  FLAGS_ycql_num_tablets = -1;
+
+  // Test 3: Create a table without explicit tablet count.
+  YBTableName table_name3(kNamespaceType, kNamespaceName, kTableName3);
+  std::unique_ptr<client::YBTableCreator> table_creator3(client_->NewTableCreator());
+  ASSERT_OK(table_creator3->table_name(table_name3)
+                .schema(&client_schema)
+                .wait(true)
+                .Create());
+
+  // Verify that number of tablets is 6 instead of 1.
+  tablets.Clear();
+  ASSERT_OK(client_->GetTablets(
+      table_name3, -1, &tablets, /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse));
+  ASSERT_EQ(tablets.size(), 9);
 }
 
 }  // namespace yb
