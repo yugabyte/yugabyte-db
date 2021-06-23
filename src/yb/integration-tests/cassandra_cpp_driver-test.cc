@@ -246,7 +246,8 @@ class CppCassandraDriverTestIndexSlower : public CppCassandraDriverTestIndex {
   std::vector<std::string> ExtraTServerFlags() override {
     auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
     flags.push_back("--TEST_slowdown_backfill_by_ms=3000");
-    flags.push_back("--TEST_yb_num_total_tablets=1");
+    flags.push_back("--ycql_num_tablets=1");
+    flags.push_back("--ysql_num_tablets=1");
     return flags;
   }
 
@@ -351,7 +352,8 @@ class CppCassandraDriverTestIndexNonResponsiveTServers : public CppCassandraDriv
     return {
         "--disable_index_backfill=false",
         "--enable_load_balancing=false",
-        "--TEST_yb_num_total_tablets=18",
+        "--ycql_num_tablets=18",
+        "--ysql_num_tablets=18",
         // Really aggressive timeouts.
         "--index_backfill_rpc_max_retries=1",
         "--index_backfill_rpc_timeout_ms=1",
@@ -1751,7 +1753,8 @@ class CppCassandraDriverTestSlowTServer : public CppCassandraDriverTest {
   std::vector<std::string> ExtraTServerFlags() override {
     auto flags = CppCassandraDriverTest::ExtraTServerFlags();
     flags.push_back("--TEST_slowdown_backfill_by_ms=5000");
-    flags.push_back("--TEST_yb_num_total_tablets=1");
+    flags.push_back("--ycql_num_tablets=1");
+    flags.push_back("--ysql_num_tablets=1");
     return flags;
   }
 };
