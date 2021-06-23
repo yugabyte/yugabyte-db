@@ -1,37 +1,32 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.YBClient;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import javax.inject.Inject;
 
-import play.api.Play;
-
+@Slf4j
 public class ChangeMasterConfig extends AbstractTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(ChangeMasterConfig.class);
-
-  // The YB client to use.
-  public YBClientService ybService;
-
-  // Sleep time in each iteration while trying to check on master leader.
-  public final long PER_ATTEMPT_SLEEP_TIME_MS = 100;
+  @Inject
+  protected ChangeMasterConfig(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Create an enum specifying the operation type.
   public enum OpType {
@@ -54,12 +49,6 @@ public class ChangeMasterConfig extends AbstractTaskBase {
   }
 
   @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
-  }
-
-  @Override
   public String getName() {
     return super.getName()
         + "("
@@ -79,7 +68,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     // Get the master addresses.
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    LOG.info(
+    log.info(
         "Running {}: universe = {}, masterAddress = {}",
         getName(),
         taskParams().universeUUID,
@@ -95,7 +84,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
     boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
-    LOG.info(
+    log.info(
         "Starting changeMasterConfig({}:{}, op={}, useHost={})",
         node.cloudInfo.private_ip,
         node.masterRpcPort,
@@ -119,7 +108,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
               + node.cloudInfo.private_ip
               + ":"
               + node.masterRpcPort;
-      LOG.error(msg, e);
+      log.error(msg, e);
       if (!taskParams().useHostPort) {
         throw new RuntimeException(msg);
       } else {
@@ -133,7 +122,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     // If there was an error, throw an exception.
     if (response != null && response.hasError()) {
       String msg = "ChangeConfig response has error " + response.errorMessage();
-      LOG.error(msg);
+      log.error(msg);
       throw new RuntimeException(msg);
     }
   }

@@ -7,22 +7,23 @@ import akka.actor.Scheduler;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.HealthManager.ClusterInfo;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.Alert.TargetType;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.*;
 import io.ebean.Model;
 import io.prometheus.client.CollectorRegistry;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
@@ -68,7 +69,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Mock private EmailHelper mockEmailHelper;
 
-  @Mock private AlertManager mockAlertManager;
+  @InjectMocks private AlertService alertService;
 
   @Mock Config mockRuntimeConfig;
 
@@ -107,7 +108,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             testRegistry,
             report,
             mockEmailHelper,
-            mockAlertManager,
+            alertService,
             null,
             null) {
           @Override
@@ -537,16 +538,17 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
         .thenReturn(EmailFixtures.createSmtpData());
 
-    assertEquals(0, Alert.list(defaultCustomer.uuid).size());
+    AlertFilter filter = AlertFilter.builder().customerUuid(defaultCustomer.getUuid()).build();
+    assertEquals(0, alertService.list(filter).size());
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
             u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
     verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     // To check that alert is created.
-    List<Alert> alerts = Alert.list(defaultCustomer.uuid);
+    List<Alert> alerts = alertService.list(filter);
     assertNotEquals(0, alerts.size());
-    assertEquals("Error sending Health check email: TestException", alerts.get(0).message);
+    assertEquals("Error sending Health check email: TestException", alerts.get(0).getMessage());
   }
 
   @Test
@@ -586,45 +588,41 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     // alert1 is in state ACTIVE.
     Alert alert1 =
-        Alert.create(
-            defaultCustomer.uuid,
-            u.universeUUID,
-            TargetType.UniverseType,
-            HealthChecker.ALERT_ERROR_CODE,
-            "Warning",
-            "Test 1");
-    alert1.setState(State.ACTIVE);
-    alert1.save();
-    // alert1 is in state CREATED.
+        new Alert()
+            .setCustomerUUID(defaultCustomer.uuid)
+            .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
+            .setType(KnownAlertTypes.Warning)
+            .setMessage("Test 1")
+            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels())
+            .setState(State.ACTIVE);
+    alert1 = alertService.create(alert1);
+    // alert2 is in state CREATED.
     Alert alert2 =
-        Alert.create(
-            defaultCustomer.uuid,
-            u.universeUUID,
-            TargetType.UniverseType,
-            HealthChecker.ALERT_ERROR_CODE,
-            "Warning",
-            "Test 2");
+        new Alert()
+            .setCustomerUUID(defaultCustomer.uuid)
+            .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
+            .setType(KnownAlertTypes.Warning)
+            .setMessage("Test 2")
+            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
+    alert2 = alertService.create(alert2);
     // alert3 should not be updated as it has another errCode.
     Alert alert3 =
-        Alert.create(
-            defaultCustomer.uuid,
-            u.universeUUID,
-            TargetType.UniverseType,
-            "Another Error Code",
-            "Warning",
-            "Test 3");
+        new Alert()
+            .setCustomerUUID(defaultCustomer.uuid)
+            .setErrCode(KnownAlertCodes.TASK_FAILURE)
+            .setType(KnownAlertTypes.Warning)
+            .setMessage("Test 3")
+            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
+    alert3 = alertService.create(alert3);
 
-    doCallRealMethod()
-        .when(mockAlertManager)
-        .resolveAlerts(defaultCustomer.uuid, u.universeUUID, HealthChecker.ALERT_ERROR_CODE);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
             u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
-    assertEquals(State.RESOLVED, Alert.get(alert1.getUuid()).getState());
-    assertEquals(State.RESOLVED, Alert.get(alert2.getUuid()).getState());
+    assertEquals(State.RESOLVED, alertService.get(alert1.getUuid()).getTargetState());
+    assertEquals(State.RESOLVED, alertService.get(alert2.getUuid()).getTargetState());
     // Alert3 is not related to health-check, so it should not be updated.
-    assertNotEquals(State.RESOLVED, Alert.get(alert3.getUuid()).getState());
+    assertNotEquals(State.RESOLVED, alertService.get(alert3.getUuid()).getTargetState());
   }
 
   @Test
@@ -645,11 +643,16 @@ public class HealthCheckerTest extends FakeDBApplication {
         new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
     verify(mockHealthManager, never()).runCommand(any(), any(), any());
 
-    List<Alert> alerts =
-        Alert.list(defaultCustomer.uuid, HealthChecker.ALERT_ERROR_CODE, u.universeUUID);
+    AlertFilter filter =
+        AlertFilter.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .label(KnownAlertLabels.TARGET_UUID, u.universeUUID.toString())
+            .errorCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
+            .build();
+    List<Alert> alerts = alertService.list(filter);
     assertEquals(1, alerts.size());
     assertEquals(
-        alerts.get(0).message,
+        alerts.get(0).getMessage(),
         String.format(
             "Can't run health check for the universe due to missing IP address for node %s.",
             nd.nodeName));

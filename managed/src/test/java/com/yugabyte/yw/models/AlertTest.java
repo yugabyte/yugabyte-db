@@ -1,284 +1,194 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.Alert.TargetType;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
 import org.hamcrest.Matchers;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 import java.util.List;
-import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.hasSize;
-import static org.junit.Assert.*;
+import static org.hamcrest.Matchers.*;
+import static org.junit.Assert.assertTrue;
 
 @RunWith(JUnitParamsRunner.class)
 public class AlertTest extends FakeDBApplication {
 
-  private static final String TEST_ALERT_CODE = "TEST_ALERT_1";
-
-  private static final String TEST_ALERT_CODE_2 = "TEST_ALERT_2";
-
-  private static final String TEST_LABEL = "test_label";
-  private static final String TEST_LABEL_VALUE = "test_value";
-
-  private static final String TEST_LABEL_2 = "test_label_2";
-  private static final String TEST_LABEL_VALUE_2 = "test_value2";
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private Customer cust1;
 
-  private Customer cust2;
+  @InjectMocks private AlertService alertService;
 
   @Before
   public void setUp() {
     cust1 = ModelFactory.testCustomer("Customer 1");
-    cust2 = ModelFactory.testCustomer("Customer 2");
   }
 
   @Test
-  public void testAddAndGet() {
+  public void testAddAndQueryByUuid() {
     AlertDefinition definition = createDefinition();
-    Alert alert = createTestAlert(definition);
+    Alert alert = createAlert(definition);
 
-    Alert queriedAlert = Alert.get(alert.getUuid());
+    alert = alertService.create(alert);
+
+    Alert queriedAlert = alertService.get(alert.getUuid());
 
     assertTestAlert(queriedAlert, definition);
   }
 
   @Test
+  public void testQueryByLotUuids() {
+    AlertDefinition definition = createDefinition();
+    List<Alert> alerts =
+        Stream.generate(() -> createAlert(definition))
+            .limit(CommonUtils.DB_MAX_IN_CLAUSE_ITEMS + 1)
+            .collect(Collectors.toList());
+
+    List<Alert> created = alertService.save(alerts);
+
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .uuids(created.stream().map(Alert::getUuid).collect(Collectors.toList()))
+            .build();
+    List<Alert> queriedAlerts = alertService.list(alertFilter);
+
+    assertThat(queriedAlerts, hasSize(CommonUtils.DB_MAX_IN_CLAUSE_ITEMS + 1));
+
+    alertFilter =
+        AlertFilter.builder()
+            .excludeUuids(created.stream().map(Alert::getUuid).collect(Collectors.toList()))
+            .build();
+    queriedAlerts = alertService.list(alertFilter);
+
+    assertThat(queriedAlerts, empty());
+  }
+
+  @Test
   public void testUpdateAndQueryByLabel() {
     AlertDefinition definition = createDefinition();
-    Alert alert = createTestAlert(definition);
+    Alert alert = createAlert(definition);
 
-    alert.update("New message");
+    alert.setMessage("New Message");
+    alert = alertService.create(alert);
 
-    AlertLabel oldLabel1 = new AlertLabel(alert, TEST_LABEL, TEST_LABEL_VALUE);
-    AlertLabel oldLabel2 = new AlertLabel(alert, TEST_LABEL_2, TEST_LABEL_VALUE_2);
-    List<Alert> queriedAlerts = Alert.get(cust1.uuid, oldLabel1);
+    AlertLabel oldLabel1 =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.UNIVERSE_UUID.labelName(),
+            definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
+    AlertLabel oldLabel2 =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.UNIVERSE_NAME.labelName(),
+            definition.getLabelValue(KnownAlertLabels.UNIVERSE_NAME));
+    AlertFilter filter = AlertFilter.builder().customerUuid(cust1.uuid).label(oldLabel1).build();
+    List<Alert> queriedAlerts = alertService.list(filter);
 
     assertThat(queriedAlerts, hasSize(1));
     Alert queriedAlert = queriedAlerts.get(0);
-    assertThat(queriedAlert.message, is("New message"));
-    assertThat(queriedAlert.getLabels(), containsInAnyOrder(oldLabel1, oldLabel2));
+    assertThat(queriedAlert.getMessage(), is("New Message"));
+    assertThat(queriedAlert.getLabels(), hasItems(oldLabel1, oldLabel2));
   }
 
   @Test
   public void testDelete() {
     AlertDefinition definition = createDefinition();
-    Alert alert = createTestAlert(definition);
-
+    Alert alert = createAlert(definition);
+    alert = alertService.create(alert);
     alert.delete();
 
-    Alert queriedAlert = Alert.get(alert.getUuid());
+    Alert queriedAlert = alertService.get(alert.getUuid());
 
     assertThat(queriedAlert, Matchers.nullValue());
   }
 
   @Test
-  public void testAlertsSameCustomer() {
-    Alert alert1 = Alert.create(cust1.uuid, TEST_ALERT_CODE, "Warning", "Testing alert 1.");
-    Alert alert2 = Alert.create(cust1.uuid, TEST_ALERT_CODE_2, "Warning", "Testing alert 2.");
-    List<Alert> cust1Alerts = Alert.list(cust1.uuid);
-    List<Alert> cust2Alerts = Alert.list(cust2.uuid);
-
-    assertThat(cust1Alerts, hasItem(alert1));
-    assertThat(cust1Alerts, hasItem(alert2));
-
-    assertThat(cust2Alerts, not(hasItem(alert1)));
-    assertThat(cust2Alerts, not(hasItem(alert2)));
-  }
-
-  @Test
   public void testAlertsDiffCustomer() {
-    Alert alert1 = Alert.create(cust1.uuid, TEST_ALERT_CODE, "Warning", "Testing alert 1.");
-    Alert alert2 = Alert.create(cust2.uuid, TEST_ALERT_CODE_2, "Warning", "Testing alert 2.");
-    List<Alert> cust1Alerts = Alert.list(cust1.uuid);
-    List<Alert> cust2Alerts = Alert.list(cust2.uuid);
+    AlertDefinition definition = createDefinition();
+    Alert alert1 = ModelFactory.createAlert(cust1, definition);
+
+    Customer cust2 = ModelFactory.testCustomer();
+    Universe universe2 = ModelFactory.createUniverse(cust2.getCustomerId());
+    AlertDefinition definition2 = ModelFactory.createAlertDefinition(cust2, universe2);
+    Alert alert2 = ModelFactory.createAlert(cust2, definition2);
+
+    AlertFilter filter1 = AlertFilter.builder().customerUuid(cust1.getUuid()).build();
+    List<Alert> cust1Alerts = alertService.list(filter1);
+
+    AlertFilter filter2 = AlertFilter.builder().customerUuid(cust2.getUuid()).build();
+    List<Alert> cust2Alerts = alertService.list(filter2);
 
     assertThat(cust1Alerts, hasItem(alert1));
-    assertThat(cust1Alerts, not(hasItem(alert2)));
+    assertThat(cust2Alerts, hasItem(alert2));
 
     assertThat(cust2Alerts, not(hasItem(alert1)));
-    assertThat(cust2Alerts, hasItem(alert2));
+    assertThat(cust1Alerts, not(hasItem(alert2)));
   }
 
   @Test
-  @Parameters(method = "parametersToTestAlertsTypes")
-  public void testAlertsTypes(Alert.TargetType alertType, UUID uuid, Class<?> claz) {
-    Alert alert =
-        Alert.create(cust1.uuid, uuid, alertType, TEST_ALERT_CODE, "Warning", "Testing alert.");
-    assertNotNull(alert.getUuid());
-    assertEquals(cust1.uuid, alert.customerUUID);
-    assertEquals(uuid, alert.targetUUID);
-    assertEquals("Warning", alert.type);
-    assertEquals("Testing alert.", alert.message);
-  }
-
-  @SuppressWarnings("unused")
-  private Object[] parametersToTestAlertsTypes() {
-    // @formatter:off
-    return new Object[] {
-      new Object[] {Alert.TargetType.TaskType, UUID.randomUUID(), AbstractTaskBase.class},
-      new Object[] {Alert.TargetType.UniverseType, UUID.randomUUID(), Universe.class},
-    };
-    // @formatter:on
-  }
-
-  @Test
-  public void testExists_ErrCode_Exists() {
-    assertFalse(Alert.exists(TEST_ALERT_CODE));
-    Alert.create(cust1.uuid, TEST_ALERT_CODE, "Warning", "Testing alert 1.");
-    assertTrue(Alert.exists(TEST_ALERT_CODE));
-  }
-
-  @Test
-  public void testExists_ErrCode_DoesntExists() {
-    assertFalse(Alert.exists(TEST_ALERT_CODE));
-    Alert.create(cust1.uuid, TEST_ALERT_CODE_2, "Warning", "Testing alert 2.");
-    assertFalse(Alert.exists(TEST_ALERT_CODE));
-  }
-
-  @Test
-  public void testList_CustomerUUID_ErrCode_TargetUUID() {
-    UUID targetUUID = UUID.randomUUID();
-    assertEquals(0, Alert.list(cust1.uuid, TEST_ALERT_CODE, targetUUID).size());
-
-    Alert alert1 =
-        Alert.create(
-            cust1.uuid,
-            targetUUID,
-            TargetType.UniverseType,
-            TEST_ALERT_CODE,
-            "Warning",
-            "Testing alert 1.");
-    // One sec pause to have alert2.createTime > alert1.createTime.
-    try {
-      Thread.sleep(1000);
-    } catch (InterruptedException e) {
-    }
-    Alert alert2 =
-        Alert.create(
-            cust1.uuid,
-            targetUUID,
-            TargetType.UniverseType,
-            TEST_ALERT_CODE,
-            "Warning",
-            "Testing alert 1.");
-
-    Alert.create(
-        cust1.uuid,
-        targetUUID,
-        TargetType.UniverseType,
-        TEST_ALERT_CODE_2,
-        "Warning",
-        "Testing alert 2.");
-    Alert.create(
-        cust2.uuid,
-        targetUUID,
-        TargetType.UniverseType,
-        TEST_ALERT_CODE,
-        "Warning",
-        "Testing alert 3.");
-    Alert.create(
-        cust2.uuid,
-        targetUUID,
-        TargetType.UniverseType,
-        TEST_ALERT_CODE_2,
-        "Warning",
-        "Testing alert 4.");
-    Alert.create(
-        cust1.uuid,
-        UUID.randomUUID(),
-        TargetType.UniverseType,
-        TEST_ALERT_CODE,
-        "Warning",
-        "Testing alert 5.");
-
-    List<Alert> list = Alert.list(cust1.uuid, TEST_ALERT_CODE, targetUUID);
-    assertEquals(2, list.size());
-    assertEquals(alert2, list.get(0));
-    assertEquals(alert1, list.get(1));
-  }
-
-  @Test
-  public void testGetActiveCustomerAlerts() {
-    UUID targetUUID = UUID.randomUUID();
+  public void testQueryByVariousFilters() {
     AlertDefinition definition = createDefinition();
+    Alert alert1 = ModelFactory.createAlert(cust1, definition);
 
-    Alert alert1 =
-        Alert.create(
-            cust1.uuid,
-            targetUUID,
-            TargetType.UniverseType,
-            TEST_ALERT_CODE,
-            "Warning",
-            "Testing alert 1.");
-    alert1.setDefinitionUUID(definition.getUuid());
-    alert1.save();
+    Customer cust2 = ModelFactory.testCustomer();
+    Universe universe2 = ModelFactory.createUniverse(cust2.getCustomerId());
+    AlertDefinition definition2 = ModelFactory.createAlertDefinition(cust2, universe2);
+    Alert alert2 = ModelFactory.createAlert(cust2, definition2);
+    alert2.setState(Alert.State.RESOLVED);
+    alert2.setTargetState(Alert.State.RESOLVED);
+    alert2.setErrCode(KnownAlertCodes.ALERT_MANAGER_FAILURE.name());
 
-    Alert alert2 =
-        Alert.create(
-            cust1.uuid,
-            targetUUID,
-            TargetType.UniverseType,
-            TEST_ALERT_CODE,
-            "Warning",
-            "Testing alert 2.");
-    alert2.setState(State.ACTIVE);
-    alert2.setDefinitionUUID(definition.getUuid());
-    alert2.save();
+    alertService.save(alert2);
 
-    assertEquals(2, Alert.getActiveCustomerAlerts(cust1.uuid, definition.getUuid()).size());
+    AlertFilter filter = AlertFilter.builder().customerUuid(cust1.getUuid()).build();
+    queryAndAssertByFilter(filter, definition);
+
+    filter = AlertFilter.builder().states(Alert.State.CREATED).build();
+    queryAndAssertByFilter(filter, definition);
+
+    filter = AlertFilter.builder().targetStates(Alert.State.ACTIVE).build();
+    queryAndAssertByFilter(filter, definition);
+
+    filter =
+        AlertFilter.builder()
+            .label(
+                KnownAlertLabels.UNIVERSE_UUID,
+                definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID))
+            .build();
+    queryAndAssertByFilter(filter, definition);
+
+    filter = AlertFilter.builder().errorCode(KnownAlertCodes.CUSTOMER_ALERT).build();
+    queryAndAssertByFilter(filter, definition);
+
+    filter = AlertFilter.builder().definitionUuids(definition.getUuid()).build();
+    queryAndAssertByFilter(filter, definition);
+
+    filter = AlertFilter.builder().excludeUuids(alert2.getUuid()).build();
+    queryAndAssertByFilter(filter, definition);
   }
 
-  @Test
-  public void testGetActiveCustomerAlertsByTargetUuid() {
-    UUID targetUUID = UUID.randomUUID();
-    Alert.create(
-        cust1.uuid,
-        targetUUID,
-        TargetType.UniverseType,
-        TEST_ALERT_CODE,
-        "Warning",
-        "Testing alert 1.");
-
-    Alert alert2 =
-        Alert.create(
-            cust1.uuid,
-            targetUUID,
-            TargetType.UniverseType,
-            TEST_ALERT_CODE,
-            "Warning",
-            "Testing alert 2.");
-    alert2.setState(State.ACTIVE);
-    alert2.save();
-
-    Alert alert3 =
-        Alert.create(
-            cust1.uuid,
-            UUID.randomUUID(),
-            TargetType.UniverseType,
-            TEST_ALERT_CODE,
-            "Warning",
-            "Testing alert 3.");
-    alert3.setState(State.ACTIVE);
-    alert3.save();
-
-    List<Alert> result = Alert.getActiveCustomerAlertsByTargetUuid(cust1.uuid, targetUUID);
-
-    assertEquals(2, result.size());
-    assertFalse(result.contains(alert3));
+  private void queryAndAssertByFilter(AlertFilter filter, AlertDefinition definition) {
+    List<Alert> alerts = alertService.list(filter);
+    assertThat(alerts, hasSize(1));
+    Alert alert = alerts.get(0);
+    assertTestAlert(alert, definition);
   }
 
   public AlertDefinition createDefinition() {
@@ -286,32 +196,55 @@ public class AlertTest extends FakeDBApplication {
     return ModelFactory.createAlertDefinition(cust1, universe);
   }
 
-  public Alert createTestAlert(AlertDefinition definition) {
-    AlertLabel label = new AlertLabel(TEST_LABEL, TEST_LABEL_VALUE);
-    AlertLabel label2 = new AlertLabel(TEST_LABEL_2, TEST_LABEL_VALUE_2);
-    return Alert.create(
-        cust1.uuid,
-        definition.getUniverseUUID(),
-        TargetType.UniverseType,
-        TEST_ALERT_CODE,
-        "Warning",
-        "Testing alert 1.",
-        true,
-        definition.getUuid(),
-        ImmutableList.of(label, label2));
+  private static Alert createAlert(AlertDefinition definition) {
+    List<AlertLabel> labels =
+        definition
+            .getEffectiveLabels()
+            .stream()
+            .map(l -> new AlertLabel(l.getName(), l.getValue()))
+            .collect(Collectors.toList());
+    return new Alert()
+        .setCustomerUUID(definition.getCustomerUUID())
+        .setErrCode(KnownAlertCodes.CUSTOMER_ALERT)
+        .setType(KnownAlertTypes.Error)
+        .setMessage("Universe on fire!")
+        .setSendEmail(true)
+        .setDefinitionUUID(definition.getUuid())
+        .setLabels(labels);
   }
 
   private void assertTestAlert(Alert alert, AlertDefinition definition) {
-    AlertLabel label = new AlertLabel(alert, TEST_LABEL, TEST_LABEL_VALUE);
-    AlertLabel label2 = new AlertLabel(alert, TEST_LABEL_2, TEST_LABEL_VALUE_2);
-    assertThat(alert.customerUUID, is(cust1.uuid));
-    assertThat(alert.targetUUID, is(definition.getUniverseUUID()));
-    assertThat(alert.targetType, is(TargetType.UniverseType));
-    assertThat(alert.errCode, is(TEST_ALERT_CODE));
-    assertThat(alert.type, is("Warning"));
-    assertThat(alert.message, is("Testing alert 1."));
+    AlertLabel label =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.UNIVERSE_UUID.labelName(),
+            definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
+    AlertLabel label2 =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.UNIVERSE_NAME.labelName(),
+            definition.getLabelValue(KnownAlertLabels.UNIVERSE_NAME));
+    AlertLabel label3 =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.TARGET_UUID.labelName(),
+            definition.getLabelValue(KnownAlertLabels.TARGET_UUID));
+    AlertLabel label4 =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.TARGET_NAME.labelName(),
+            definition.getLabelValue(KnownAlertLabels.TARGET_NAME));
+    AlertLabel label5 =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.TARGET_TYPE.labelName(),
+            definition.getLabelValue(KnownAlertLabels.TARGET_TYPE));
+    assertThat(alert.getCustomerUUID(), is(cust1.uuid));
+    assertThat(alert.getErrCode(), is(KnownAlertCodes.CUSTOMER_ALERT.name()));
+    assertThat(alert.getType(), is(KnownAlertTypes.Error.name()));
+    assertThat(alert.getMessage(), is("Universe on fire!"));
     assertThat(alert.getDefinitionUUID(), equalTo(definition.getUuid()));
-    assertTrue(alert.sendEmail);
-    assertThat(alert.getLabels(), containsInAnyOrder(label, label2));
+    assertTrue(alert.isSendEmail());
+    assertThat(alert.getLabels(), hasItems(label, label2, label3, label4, label5));
   }
 }

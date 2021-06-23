@@ -108,7 +108,7 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.2.1
+        version: v2.27.1
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
