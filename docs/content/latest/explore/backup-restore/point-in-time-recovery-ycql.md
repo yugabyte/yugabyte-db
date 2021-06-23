@@ -208,7 +208,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
 ### Restore from a relative time
 
-In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago". In this example, you'll delete some data from the existing `employees` table, then restore the state of the database to what it was five minutes prior.
+In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago".
 
 When you specify a relative time, you can specify any or all of _days_, _hours_, _minutes_, and _seconds_. For example:
 
@@ -226,78 +226,7 @@ Relative times can be in any of the following formats (again, note that you can 
 
 **Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
 
-1. Wait at least five minutes after you complete the steps in the previous section. This is so that you can easily use a known relative time for the restore.
-
-1. From the YCQL shell, remove employee 1223 from the table:
-
-    ```sql
-    ycqlsh:pitr> delete from employees where employee_no=1223;
-
-    ycqlsh:pitr> select * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary 
-    -------------+----------------+------------+--------
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-
-    (3 rows)
-    ```
-
-1. At a terminal prompt, restore the snapshot you created earlier:
-
-    ```sh
-    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca minus 5m
-    ```
-
-    ```output
-    {
-        "snapshot_id": "6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30",
-        "restoration_id": "f4256380-4f63-4937-830f-5be135d97717"
-    }
-    ```
-
-1. Verify the restoration is in `RESTORED` state:
-
-    ```sh
-    $ bin/yb-admin list_snapshots
-    ```
-
-    ```output
-    Snapshot UUID                         State
-    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
-    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
-    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
-    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
-    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
-    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
-    04b1e139-2c78-411d-bf0d-f8ee81263912  COMPLETE
-    6acaed76-3cf6-4a9e-93ab-2a6c5a9aee30  COMPLETE
-    42e84f67-d517-4ed6-b571-d3b11059cfa6  COMPLETE
-    395e3e97-c259-46dd-a3ef-1b5441c6de10  COMPLETE
-    Restoration UUID                      State
-    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
-    f4256380-4f63-4937-830f-5be135d97717  RESTORED
-    ```
-
-1. Verify the data is restored, and employee 1223 is back:
-
-    ```sql
-    ycqlsh:pitr> select * from employees;
-    ```
-
-    ```output
-     employee_no | name           | department | salary
-    -------------+----------------+------------+--------
-            1223 |   Lucille Ball | Operations |  70000
-            1224 | John Zimmerman |      Sales |  60000
-            1221 |     John Smith |  Marketing |  50000
-            1222 |    Bette Davis |      Sales |  55000
-
-    (4 rows)
-    ```
+Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-admin/#restore-snapshot-schedule) for more details.
 
 ## Undo metadata changes
 

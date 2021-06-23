@@ -207,8 +207,20 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago".
 
-When you specify a relative time, you can specify any or all of _days_, _hours_, _minutes_, and _seconds_.
+When you specify a relative time, you can specify any or all of _days_, _hours_, _minutes_, and _seconds_. For example:
 
-**Careful!** If you specify a time prior to when you created the table, the restore will _leave the table intact, but empty_.
+* `"5m"` to restore from five minutes ago
+* `"1h"` to restore from one hour ago
+* `"3d"` to restore from three days ago
+* `"1h 5m"` to restore from one hour and five minutes ago
+
+Relative times can be in any of the following formats (again, note that you can specify any or all of days, hours, minutes, and seconds):
+
+* ISO 8601: `3d 4h 5m 6s`
+* Abbreviated PostgreSQL: `3 d 4 hrs 5 mins 6 secs`
+* Traditional PostgreSQL: `3 days 4 hours 5 minutes 6 seconds`
+* SQL standard: `D H:M:S`
+
+**Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
 
 Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-admin/#restore-snapshot-schedule) for more details.
