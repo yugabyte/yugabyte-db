@@ -68,7 +68,6 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
-#include "yb/util/user.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
 #include "yb/util/spinlock_profiling.h"
@@ -224,18 +223,6 @@ const std::string RpcServerBase::get_hostname() const {
   } else {
     YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current host name: " << hostname.status();
     return "unknown_hostname";
-  }
-}
-
-const std::string RpcServerBase::get_current_user() const {
-  string user_name;
-  auto s = GetLoggedInUser(&user_name);
-  if (s.ok()) {
-    YB_LOG_FIRST_N(INFO, 1) << "Logged in user: " << user_name;
-    return user_name;
-  } else {
-    YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current user";
-    return "unknown_user";
   }
 }
 

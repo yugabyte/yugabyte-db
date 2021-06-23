@@ -99,11 +99,9 @@ class RpcServerBase {
   const ServerBaseOptions& options() const {
     return options_;
   }
+
   // Return the hostname of this server
   const std::string get_hostname() const;
-
-  // Return the current user logged in to this server
-  const std::string get_current_user() const;
 
  protected:
   RpcServerBase(std::string name,
