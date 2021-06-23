@@ -1745,7 +1745,7 @@ public class UniverseController extends AuthenticatedController {
     try {
       List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
       for (HealthCheck check : checks) {
-        detailsList.add(Json.stringify(Json.parse(check.detailsJson)));
+        detailsList.add(check.detailsJson.toString());
       }
     } catch (RuntimeException e) {
       // TODO(API) dig deeper and find root cause of RuntimeException
