@@ -6,6 +6,8 @@ description: Restore data from a specific point in time in YugabyteDB for YSQL
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
 - /latest/manage/backup-restore/point-in-time-restore
+- /latest/manage/backup-restore/point-in-time-restore-ysql
+- /latest/manage/backup-restore/point-in-time-restore-ycql
 menu:
   latest:
     identifier: point-in-time-recovery
