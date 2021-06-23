@@ -628,9 +628,6 @@ SELECT *
 NOTICE:  AUDIT: SESSION,9,1,READ,SELECT,TABLE,public.account,"CREATE TABLE test.account_copy AS
 SELECT *
   FROM account;",<none>
-NOTICE:  AUDIT: SESSION,9,1,WRITE,INSERT,TABLE,test.account_copy,"CREATE TABLE test.account_copy AS
-SELECT *
-  FROM account;",<none>
 NOTICE:  AUDIT: SESSION,9,2,DDL,CREATE TABLE AS,TABLE,test.account_copy,"CREATE TABLE test.account_copy AS
 SELECT *
   FROM account;",<none>
@@ -1166,7 +1163,6 @@ DROP EXTENSION pgaudit;
 CREATE TABLE tmp (id int, data text);
 CREATE TABLE tmp2 AS (SELECT * FROM tmp);
 NOTICE:  AUDIT: SESSION,68,1,READ,SELECT,TABLE,public.tmp,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
-NOTICE:  AUDIT: SESSION,68,1,WRITE,INSERT,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
 DROP TABLE tmp;
 DROP TABLE tmp2;
 --

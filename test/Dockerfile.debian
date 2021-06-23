@@ -5,7 +5,7 @@ ARG UID=1000
 ARG GID=1000
 
 # Setup environment
-ENV PGVERSION=13
+ENV PGVERSION=14
 ENV PGBIN=/usr/lib/postgresql/${PGVERSION}/bin
 ENV PGDATA="/var/lib/postgresql/${PGVERSION}/test"
 ENV PATH="${PATH}:${PGBIN}"
@@ -20,7 +20,7 @@ RUN useradd -m -u $UID -g $GID -o -s /bin/bash postgres
 
 # Install PostgreSQL
 RUN RELEASE_CODENAME=`lsb_release -c | awk '{print $2}'` && \
-    echo 'deb http://apt.postgresql.org/pub/repos/apt/ '${RELEASE_CODENAME?}'-pgdg main' | \
+    echo 'deb http://apt.postgresql.org/pub/repos/apt/ '${RELEASE_CODENAME?}'-pgdg main 14' | \
         tee -a /etc/apt/sources.list.d/pgdg.list
 RUN APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1 && \
     wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -

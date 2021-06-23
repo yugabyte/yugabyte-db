@@ -56,6 +56,8 @@ Aside from bug fixes, no further development is planned for stable branches. New
 
 pgAudit versions relate to PostgreSQL major versions as follows:
 
+- **pgAudit v1.6.X** is intended to support PostgreSQL 14.
+
 - **pgAudit v1.5.X** is intended to support PostgreSQL 13.
 
 - **pgAudit v1.4.X** is intended to support PostgreSQL 12.
