@@ -11,21 +11,21 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.TableTaskParams;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-import play.api.Play;
 
+import javax.inject.Inject;
+
+@Slf4j
 public class DeleteTableFromUniverse extends AbstractTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(DeleteTableFromUniverse.class);
-
-  // The YB client to use.
-  public YBClientService ybService;
+  @Inject
+  protected DeleteTableFromUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends TableTaskParams {
     // The addresses of the masters of the universe that table to be dropped is in.
@@ -46,12 +46,6 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
   }
 
   @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
-  }
-
-  @Override
   public void run() {
     Params params = taskParams();
     Universe universe = Universe.getOrBadRequest(params.universeUUID);
@@ -60,10 +54,10 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
     try {
       client = ybService.getClient(params.masterAddresses, certificate);
       client.deleteTable(params.keyspace, params.tableName);
-      LOG.info("Dropped table {}", params.getFullName());
+      log.info("Dropped table {}", params.getFullName());
     } catch (Exception e) {
       String msg = "Error " + e.getMessage() + " while dropping table " + params.getFullName();
-      LOG.error(msg, e);
+      log.error(msg, e);
       throw new RuntimeException(msg);
     } finally {
       ybService.closeClient(client, params.masterAddresses);

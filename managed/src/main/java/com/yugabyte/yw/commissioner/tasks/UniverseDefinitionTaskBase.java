@@ -2,62 +2,52 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 import com.google.common.collect.ImmutableSet;
-
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Universe;
-import org.apache.commons.lang3.StringUtils;
-import com.yugabyte.yw.common.NodeManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import play.Configuration;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import play.Configuration;
+
+import javax.inject.Inject;
+import java.time.Duration;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Abstract base class for all tasks that create/edit the universe definition. These include the
  * create universe task and all forms of edit universe tasks. Note that the delete universe task
  * extends the UniverseTaskBase, as it does not depend on the universe definition.
  */
+@Slf4j
 public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UniverseDefinitionTaskBase.class);
+
+  @Inject
+  protected UniverseDefinitionTaskBase(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Enum for specifying the universe operation type.
   public enum UniverseOpType {
@@ -135,7 +125,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   "Universe "
                       + taskParams().universeUUID
                       + " has not been marked as being updated.";
-              LOG.error(msg);
+              log.error(msg);
               throw new RuntimeException(msg);
             }
             if (!isReadOnlyCreate) {
@@ -171,7 +161,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
     Universe universe = saveUniverseDetails(updater);
-    LOG.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
+    log.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
 
     if (updateOnpremNodes) {
       updateOnPremNodeUuids(universe);
@@ -197,7 +187,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
         };
     saveUniverseDetails(updater);
-    LOG.info("Universe {} : Delete cluster {} done.", taskParams().universeUUID, clusterUUID);
+    log.info("Universe {} : Delete cluster {} done.", taskParams().universeUUID, clusterUUID);
   }
 
   // Helper data structure to save the new name and index of nodes for quick lookup using the
@@ -263,7 +253,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
       keys.add(match);
     }
-    LOG.trace("Found tags keys : " + keys);
+    log.trace("Found tags keys : " + keys);
 
     if (!tagValue.contains(TemplatedTags.INSTANCE_ID)) {
       throw new IllegalArgumentException(
@@ -320,7 +310,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
     }
 
-    LOG.info("Node name " + newName + " at index " + nodeIdx);
+    log.info("Node name " + newName + " at index " + nodeIdx);
 
     return newName;
   }
@@ -382,7 +372,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void updateOnPremNodeUuids(Universe universe) {
-    LOG.info(
+    log.info(
         "Selecting onprem nodes for universe {} ({}).", universe.name, taskParams().universeUUID);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -427,7 +417,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (primaryCluster != null) {
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       long numActiveMasters = PlacementInfoUtil.getNumActiveMasters(primaryNodes);
-      LOG.info("Current active master count = " + numActiveMasters);
+      log.info("Current active master count = " + numActiveMasters);
       long numMastersToChoose = primaryCluster.userIntent.replicationFactor - numActiveMasters;
       if (numMastersToChoose > 0) {
         PlacementInfoUtil.selectMasters(primaryNodes, numMastersToChoose);
@@ -483,7 +473,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.type = UpgradeUniverse.UpgradeTaskType.GFlags;
       params.setProperty("processType", taskType.toString());
       params.gflags = gflags;
-      AnsibleConfigureServers task = new AnsibleConfigureServers();
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
       subTaskGroup.addTask(task);
@@ -507,6 +497,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
+      params.type = NodeManager.NodeCommandType.Tags;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -516,7 +507,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add delete tags info.
       params.deleteTags = deleteTags;
       // Create and add a task for this node.
-      InstanceActions task = new InstanceActions();
+      InstanceActions task = createTask(InstanceActions.class);
       task.initialize(params);
       subTaskGroup.addTask(task);
     }
@@ -534,6 +525,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      params.type = NodeManager.NodeCommandType.Disk_Update;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add device info.
@@ -545,7 +537,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       // Create and add a task for this node.
-      InstanceActions task = new InstanceActions(NodeManager.NodeCommandType.Disk_Update);
+      InstanceActions task = createTask(InstanceActions.class);
       task.initialize(params);
       subTaskGroup.addTask(task);
     }
@@ -576,7 +568,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       // Create the Ansible task to get the server info.
-      AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
+      AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
       // Add it to the task list.
       subTaskGroup.addTask(task);
@@ -587,7 +579,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public SubTaskGroup createWaitForMasterLeaderTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForMasterLeader", executor);
-    WaitForMasterLeader task = new WaitForMasterLeader();
+    WaitForMasterLeader task = createTask(WaitForMasterLeader.class);
     WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
@@ -601,7 +593,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createWaitForTServerHeartBeatsTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForTServerHeartBeats", executor);
-    WaitForTServerHeartBeats task = new WaitForTServerHeartBeats();
+    WaitForTServerHeartBeats task = createTask(WaitForTServerHeartBeats.class);
     WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
@@ -631,7 +623,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PrecheckNode.Params params = new PrecheckNode.Params();
     params.failedNodes = failedNodes;
     params.reserveNodes = reserveNodes;
-    PrecheckNode failedCheck = new PrecheckNode();
+    PrecheckNode failedCheck = createTask(PrecheckNode.class);
     failedCheck.initialize(params);
     subTaskGroup.addTask(failedCheck);
     subTaskGroupQueue.add(subTaskGroup);
@@ -685,7 +677,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.reprovision = reprovision;
 
       // Create the Ansible task to setup the server.
-      AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
+      AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
       ansibleSetupServer.initialize(params);
       // Add it to the task list.
       subTaskGroup.addTask(ansibleSetupServer);
@@ -775,7 +767,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
       // Create the Ansible task to get the server info.
-      AnsibleConfigureServers task = new AnsibleConfigureServers();
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
@@ -808,7 +800,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Create the Ansible task to get the server info.
-      AnsibleUpdateNodeInfo ansibleFindCloudHost = new AnsibleUpdateNodeInfo();
+      AnsibleUpdateNodeInfo ansibleFindCloudHost = createTask(AnsibleUpdateNodeInfo.class);
       ansibleFindCloudHost.initialize(params);
       ansibleFindCloudHost.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.

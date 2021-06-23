@@ -144,9 +144,7 @@ public class CertificateControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInvalidCertificate() {
     UUID uuid = UUID.randomUUID();
-    Result result =
-        assertThrows(YWServiceException.class, () -> deleteCertificate(customer.uuid, uuid))
-            .getResult();
+    Result result = assertYWSE(() -> deleteCertificate(customer.uuid, uuid));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }
@@ -191,9 +189,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result =
-        assertThrows(YWServiceException.class, () -> uploadCertificate(customer.uuid, bodyJson))
-            .getResult();
+    Result result = assertYWSE(() -> uploadCertificate(customer.uuid, bodyJson));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
@@ -208,9 +204,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result =
-        assertThrows(YWServiceException.class, () -> uploadCertificate(customer.uuid, bodyJson))
-            .getResult();
+    Result result = assertYWSE(() -> uploadCertificate(customer.uuid, bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
   }
@@ -320,11 +314,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     certJson.put("nodeCertPath", "/tmp/nodeCertPath");
     certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
     bodyJson.put("customCertInfo", certJson);
-    Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> updateCertificate(customer.uuid, certUUID, bodyJson))
-            .getResult();
+    Result result = assertYWSE(() -> updateCertificate(customer.uuid, certUUID, bodyJson));
     assertEquals(BAD_REQUEST, result.status());
   }
 

@@ -1,17 +1,21 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import javax.inject.Inject;
 
 public class UpdateNodeDetails extends NodeTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(UpdateNodeDetails.class);
+  @Inject
+  protected UpdateNodeDetails(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   public static class Params extends NodeTaskParams {
     public NodeDetails details;

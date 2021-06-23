@@ -12,25 +12,28 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.api.Play;
 import play.libs.Json;
 
+import javax.inject.Inject;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
 public class CloudRegionSetup extends CloudTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CloudRegionSetup.class);
+  @Inject
+  protected CloudRegionSetup(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends CloudTaskParams {
     public String regionCode;

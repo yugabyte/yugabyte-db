@@ -217,7 +217,8 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result =
+        assertYWSE(() -> route(fakeRequest("POST", "/api/register").bodyJson(registerJson)));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
@@ -259,7 +260,7 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testRegisterMultiCustomerWithoutAuth() {
+  public void testRegisterMultiCustomerNoAuth() {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
@@ -282,9 +283,7 @@ public class SessionControllerTest {
     registerJson2.put("name", "Foo");
 
     result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson2));
-    json = Json.parse(contentAsString(result));
 
-    assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(result, "Only Super Admins can register tenant.");
   }
 
@@ -333,9 +332,7 @@ public class SessionControllerTest {
             fakeRequest("POST", "/api/register")
                 .bodyJson(registerJson3)
                 .header("X-AUTH-TOKEN", authToken2));
-    json = Json.parse(contentAsString(result));
 
-    assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(result, "Only Super Admins can register tenant.");
   }
 
@@ -574,7 +571,7 @@ public class SessionControllerTest {
     Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
     Provider provider = ModelFactory.awsProvider(customer);
-    ;
+
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
@@ -603,7 +600,7 @@ public class SessionControllerTest {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Provider provider = ModelFactory.awsProvider(customer);
-    ;
+
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");

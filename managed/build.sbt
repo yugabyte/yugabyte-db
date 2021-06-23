@@ -171,7 +171,8 @@ libraryDependencies ++= Seq(
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
-  "com.google.cloud" % "google-cloud-storage" % "1.115.0"
+  "com.google.cloud" % "google-cloud-storage" % "1.115.0",
+  "org.projectlombok" % "lombok" % "1.18.20"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -218,6 +219,18 @@ lazy val ybClientSnapshotResolver = {
   }
 }
 
+lazy val ybPublicSnapshotResolverDescription =
+    "Public snapshot resolver for yb-client jar"
+
+lazy val ybPublicSnapshotResolver = {
+  if (mavenLocal) {
+    Seq()
+  } else {
+    val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
+    Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
+  }
+}
+
 // Custom remote maven repository to retrieve library dependencies from.
 lazy val ybMvnCacheUrlEnvVarName = "YB_MVN_CACHE_URL"
 lazy val ybMvnCacheUrl = getEnvVar(ybMvnCacheUrlEnvVarName)
@@ -244,7 +257,8 @@ externalResolvers := {
   validateResolver(mavenCacheServerResolver, mavenCacheServerResolverDescription) ++
   validateResolver(ybLocalResolver, ybLocalResolverDescription) ++
   validateResolver(externalResolvers.value, "Default resolver") ++
-  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
+  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription) ++
+  validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
 (Compile / compilePlatform) := {

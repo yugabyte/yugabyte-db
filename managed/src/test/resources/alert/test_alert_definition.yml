@@ -7,8 +7,14 @@ groups:
         labels:
           definition_uuid: <definition_uuid>
           definition_name: alertDefinition
+          definition_active: true
           customer_uuid: <customer_uuid>
+          error_code: CUSTOMER_ALERT
+          alert_type: Error
           universe_uuid: <universe_uuid>
           universe_name: Test Universe
+          target_uuid: <universe_uuid>
+          target_name: Test Universe
+          target_type: universe
         annotations:
-          summary: "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing."
+          summary: "alertDefinition for Test Universe is firing"
