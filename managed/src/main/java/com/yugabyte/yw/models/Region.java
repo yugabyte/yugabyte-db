@@ -84,7 +84,7 @@ public class Region extends Model {
     this.active = active;
   }
 
-  class RegionDetails {
+  static class RegionDetails {
     public String sg_id; // Security group ID.
     public String vnet; // Vnet key.
   }

@@ -136,12 +136,9 @@ public class Provider extends Model {
 
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = this.getConfig();
-    for (String key : configMap.keySet()) {
-      currConfig.put(key, configMap.get(key));
-    }
-    this.config = currConfig;
-    this.save();
+    Map<String, String> newConfigMap = this.getConfig();
+    newConfigMap.putAll(configMap);
+    this.config = newConfigMap;
   }
 
   @JsonProperty("config")
