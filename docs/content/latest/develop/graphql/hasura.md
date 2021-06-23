@@ -28,7 +28,7 @@ PostgreSQL-compatible YSQL API is now available to serve application client requ
 To install the Hasura GraphQL engine on an existing PostgreSQL database, follow the steps in the Hasura [Quick start with Docker](https://hasura.io/docs/latest/graphql/core/deployment/deployment-guides/docker.html).
 
 {{< note title="Note" >}}
-You can also connect YugabyteDB to [Hasura Cloud](https://cloud.hasura.io/); The following example assumes a local installation.
+You can also connect YugabyteDB to [Hasura Cloud](https://cloud.hasura.io/). The following example assumes a local installation.
 
 For information on Hasura Cloud, refer to [Getting Started with Hasura Cloud](https://hasura.io/docs/latest/graphql/cloud/getting-started/index.html).
 {{< /note >}}
