@@ -11,6 +11,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -29,6 +30,12 @@ import java.util.UUID;
 public class UniverseResp {
 
   public static final Logger LOG = LoggerFactory.getLogger(UniverseResp.class);
+
+  public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
+    UniverseResourceDetails resourceDetails =
+        UniverseResourceDetails.create(universe.getUniverseDetails(), config);
+    return new UniverseResp(universe, taskUUID, resourceDetails);
+  }
 
   public final String universeUUID;
   public final String name;

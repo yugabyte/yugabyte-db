@@ -45,8 +45,8 @@ import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadat
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-public class CloudProviderService {
-  private static final Logger LOG = LoggerFactory.getLogger(CloudProviderService.class);
+public class CloudProviderHandler {
+  private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);
   private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
       Json.parse("{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
   private static final JsonNode KUBERNETES_DEV_INSTANCE_TYPE =
