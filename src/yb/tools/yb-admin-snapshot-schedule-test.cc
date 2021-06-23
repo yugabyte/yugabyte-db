@@ -209,6 +209,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->bind_to_unique_loopback_addresses = true;
     options->use_same_ts_ports = true;
+    options->num_masters = 3;
   }
 
   std::unique_ptr<CppCassandraDriver> cql_driver_;
@@ -219,6 +220,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
+    opts->num_masters = 3;
   }
 };
 

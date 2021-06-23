@@ -30,7 +30,7 @@ class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
   // Figure out where the admin tool is.
   std::string GetAdminToolPath() const;
 
-  HostPort GetMasterAddresses() const;
+  std::string GetMasterAddresses() const;
 
   template <class... Args>
   Result<std::string> CallAdmin(Args&&... args) {

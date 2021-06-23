@@ -9421,7 +9421,8 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
         ns_collect_flags.Reset(CollectFlag::kAddIndexes);
         auto namespace_info = VERIFY_RESULT(FindNamespaceUnlocked(table_id_pb.namespace_()));
         VLOG_WITH_PREFIX_AND_FUNC(1)
-            << "Collecting all tables from: " << namespace_info->ToString();
+            << "Collecting all tables from: " << namespace_info->ToString() << ", specified as: "
+            << table_id_pb.namespace_().ShortDebugString();
         for (const auto& id_and_table : *table_ids_map_) {
           if (id_and_table.second->is_system()) {
             VLOG_WITH_PREFIX_AND_FUNC(4) << "Rejected system table: " << AsString(id_and_table);
