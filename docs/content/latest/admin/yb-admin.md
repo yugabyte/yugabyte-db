@@ -892,7 +892,7 @@ yb-admin restore_snapshot_schedule <schedule-id> <restore-target>
 ```
 
 * _schedule-id_: The identifier (ID) of the schedule to be restored.
-* _restore-target_: The time to which to restore the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to restore to 5 minutes ago). Optional; omit to restore to each snapshot's creation time.
+* _restore-target_: The time to which to restore the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to restore to 5 minutes ago).
 
 You can also use a [YSQL timestamp](../../api/ysql/datatypes/type_datetime/) or [YCQL timestamp](../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
 
