@@ -14,6 +14,8 @@ import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import javax.persistence.OptimisticLockException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -62,10 +64,11 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
     List<AlertDefinition> queriedDefinitions =
         alertDefinitionService.list(
-            new AlertDefinitionFilter()
-                .setCustomerUuid(customer.uuid)
-                .setName(TEST_DEFINITION_NAME)
-                .setLabel(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString()));
+            AlertDefinitionFilter.builder()
+                .customerUuid(customer.uuid)
+                .name(TEST_DEFINITION_NAME)
+                .label(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString())
+                .build());
 
     assertThat(queriedDefinitions, hasSize(1));
     assertTestDefinition1(queriedDefinitions.get(0));
@@ -79,7 +82,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
     List<AlertDefinition> queriedDefinitions =
         alertDefinitionService.list(
-            new AlertDefinitionFilter().setCustomerUuid(customer.uuid).setLabel(label1));
+            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label1).build());
 
     assertThat(queriedDefinitions, hasSize(1));
     assertTestDefinition1(queriedDefinitions.get(0));
@@ -100,11 +103,11 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
     List<AlertDefinition> queriedDefinitions =
         alertDefinitionService.list(
-            new AlertDefinitionFilter().setCustomerUuid(customer.uuid).setLabel(label2));
+            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label2).build());
 
     List<AlertDefinition> queriedByOldLabelDefinitions =
         alertDefinitionService.list(
-            new AlertDefinitionFilter().setCustomerUuid(customer.uuid).setLabel(label1));
+            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label1).build());
 
     assertThat(queriedDefinitions, hasSize(1));
     assertThat(queriedByOldLabelDefinitions, empty());
@@ -114,7 +117,8 @@ public class AlertDefinitionTest extends FakeDBApplication {
     assertThat(queriedDefinition.getName(), equalTo(TEST_DEFINITION_NAME));
     assertThat(queriedDefinition.getQuery(), equalTo(newQuery));
     assertFalse(queriedDefinition.isActive());
-    assertThat(queriedDefinition.getLabels(), containsInAnyOrder(label2));
+
+    assertThat(queriedDefinition.getLabelValue(TEST_LABEL_2), equalTo(TEST_LABEL_VALUE_2));
   }
 
   @Test
@@ -148,23 +152,23 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
     AlertDefinitionLabel knownLabel =
         new AlertDefinitionLabel(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString());
-    AlertDefinition definition = new AlertDefinition();
-    definition.setCustomerUUID(customer.uuid);
-    definition.setTargetType(AlertDefinition.TargetType.Universe);
-    definition.setName(TEST_DEFINITION_NAME);
-    definition.setQuery(TEST_DEFINITION_QUERY);
-    definition.setLabels(ImmutableList.of(label1, knownLabel));
+    AlertDefinition definition =
+        new AlertDefinition()
+            .setCustomerUUID(customer.uuid)
+            .setName(TEST_DEFINITION_NAME)
+            .setQuery(TEST_DEFINITION_QUERY)
+            .setLabels(Arrays.asList(label1, knownLabel));
     return alertDefinitionService.create(definition);
   }
 
   private AlertDefinition createTestDefinition2() {
     AlertDefinitionLabel label2 = new AlertDefinitionLabel(TEST_LABEL_2, TEST_LABEL_VALUE_2);
-    AlertDefinition definition = new AlertDefinition();
-    definition.setCustomerUUID(customer.uuid);
-    definition.setTargetType(AlertDefinition.TargetType.Universe);
-    definition.setName(TEST_DEFINITION_NAME);
-    definition.setQuery(TEST_DEFINITION_QUERY);
-    definition.setLabels(ImmutableList.of(label2));
+    AlertDefinition definition =
+        new AlertDefinition()
+            .setCustomerUUID(customer.uuid)
+            .setName(TEST_DEFINITION_NAME)
+            .setQuery(TEST_DEFINITION_QUERY)
+            .setLabels(Collections.singletonList(label2));
     return alertDefinitionService.create(definition);
   }
 

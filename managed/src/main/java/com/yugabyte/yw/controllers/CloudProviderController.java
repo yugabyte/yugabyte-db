@@ -10,7 +10,6 @@ import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.EditProviderRequest;
@@ -57,7 +56,7 @@ public class CloudProviderController extends AuthenticatedController {
             cloudProviderFormData.config,
             cloudProviderFormData.region);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(cloudProviderFormData));
-    return ApiResponse.success(provider);
+    return YWResults.withData(provider);
   }
 
   // For creating the a multi-cluster kubernetes provider.
@@ -69,7 +68,7 @@ public class CloudProviderController extends AuthenticatedController {
     Provider provider =
         cloudProviderService.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
     auditService().createAuditEntry(ctx(), request(), requestBody);
-    return ApiResponse.success(provider);
+    return YWResults.withData(provider);
   }
 
   @ApiOperation(
@@ -81,7 +80,7 @@ public class CloudProviderController extends AuthenticatedController {
       response = KubernetesProviderFormData.class)
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return ApiResponse.success(Json.toJson(cloudProviderService.suggestedKubernetesConfigs()));
+    return YWResults.withData(cloudProviderService.suggestedKubernetesConfigs());
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this
@@ -92,12 +91,12 @@ public class CloudProviderController extends AuthenticatedController {
 
     List<Provider> providerList = Provider.get(customerUUID, Common.CloudType.docker);
     if (!providerList.isEmpty()) {
-      return ApiResponse.success(providerList.get(0));
+      return YWResults.withData(providerList.get(0));
     }
 
     Provider newProvider = cloudProviderService.setupNewDockerProvider(customer);
     auditService().createAuditEntry(ctx(), request());
-    return ApiResponse.success(newProvider);
+    return YWResults.withData(newProvider);
   }
 
   @ApiOperation(value = "refreshPricing", notes = "Refresh Provider pricing info")
@@ -154,7 +153,7 @@ public class CloudProviderController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
     cloudProviderService.editProvider(provider, editProviderReq);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(editProviderReq));
-    return ApiResponse.success(provider);
+    return YWResults.withData(provider);
   }
 
   @VisibleForTesting
