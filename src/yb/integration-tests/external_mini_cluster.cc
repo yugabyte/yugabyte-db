@@ -554,6 +554,12 @@ std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetLeaderConsensusPr
   return GetConsensusProxy(GetLeaderMaster());
 }
 
+std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::GetLeaderMasterProxy() {
+  auto leader_master_sock = GetLeaderMaster()->bound_rpc_addr();
+
+  return std::make_shared<MasterServiceProxy>(proxy_cache_.get(), leader_master_sock);
+}
+
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetConsensusProxy(
     ExternalDaemon* external_deamon) {
   return GetProxy<ConsensusServiceProxy>(external_deamon);
