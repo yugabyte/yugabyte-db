@@ -33,10 +33,12 @@ Here's the `includeCode` version that gets wrapped in a fenced code block:
 {{% includeCode "code-samples/include.sql" %}}
 ```
 
-And here's the `includeFile` version that infers the code language and does its own code block:
+1. And here's an attempt to call a partial template:
 
-{{% includeFile "code-samples/include.sql" %}}
+    {{< highlight sql>}}
+{{% includeCode "code-samples/include.sql" %}}
+    {{< /highlight >}}
 
-And here's an attempt to call a partial template:
+1. And here's the `includeFile` version that infers the code language and does its own code block:
 
-{{% partial included_code "code-sample/include.sql" %}}
+    {{% includeFile "code-samples/include.sql" %}}

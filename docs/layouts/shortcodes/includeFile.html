@@ -9,4 +9,9 @@
 {{- $file := ( .Get 0 ) | printf "static/%s" -}}
 {{- $format := ( $.Scratch.Get "format" ) -}}
 
-{{- ( print "```" $format "\n" ( readFile $file | chomp ) "\n" "```" ) | safeHTML -}}
+{{/*
+{{- ( print "```" $format "\n" ( readFile $file| chomp ) "\n" "```" "\n" ) | safeHTML -}}
+*/}}
+
+{{- highlight ( readFile $file | safeHTML | chomp ) $format "" -}}
+
