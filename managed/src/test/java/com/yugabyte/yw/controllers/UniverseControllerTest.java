@@ -8,52 +8,26 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.RunInShellFormData;
-import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.io.FileUtils;
@@ -83,50 +57,26 @@ import play.test.WithApplication;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.FakeApiHelper.*;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
-import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
-import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
+import static com.yugabyte.yw.common.PlacementInfoUtil.*;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static junit.framework.TestCase.assertFalse;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
@@ -139,6 +89,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Mock private play.Configuration mockAppConfig;
 
+  private HealthChecker healthChecker;
   private Customer customer;
   private Users user;
   private KmsConfig kmsConfig;
@@ -154,6 +105,9 @@ public class UniverseControllerTest extends WithApplication {
   private ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  private AlertConfigurationWriter mockAlertConfigurationWriter;
+  private Config mockRuntimeConfig;
+  private RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Override
   protected Application provideApplication() {
@@ -169,8 +123,19 @@ public class UniverseControllerTest extends WithApplication {
     mockShellProcessHandler = mock(ShellProcessHandler.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
+    mockRuntimeConfig = mock(Config.class);
+    mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
+    healthChecker = mock(HealthChecker.class);
+
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
+    when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
+    when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockRuntimeConfig);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
+
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
+        .overrides(bind(YBClientService.class).toInstance(mockService))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
@@ -182,6 +147,9 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
+        .overrides(bind(RuntimeConfigFactory.class).toInstance(mockRuntimeConfigFactory))
+        .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .build();
   }
 
@@ -316,10 +284,8 @@ public class UniverseControllerTest extends WithApplication {
     customer.save();
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/update_backup_state";
-    Result result =
-        assertThrows(YWServiceException.class, () -> doRequestWithAuthToken("PUT", url, authToken))
-            .getResult();
-    assertBadRequest(result, "Invalid Query: Need to specify markActive value");
+    Result result = doRequestWithAuthToken("PUT", url, authToken);
+    assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -357,14 +323,13 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testGetMasterLeaderWithValidParams() {
     Universe universe = createUniverse(customer.getCustomerId());
+    String url =
+        "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/leader";
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
-    UniverseController universeController = new UniverseController(mockService);
-
-    Result result = universeController.getMasterLeaderIP(customer.uuid, universe.universeUUID);
-
+    Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "privateIP", host);
@@ -375,10 +340,7 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseCreateWithInvalidParams() {
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "clusters: This field is required");
     assertAuditEntry(0, customer.uuid);
   }
@@ -407,10 +369,7 @@ public class UniverseControllerTest extends WithApplication {
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Invalid universe name format, valid characters [a-zA-Z0-9-].");
     assertAuditEntry(0, customer.uuid);
   }
@@ -438,10 +397,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertInternalServerError(result, "No AZ found across regions: [" + r.uuid + "]");
     assertAuditEntry(0, customer.uuid);
   }
@@ -550,7 +506,20 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testUniverseCreateWithSelfSignedTLS() {
+  @Parameters({
+    "true, false, false, false, false",
+    "true, true, false, true, false",
+    "true, false, true, true, true",
+    "true, true, true, true, true",
+    "false, false, true, false, true",
+    "false, true, true, true, true",
+  })
+  public void testUniverseCreateForSelfSignedTLS(
+      boolean rootAndClientRootCASame,
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt,
+      boolean rootCAExists,
+      boolean clientRootCAExists) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
             Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
@@ -569,8 +538,8 @@ public class UniverseControllerTest extends WithApplication {
         Json.newObject()
             .put("universeName", "SingleUserUniverse")
             .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", true)
-            .put("enableClientToNodeEncrypt", true)
+            .put("enableNodeToNodeEncrypt", enableNodeToNodeEncrypt)
+            .put("enableClientToNodeEncrypt", enableClientToNodeEncrypt)
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
@@ -584,6 +553,7 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject().put("nodePrefix", "demo-node");
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", Json.newArray());
+    bodyJson.put("rootAndClientRootCASame", rootAndClientRootCASame);
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -594,56 +564,10 @@ public class UniverseControllerTest extends WithApplication {
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
     UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
-    assertNotNull(taskParam.rootCA);
-    assertAuditEntry(1, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseCreateWithoutSelfSignedTLS() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-
-    Provider p = ModelFactory.awsProvider(customer);
-    String accessKeyCode = "someKeyCode";
-    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    ObjectNode bodyJson = Json.newObject();
-    ObjectNode userIntentJson =
-        Json.newObject()
-            .put("universeName", "SingleUserUniverse")
-            .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", false)
-            .put("enableClientToNodeEncrypt", false)
-            .put("replicationFactor", 3)
-            .put("numNodes", 3)
-            .put("provider", p.uuid.toString())
-            .put("accessKeyCode", accessKeyCode);
-
-    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
-    userIntentJson.set("regionList", regionList);
-    userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", Json.newArray());
-
-    String url = "/api/customers/" + customer.uuid + "/universes";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    ArgumentCaptor<UniverseTaskParams> taskParams =
-        ArgumentCaptor.forClass(UniverseTaskParams.class);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertValue(json, "taskUUID", fakeTaskUUID.toString());
-    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
-    UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
-    assertNull(taskParam.rootCA);
+    if (rootCAExists) assertNotNull(taskParam.rootCA);
+    else assertNull(taskParam.rootCA);
+    if (clientRootCAExists) assertNotNull(taskParam.clientRootCA);
+    else assertNull(taskParam.clientRootCA);
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -677,10 +601,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(
         result,
         "Only one universe can be created with providers having "
@@ -692,10 +613,7 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, Json.newObject()))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("PUT", url, authToken, Json.newObject()));
     assertBadRequest(result, "clusters: This field is required");
     assertAuditEntry(0, customer.uuid);
   }
@@ -1015,6 +933,119 @@ public class UniverseControllerTest extends WithApplication {
     assertAuditEntry(1, customer.uuid);
   }
 
+  private ObjectNode setupVMImageUpgradeParams(UUID uUUID, Provider p, String instanceType) {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    ObjectNode bodyJson = getValidPayload(uUUID, "Rolling");
+    bodyJson.put("taskType", UpgradeUniverse.UpgradeTaskType.VMImage.toString());
+    InstanceType i =
+        InstanceType.upsert(p.uuid, instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("numNodes", 3)
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("providerType", p.code)
+            .put("provider", p.uuid.toString());
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+
+    return bodyJson;
+  }
+
+  @Test
+  public void testVMImageUpgradeWithUnsupportedProvider() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
+
+    Provider p = ModelFactory.onpremProvider(customer);
+    ObjectNode bodyJson = setupVMImageUpgradeParams(uUUID, p, "type.small");
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+
+    assertBadRequest(result, "VM image upgrade is only supported for AWS / GCP");
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testVMImageUpgradeWithEphemerals() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
+
+    Provider p = ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = setupVMImageUpgradeParams(uUUID, p, "i3.xlarge");
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+
+    assertBadRequest(result, "Cannot upgrade a universe with ephemeral storage");
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testVMImageUpgradeWithNoImage() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
+
+    Provider p = ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = setupVMImageUpgradeParams(uUUID, p, "c5.xlarge");
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+
+    assertBadRequest(result, "machineImages param is required for taskType: VMImage");
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testVMImageUpgradeValidParams() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Universe u = createUniverse(customer.getCustomerId());
+    Provider p = ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = setupVMImageUpgradeParams(u.universeUUID, p, "c5.xlarge");
+    ObjectNode images = Json.newObject();
+    UUID r = UUID.randomUUID();
+    images.put(r.toString(), "image-" + r.toString());
+    bodyJson.set("machineImages", images);
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), any(UniverseTaskParams.class));
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeVMImage)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
   @Test
   public void testUniverseUpgradeWithEmptyParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
@@ -1023,10 +1054,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "clusters: This field is required");
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
     assertAuditEntry(0, customer.uuid);
@@ -1074,10 +1102,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     if (upgradeOption.equals("Rolling")) {
       Result result =
-          assertThrows(
-                  YWServiceException.class,
-                  () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-              .getResult();
+          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       assertBadRequest(result, "as it has nodes in one of");
       assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
       assertAuditEntry(0, customer.uuid);
@@ -1137,10 +1162,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
     assertBadRequest(result, "as it has nodes in one of");
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
     assertAuditEntry(0, customer.uuid);
@@ -1222,10 +1244,7 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.set("clusters", clustersJsonArray);
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Rolling restart has to be a ROLLING UPGRADE.");
     assertAuditEntry(0, customer.uuid);
@@ -1244,10 +1263,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "ybSoftwareVersion param is required for taskType: Software");
     assertAuditEntry(0, customer.uuid);
@@ -1329,7 +1345,7 @@ public class UniverseControllerTest extends WithApplication {
     data.put(" Test ", " One ");
     data.put(" Test 2 ", " Two ");
 
-    Map<String, String> result = UniverseController.trimFlags(data);
+    Map<String, String> result = UniverseCRUDHandler.trimFlags(data);
     assertEquals(result.size(), 2);
     assertEquals(result.get("Test"), "One");
     assertEquals(result.get("Test 2"), "Two");
@@ -1349,10 +1365,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
@@ -1389,10 +1402,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed");
     assertAuditEntry(0, customer.uuid);
@@ -1411,10 +1421,8 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJsonMissingGFlags))
-            .getResult();
+        assertYWSE(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJsonMissingGFlags));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
@@ -1434,10 +1442,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
@@ -1457,10 +1462,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
@@ -1561,22 +1563,21 @@ public class UniverseControllerTest extends WithApplication {
 
     Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
-    Result result =
-        assertThrows(YWServiceException.class, () -> doRequestWithAuthToken("GET", url, authToken))
-            .getResult();
+    Result result = assertYWSE(() -> doRequestWithAuthToken("GET", url, authToken));
     // TODO(API) - Should this be an http error and that too bad request?
     assertBadRequest(result, "foobar");
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
-  public void testFindByNameWithUniverseNameExists() {
+  public void testFindWithUniverseNameExists() {
     Universe u = createUniverse("TestUniverse", customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/find/" + u.name;
-    Result result =
-        assertThrows(YWServiceException.class, () -> doRequestWithAuthToken("GET", url, authToken))
-            .getResult();
-    assertBadRequest(result, "Universe already exists");
+    String url = "/api/customers/" + customer.uuid + "/universes/find?name=" + u.name;
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 1);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1592,11 +1593,15 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testFindByNameWithUniverseDoesNotExist() {
+  public void testFindWithUniverseDoesNotExist() {
     createUniverse(customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse";
+    String url = "/api/customers/" + customer.uuid + "/universes/find?name=FakeUniverse";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 0);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1637,20 +1642,15 @@ public class UniverseControllerTest extends WithApplication {
     noCurClusterTypeJson.put("currentClusterType", "");
 
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, noCurClusterTypeJson))
-            .getResult();
+        assertYWSE(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, noCurClusterTypeJson));
     assertBadRequest(result, "currentClusterType");
 
     ObjectNode noCurClusterOp = (ObjectNode) Json.toJson(taskParams);
     noCurClusterOp.remove("clusterOperation");
 
     result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, noCurClusterOp))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, noCurClusterOp));
     assertBadRequest(result, "clusterOperation");
 
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
@@ -1882,10 +1882,7 @@ public class UniverseControllerTest extends WithApplication {
     topJson.put("clusterOperation", "CREATE");
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson));
 
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
     assertAuditEntry(0, customer.uuid);
@@ -1930,10 +1927,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson));
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
     assertAuditEntry(0, customer.uuid);
   }
@@ -2017,10 +2011,7 @@ public class UniverseControllerTest extends WithApplication {
     topJson.put("currentClusterType", "PRIMARY");
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson));
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
     assertAuditEntry(0, customer.uuid);
   }
@@ -2263,7 +2254,7 @@ public class UniverseControllerTest extends WithApplication {
         Helpers.fakeRequest("POST", url)
             .header("X-AUTH-TOKEN", authToken)
             .bodyJson(bodyJson)
-            .header("Origin", "https://" + UniverseController.LEARN_DOMAIN_NAME);
+            .header("Origin", "https://" + UniverseYbDbAdminHandler.LEARN_DOMAIN_NAME);
     Result result = routeWithYWErrHandler(request, app);
     assertBadRequest(
         result,
@@ -2281,10 +2272,7 @@ public class UniverseControllerTest extends WithApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/run_in_shell";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, UniverseController.DEPRECATED);
     assertAuditEntry(0, customer.uuid);
   }
@@ -2299,10 +2287,7 @@ public class UniverseControllerTest extends WithApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/run_in_shell";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, UniverseController.DEPRECATED);
     assertAuditEntry(0, customer.uuid);
   }
@@ -2327,10 +2312,7 @@ public class UniverseControllerTest extends WithApplication {
               .put("shell_type", shellType.name())
               .put("command", "select * from product limit 1");
       Result result =
-          assertThrows(
-                  YWServiceException.class,
-                  () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-              .getResult();
+          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       assertBadRequest(result, UniverseController.DEPRECATED);
       assertAuditEntry(0, customer.uuid);
     }
@@ -2396,10 +2378,7 @@ public class UniverseControllerTest extends WithApplication {
       assertOk(result);
     } else {
       Result result =
-          assertThrows(
-                  YWServiceException.class,
-                  () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-              .getResult();
+          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
       assertErrorResponse(result, responseError);
     }
@@ -2472,10 +2451,7 @@ public class UniverseControllerTest extends WithApplication {
       assertOk(result);
     } else {
       Result result =
-          assertThrows(
-                  YWServiceException.class,
-                  () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-              .getResult();
+          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
       assertErrorResponse(result, responseError);
     }
@@ -2517,10 +2493,7 @@ public class UniverseControllerTest extends WithApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/disk_update";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Size can only be increased.");
   }
 
@@ -2538,10 +2511,7 @@ public class UniverseControllerTest extends WithApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/disk_update";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Scratch type disk cannot be modified.");
   }
 
@@ -2559,10 +2529,7 @@ public class UniverseControllerTest extends WithApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/disk_update";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot modify instance volumes.");
   }
 
@@ -2691,7 +2658,7 @@ public class UniverseControllerTest extends WithApplication {
       assertEquals("bar", json.get("foo").asText());
       assertAuditEntry(1, customer.uuid);
     } else {
-      assertBadRequest(result, UniverseController.RUN_QUERY_ISNT_ALLOWED);
+      assertBadRequest(result, UniverseYbDbAdminHandler.RUN_QUERY_ISNT_ALLOWED);
       assertAuditEntry(0, customer.uuid);
     }
   }
@@ -2797,10 +2764,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "This field is required");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -2820,10 +2784,7 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
     bodyJson.put("upgradeOption", "ROLLING");
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Invalid upgrade option");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -2842,10 +2803,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, false, null);
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No changes in Tls parameters");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -2864,10 +2822,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, false, UUID.randomUUID());
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No valid rootCA");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -2888,10 +2843,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, true, certUUID2);
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot update root certificate");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -2911,10 +2863,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .getResult();
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "as it has nodes in one of");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -2977,10 +2926,7 @@ public class UniverseControllerTest extends WithApplication {
   public void invalidUniverseUUID(String testDescription, String urlSuffix, String httpMethod) {
     UUID randomUUID = UUID.randomUUID();
     String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + urlSuffix;
-    Result result =
-        assertThrows(
-                YWServiceException.class, () -> doRequestWithAuthToken(httpMethod, url, authToken))
-            .getResult();
+    Result result = assertYWSE(() -> doRequestWithAuthToken(httpMethod, url, authToken));
     assertBadRequest(result, "Cannot find universe " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
@@ -3060,10 +3006,7 @@ public class UniverseControllerTest extends WithApplication {
       assertOk(result);
     } else {
       Result result =
-          assertThrows(
-                  YWServiceException.class,
-                  () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-              .getResult();
+          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       assertBadRequest(result, errorMessage);
     }
   }

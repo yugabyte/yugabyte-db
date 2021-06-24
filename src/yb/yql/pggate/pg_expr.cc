@@ -154,19 +154,15 @@ Status PgExpr::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   return Status::OK();
 }
 
-Status PgExpr::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
-  // Expressions that are neither bind_variable nor constant don't need to be updated.
-  // Only values for bind variables and constants need to be updated in the SQL requests.
-  return Status::OK();
-}
-
-Status PgExpr::Eval(PgDml *pg_stmt, QLValuePB *result) {
+Status PgExpr::Eval(PgsqlExpressionPB *expr_pb) {
   // Expressions that are neither bind_variable nor constant don't need to be updated.
   // Only values for bind variables and constants need to be updated in the SQL requests.
   return Status::OK();
 }
 
 Status PgExpr::Eval(QLValuePB *result) {
+  // Expressions that are neither bind_variable nor constant don't need to be updated.
+  // Only values for bind variables and constants need to be updated in the SQL requests.
   return Status::OK();
 }
 
@@ -622,15 +618,10 @@ void PgConstant::UpdateConstant(const void *value, size_t bytes, bool is_null) {
   }
 }
 
-Status PgConstant::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+Status PgConstant::Eval(PgsqlExpressionPB *expr_pb) {
   QLValuePB *result = expr_pb->mutable_value();
   *result = ql_value_;
   return Status::OK();
-}
-
-Status PgConstant::Eval(PgDml *pg_stmt, QLValuePB *result) {
-  CHECK(pg_stmt != nullptr);
-  return Eval(result);
 }
 
 Status PgConstant::Eval(QLValuePB *result) {
@@ -724,7 +715,7 @@ Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   for (const auto& arg : args_) {
     PgsqlExpressionPB *op = tscall->add_operands();
     RETURN_NOT_OK(arg->PrepareForRead(pg_stmt, op));
-    RETURN_NOT_OK(arg->Eval(pg_stmt, op));
+    RETURN_NOT_OK(arg->Eval(op));
   }
   return Status::OK();
 }

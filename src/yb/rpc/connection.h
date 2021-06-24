@@ -45,7 +45,6 @@
 #include <boost/container/small_vector.hpp>
 #include <ev++.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"

@@ -98,6 +98,10 @@ class ConflictResolverContext {
 
   virtual std::string ToString() const = 0;
 
+  std::string LogPrefix() const {
+    return ToString() + ": ";
+  }
+
   virtual ~ConflictResolverContext() = default;
 };
 
@@ -165,6 +169,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       intent_key_upperbound_.clear();
     });
     Slice prefix_slice(intent_key_prefix->AsSlice().data(), original_size);
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Seek: " << intent_key_prefix->AsSlice().ToDebugString();
     intent_iter_.Seek(intent_key_prefix->AsSlice());
     while (intent_iter_.Valid()) {
       auto existing_key = intent_iter_.key();
@@ -188,6 +193,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
             existing_key.ToDebugHexString(),
             existing_value.ToDebugHexString());
       }
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Found: " << existing_value.ToDebugString();
       existing_value.consume_byte();
       auto existing_intent = VERIFY_RESULT(
           docdb::ParseIntentKey(intent_iter_.key(), existing_value));
@@ -445,7 +451,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   std::string LogPrefix() const {
-    return context_->ToString() + ": ";
+    return context_->LogPrefix();
   }
 
   DocDB doc_db_;
@@ -553,7 +559,8 @@ class StrongConflictChecker {
       value_iter_hash_ = hash;
     }
     value_iter_.Seek(intent_key);
-    VLOG_WITH_PREFIX(4) << "Seek: " << intent_key.ToDebugString() << ", strong: " << strong;
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Seek: " << intent_key.ToDebugString() << ", strong: " << strong;
     // If we are resolving conflicts for writing a strong intent, look at records in regular RocksDB
     // with the same key as the intent's key (not including hybrid time) and any child keys. This is
     // because a strong intent indicates deletion or replacement of the entire subdocument tree and
@@ -713,7 +720,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
     RETURN_NOT_OK(transaction_id_);
 
-    VLOG(3) << "Resolve conflicts: " << transaction_id_;
+    VLOG_WITH_PREFIX(3) << "Resolve conflicts";
 
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
 
@@ -734,6 +741,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
           GetDocPathsMode::kIntents, &paths, &ignored_isolation_level));
 
       for (const auto& path : paths) {
+        VLOG_WITH_PREFIX_AND_FUNC(4)
+            << "Doc path: " << SubDocKey::DebugSliceToString(path.as_slice());
         RETURN_NOT_OK(EnumerateIntents(
             path.as_slice(),
             /* intent_value */ Slice(),
@@ -801,8 +810,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
       const TransactionId& id, HybridTime commit_time) override {
     RSTATUS_DCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
 
-    VLOG(4) << ToString() << ", committed: " << id << ", commit_time: " << commit_time
-            << ", read_time: " << read_time_;
+    VLOG_WITH_PREFIX(4) << "Committed: " << id << ", commit_time: " << commit_time
+                        << ", read_time: " << read_time_;
 
     // commit_time equals to HybridTime::kMax means that transaction is not actually committed,
     // but is being committed. I.e. status tablet is trying to replicate COMMITTED state.
@@ -884,7 +893,8 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
                                                    RowMarkType::ROW_MARK_ABSENT);
 
       for (const auto& doc_path : doc_paths) {
-        VLOG(4) << "Doc path: " << SubDocKey::DebugSliceToString(doc_path.as_slice());
+        VLOG_WITH_PREFIX_AND_FUNC(4)
+            << "Doc path: " << SubDocKey::DebugSliceToString(doc_path.as_slice());
         RETURN_NOT_OK(EnumerateIntents(
             doc_path.as_slice(), Slice(), callback, &encoded_key_buffer,
             PartialRangeKeyIntents::kTrue));

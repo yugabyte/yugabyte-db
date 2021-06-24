@@ -122,12 +122,20 @@ public class CustomerConfig extends Model {
     return Util.getUniverseDetails(universes);
   }
 
+  @Deprecated
   @Override
   public boolean delete() {
     if (!this.getInUse()) {
       return super.delete();
     }
     return false;
+  }
+
+  public void deleteOrThrow() {
+    if (!delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
+    }
   }
 
   public static CustomerConfig createWithFormData(UUID customerUUID, JsonNode formData) {

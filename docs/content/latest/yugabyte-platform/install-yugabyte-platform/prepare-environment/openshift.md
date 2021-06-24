@@ -1,14 +1,12 @@
 ---
-title: Prepare the OpenShift Environment
-headerTitle: Prepare the OpenShift Environment
+title: Prepare the OpenShift environment
+headerTitle: Prepare the OpenShift environment
 linkTitle: Prepare the environment
 description: Prepare the OpenShift environment for Yugabyte Platform
-aliases:
-  - /latest/deploy/enterprise-edition/prepare-environment/
 menu:
   latest:
+    identifier: prepare-environment-4-OpenShift
     parent: install-yugabyte-platform
-    identifier: prepare-environment-1-OpenShift
     weight: 55
 isTocNested: false
 showAsideToc: true
@@ -18,7 +16,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
@@ -39,7 +37,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -53,7 +51,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
@@ -83,4 +81,3 @@ For testing purposes, you may configure an HTPasswd provider, as described in [C
 [^1]: This user is referred to as *admin user* in this documentation.
 [^2]: This user is referred to as *normal user*, *non admin*, or *user* in this documentation.
 [^3]: By default, the authenticated users have the [self-provisioning](https://docs.openshift.com/container-platform/4.6/authentication/using-rbac.html#default-roles_using-rbac) ClusterRole bound to them, which enables them to create new projects.
-

@@ -361,6 +361,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return kv_store_.snapshot_schedules.insert(schedule_id).second;
   }
 
+  bool RemoveSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.snapshot_schedules.erase(schedule_id) != 0;
+  }
+
   std::vector<SnapshotScheduleId> SnapshotSchedules() const {
     std::lock_guard<MutexType> lock(data_mutex_);
     return std::vector<SnapshotScheduleId>(
@@ -405,8 +410,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
 
-  CHECKED_STATUS SetHiddenAndFlush(bool value);
+  void SetHidden(bool value);
   bool hidden() const;
+
+  void SetRestorationHybridTime(HybridTime value);
+  HybridTime restoration_hybrid_time() const;
 
   CHECKED_STATUS Flush();
 
@@ -575,6 +583,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
+
+  HybridTime restoration_hybrid_time_ GUARDED_BY(data_mutex_);
 
   OpId split_op_id_ GUARDED_BY(data_mutex_);
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);

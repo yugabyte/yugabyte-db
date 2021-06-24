@@ -10,20 +10,22 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
-import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
+import com.google.common.base.Strings;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import com.google.common.base.Strings;
-
 import play.api.Play;
 
+import javax.inject.Inject;
+
 public class CloudAccessKeySetup extends CloudTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CloudAccessKeySetup.class);
+  @Inject
+  protected CloudAccessKeySetup(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends CloudBootstrap.Params {
     public String regionCode;

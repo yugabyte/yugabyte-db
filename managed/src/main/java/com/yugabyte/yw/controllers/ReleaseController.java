@@ -4,10 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
@@ -33,6 +32,7 @@ public class ReleaseController extends AuthenticatedController {
 
     Form<ReleaseFormData> formData = formFactory.getFormDataOrBadRequest(ReleaseFormData.class);
     ReleaseFormData releaseFormData = formData.get();
+    LOG.info("ReleaseController: Adding new release: {} ", releaseFormData.toString());
     try {
       releaseManager.addRelease(releaseFormData.version);
     } catch (RuntimeException re) {
@@ -52,11 +52,7 @@ public class ReleaseController extends AuthenticatedController {
             .stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
             .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
-    if (includeMetadata) {
-      return ApiResponse.success(filtered);
-    } else {
-      return ApiResponse.success(filtered.keySet());
-    }
+    return YWResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
   public Result update(UUID customerUUID, String version) {
@@ -76,12 +72,13 @@ public class ReleaseController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, "Missing Required param: State");
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
-    return ApiResponse.success(m);
+    return YWResults.withData(m);
   }
 
   public Result refresh(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
+    LOG.info("ReleaseController: refresh");
     try {
       releaseManager.importLocalReleases();
     } catch (RuntimeException re) {

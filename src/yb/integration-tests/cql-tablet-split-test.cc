@@ -29,9 +29,9 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(max_queued_split_candidates);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_low_phase_tablet_count_per_node);
-DECLARE_int64(tablet_split_high_phase_tablet_count_per_node);
-DECLARE_int64(tablet_split_final_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
+DECLARE_int64(tablet_force_split_threshold_bytes);
 
 DECLARE_double(TEST_simulate_lookup_partition_list_mismatch_probability);
 DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
@@ -45,10 +45,10 @@ class CqlTabletSplitTest : public CqlTestBase {
     FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
     FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
     FLAGS_max_queued_split_candidates = 10;
-    FLAGS_tablet_split_low_phase_tablet_count_per_node = 0;
-    FLAGS_tablet_split_high_phase_tablet_count_per_node = 0;
-    FLAGS_tablet_split_final_phase_size_threshold_bytes = 30_KB;
-    FLAGS_db_write_buffer_size = FLAGS_tablet_split_final_phase_size_threshold_bytes / 4;
+    FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
+    FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
+    FLAGS_tablet_force_split_threshold_bytes = 30_KB;
+    FLAGS_db_write_buffer_size = FLAGS_tablet_force_split_threshold_bytes / 4;
     FLAGS_db_block_size_bytes = 2_KB;
     FLAGS_db_filter_block_size_bytes = 2_KB;
     FLAGS_db_index_block_size_bytes = 2_KB;

@@ -20,7 +20,6 @@
 #include "yb/gutil/endian.h"
 
 namespace yb {
-namespace enterprise {
 
 Result<std::unique_ptr<BlockAccessCipherStream>> BlockAccessCipherStream::FromEncryptionParams(
     EncryptionParamsPtr encryption_params) {
@@ -200,6 +199,4 @@ void BlockAccessCipherStream::IncrementCounter(
   }
 }
 
-
-} // namespace enterprise
 }  // namespace yb

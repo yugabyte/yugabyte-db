@@ -10,50 +10,47 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import javax.inject.Inject;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopping;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateCert;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToggleTls;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.*;
 
-public class UpgradeUniverse extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UpgradeUniverse.class);
+@Slf4j
+public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   // Variable to mark if the loadbalancer state was changed.
   boolean loadbalancerOff = false;
+
+  @Inject
+  protected UpgradeUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Upgrade Task Type
   public enum UpgradeTaskType {
     Everything,
     Software,
+    VMImage,
     GFlags,
     Restart,
     Certs,
@@ -76,6 +73,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
   public static class Params extends UpgradeParams {}
 
+  private Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
+  private Map<UUID, UUID> nodeToRegion = new HashMap<>();
+
   @Override
   protected UpgradeParams taskParams() {
     return (UpgradeParams) taskParams;
@@ -83,6 +83,31 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
   private void verifyParams(Universe universe, UserIntent primIntent) {
     switch (taskParams().taskType) {
+      case VMImage:
+        if (taskParams().upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+          throw new IllegalArgumentException(
+              "Only ROLLING_UPGRADE option is supported for OS upgrades.");
+        }
+
+        for (NodeDetails node : universe.getUniverseDetails().nodeDetailsSet) {
+          if (node.isMaster || node.isTserver) {
+            Region region =
+                AvailabilityZone.maybeGet(node.azUuid)
+                    .map(az -> az.region)
+                    .orElseThrow(
+                        () ->
+                            new IllegalArgumentException(
+                                "Could not find region for AZ " + node.cloudInfo.az));
+
+            if (!taskParams().machineImages.containsKey(region.uuid)) {
+              throw new IllegalArgumentException(
+                  "No VM image was specified for region " + node.cloudInfo.region);
+            }
+
+            nodeToRegion.putIfAbsent(node.nodeUuid, region.uuid);
+          }
+        }
+        break;
       case Software:
         if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
           throw new IllegalArgumentException("Software upgrade cannot be non restart.");
@@ -213,7 +238,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error={}.", getName(), t);
+      log.error("Error executing task {} with error={}.", getName(), t);
 
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // If the task failed, we don't want the loadbalancer to be disabled,
@@ -227,7 +252,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     } finally {
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   // Find the master leader and move it to the end of the list.
@@ -280,6 +305,88 @@ public class UpgradeUniverse extends UniverseTaskBase {
         .collect(Collectors.toList());
   }
 
+  private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ReplaceRootVolume", executor);
+    ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
+    replaceParams.nodeName = node.nodeName;
+    replaceParams.azUuid = node.azUuid;
+    replaceParams.universeUUID = taskParams().universeUUID;
+    replaceParams.bootDisksPerZone = this.replacementRootVolumes;
+
+    ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
+    replaceDiskTask.initialize(replaceParams);
+    subTaskGroup.addTask(replaceDiskTask);
+
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  private SubTaskGroup createRootVolumeCreationTasks(List<NodeDetails> nodes) {
+    Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
+        nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
+    SubTaskGroup subTaskGroup = new SubTaskGroup("CreateRootVolumes", executor);
+
+    rootVolumesPerAZ
+        .entrySet()
+        .forEach(
+            e -> {
+              NodeDetails node = e.getValue().get(0);
+              UUID region = this.nodeToRegion.get(node.nodeUuid);
+              String machineImage = taskParams().machineImages.get(region);
+              int numVolumes = e.getValue().size();
+
+              if (!taskParams().forceVMImageUpgrade) {
+                numVolumes =
+                    (int)
+                        e.getValue()
+                            .stream()
+                            .filter(n -> !machineImage.equals(n.machineImage))
+                            .count();
+              }
+
+              if (numVolumes == 0) {
+                log.info("Nothing to upgrade in AZ {}", node.cloudInfo.az);
+                return;
+              }
+
+              CreateRootVolumes.Params params = new CreateRootVolumes.Params();
+              UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+              fillSetupParamsForNode(params, userIntent, node);
+              params.numVolumes = numVolumes;
+              params.machineImage = machineImage;
+              params.bootDisksPerZone = replacementRootVolumes;
+
+              log.info(
+                  "Creating {} root volumes using {} in AZ {}",
+                  params.numVolumes,
+                  params.machineImage,
+                  node.cloudInfo.az);
+
+              CreateRootVolumes task = createTask(CreateRootVolumes.class);
+              task.initialize(params);
+              subTaskGroup.addTask(task);
+            });
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  private SubTaskGroup createNodeDetailsUpdateTask(NodeDetails node) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateNodeDetails", executor);
+    UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
+    updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
+    updateNodeDetailsParams.azUuid = node.azUuid;
+    updateNodeDetailsParams.nodeName = node.nodeName;
+    updateNodeDetailsParams.details = node;
+
+    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
+    updateNodeTask.initialize(updateNodeDetailsParams);
+    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(updateNodeTask);
+
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   private void createServerUpgradeTasks(
       List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
     createPreUpgradeTasks(masterNodes, tServerNodes);
@@ -312,39 +419,92 @@ public class UpgradeUniverse extends UniverseTaskBase {
       return;
     }
 
-    UpgradeParams.UpgradeOption upgradeOption = taskParams().upgradeOption;
-    if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
-      int nodeToNodeChange =
-          getNodeToNodeChangeForToggleTls(
-              Universe.getOrBadRequest(taskParams().universeUUID)
-                  .getUniverseDetails()
-                  .getPrimaryCluster()
-                  .userIntent,
-              taskParams());
-      if (nodeToNodeChange > 0) {
-        // Setting allow_insecure to false can be done in non-restart way
-        if (upgradeIteration == UpgradeIteration.Round2) {
-          upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
-        }
-      } else if (nodeToNodeChange < 0) {
-        // Setting allow_insecure to true can be done in non-restart way
-        if (upgradeIteration == UpgradeIteration.Round1) {
-          upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
-        }
-      } else {
-        // Two round upgrade not needed when there is no change in node-to-node
-        if (upgradeIteration == UpgradeIteration.Round2) {
-          return;
+    if (taskParams().taskType != UpgradeTaskType.VMImage) {
+      UpgradeParams.UpgradeOption upgradeOption = taskParams().upgradeOption;
+      if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
+        int nodeToNodeChange =
+            getNodeToNodeChangeForToggleTls(
+                Universe.getOrBadRequest(taskParams().universeUUID)
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent,
+                taskParams());
+        if (nodeToNodeChange > 0) {
+          // Setting allow_insecure to false can be done in non-restart way
+          if (upgradeIteration == UpgradeIteration.Round2) {
+            upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
+          }
+        } else if (nodeToNodeChange < 0) {
+          // Setting allow_insecure to true can be done in non-restart way
+          if (upgradeIteration == UpgradeIteration.Round1) {
+            upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
+          }
+        } else {
+          // Two round upgrade not needed when there is no change in node-to-node
+          if (upgradeIteration == UpgradeIteration.Round2) {
+            return;
+          }
         }
       }
-    }
 
-    // Common subtasks
-    if (masterNodes != null && !masterNodes.isEmpty()) {
-      createAllUpgradeTasks(masterNodes, ServerType.MASTER, upgradeIteration, upgradeOption);
-    }
-    if (tServerNodes != null && !tServerNodes.isEmpty()) {
-      createAllUpgradeTasks(tServerNodes, ServerType.TSERVER, upgradeIteration, upgradeOption);
+      // Common subtasks
+      if (masterNodes != null && !masterNodes.isEmpty()) {
+        createAllUpgradeTasks(masterNodes, ServerType.MASTER, upgradeIteration, upgradeOption);
+      }
+      if (tServerNodes != null && !tServerNodes.isEmpty()) {
+        createAllUpgradeTasks(tServerNodes, ServerType.TSERVER, upgradeIteration, upgradeOption);
+      }
+    } else {
+      SubTaskGroupType subGroupType = getTaskSubGroupType();
+      Set<NodeDetails> nodes = new LinkedHashSet<>();
+      // FIXME: proper equals/hashCode for NodeDetails
+      nodes.addAll(masterNodes);
+      nodes.addAll(tServerNodes);
+
+      createRootVolumeCreationTasks(new ArrayList<>(nodes)).setSubTaskGroupType(subGroupType);
+
+      for (NodeDetails node : nodes) {
+        UUID region = this.nodeToRegion.get(node.nodeUuid);
+        String machineImage = taskParams().machineImages.get(region);
+
+        if (!taskParams().forceVMImageUpgrade && machineImage.equals(node.machineImage)) {
+          log.info(
+              "Skipping node {} as it's already running on {} and force flag is not set",
+              node.nodeName,
+              machineImage);
+          continue;
+        }
+
+        List<UniverseDefinitionTaskBase.ServerType> processTypes = new ArrayList<>();
+        if (node.isMaster) processTypes.add(ServerType.MASTER);
+        if (node.isTserver) processTypes.add(ServerType.TSERVER);
+
+        processTypes.forEach(
+            processType ->
+                createServerControlTask(node, processType, "stop")
+                    .setSubTaskGroupType(subGroupType));
+        createRootVolumeReplacementTask(node).setSubTaskGroupType(subGroupType);
+
+        List<NodeDetails> nodeList = Collections.singletonList(node);
+
+        createSetupServerTasks(nodeList, true)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+        createConfigureServerTasks(nodeList, false /* isShell */, false, false)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
+        processTypes.forEach(
+            processType -> {
+              createGFlagsOverrideTasks(nodeList, processType);
+              createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+              createWaitForServersTasks(new HashSet<NodeDetails>(nodeList), processType);
+              createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+                  .setSubTaskGroupType(subGroupType);
+            });
+        createWaitForKeyInMemoryTask(node);
+
+        node.machineImage = machineImage;
+        createNodeDetailsUpdateTask(node).setSubTaskGroupType(subGroupType);
+      }
     }
   }
 
@@ -664,7 +824,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
 
-    UniverseSetTlsParams task = new UniverseSetTlsParams();
+    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
     taskGroup.addTask(task);
 
@@ -749,7 +909,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
 
     // Create the Ansible task to get the server info.
-    AnsibleConfigureServers task = new AnsibleConfigureServers();
+    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
 

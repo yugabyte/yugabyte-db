@@ -381,22 +381,24 @@ DEFINE_int64(tablet_split_size_threshold_bytes, 0,
              "splitting is disabled if this value is set to 0.");
 TAG_FLAG(tablet_split_size_threshold_bytes, hidden);
 
-DEFINE_int64(tablet_split_low_phase_tablet_count_per_node, 1,
+DEFINE_int64(tablet_split_low_phase_shard_count_per_node, 1,
              "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
              "as defined by tablet_split_low_phase_size_threshold_bytes.");
-DEFINE_int64(tablet_split_high_phase_tablet_count_per_node, 32,
+DEFINE_int64(tablet_split_high_phase_shard_count_per_node, 32,
              "The per-node tablet count until which a table is splitting at the phase 2 threshold, "
              "as defined by tablet_split_high_phase_size_threshold_bytes.");
 
 DEFINE_int64(tablet_split_low_phase_size_threshold_bytes, 1_GB,
              "The tablet size threshold at which to split tablets in phase 1. "
-             "See tablet_split_low_phase_tablet_count_per_node.");
+             "See tablet_split_low_phase_shard_count_per_node.");
 DEFINE_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
              "The tablet size threshold at which to split tablets in phase 2. "
-             "See tablet_split_high_phase_tablet_count_per_node.");
-DEFINE_int64(tablet_split_final_phase_size_threshold_bytes, 32_GB,
-             "The tablet size threshold at which to split tablets after both phases have been "
-             "surpassed.");
+             "See tablet_split_high_phase_shard_count_per_node.");
+DEFINE_int64(tablet_force_split_threshold_bytes, 50_GB,
+             "The tablet size threshold at which to split tablets regardless of how many tablets "
+             "exist in the table already. This should be configured to prevent runaway whale "
+             "tablets from forming in your cluster even if both automatic splitting phases have "
+             "been finished.");
 
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
@@ -2177,13 +2179,13 @@ bool CatalogManager::ShouldSplitValidCandidate(
   auto num_servers = ts_descs.size();
   int64 num_tablets_per_server = tablet_info.table()->NumTablets() / num_servers;
 
-  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_tablet_count_per_node) {
+  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
     return size > FLAGS_tablet_split_low_phase_size_threshold_bytes;
   }
-  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_tablet_count_per_node) {
+  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
     return size > FLAGS_tablet_split_high_phase_size_threshold_bytes;
   }
-  return size > FLAGS_tablet_split_final_phase_size_threshold_bytes;
+  return size > FLAGS_tablet_force_split_threshold_bytes;
 }
 
 Status CatalogManager::DoSplitTablet(
@@ -4345,6 +4347,11 @@ Status CatalogManager::DeleteTableInMemory(
 }
 
 TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableInfoPtr& table) {
+  if (!table) {
+    LOG_WITH_PREFIX(INFO) << "Finished deleting an Orphaned tablet. "
+                          << "Table Information is null. Skipping updating its state to DELETED.";
+    return TableInfo::WriteLock();
+  }
   if (table->HasTasks()) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << table->ToString() << " has tasks";
     return TableInfo::WriteLock();
@@ -5388,20 +5395,10 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
       // 1a. Find the tablet, deleting/skipping it if it can't be found.
       scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, tablet_id);
       if (!tablet) {
-        // It'd be unsafe to ask the tserver to delete this tablet without first
-        // replicating something to our followers (i.e. to guarantee that we're
-        // the leader). For example, if we were a rogue master, we might be
-        // deleting a tablet created by a new master accidentally. But masters
-        // retain metadata for deleted tablets forever, so a tablet can only be
-        // truly unknown in the event of a serious misconfiguration, such as a
-        // tserver heartbeating to the wrong cluster. Therefore, it should be
-        // reasonable to ignore it and wait for an operator fix the situation.
-        if (FLAGS_master_ignore_deleted_on_load &&
-            report.tablet_data_state() == TABLET_DATA_DELETED) {
-          VLOG(1) << "Ignoring report from unknown tablet " << tablet_id;
-        } else {
-          LOG(DFATAL) << "Ignoring report from unknown tablet " << tablet_id;
-        }
+        // If a TS reported an unknown tablet, send a delete tablet rpc to the TS.
+        LOG(INFO) << "Null tablet reported, possibly the TS was not around when the"
+                      " table was being deleted. Sending Delete tablet RPC to this TS.";
+        tablets_to_delete.insert(tablet_id);
         // Every tablet in the report that is processed gets a heartbeat response entry.
         ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
         update->set_tablet_id(tablet_id);
@@ -8831,32 +8828,33 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   *out << "Tables:\n";
   for (const TableInfoMap::value_type& e : ids_copy) {
     TableInfo* t = e.second.get();
-    auto l = t->LockForRead();
-    const TableName& name = l->name();
-    const NamespaceId& namespace_id = l->namespace_id();
-    // Find namespace by its ID.
-    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_copy, namespace_id);
-
-    *out << t->id() << ":\n";
-    *out << "  namespace id: \"" << strings::CHexEscape(namespace_id) << "\"\n";
-
-    if (ns != nullptr) {
-      *out << "  namespace name: \"" << strings::CHexEscape(ns->name()) << "\"\n";
-    }
-
-    *out << "  name: \"" << strings::CHexEscape(name) << "\"\n";
-    // Erase from the map, so later we can check that we don't have
-    // any orphaned tables in the by-name map that aren't in the
-    // by-id map.
-    if (names_copy.erase({namespace_id, name}) != 1) {
-      *out << "  [not present in by-name map]\n";
-    }
-    *out << "  metadata: " << l->pb.ShortDebugString() << "\n";
-
-    *out << "  tablets:\n";
-
     vector<scoped_refptr<TabletInfo>> table_tablets;
-    t->GetAllTablets(&table_tablets);
+    {
+      auto l = t->LockForRead();
+      const TableName& name = l->name();
+      const NamespaceId& namespace_id = l->namespace_id();
+      // Find namespace by its ID.
+      scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_copy, namespace_id);
+
+      *out << t->id() << ":\n";
+      *out << "  namespace id: \"" << strings::CHexEscape(namespace_id) << "\"\n";
+
+      if (ns != nullptr) {
+        *out << "  namespace name: \"" << strings::CHexEscape(ns->name()) << "\"\n";
+      }
+
+      *out << "  name: \"" << strings::CHexEscape(name) << "\"\n";
+      // Erase from the map, so later we can check that we don't have
+      // any orphaned tables in the by-name map that aren't in the
+      // by-id map.
+      if (names_copy.erase({namespace_id, name}) != 1) {
+        *out << "  [not present in by-name map]\n";
+      }
+      *out << "  metadata: " << l->pb.ShortDebugString() << "\n";
+
+      *out << "  tablets:\n";
+      t->GetAllTablets(&table_tablets);
+    }
     for (const scoped_refptr<TabletInfo>& tablet : table_tablets) {
       auto l_tablet = tablet->LockForRead();
       *out << "    " << tablet->tablet_id() << ": "
@@ -9423,7 +9421,8 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
         ns_collect_flags.Reset(CollectFlag::kAddIndexes);
         auto namespace_info = VERIFY_RESULT(FindNamespaceUnlocked(table_id_pb.namespace_()));
         VLOG_WITH_PREFIX_AND_FUNC(1)
-            << "Collecting all tables from: " << namespace_info->ToString();
+            << "Collecting all tables from: " << namespace_info->ToString() << ", specified as: "
+            << table_id_pb.namespace_().ShortDebugString();
         for (const auto& id_and_table : *table_ids_map_) {
           if (id_and_table.second->is_system()) {
             VLOG_WITH_PREFIX_AND_FUNC(4) << "Rejected system table: " << AsString(id_and_table);
@@ -9495,8 +9494,8 @@ void CatalogManager::RebuildYQLSystemPartitions() {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       if (system_partitions_tablet_ != nullptr) {
-        auto s = down_cast<const YQLPartitionsVTable&>(
-            system_partitions_tablet_->QLStorage()).GenerateAndCacheData();
+        auto s = ResultToStatus(down_cast<const YQLPartitionsVTable&>(
+            system_partitions_tablet_->QLStorage()).GenerateAndCacheData());
         if (!s.ok()) {
           LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
         }

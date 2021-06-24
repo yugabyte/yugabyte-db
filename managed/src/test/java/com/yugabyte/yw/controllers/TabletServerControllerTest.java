@@ -2,35 +2,34 @@
 
 package com.yugabyte.yw.controllers;
 
-import static org.junit.Assert.*;
-import static play.mvc.Http.Status.OK;
-import static org.mockito.Mockito.*;
-import static play.test.Helpers.contentAsString;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import org.junit.Before;
+import org.junit.Test;
+import org.yb.client.ListTabletServersResponse;
+import org.yb.client.YBClient;
+import org.yb.util.ServerInfo;
+import play.libs.Json;
+import play.mvc.Result;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.junit.*;
-import play.libs.Json;
-import play.mvc.*;
 
-import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
-import org.yb.util.ServerInfo;
-
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.models.Customer;
-import static org.junit.Assert.assertThrows;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.anyString;
-import com.yugabyte.yw.models.Universe;
+import static org.mockito.Mockito.*;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
 
 public class TabletServerControllerTest extends FakeDBApplication {
   private TabletServerController tabletController;
@@ -69,8 +68,7 @@ public class TabletServerControllerTest extends FakeDBApplication {
   @Test
   public void testListTabletServersFailure() {
     when(mockResponse.getTabletServersCount()).thenThrow(new RuntimeException("Unknown Error"));
-    Result result =
-        assertThrows(YWServiceException.class, () -> tabletController.list()).getResult();
+    Result result = assertYWSE(() -> tabletController.list());
     assertEquals(500, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals("Error: Unknown Error", json.get("error").asText());
@@ -98,10 +96,7 @@ public class TabletServerControllerTest extends FakeDBApplication {
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> tabletController.listTabletServers(customer.uuid, universeUUID))
-            .getResult();
+        assertYWSE(() -> tabletController.listTabletServers(customer.uuid, universeUUID));
     assertEquals(500, result.status());
     assertAuditEntry(0, customer.uuid);
   }

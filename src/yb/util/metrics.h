@@ -348,14 +348,13 @@
                                       yb::MetricLevel::kInfo),                 \
       max_val, num_sig_digits, yb::ExportPercentiles::kTrue)
 
-#define METRIC_DEFINE_histogram(entity, name, label, unit, desc, max_val,      \
-                                num_sig_digits)                                \
+#define METRIC_DEFINE_coarse_histogram(entity, name, label, unit, desc)        \
   ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                        \
       ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity),              \
                                       BOOST_PP_STRINGIZE(name), label, unit,   \
                                       desc,                                    \
                                       yb::MetricLevel::kInfo),                 \
-      max_val, num_sig_digits, yb::ExportPercentiles::kFalse)
+      2, 1, yb::ExportPercentiles::kFalse)
 
 // The following macros act as forward declarations for entity types and metric prototypes.
 #define METRIC_DECLARE_entity(name) \
@@ -1477,7 +1476,7 @@ class Histogram : public Metric {
   explicit Histogram(std::unique_ptr<HistogramPrototype> proto, uint64_t highest_trackable_value,
         int num_significant_digits, ExportPercentiles export_percentiles);
 
-  const gscoped_ptr<HdrHistogram> histogram_;
+  const std::unique_ptr<HdrHistogram> histogram_;
   const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };

@@ -211,18 +211,6 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 			   bool *no_inherit, core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
-#define YBINDEXELEM_EXPR_TO_COLREF(idxelem, expr, parserloc) \
-	do { \
-		ColumnRef *col = (ColumnRef *)(expr); \
-		if (col->type != T_ColumnRef || list_length(col->fields) != 1) \
-			ereport(ERROR, \
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE), \
-					 errmsg("only column list is allowed"), \
-					 parser_errposition(parserloc))); \
-		char *colname = strVal(linitial(col->fields)); \
-		idxelem->yb_name_list = lappend(idxelem->yb_name_list, makeString(colname)); \
-	} while(0)
-
 %}
 
 %pure-parser
@@ -326,7 +314,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				simple_select values_clause
 
 %type <node>	alter_column_default opclass_item opclass_drop alter_using
-%type <ival>	add_drop opt_asc_desc opt_yb_index_sort_order opt_nulls_order
+%type <ival>	add_drop opt_asc_desc yb_hash opt_yb_hash opt_yb_index_sort_order
+				opt_nulls_order
 
 %type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
 	   replica_identity partition_cmd index_partition_cmd
@@ -420,6 +409,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				oper_argtypes RuleActionList RuleActionMulti
 				opt_column_list columnList opt_name_list
 				sort_clause opt_sort_clause sortby_list yb_index_params
+				yb_index_expr_list_hash_elems
 				opt_include opt_c_include index_including_params
 				name_list role_list from_clause from_list opt_array_bounds
 				qualified_name_list any_name any_name_list type_name_list
@@ -527,7 +517,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <alias>	alias_clause opt_alias_clause
 %type <list>	func_alias_clause
 %type <sortby>	sortby
-%type <ielem>	index_elem yb_index_elem
+%type <ielem>	index_elem
 %type <node>	table_ref
 %type <jexpr>	joined_table
 %type <range>	relation_expr
@@ -8072,35 +8062,13 @@ access_method_clause:
 															 NULL : DEFAULT_INDEX_TYPE;	}
 		;
 
-yb_index_params: yb_index_elem
+yb_index_params: index_elem
 				{
-					if ($1->yb_name_list == NULL)
-					{
-						$$ = list_make1($1);
-					}
-					else
-					{
-						if ($1->ordering != SORTBY_HASH)
-							ereport(ERROR,
-									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-									 errmsg("only hash column group is allowed"),
-									 parser_errposition(@1)));
-
-						/* Flatten the hash column group */
-						$$ = NULL;
-						ListCell *lc;
-						foreach (lc, $1->yb_name_list)
-						{
-							IndexElem *index_elem = makeNode(IndexElem);
-							index_elem->name = strVal(lfirst(lc));
-							index_elem->indexcolname = NULL;
-							index_elem->collation = list_copy($1->collation);
-							index_elem->opclass = list_copy($1->opclass);
-							index_elem->ordering = $1->ordering;
-							index_elem->nulls_ordering = $1->nulls_ordering;
-							$$ = lappend($$, index_elem);
-						}
-					}
+					$$ = list_make1($1);
+				}
+			| yb_index_expr_list_hash_elems
+				{
+					$$ = $1;
 				}
 			| yb_index_params ',' index_elem
 				{
@@ -8120,6 +8088,13 @@ yb_index_params: yb_index_elem
 									 parser_errposition(@3)));
 					}
 					$$ = lappend($1, $3);
+				}
+			| yb_index_params ',' yb_index_expr_list_hash_elems
+				{
+						ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+								 errmsg("hash column not allowed after an ASC/DESC column"),
+								 parser_errposition(@3)));
 				}
 		;
 
@@ -8153,8 +8128,14 @@ index_elem:	ColId opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 			| '(' a_expr ')' opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 				{
 					$$ = makeNode(IndexElem);
-					$$->name = NULL;
-					$$->expr = $2;
+					Node *node = $2;
+					if (node->type == T_ColumnRef) {
+							$$->name = strVal(linitial(((ColumnRef *)node)->fields));
+							$$->expr = NULL;
+					} else {
+							$$->name = NULL;
+							$$->expr = node;
+					}
 					$$->indexcolname = NULL;
 					$$->collation = $4;
 					$$->opclass = $5;
@@ -8164,31 +8145,34 @@ index_elem:	ColId opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 		;
 
 /*
- * For YugabyteDB, index column can be grouped and hashed together. Unfortunately, we cannot
- * use "columnList" below due to reduce/reduce conflict.
+ * expr_list index element is not allowed as ASC/DESC key. Always treat it as HASH.
  */
-yb_index_elem: index_elem
+opt_yb_hash: yb_hash		{ $$ = $1; }
+			 | /* EMPTY */	{ $$ = SORTBY_HASH; }
+		;
+
+yb_index_expr_list_hash_elems: '(' expr_list ')' opt_yb_hash
 				{
-					$$ = $1;
-					if ($$->expr && $$->expr->type == T_ColumnRef)
-					{
-						YBINDEXELEM_EXPR_TO_COLREF($$, $$->expr, @1);
-					}
-				}
-			| '(' expr_list ')' opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
-				{
-					$$ = makeNode(IndexElem);
-					$$->name = NULL;
+					$$ = NULL;
 					ListCell *lc;
-					foreach(lc, $2)
+					foreach (lc, $2)
 					{
-						YBINDEXELEM_EXPR_TO_COLREF($$, lfirst(lc), @2);
+							IndexElem *index_elem = makeNode(IndexElem);
+							Node *node = lfirst(lc);
+							if (node->type == T_ColumnRef) {
+									index_elem->name = strVal(linitial(((ColumnRef *)node)->fields));
+									index_elem->expr = NULL;
+							} else {
+									index_elem->name = NULL;
+									index_elem->expr = copyObject(node);
+							}
+							index_elem->indexcolname = NULL;
+							index_elem->collation = NIL;
+							index_elem->opclass = NIL;
+							index_elem->ordering = $4;
+							index_elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+							$$ = lappend($$, index_elem);
 					}
-					$$->indexcolname = NULL;
-					$$->collation = $4;
-					$$->opclass = $5;
-					$$->ordering = $6;
-					$$->nulls_ordering = $7;
 				}
 		;
 
@@ -8218,8 +8202,11 @@ opt_asc_desc: ASC							{ $$ = SORTBY_ASC; }
 /*
  * For YugabyteDB, index column can be hash-distributed also.
  */
-opt_yb_index_sort_order: opt_asc_desc			{ $$ = $1; }
-			| HASH							{ $$ = SORTBY_HASH; }
+yb_hash: HASH								{ $$ = SORTBY_HASH; }
+		;
+
+opt_yb_index_sort_order: opt_asc_desc		{ $$ = $1; }
+			| yb_hash	     	            { $$ = $1; }
 		;
 
 opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }

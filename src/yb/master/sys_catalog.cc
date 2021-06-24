@@ -107,12 +107,11 @@ DEFINE_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
   server, dns_resolve_latency_during_sys_catalog_setup,
   "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
-  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
-  60000000LU, 2);
+  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig");
 METRIC_DEFINE_counter(
   server, sys_catalog_peer_write_count,
   "yb.master.SysCatalogTable Count of Writes",
@@ -641,13 +640,14 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   }
 
   auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &writer->req(), resp.get());
-  operation_state->set_completion_callback(
+  auto operation = std::make_unique<tablet::WriteOperation>(
+      writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
+      tablet_peer()->tablet(), resp.get());
+  *operation->AllocateRequest() = writer->req();
+  operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
-  tablet_peer()->WriteAsync(
-      std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
+  tablet_peer()->WriteAsync(std::move(operation));
   peer_write_count->Increment();
 
   {

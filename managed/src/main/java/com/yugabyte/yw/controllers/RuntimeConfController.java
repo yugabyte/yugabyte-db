@@ -12,21 +12,18 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
@@ -34,7 +31,9 @@ import play.mvc.Result;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Api("RuntimeConfig")
+@Api(
+    value = "RuntimeConfig",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RuntimeConfController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfController.class);
   private final SettableRuntimeConfigFactory settableRuntimeConfigFactory;
@@ -71,7 +70,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   private Result buildCachedResult() {
-    return ApiResponse.success(mutableKeys);
+    return YWResults.withData(mutableKeys);
   }
 
   private Set<String> buildMutableKeysSet() {
@@ -107,7 +106,7 @@ public class RuntimeConfController extends AuthenticatedController {
               + "specific overrides for current customer and one scope each for each universe and "
               + "provider.")
   public Result listScopes(UUID customerUUID) {
-    return ApiResponse.success(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
+    return YWResults.withData(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
   }
 
   @ApiOperation(
@@ -149,10 +148,10 @@ public class RuntimeConfController extends AuthenticatedController {
       }
     }
 
-    return ApiResponse.success(optScopedConfig.get());
+    return YWResults.withData(optScopedConfig.get());
   }
 
-  @ApiOperation(value = "getKey", response = String.class)
+  @ApiOperation(value = "getKey", produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);

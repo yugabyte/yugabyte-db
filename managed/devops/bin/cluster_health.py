@@ -21,7 +21,7 @@ try:
     from builtins import RuntimeError
 except Exception as e:
     from exceptions import RuntimeError
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import tz
 from multiprocessing import Pool
 from six import string_types, PY2, PY3
@@ -32,7 +32,8 @@ YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
 YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
-VM_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
+VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
+VM_CLIENT_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt")
 K8S_CERT_FILE_PATH = "/opt/certs/yugabyte/ca.crt"
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
@@ -194,13 +195,14 @@ class NodeChecker():
 
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
-                 ssl_protocol, enable_ysql_auth):
+                 root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
         self.enable_tls_client = enable_tls_client
+        self.root_and_client_root_ca_same = root_and_client_root_ca_same
         self.ssl_protocol = ssl_protocol
         # TODO: best way to do mark that this is a k8s deployment?
         self.is_k8s = ssh_port == 0 and not self.identity_file
@@ -333,6 +335,13 @@ class NodeChecker():
         remote_cmd = "ps -C {} -o etimes=".format(process)
         return self._remote_check_output(remote_cmd).strip()
 
+    def get_uptime_in_dhms(self, uptime):
+        dtime = timedelta(seconds=int(uptime))
+        d = {"days": dtime.days}
+        d["hours"], rem = divmod(dtime.seconds, 3600)
+        d["minutes"], d["seconds"] = divmod(rem, 60)
+        return "{days} days {hours} hours {minutes} minutes {seconds} seconds".format(**d)
+
     def check_uptime_for_process(self, process):
         logging.info("Checking uptime for {} process {}".format(self.node, process))
         e = self._new_entry("Uptime", process)
@@ -348,9 +357,11 @@ class NodeChecker():
                 (int(time.time()) - self.start_time_ms / 1000 <= RECENT_FAILURE_THRESHOLD_SEC)
             # Server went down recently.
             if int(uptime) <= RECENT_FAILURE_THRESHOLD_SEC and not recent_operation:
-                return e.fill_and_return_entry(['Uptime: {} seconds'.format(uptime)], True)
+                return e.fill_and_return_entry(['Uptime: {} seconds ({})'.format(
+                    uptime, self.get_uptime_in_dhms(uptime))], True)
             else:
-                return e.fill_and_return_entry(['Uptime: {} seconds'.format(uptime)], False)
+                return e.fill_and_return_entry(['Uptime: {} seconds ({})'.format(
+                    uptime, self.get_uptime_in_dhms(uptime))], False)
         elif not uptime:
             return e.fill_and_return_entry(['Process is not running'], True)
         else:
@@ -394,7 +405,12 @@ class NodeChecker():
         cqlsh = '{}/bin/cqlsh'.format(YB_TSERVER_DIR)
         remote_cmd = '{} {} {} -e "SHOW HOST"'.format(cqlsh, self.node, self.ycql_port)
         if self.enable_tls_client:
-            cert_file = K8S_CERT_FILE_PATH if self.is_k8s else VM_CERT_FILE_PATH
+            if self.is_k8s:
+                cert_file = K8S_CERT_FILE_PATH
+            elif self.root_and_client_root_ca_same:
+                cert_file = VM_ROOT_CERT_FILE_PATH
+            else:
+                cert_file = VM_CLIENT_ROOT_CERT_FILE_PATH
             protocols = re.split('\\W+', self.ssl_protocol or "")
             ssl_version = DEFAULT_SSL_VERSION
             for protocol in protocols:
@@ -598,6 +614,7 @@ class Cluster():
         self.identity_file = data["identityFile"]
         self.ssh_port = data["sshPort"]
         self.enable_tls_client = data["enableTlsClient"]
+        self.root_and_client_root_ca_same = data['rootAndClientRootCASame']
         self.master_nodes = data["masterNodes"]
         self.tserver_nodes = data["tserverNodes"]
         self.yb_version = data["ybSoftwareVersion"]
@@ -649,8 +666,8 @@ def main():
                 checker = NodeChecker(
                         node, node_name, c.identity_file, c.ssh_port,
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
-                        c.ycql_port, c.redis_port, c.enable_tls_client, c.ssl_protocol,
-                        c.enable_ysql_auth)
+                        c.ycql_port, c.redis_port, c.enable_tls_client,
+                        c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth)
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
                     coordinator.add_check(

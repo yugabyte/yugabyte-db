@@ -2,8 +2,7 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.EnumMap;
 import java.util.Optional;
 
 import com.google.inject.Inject;
@@ -14,7 +13,8 @@ import com.yugabyte.yw.models.AlertReceiver.TargetType;
 @Singleton
 public class AlertReceiverManager {
 
-  private Map<TargetType, AlertReceiverInterface> receiversMap = new HashMap<>();
+  private EnumMap<TargetType, AlertReceiverInterface> receiversMap =
+      new EnumMap<>(TargetType.class);
 
   @Inject
   public AlertReceiverManager(AlertReceiverEmail alertReceiverEmail) {
@@ -23,15 +23,15 @@ public class AlertReceiverManager {
   }
 
   /**
-   * Returns correct receiver handler using the passed receiver type.
+   * Returns correct receiver handler using the passed receiver type name.
    *
-   * @param targetType
+   * @param typeName
    * @return
    * @throws IllegalArgumentException if we don't have a correct handler for the passed type of
    *     receivers.
    */
-  public AlertReceiverInterface get(TargetType targetType) {
-    return Optional.ofNullable(receiversMap.get(targetType))
+  public AlertReceiverInterface get(String typeName) {
+    return Optional.ofNullable(receiversMap.get(TargetType.valueOf(typeName)))
         .orElseThrow(IllegalArgumentException::new);
   }
 }

@@ -44,10 +44,10 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
     LOG(INFO) << "Creating Snapshot " << snapshot_id << " ...";
     TabletSnapshotOpRequestPB request;
     request.set_snapshot_id(snapshot_id);
-    tablet::SnapshotOperationState tx_state(tablet_peer_->tablet(), &request);
-    tx_state.set_hybrid_time(tablet_peer_->clock().Now());
-    tx_state.set_op_id(tablet_peer_->log()->GetLatestEntryOpId());
-    ASSERT_OK(tablet_peer_->tablet()->snapshots().Create(&tx_state));
+    tablet::SnapshotOperation operation(tablet_peer_->tablet(), &request);
+    operation.set_hybrid_time(tablet_peer_->clock().Now());
+    operation.set_op_id(tablet_peer_->log()->GetLatestEntryOpId());
+    ASSERT_OK(tablet_peer_->tablet()->snapshots().Create(&operation));
   }
 
   void CheckSnapshotsInSrc() {

@@ -28,15 +28,14 @@ namespace tablet {
 
 // Operation Context for the TabletSnapshot operation.
 // Keeps track of the Operation states (request, result, ...)
-class SnapshotOperationState :
-    public ExclusiveSchemaOperationState<tserver::TabletSnapshotOpRequestPB>,
+// Executes the TabletSnapshotOp operation.
+class SnapshotOperation :
+    public ExclusiveSchemaOperation<OperationType::kSnapshot, tserver::TabletSnapshotOpRequestPB>,
     public OperationFilter {
  public:
-  ~SnapshotOperationState() = default;
-
-  SnapshotOperationState(Tablet* tablet,
-                         const tserver::TabletSnapshotOpRequestPB* request = nullptr)
-      : ExclusiveSchemaOperationState(tablet, request) {
+  template <class... Args>
+  explicit SnapshotOperation(Args&&... args)
+      : ExclusiveSchemaOperation(std::forward<Args>(args)...) {
   }
 
   tserver::TabletSnapshotOpRequestPB::Operation operation() const {
@@ -44,11 +43,7 @@ class SnapshotOperationState :
         tserver::TabletSnapshotOpRequestPB::UNKNOWN : request()->operation();
   }
 
-  void UpdateRequestFromConsensusRound() override;
-
   CHECKED_STATUS Apply(int64_t leader_term);
-
-  std::string ToString() const override;
 
   // Returns the snapshot directory, based on the tablet's top directory for all snapshots, and any
   // overrides for the snapshot directory this operation might have.
@@ -60,7 +55,13 @@ class SnapshotOperationState :
 
   static CHECKED_STATUS RejectionStatus(OpId rejected_op_id, consensus::OperationType op_type);
 
+  CHECKED_STATUS Prepare() override;
+
  private:
+  // Starts the TabletSnapshotOp operation by assigning it a timestamp.
+  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+  CHECKED_STATUS DoAborted(const Status& status) override;
+
   void AddedAsPending() override;
   void RemovedFromPending() override;
 
@@ -68,35 +69,6 @@ class SnapshotOperationState :
       const OpId& id, consensus::OperationType op_type) const override;
 
   CHECKED_STATUS DoCheckOperationRequirements();
-
-  DISALLOW_COPY_AND_ASSIGN(SnapshotOperationState);
-};
-
-// Executes the TabletSnapshotOp operation.
-class SnapshotOperation : public Operation {
- public:
-  explicit SnapshotOperation(std::unique_ptr<SnapshotOperationState> tx_state);
-
-  SnapshotOperationState* state() override {
-    return down_cast<SnapshotOperationState*>(Operation::state());
-  }
-
-  const SnapshotOperationState* state() const override {
-    return down_cast<const SnapshotOperationState*>(Operation::state());
-  }
-
-  consensus::ReplicateMsgPtr NewReplicateMsg() override;
-
-  CHECKED_STATUS Prepare() override;
-
-  std::string ToString() const override;
-
- private:
-  // Starts the TabletSnapshotOp operation by assigning it a timestamp.
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
-
-  DISALLOW_COPY_AND_ASSIGN(SnapshotOperation);
 };
 
 }  // namespace tablet

@@ -66,7 +66,7 @@ SELECT attname, atttypid FROM pg_attribute WHERE attname = 'w';
 CREATE TABLE t1 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h hash, r));
 CREATE INDEX ON t1 (v1);
 CREATE UNIQUE INDEX ON t1 (v1, v2);
-CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h hash, r));
+CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY ((h) hash, r));
 
 \d t1
 \d t2
@@ -240,11 +240,17 @@ CREATE TABLE test_method (
 CREATE INDEX ON test_method (h2 HASH, r2, r1);
 CREATE INDEX ON test_method (r1, r2);
 CREATE UNIQUE INDEX ON test_method (v1, v2);
+CREATE INDEX ON test_method ((h1, h2) HASH, r2, r1);
+CREATE INDEX ON test_method ((h2, h1), r2 DESC, r1);
+CREATE UNIQUE INDEX ON test_method ((h1, (h2 % 8)) HASH, r2, r1);
 \d test_method
 
 -- These should fail
 CREATE INDEX ON test_method (h1 HASH, h2 HASH, r2, r1);
 CREATE INDEX ON test_method (r1, h1 HASH);
+CREATE INDEX ON test_method (() HASH);
+CREATE INDEX ON test_method (());
+CREATE INDEX ON test_method (r1 DESC, (h2, h1));
 
 INSERT INTO test_method VALUES
   (1, 1, 1, 1, 1, 11),
@@ -269,9 +275,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
 SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
 EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
 SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
-EXPLAIN (COSTS OFF) UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
+SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
+SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
+SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
 
 -- Test update using a hash index
+EXPLAIN (COSTS OFF) UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
 UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
 SELECT * FROM test_method ORDER BY h1, h2;
 SELECT * FROM test_method ORDER BY r1, r2;
@@ -285,6 +297,53 @@ EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
 DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
 
 SELECT * FROM test_method ORDER BY h1, h2;
+
+-- Test update using a unique index on hashed expr
+UPDATE test_method SET h2 = 258 WHERE h2 % 8 = 1 AND h1 = 2;
+SELECT * FROM test_method ORDER BY h1, h2;
+
+-- This should fail
+UPDATE test_method SET h2 = 257 WHERE h2 % 8 = 2 AND h1 = 1;
+
+-- Test insert using a unique index on hashed expr
+-- This should fail
+INSERT INTO test_method VALUES (1, 10, 2, 2, 8, 100);
+
+-- Test hash with extra parenthesis on a single column
+CREATE INDEX ON test_method ((h2) HASH);
+\d test_method
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 258;
+SELECT * FROM test_method WHERE h2 = 258;
+
+-- Test more HASH key cases in PRIMARY KEY
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int);
+
+-- These should fail
+ALTER TABLE test_hash ADD PRIMARY KEY ((h1 % 8, h2) HASH, r1, r2);
+ALTER TABLE test_hash ADD PRIMARY KEY ((h1, h2) HASH, (r1 + r2) DESC);
+-- Extra parenthesis turns the column group into a RowExpr - should fail
+ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)) HASH);
+ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)));
+
+-- This should succeed
+CREATE UNIQUE INDEX test_hash_h1_h2mod8_r2_r1_idx ON test_hash ((h1, (h2 % 8)) HASH, r2, r1);
+-- This should fail
+ALTER TABLE test_hash ADD PRIMARY KEY USING INDEX test_hash_h1_h2mod8_r2_r1_idx;
+
+-- These CREATE TABLE statements should fail
+DROP TABLE test_hash;
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY (r1, (h1, h2) HASH));
+
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1 + 666) HASH));
+
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1, (h2 + 666)) HASH, r1, r2));
 
 -- Test ordering on split indexes
 CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);

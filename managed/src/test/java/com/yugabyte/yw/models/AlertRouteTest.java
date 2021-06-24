@@ -2,29 +2,28 @@
 
 package com.yugabyte.yw.models;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.when;
-
-import java.util.ArrayList;
-import java.util.List;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertRouteTest extends FakeDBApplication {
@@ -39,17 +38,20 @@ public class AlertRouteTest extends FakeDBApplication {
 
   private AlertDefinitionService alertDefinitionService = new AlertDefinitionService();
 
+  @Mock private BaseTaskDependencies baseTaskDependencies;
   @Mock private RuntimeConfigFactory runtimeConfigFactory;
 
   @Before
   public void setUp() {
+    when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
+    when(baseTaskDependencies.getAlertDefinitionService()).thenReturn(alertDefinitionService);
+
     defaultCustomer = ModelFactory.testCustomer();
     universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
 
     receiver =
         AlertReceiver.create(
             defaultCustomer.getUuid(),
-            AlertReceiver.TargetType.Slack,
             AlertUtils.createParamsInstance(AlertReceiver.TargetType.Slack));
     definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
 
@@ -58,16 +60,26 @@ public class AlertRouteTest extends FakeDBApplication {
 
   @Test
   public void testCreateAndListByDefinition() {
-    CreateAlertDefinitions task =
-        new CreateAlertDefinitions(alertDefinitionService, runtimeConfigFactory);
+    AlertingData data = new AlertingData();
+    data.sendAlertsToYb = false;
+    data.alertingEmail = "";
+    data.reportOnlyErrors = true;
+    data.enableClockSkew = false;
+    // Setup alerting data.
+    CustomerConfig.createAlertConfig(defaultCustomer.uuid, Json.toJson(data));
+
+    CreateAlertDefinitions task = new CreateAlertDefinitions(baseTaskDependencies);
     UniverseTaskParams taskParams = new UniverseTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     task.initialize(taskParams);
     task.run();
 
     List<AlertDefinition> definitions =
-        AlertDefinition.list(
-            new AlertDefinitionFilter().setCustomerUuid(defaultCustomer.getUuid()).setActive(true));
+        alertDefinitionService.list(
+            AlertDefinitionFilter.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .active(true)
+                .build());
     assertNotEquals(0, definitions.size());
 
     for (AlertDefinition definition : definitions) {

@@ -51,6 +51,7 @@
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/string_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/logging.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fault_injection.h"
@@ -208,10 +209,6 @@ class DBImpl::ThreadPoolTask : public yb::PriorityThreadPoolTask {
  public:
   explicit ThreadPoolTask(DBImpl* db_impl) : db_impl_(db_impl) {}
 
-  bool BelongsTo(void* key) override {
-    return key == db_impl_;
-  }
-
   void Run(const Status& status, yb::PriorityThreadPoolSuspender* suspender) override {
     if (!status.ok()) {
       LOG_WITH_PREFIX(INFO) << "Task cancelled " << ToString() << ": " << status;
@@ -259,6 +256,10 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     db_impl->mutex_.AssertHeld();
   }
 
+  bool ShouldRemoveWithKey(void* key) override {
+    return key == db_impl_;
+  }
+
   void DoRun(yb::PriorityThreadPoolSuspender* suspender) override {
     compaction_->SetSuspender(suspender);
     db_impl_->BackgroundCallCompaction(manual_compaction_, std::move(compaction_holder_), this);
@@ -284,6 +285,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         manual_compaction_->status = status;
       }
     }
+    compaction_->ReleaseCompactionFiles(status);
     LOG_IF_WITH_PREFIX(DFATAL, db_impl_->compaction_tasks_.erase(this) != 1)
         << "Aborted unknown compaction task: " << SerialNo();
     if (db_impl_->compaction_tasks_.empty()) {
@@ -297,7 +299,8 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 
   std::string ToString() const override {
     return yb::Format(
-        "{ compact db: $0 is_manual: $1 }", db_impl_->GetName(), manual_compaction_ != nullptr);
+        "{ compact db: $0 is_manual: $1 serial_no: $2 }", db_impl_->GetName(),
+        manual_compaction_ != nullptr, SerialNo());
   }
 
   bool UpdatePriority() override {
@@ -361,6 +364,10 @@ class DBImpl::FlushTask : public ThreadPoolTask {
   FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd)
       : ThreadPoolTask(db_impl), cfd_(cfd) {}
 
+  bool ShouldRemoveWithKey(void* key) override {
+    return key == db_impl_ && db_impl_->disable_flush_on_shutdown_;
+  }
+
   void DoRun(yb::PriorityThreadPoolSuspender* suspender) override {
     // Since flush tasks has highest priority we could don't use suspender for them.
     db_impl_->BackgroundCallFlush(cfd_);
@@ -390,7 +397,7 @@ class DBImpl::FlushTask : public ThreadPoolTask {
   }
 
   std::string ToString() const override {
-    return yb::Format("{ flush db: $0 }", db_impl_->GetName());
+    return yb::Format("{ flush db: $0 serial_no: $1 }", db_impl_->GetName(), SerialNo());
   }
 
  private:
@@ -670,6 +677,20 @@ void DBImpl::StartShutdown() {
   TaskPriorityUpdater task_priority_updater(this);
   {
     InstrumentedMutexLock lock(&mutex_);
+    task_priority_updater.Prepare();
+  }
+  task_priority_updater.Apply();
+  if (db_options_.priority_thread_pool_for_compactions_and_flushes) {
+    db_options_.priority_thread_pool_for_compactions_and_flushes->Remove(this);
+  }
+}
+
+DBImpl::~DBImpl() {
+  StartShutdown();
+
+  TaskPriorityUpdater task_priority_updater(this);
+  {
+    InstrumentedMutexLock lock(&mutex_);
 
     if (has_unpersisted_data_) {
       for (auto cfd : *versions_->GetColumnFamilySet()) {
@@ -699,10 +720,6 @@ void DBImpl::StartShutdown() {
   if (db_options_.priority_thread_pool_for_compactions_and_flushes) {
     db_options_.priority_thread_pool_for_compactions_and_flushes->Remove(this);
   }
-}
-
-DBImpl::~DBImpl() {
-  StartShutdown();
 
   int compactions_unscheduled = env_->UnSchedule(this, Env::Priority::LOW);
   int flushes_unscheduled = env_->UnSchedule(this, Env::Priority::HIGH);
@@ -3209,6 +3226,20 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
     bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd) {
   mutex_.AssertHeld();
 
+  auto scope_exit = yb::ScopeExit([&cfd] {
+    if (cfd && cfd->Unref()) {
+      delete cfd;
+    }
+  });
+
+  if (cfd) {
+    // cfd is not nullptr when we get here from DBImpl::FlushTask and in this case we need to reset
+    // pending flush flag.
+    // In other cases (getting here from DBImpl::BGWorkFlush) this is done by
+    // DBImpl::PopFirstFromFlushQueue called below.
+    cfd->set_pending_flush(false);
+  }
+
   Status status = bg_error_;
   if (status.ok() && IsShuttingDown() && disable_flush_on_shutdown_) {
     status = STATUS(ShutdownInProgress, "");
@@ -3235,9 +3266,6 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
       cfd = first_cfd;
       break;
     }
-  } else {
-    DCHECK(cfd->pending_flush());
-    cfd->set_pending_flush(false);
   }
 
   if (cfd == nullptr) {
@@ -3253,12 +3281,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
       << "compaction slots scheduled " << bg_compaction_scheduled_ << ", "
       << "compaction tasks " << yb::ToString(compaction_tasks_) << ", "
       << "total compaction slots " << BGCompactionsAllowed();
-  auto result = FlushMemTableToOutputFile(cfd, mutable_cf_options, made_progress,
+  return FlushMemTableToOutputFile(cfd, mutable_cf_options, made_progress,
                                           job_context, log_buffer);
-  if (cfd->Unref()) {
-    delete cfd;
-  }
-  return result;
 }
 
 void DBImpl::WaitAfterBackgroundError(
@@ -5285,7 +5309,6 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
   uint64_t time_delayed = 0;
   bool delayed = false;
   {
-    StopWatch sw(env_, stats_, WRITE_STALL, &time_delayed);
     auto delay = write_controller_.GetDelay(env_, num_bytes);
     if (delay > 0) {
       mutex_.Unlock();
@@ -5296,15 +5319,16 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
       mutex_.Lock();
     }
 
-    while (bg_error_.ok() && write_controller_.IsStopped()) {
+    // If we are shutting down, background job that make WriteController stopped could be aborted
+    // and never release WriteControllerToken, so we need to check IsShuttingDown to not stuck here
+    // in this case.
+    while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
       TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
   if (delayed) {
-    default_cf_internal_stats_->AddDBStats(InternalDBStatsType::WRITE_STALL_MICROS,
-                                           time_delayed);
     RecordTick(stats_, STALL_MICROS, time_delayed);
   }
 
