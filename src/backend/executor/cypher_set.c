@@ -170,8 +170,6 @@ static void process_all_tuples(CustomScanState *node)
 
     do
     {
-        css->tuple_info = NIL;
-
         process_update_list(node);
         Decrement_Estate_CommandId(estate)
         slot = ExecProcNode(node->ss.ps.lefttree);
@@ -284,19 +282,20 @@ static void process_update_list(CustomScanState *node)
     ListCell *lc;
     EState *estate = css->css.ss.ps.state;
 
-    css->tuple_info = NIL;
-
     foreach (lc, css->set_list->set_items)
     {
         agtype_value *altered_properties, *original_entity_value, *original_properties, *id, *label;
         agtype *original_entity, *new_property_value;
+        TupleTableSlot *slot;
+        ResultRelInfo *resultRelInfo;
+        ScanKeyData scan_keys[1];
+        HeapScanDesc scan_desc;
         bool remove_property;
         char *label_name;
         cypher_update_item *update_item = (cypher_update_item *)lfirst(lc);
         Datum new_entity;
         HeapTuple heap_tuple;
         char *clause_name = css->set_list->clause_name;
-        bool is_deleted;
 
         update_item = (cypher_update_item *)lfirst(lc);
 
@@ -327,26 +326,45 @@ static void process_update_list(CustomScanState *node)
         original_properties = get_agtype_value_object_value(original_entity_value, "properties");
 
         /*
-         * Determine if the property should be removed.
+         * Determine if the property should be removed. This will be because this is a REMOVE clause
+         * or the variable references a variable that is NULL. It will be possible for a variable to
+         * be NULL when OPTIONAL MATCH is implemented.
          */
         if(update_item->remove_item)
             remove_property = true;
         else
             remove_property = scanTupleSlot->tts_isnull[update_item->prop_position - 1];
 
+        /*
+         * If we need to remove the property, set the value to NULL. Otherwise fetch the
+         * evaluated expression from the tuble slot.
+         */
         if (remove_property)
             new_property_value = NULL;
         else
             new_property_value = DATUM_GET_AGTYPE_P(scanTupleSlot->tts_values[update_item->prop_position - 1]);
 
+        /*
+         * Alter the properties Agtype value to contain or remove the updated property.
+         */
         altered_properties = alter_property_value(original_properties, update_item->prop_name,
                                                   new_property_value, remove_property);
 
+        resultRelInfo = create_entity_result_rel_info(estate, css->set_list->graph_name, label_name);
+
+        slot = ExecInitExtraTupleSlot(estate, RelationGetDescr(resultRelInfo->ri_RelationDesc));
+
+        /*
+         *  Now that we have the updated properties, create a either a vertex or edge Datum for the in-memory
+         *  update, and setup the tupleTableSlot for the on-disc update.
+         */
         if (original_entity_value->type == AGTV_VERTEX)
         {
             new_entity = make_vertex(GRAPHID_GET_DATUM(id->val.int_value),
                                      CStringGetDatum(label_name),
                                      AGTYPE_P_GET_DATUM(agtype_value_to_agtype(altered_properties)));
+
+            slot = populate_vertex_tts(slot, id, altered_properties);
         }
         else if (original_entity_value->type == AGTV_EDGE)
         {
@@ -358,6 +376,8 @@ static void process_update_list(CustomScanState *node)
                                    GRAPHID_GET_DATUM(endid->val.int_value),
                                    CStringGetDatum(label_name),
                                    AGTYPE_P_GET_DATUM(agtype_value_to_agtype(altered_properties)));
+
+            slot = populate_edge_tts(slot, id, startid, endid, altered_properties);
         }
 	else
 	{
@@ -365,47 +385,37 @@ static void process_update_list(CustomScanState *node)
                     errmsg("age %s clause can only update vertex and edges", clause_name)));
 	}
 
-        // update the in-memory tuple slot
+        // place the datum in its tuple table slot position.
         scanTupleSlot->tts_values[update_item->entity_position - 1] = new_entity;
 
+        /*
+         *  If the tuple table slot has paths, we need to inspect them to see if the updated
+         *  entity is contained within them and replace the entity if it is.
+         */
         update_all_paths(node, id->val.int_value, DATUM_GET_AGTYPE_P(new_entity));
 
-        // update the on-disc table
-        heap_tuple = get_heap_tuple(node, update_item->var_name, &is_deleted);
+        // Setup the scan key to require the id field on-disc to match the entity's graphid.
+        ScanKeyInit(&scan_keys[0], 1, BTEqualStrategyNumber, F_GRAPHIDEQ, GRAPHID_GET_DATUM(id->val.int_value));
 
-        if (!is_deleted)
+        // Setup the scan description, with the correct snapshot and scan keys.
+        scan_desc = heap_beginscan(resultRelInfo->ri_RelationDesc, estate->es_snapshot, 1, scan_keys);
+
+        // Retrieve the tuple.
+        heap_tuple = heap_getnext(scan_desc, ForwardScanDirection);
+
+        /*
+         * If the heap tuple still exists (It wasn't deleted between the match and this SET/REMOVE) 
+         * update the heap_tuple
+         */
+        if(HeapTupleIsValid(heap_tuple))
         {
-            ResultRelInfo *resultRelInfo;
-            TupleTableSlot *elemTupleSlot;
-            HeapTuple tuple;
-
-            resultRelInfo = create_entity_result_rel_info(estate, css->set_list->graph_name, label_name);
-
-            ExecOpenIndices(resultRelInfo, false);
-
-            elemTupleSlot = ExecInitExtraTupleSlot(estate, RelationGetDescr(resultRelInfo->ri_RelationDesc));
-            if (original_entity_value->type == AGTV_VERTEX)
-            {
-                elemTupleSlot = populate_vertex_tts(elemTupleSlot, id, altered_properties);
-            }
-            else if (original_entity_value->type == AGTV_EDGE)
-            {
-                agtype_value *startid = get_agtype_value_object_value(original_entity_value, "start_id");
-                agtype_value *endid = get_agtype_value_object_value(original_entity_value, "end_id");
-
-                elemTupleSlot = populate_edge_tts(elemTupleSlot, id, startid, endid, altered_properties);
-            }
-
-            tuple = update_entity_tuple(resultRelInfo, elemTupleSlot, estate, heap_tuple);
-
-            if (update_item->var_name != NULL)
-                css->tuple_info = add_tuple_info(css->tuple_info, tuple, update_item->var_name);
-
-            ExecCloseIndices(resultRelInfo);
-
-            heap_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
-
+            heap_tuple = update_entity_tuple(resultRelInfo, slot, estate, heap_tuple);
         }
+
+        // close the ScanDescription and the Relation 
+        heap_endscan(scan_desc);
+        heap_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
+
     }
 }
 
@@ -419,8 +429,6 @@ static TupleTableSlot *exec_cypher_set(CustomScanState *node)
     TupleTableSlot *slot;
 
     saved_resultRelInfo = estate->es_result_relation_info;
-
-    css->tuple_info = NIL;
 
     //Process the subtree first
     Decrement_Estate_CommandId(estate);

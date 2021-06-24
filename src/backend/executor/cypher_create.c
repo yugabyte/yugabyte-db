@@ -154,8 +154,6 @@ static void process_pattern(cypher_create_custom_scan_state *css)
 {
     ListCell *lc2;
 
-    css->tuple_info = NIL;
-
     foreach (lc2, css->pattern)
     {
         cypher_create_path *path = lfirst(lc2);
@@ -222,8 +220,6 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node)
             econtext->ecxt_scantuple =
                 node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
 
-            css->tuple_info = NIL;
-
             process_pattern(css);
         }
 
@@ -242,8 +238,6 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node)
         // setup the scantuple that the process_delete_list needs
         econtext->ecxt_scantuple =
             node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
-
-        css->tuple_info = NIL;
 
         process_pattern(css);
 
@@ -310,7 +304,6 @@ Node *create_cypher_create_plan_state(CustomScan *cscan)
 
     cypher_css->path_values = NIL;
     cypher_css->pattern = target_nodes->paths;
-    cypher_css->tuple_info = NIL;
     cypher_css->flags = target_nodes->flags;
     cypher_css->graph_oid = target_nodes->graph_oid;
 
@@ -336,7 +329,6 @@ static void create_edge(cypher_create_custom_scan_state *css,
     Datum id;
     Datum start_id, end_id, next_vertex_id;
     List *prev_path = css->path_values;
-    HeapTuple tuple;
 
     Assert(node->type == LABEL_KIND_EDGE);
     Assert(lfirst(next) != NULL);
@@ -400,10 +392,7 @@ static void create_edge(cypher_create_custom_scan_state *css,
         scanTupleSlot->tts_isnull[node->prop_attr_num];
 
     // Insert the new edge
-    tuple = insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
-
-    if (node->variable_name != NULL)
-        css->tuple_info = add_tuple_info(css->tuple_info, tuple, node->variable_name);
+    insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
 
     /*
      * When the edge is used by clauses higher in the execution tree
@@ -458,8 +447,6 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
      */
     if (CYPHER_TARGET_NODE_INSERT_ENTITY(node->flags))
     {
-        HeapTuple tuple;
-
         /*
          * Set estate's result relation to the vertex's result
          * relation.
@@ -482,25 +469,7 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
             scanTupleSlot->tts_isnull[node->prop_attr_num];
 
         // Insert the new vertex
-        tuple = insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
-
-        /*
-         * If this vertex is a variable store the newly created tuple in
-         * the CustomScanState. This will tell future clauses what the
-         * tuple is for this variable, which is needed if the query wants
-         * to update this tuple.
-         */
-        if (node->variable_name != NULL)
-        {
-            clause_tuple_information *tuple_info;
-
-            tuple_info = palloc(sizeof(clause_tuple_information));
-
-            tuple_info->tuple = tuple;
-            tuple_info->name = node->variable_name;
-
-            css->tuple_info = lappend(css->tuple_info, tuple_info);
-        }
+        insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
 
         /*
          * When the vertex is used by clauses higher in the execution tree
@@ -579,11 +548,7 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
          */
         if (!SAFE_TO_SKIP_EXISTENCE_CHECK(node->flags))
         {
-            bool is_deleted = false;
-
-            get_heap_tuple(&css->css, node->variable_name, &is_deleted);
-
-            if (is_deleted || !entity_exists(estate, css->graph_oid, DATUM_GET_GRAPHID(id)))
+            if (!entity_exists(estate, css->graph_oid, DATUM_GET_GRAPHID(id)))
                 ereport(ERROR,
                     (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
                      errmsg("vertex assigned to variable %s was deleted", node->variable_name)));

@@ -19,7 +19,7 @@
 
 LOAD 'age';
 SET search_path TO ag_catalog;
-SELECT drop_graph('cypher_delete', true);
+
 SELECT create_graph('cypher_delete');
 
 --Test 1: Delete Vertices
@@ -196,6 +196,32 @@ SELECT delete_test();
 
 SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
 SELECT delete_test();
+
+-- Clean Up
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
+
+--Test 23
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->()$$) AS (a agtype);
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e2]->()$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[e]->(m)  DELETE e$$) AS (a agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agtype);
+
+-- Clean Up
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)  DELETE n RETURN n$$) AS (a agtype);
+
+--Test 24
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->()$$) AS (a agtype);
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e2]->()$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[]->() DETACH DELETE n$$) AS (a agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agtype);
+
+-- Clean Up
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
+
 --
 -- Clean up
 --

@@ -40,265 +40,34 @@
 #include "utils/agtype.h"
 #include "utils/graphid.h"
 
-static bool find_scan_state_walker(PlanState *p, void *context);
-static bool inspect_clause_tuple_info(List *tuple_info, char *var_name);
-
-typedef struct find_scan_state_context {
-    char *var_name;
-    PlanState *variable_plan_state;
-    EState *estate;
-    bool is_deleted;
-} find_scan_state_context;
-
-/*
- * This function will find the scan state that a variable name
- * is referencing.
- */
-PlanState *find_plan_state(CustomScanState *node, char *var_name, bool *is_deleted)
-{
-    PlanState *ps;
-    find_scan_state_context *context;
-
-    context = palloc(sizeof(find_scan_state_context));
-    context->var_name = var_name;
-    context->estate = node->ss.ps.state;
-    context->is_deleted = false;
-    context->variable_plan_state = NULL;
-
-    planstate_tree_walker((PlanState *)node, find_scan_state_walker, context);
-
-    ps = context->variable_plan_state;
-
-    if (ps == NULL)
-        ereport(ERROR,
-            (errmsg("cannot find plan state for variable '%s'", var_name)));
-
-    *is_deleted = context->is_deleted;
-
-    return ps;
-}
-
-
-static bool find_scan_state_walker(PlanState *p, void *context)
-{
-    find_scan_state_context *cnxt = (find_scan_state_context *)context;
-    EState *estate = cnxt->estate;
-    char *var_name = cnxt->var_name;
-
-    switch (p->type)
-    {
-        case T_CustomScanState:
-        {
-            CustomScanState *css = (CustomScanState *)p;
-            const struct CustomExecMethods *methods = css->methods;
-
-            if (!strcmp(methods->CustomName, CREATE_SCAN_STATE_NAME))
-            {
-                cypher_create_custom_scan_state *custom_state = (cypher_create_custom_scan_state *)css;
-                if (inspect_clause_tuple_info(custom_state->tuple_info, var_name))
-                {
-                    cnxt->variable_plan_state = (PlanState *)p;
-                    return true;
-                }
-            }
-            else if (!strcmp(methods->CustomName, SET_SCAN_STATE_NAME))
-            {
-                cypher_set_custom_scan_state *custom_state = (cypher_set_custom_scan_state *)css;
-                if (inspect_clause_tuple_info(custom_state->tuple_info, var_name))
-                {
-                    cnxt->variable_plan_state = (PlanState *)p;
-                    return true;
-                }
-            }
-            else if (!strcmp(methods->CustomName, DELETE_SCAN_STATE_NAME))
-            {
-                cypher_delete_custom_scan_state *custom_state = (cypher_delete_custom_scan_state *)css;
-                if (inspect_clause_tuple_info(custom_state->tuple_info, var_name))
-                {
-                    cnxt->is_deleted = true;
-                    cnxt->variable_plan_state = (PlanState *)p;
-                    return true;
-                }
-            }
-            break;
-        }
-        case T_AppendState:
-        {
-            if (planstate_tree_walker(p, find_scan_state_walker, context))
-            {
-                AppendState *append = (AppendState *)p;
-                cnxt->variable_plan_state = (PlanState *)append->appendplans[append->as_whichplan];
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-        case T_SeqScanState:
-        {
-            SeqScanState *seq = (SeqScanState *)p;
-            SeqScan *scan = (SeqScan *)seq->ss.ps.plan;
-            RangeTblEntry *rte = rt_fetch(scan->scanrelid, estate->es_range_table);
-            Alias *alias = rte->alias;
-
-            if (!strcmp(alias->aliasname, var_name))
-            {
-                cnxt->variable_plan_state = (PlanState *)seq;
-                return true;
-            }
-
-            return false;
-        }
-        default:
-            break;
-    }
-
-    return planstate_tree_walker(p, find_scan_state_walker, context);
-}
-
-/*
- * In the custom scan states we need to find the heap tuple that we want to
- * modify (CREATE, DELETE, SET, etc). Find the scan state that has most recently
- * modified, if no clause have finds the heap tuple in the original scan state.
- */
-HeapTuple get_heap_tuple(CustomScanState *node, char *var_name, bool *is_deleted)
-{
-    PlanState *ps = find_plan_state(node, var_name, is_deleted);
-    HeapTuple heap_tuple = NULL;
-
-    switch (ps->type)
-    {
-        case T_CustomScanState:
-        {
-            CustomScanState *css = (CustomScanState *)ps;
-            const struct CustomExecMethods *methods = css->methods;
-            List *tuple_info;
-            ListCell *lc;
-
-            if (!strcmp(methods->CustomName, CREATE_SCAN_STATE_NAME))
-            {
-                cypher_create_custom_scan_state *css = (cypher_create_custom_scan_state *)ps;
-                tuple_info = css->tuple_info;
-            }
-            else if (!strcmp(methods->CustomName, SET_SCAN_STATE_NAME))
-            {
-                cypher_set_custom_scan_state *css = (cypher_set_custom_scan_state *)ps;
-                tuple_info = css->tuple_info;
-            }
-            else if (!strcmp(methods->CustomName, DELETE_SCAN_STATE_NAME))
-            {
-                cypher_delete_custom_scan_state *css = (cypher_delete_custom_scan_state *)ps;
-                tuple_info = css->tuple_info;
-            }
-            else
-            {
-                ereport(ERROR, (errmsg("cannot extract tuple information from %s", methods->CustomName)));
-            }
-
-            foreach(lc, tuple_info)
-            {
-                clause_tuple_information *info = lfirst(lc);
-
-                if (!strcmp(info->name, var_name))
-                {
-                    heap_tuple = info->tuple;
-                    break;
-                }
-            }
-            break;
-        }
-        case T_SeqScanState:
-        {
-            bool isNull;
-            TupleTableSlot *ss_tts = ((SeqScanState *)ps)->ss.ss_ScanTupleSlot;
-
-            if (!ss_tts->tts_tuple)
-            {
-                heap_tuple = ss_tts->tts_tuple;
-                break;
-            }
-
-            heap_getsysattr(ss_tts->tts_tuple, SelfItemPointerAttributeNumber,
-                            ss_tts->tts_tupleDescriptor, &isNull);
-
-            if (isNull)
-                ereport(ERROR, (errmsg("cypher cannot find entity to update")));
-
-            heap_tuple = ss_tts->tts_tuple;
-            break;
-        }
-        default:
-            ereport(ERROR, (errmsg("cannot extract heap tuple from scan state")));
-            break;
-    }
-
-    return heap_tuple;
-}
-
-static bool inspect_clause_tuple_info(List *tuple_info, char *var_name)
-{
-    ListCell *lc;
-
-    foreach(lc, tuple_info)
-    {
-        clause_tuple_information *info = lfirst(lc);
-
-        if (!strcmp(info->name, var_name))
-            return true;
-    }
-    return false;
-}
-
 ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name, char *label_name)
 {
-    Oid relid;
     RangeVar *rv;
-    Relation label_relation, rel;
+    Relation label_relation;
     ResultRelInfo *resultRelInfo;
 
     ParseState *pstate = make_parsestate(NULL);
 
-    if (strlen(label_name) == 0)
-        rv = makeRangeVar(graph_name, AG_DEFAULT_LABEL_VERTEX, -1);
-    else
-        rv = makeRangeVar(graph_name, label_name, -1);
-    label_relation = parserOpenTable(pstate, rv, RowExclusiveLock);
-
-    relid = RelationGetRelid(label_relation);
-
-    heap_close(label_relation, NoLock);
-
-    free_parsestate(pstate);
-
-    rel = heap_open(relid, RowExclusiveLock);
     resultRelInfo = palloc(sizeof(ResultRelInfo));
 
-    InitResultRelInfo(resultRelInfo, rel,
+    if (strlen(label_name) == 0)
+    {
+        rv = makeRangeVar(graph_name, AG_DEFAULT_LABEL_VERTEX, -1);
+    }
+    else
+    {
+        rv = makeRangeVar(graph_name, label_name, -1);
+    }
+
+    label_relation = parserOpenTable(pstate, rv, RowExclusiveLock);
+
+    InitResultRelInfo(resultRelInfo, label_relation,
                       list_length(estate->es_range_table), NULL,
                       estate->es_instrument);
 
+    free_parsestate(pstate);
+
     return resultRelInfo;
-}
-
-ItemPointer get_self_item_pointer(TupleTableSlot *tts)
-{
-    ItemPointer ip;
-    Datum d;
-    bool isNull;
-
-    if (!tts->tts_tuple)
-        ereport(ERROR, (errmsg("cypher update clause needs physical tuples")));
-
-    d = heap_getsysattr(tts->tts_tuple, SelfItemPointerAttributeNumber,
-                        tts->tts_tupleDescriptor, &isNull);
-
-    if (isNull)
-        ereport(ERROR, (errmsg("cypher cannot find entity to update")));
-
-    ip = (ItemPointer)DatumGetPointer(d);
-
-    return ip;
 }
 
 TupleTableSlot *populate_vertex_tts(
@@ -359,21 +128,4 @@ TupleTableSlot *populate_edge_tts(
     elemTupleSlot->tts_isnull[edge_tuple_properties] = properties_isnull;
 
     return elemTupleSlot;
-}
-
-/*
- * Create a new clause_tuple_information with the given
- * heap tuple and variable name and append it to the given
- * list
- */
-List *add_tuple_info(List *list, HeapTuple heap_tuple, char *var_name)
-{
-    clause_tuple_information *tuple_info;
-
-    tuple_info = palloc(sizeof(clause_tuple_information));
-
-    tuple_info->tuple = heap_tuple;
-    tuple_info->name = var_name;
-
-    return lappend(list, tuple_info);
 }
