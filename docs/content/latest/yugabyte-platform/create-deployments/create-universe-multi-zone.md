@@ -31,6 +31,10 @@ Generic</a>
 
 This section describes how to create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
 
+## Prerequisites
+
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](https://docs.yugabyte.com/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/). 
+
 ## Create a universe
 
 If no universes have been created yet, the Yugabyte Platform Dashboard looks similar to the following:

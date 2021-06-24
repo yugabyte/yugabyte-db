@@ -33,11 +33,14 @@ This section describes how to create a YugabyteDB universe in one geographic reg
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps described in [Configure the Kubernetes cloud provider](https://docs.yugabyte.com/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/). The following illustration shows the **Managed Kubernetes Service** configs page that you should be able to see if you use Yugabyte Platform to navigate to **Configs > Cloud Provider Configuration > Infrastructure > Managed Kubernetes Service**:
+Before you start creating a universe, ensure that you performed steps described in [Configure the Kubernetes cloud provider](https://docs.yugabyte.com/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/). The following illustration shows the **Managed Kubernetes Service configs** page that you should be able to see if you use Yugabyte Platform to navigate to **Configs > Cloud Provider Configuration > Infrastructure > Managed Kubernetes Service**:
 
 ![img](/images/yb-platform/kubernetes-config1.png)
 
-Note that the cloud provider example used in this document has a cluster-level admin access.
+Note the following: 
+
+- Yugabyte Platform version 2.7.1.1 is used in examples throughout this document.
+- The cloud provider example used in this document has a cluster-level admin access.
 
 ## Create a universe
 
@@ -75,9 +78,9 @@ Complete the **Instance Configuration** section as follows:
 
 - Use the **Enable YEDIS** field to enable the YEDIS API endpoint to run REDIS-compatible workloads. This setting is disabled by default.
 
-- Use the **Enable Node-to-Node TLS** field to enable encryption-in-transit for communication between the database servers. This setting is disabled by default.
+- Use the **Enable Node-to-Node TLS** field to enable encryption-in-transit for communication between the database servers. This setting is enabled by default in Yugabyte Platform version 2.7.1.1 and later.
 
-- Use the **Enable Client-to-Node TLS** field to enable encryption-in-transit for communication between clients and the database servers. This setting is disabled by default.
+- Use the **Enable Client-to-Node TLS** field to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default in Yugabyte Platform version 2.7.1.1 and later.
 
 - Use the **Enable Encryption at Rest** field to enable encryption for data stored on the tablet servers. This setting is disabled by default.
 
@@ -85,7 +88,7 @@ Complete the **Instance Configuration** section as follows:
 
 Complete the **Advanced** section as follows:
 
-- In the **DB Version** field, specify the YugabyteDB version. The latest version is the default.
+- In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the Yugabyte Platform version or the latest YugabyteDB version available for Yugabyte Platform.
 
 - Use the **Enable IPV6** to enable the use of IPV6 networking for connections between the database servers. This setting is enbled by default.
 
