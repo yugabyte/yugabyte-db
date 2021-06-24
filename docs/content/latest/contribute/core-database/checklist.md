@@ -19,7 +19,7 @@ showAsideToc: true
 
 * First, clone [the YugabyteDB GitHub repo](https://github.com/yugabyte/yugabyte-db).
 
-```
+```bash
 git clone https://github.com/yugabyte/yugabyte-db.git
 ```
 

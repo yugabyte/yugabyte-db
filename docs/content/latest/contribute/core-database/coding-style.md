@@ -205,12 +205,15 @@ const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
 #### Ternary operator
 
 For expressions involving the ternary operator (`?` and `:`), prefer one of the following formatting styles:
-```
+
+```cpp
 const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
                                      : BloomFilterMode::DONT_USE_BLOOM_FILTER;
 ```
+
 or
-```
+
+```cpp
 const auto mode =
     is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
                        : BloomFilterMode::DONT_USE_BLOOM_FILTER;

@@ -19,7 +19,7 @@ menu:
     <a class="section-link icon-offset" href="checklist/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
-        <div class="title">Contributing checklist</div>
+        <div class="title">Contribution checklist</div>
       </div>
       <div class="body">
         Checklist to review before starting your contribution.
