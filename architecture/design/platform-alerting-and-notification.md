@@ -88,6 +88,4 @@ The default destination for any alert is the email address of the user who creat
   * At most every: Send a notification whenever the alert status is triggered at a specific interval. This choice lets you avoid notification spam for alerts that trigger often.
 * **Alerts access control:** Three permission levels for a alert- No Permissions, Can Run, and Can Manage 
 
-# References
-
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/platform-alerting-and-notification.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
