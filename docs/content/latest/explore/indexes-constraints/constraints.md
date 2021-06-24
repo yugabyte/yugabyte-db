@@ -244,7 +244,7 @@ ALTER TABLE employees
   ADD CONSTRAINT name_check CHECK (char_length(name) <= 3);
 ```
 
-For additional examples, see [Table with CHECK constraint](./../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint).
+For additional examples, see [Table with CHECK constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint).
 
 ## UNIQUE Constraint
 
