@@ -1,2 +1,2 @@
-{{ $includePath := (print .Page.Dir (.Get 0)) | printf "./content/%s" }}
-{{- readFile $includePath | safeHTML -}}
+{{ $includePath := (.Get 0) | printf "static/%s" }}
+{{- readFile $includePath | chomp | safeHTML -}}

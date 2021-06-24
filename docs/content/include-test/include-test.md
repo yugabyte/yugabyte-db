@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Try this:
+Here's what we want:
 
 ```sql
 set timezone = 'Atlantic/Faeroe';
@@ -27,8 +27,12 @@ select
 from v;
 ```
 
-Now try this:
+Here's the `includeCode` version that gets wrapped in a fenced code block:
 
 ```sql
-{{% includeCode "include.sql" %}}
+{{% includeCode "code-samples/include.sql" %}}
 ```
+
+And here's the `includeFile` version that infers the code language and does its own code block:
+
+{{% includeFile "code-samples/include.sql" %}}
