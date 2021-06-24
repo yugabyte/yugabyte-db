@@ -103,10 +103,8 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
       rpc_port) };
   opts_.webserver_opts.port = 0;
   opts_.webserver_opts.bind_interface = opts_.broadcast_addresses.front().host();
-  if (!opts_.has_placement_cloud()) {
-    opts_.SetPlacement(Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
-                       Format("rack$0", index_), "zone");
-  }
+  opts_.SetPlacement(Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
+                      Format("rack$0", index_), "zone");
   opts_.fs_opts.wal_paths = { fs_root };
   opts_.fs_opts.data_paths = { fs_root };
 }
