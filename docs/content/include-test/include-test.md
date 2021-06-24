@@ -36,3 +36,7 @@ Here's the `includeCode` version that gets wrapped in a fenced code block:
 And here's the `includeFile` version that infers the code language and does its own code block:
 
 {{% includeFile "code-samples/include.sql" %}}
+
+And here's an attempt to call a partial template:
+
+{{% partial included_code "code-sample/include.sql" %}}

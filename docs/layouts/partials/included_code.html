@@ -1,0 +1,12 @@
+{{- if gt ( len .Params ) 1 -}}
+{{- $.Scratch.Set "format" ( .Get 1 ) -}}
+{{- else -}}
+{{- $format := ( .Get 0 ) | path.Ext -}}
+{{- $format := strings.TrimPrefix "." $format -}}
+{{- $.Scratch.Set "format" $format -}}
+{{- end -}}
+
+{{- $file := ( .Get 0 ) | printf "static/%s" -}}
+{{- $format := ( $.Scratch.Get "format" ) -}}
+
+{{- ( print "```" $format "\n" ( readFile $file | chomp ) "\n" "```" ) | safeHTML -}}
