@@ -47,23 +47,12 @@
     estate->es_output_cid--; \
     estate->es_snapshot->curcid--;
 
-/*
- * This holds information in clauses that create or alter tuples on
- * disc, this is so future clause can manipulate those tuples if
- * necessary.
- */
-typedef struct clause_tuple_information {
-    char *name;
-    HeapTuple tuple;
-} clause_tuple_information;
-
 typedef struct cypher_create_custom_scan_state
 {
     CustomScanState css;
     CustomScan *cs;
     List *pattern;
     List *path_values;
-    List *tuple_info;
     uint32 flags;
     TupleTableSlot *slot;
     Oid graph_oid;
@@ -74,7 +63,6 @@ typedef struct cypher_set_custom_scan_state
     CustomScanState css;
     CustomScan *cs;
     cypher_update_information *set_list;
-    List *tuple_info;
     int flags;
 } cypher_set_custom_scan_state;
 
@@ -84,11 +72,8 @@ typedef struct cypher_delete_custom_scan_state
     CustomScan *cs;
     cypher_delete_information *delete_data;
     int flags;
-    List *tuple_info;
     List *edge_labels;
 } cypher_delete_custom_scan_state;
-
-PlanState *find_plan_state(CustomScanState *node, char *var_name, bool *is_deleted);
 
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *properties);
 TupleTableSlot *populate_edge_tts(
@@ -96,7 +81,5 @@ TupleTableSlot *populate_edge_tts(
     agtype_value *endid, agtype_value *properties);
 
 ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name, char *label_name);
-List *add_tuple_info(List *list, HeapTuple heap_tuple, char *var_name);
-ItemPointer get_self_item_pointer(TupleTableSlot *tts);
-HeapTuple get_heap_tuple(CustomScanState *node, char *var_name, bool *is_deleted);
+
 #endif
