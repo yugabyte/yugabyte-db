@@ -1,8 +1,8 @@
 ---
 title: The extended_timezone_names view [YSQL]
-headerTitle: The 'extended_timezone_names' view
+headerTitle: The extended_timezone_names view
 linkTitle: extended_timezone_names
-description: The 'extended_timezone_names' extends the 'pg_timezone_names' view with extra columns from the 'tz database'. [YSQL]
+description: The extended_timezone_names extends the pg_timezone_names view with extra columns from the tz database. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
   latest:
@@ -32,8 +32,8 @@ It's useful, therefore, to join these two projections as the _extended_timezone_
 
 ## Create the 'extended_timezone_names' view
 
-{{< tip title="Download a zip of the data and code to create the 'extended_timezone_names' view." >}}
-See [Download the '.zip' file to create the reusable code that the overall _date-time_ major section describes](../../#download). This includes the code and data that creates the _extended_timezone_names_ view. For example, it creates the  user-defined function _[jan_and_jul_tz_abbrevs_and_offsets()](../catalog-views/#the-jan-and-jul-tz-abbrevs-and-offsets-table-function)_ that the _extended_timezone_names_ view depends upon. It also creates the views that are used to produce the tables that this page's child pages show.
+{{< tip title="Download the data and code to create the extended_timezone_names view." >}}
+See [Download the _.zip_ file to create the reusable code that the overall _date-time_ major section describes](../../#download). This includes the code and data that creates the _extended_timezone_names_ view. For example, it creates the  user-defined function _[jan_and_jul_tz_abbrevs_and_offsets()](../catalog-views/#the-jan-and-jul-tz-abbrevs-and-offsets-table-function)_ that the _extended_timezone_names_ view depends upon. It also creates the views that are used to produce the tables that this page's child pages show.
 {{< /tip >}}
 
 {{< note title="Note." >}}

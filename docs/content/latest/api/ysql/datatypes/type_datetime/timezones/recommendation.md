@@ -26,7 +26,7 @@ Yugabyte recommends that you create two user-defined function overload sets, thu
 
 Following these recommendations protects you from the many opportunities to go wrong brought by using the native functionality with no constraints; and yet doing so still allows you all the functionality that you could need.
 
-The code that this page presents is included in a larger set of useful re-useable _date-time_ code. See [Download the '.zip' file to create the reusable code that this overall major section describes](../../#download). The code on this page depends on the [custom _interval_ domains](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) code. And this, in turn, depends on the [user-defined utilities](../../date-time-data-types-semantics/type-interval/interval-utilities/).
+The code that this page presents is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../#download). The code on this page depends on the [custom _interval_ domains](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) code. And this, in turn, depends on the [user-defined utilities](../../date-time-data-types-semantics/type-interval/interval-utilities/).
 {{< /tip >}}
 
 ## The approved_timezone_names view
