@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 {{< tip title="" >}}
-A string that's intended to identify a _UTC offset_ is resolved case-insensitively.
+A string that's intended to identify a _UTC offset_ is resolved case-insensitively. (This excludes, of course, using an explicit select statement from one of the _pg_timezone_names_ or _pg_timezone_abbrevs catalog_ views).
 {{< /tip >}}
 
 The anonymous PL/pgSQL block below looks up the name _America/Costa_Rica_, spelled exactly with that mix of case, in _pg_timezone_names_ and returns its abbreviation. Because an ordinary query with a case-sensitive predicate is used, this confirms the canonical status of the spelling.
