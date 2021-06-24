@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../../type_datetime/#synopsis) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.
+The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../intro/#synopsis) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.
 
 - [Absolute time and the UTC Time Standard](#absolute-time-and-the-utc-time-standard)
 - [Wall-clock-time and local time](#wall-clock-time-and-local-time)
@@ -31,9 +31,9 @@ Ignoring what Einstein had to say, the absolute time is identical at all spots o
 
 These days, it's easy to find a visual image for the notion of absolute time. Imagine a dedicated TV channel, available everywhere on the planet, that simply broadcasts what a camera sees that's pointing at a clock located in Greenwich UK. The clock is set to what a sundial, standing on the exact zero degree meridian, will read—i.e. it will read 12:00:00 noon when the sundial casts its shortest shadow.
 
-Absolute time can now be measured with very high precision and accuracy with an atomic clock. Seconds, minutes, hours, and days, can all be defined as specific multiples of the caesium standard unit.
+Absolute time can now be measured with very high precision and accuracy with an atomic clock. Seconds, minutes, and hours can all be defined as specific multiples of the caesium standard unit.
 
-Of course, there is a standard for absolute time: the _UTC Time Standard_.
+Of course, there is a standard for absolute time: the _[UTC Time Standard](https://en.wikipedia.org/wiki/Coordinated_Universal_Time)_.
 
 Naturally, this "TV channel" (continuing with this metaphor) is available as a web service—for example, the [World Time API](http://worldtimeapi.org). Try this URL
 
@@ -47,7 +47,7 @@ It returns a JSON document that includes the current absolute time in this [ISO 
 2021-05-16T22:58:53.122521+00:00
 ```
 
-This is usable, as is, as a SQL literal—exploiting the full precision that the plain _timestamp_ and _timestamptz_ data types support.
+This is usable, "as is", as a SQL literal—exploiting the full precision that the plain _timestamp_ and _timestamptz_ data types support.
 
 ```plpgsql
 select ('2021-05-16T22:58:53.122521+00:00'::timestamptz) at time zone 'UTC' as "absolute time";
@@ -72,23 +72,23 @@ It quietly succeeds and produces the obvious result. (The _::text_ typecast of a
  4713-01-01 00:00:00 BC | 294276-01-01 00:00:00
 ```
 
-The values, _4713 BC_ and _294276_ AD, are given in the table at the start of the enclosing [Date and time data types](../../type_datetime/) major section.
+The values, _4713 BC_ and _294276_ AD, are given in the [table](../intro/#synopsis) in the _"Introduction"_ section to the present _date-time_ data types major section.
 
 ## Wall-clock-time and local time
 
-The history of human culture has established the tradition that no matter at what longitude people live, they want to organize their day around the coming and going of daylight (even in places that at some times of the year never experience daylight). "Noon" is a universal notion, and all languages have a word for it—just as they do for "mother" and "father". Wall-clock-time, according to  purist definition, is what you read off a sundial, wherever you happen to be.
+The history of human culture has established the tradition that no matter at what longitude people live, they want to organize their day around the coming and going of daylight (even in places that at some times of the year never experience daylight). "Noon" is a universal notion, and all languages have a word for it—just as they do for "mother" and "father". Wall-clock-time, according to the purist definition, is what you read off a sundial, wherever you happen to be.
 
 People came to understand a long time ago, when reliable mechanical clocks were first invented, that the absolute time at which noon occurs as you circumnavigate along any line of latitude (i.e. as you pass through all longitude values) is not a constant. Rather, it varies continuously.
 
-A local time represents a _conventionalized_ wall-clock-time. You cannot map between these two kinds of values unless you know in which timezone (see below) the "sundial" is located. Moreover, the conversion is non-trivial. All sorts of social factors, like conventions about Daylight Savings Time, matter. But there is no need to rehearse that story here. Modern IT systems, including SQL database systems, have encoded all of the relevant rules. Local time, in a particular timezone quantizes sundial time so that it _typically_ changes in one hour steps when you cross the boundary between adjacent timezones. Some timezones, however, specify offsets from the _UTC Time Standard_ with half-hour, or even quarter-hour, granularity. For example, _Asia/Kabul_ specifies an offset of _04:30:00_; and _Asia/Kathmandu_ specifies an offset of _05:45:00_. (Neither _Asia/Kabul_ nor _Asia/Kathmandu_ observes Daylight Savings Time.)
+A local time represents a _conventionalized_ wall-clock-time. You cannot map between these two kinds of values unless you know in which timezone (see below) the "sundial" is located. Moreover, the conversion is non-trivial. All sorts of social factors, like conventions about Daylight Savings Time, matter. But there is no need to rehearse that story here. Modern IT systems, including SQL database systems, have encoded all of the relevant rules. Local time, in a particular timezone quantizes sundial time so that it _typically_ changes in one hour steps when you cross the boundary between adjacent timezones. Some timezones, however, specify offsets from the _UTC Time Standard_ with half-hour, or even quarter-hour, granularity. For example, _Asia/Kabul_ specifies an offset of _04:30_; and _Asia/Kathmandu_ specifies an offset of _05:45_. (Neither _Asia/Kabul_ nor _Asia/Kathmandu_ observes Daylight Savings Time.)
 
 ## Timezones and the offset from the UTC Time Standard
 
 People around the world prefer a convention that says that noon occurs at 12:00 local time. You need to drive only about 100&nbsp;km to the west (depending on your latitude, to see that sundial noon occurs five minutes later at your journey's destination than at its start. Clearly, not everybody can be happy. This leads to the timezone notion. Loosely, a clock set to local time (like the one on your smartphone) will show something between 11:30 and 12:30 at sundial noon wherever you are on the planet according to the timezone you're in—"loosely", of course, because of two things: _firstly_, because some timezones, like, _Asia/Shanghai_ (this is the canonical name for the timezone that covers the whole of the PRC) cover a much bigger latitude span than corresponds to just a one hour change in the absolute time at which noon occurs); and _secondly_, because of Daylight Savings Time.
 
-- Look at the table shown in [Real timezones that observe Daylight Savings Time](canonical-real-country-with-dst/). (_Real_ means that these canonically-named timezones, unlike _UTC_, are associated with specified geographic regions.) It lists 114 timezones.
+- Look at the table shown in [Real timezones that observe Daylight Savings Time](../timezones/extended-timezone-names/canonical-real-country-with-dst/). (_Real_ means that these canonically-named timezones, unlike _UTC_, are associated with specified geographic regions.) It lists 114 timezones.
 
-- Now look at the table shown in [Real timezones that do not observe Daylight Savings Time](canonical-real-country-no-dst/). It lists 68 timezones.
+- Now look at the table shown in [Real timezones that do not observe Daylight Savings Time](../timezones/extended-timezone-names/canonical-real-country-no-dst/). It lists 68 timezones.
 
 A _real_ timezone, according to a purist definition of this term of art, denotes a region, or maybe a set of regions, where, _by an agreed convention_, all correctly set wall-clocks show the same date and time. These days, the notion of a correctly set wall-clock is immediately understood as what a smartphone shows when the option is selected to set the date and the time automatically. Your smartphone knows where it is and, from this, it knows what timezone it's in. It has access to the _UTC_ time (the absolute date-and-time). And it has access to various facts that characterize its present timezone—in particular, the _current_ offset in hours and minutes from _UTC_. (The qualifier _current_ is important because, in general, the offset from _UTC_ depends on the date according to whether or not the timezone observes Daylight Savings Time.)
 
@@ -157,7 +157,7 @@ This is the result:
 
 Look these up in the [List of tz&nbsp;database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). They do not have a country code, latitude and longitude, or specification of the region covered. In this sense, they are like _UTC_. They are simply canonical names for time standards with particular offsets from _UTC_. All of the offsets are an integral number of hours. Such timezones will be referred to as pseudotimezones in the overall [Date and time data types](../../type_datetime/) section.
 
-The section [Specifying the timezone](../http://localhost:1313/latest/api/ysql/datatypes/type_datetime/). explains how to define the view _extended_pg_timezone_names_. This joins the native catalog view with extra facts from the [List of tz&nbsp;database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
+The section [The extended_timezone_names view](../timezones/extended-timezone-names/) explains how to define this view. It joins the native catalog view with extra facts from the [List of tz&nbsp;database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
 
 ## The strange history of timezones
 
@@ -261,7 +261,7 @@ You get results like these:
  Pacific/Chatham       |     12:45
 ```
 
-This output was massaged by hand for readability: it retains only those zones that, in the [List of tz&nbsp;database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), have the status _Canonical_; and the seconds field of the display of the offset has been removed because it's always zero. The section [The extended_pg_timezone_names view](../specify-timezone/extended-pg_timezone_names/) explains how to create a view and write a query that produces the output as shown without massage.
+This output was massaged by hand for readability: it retains only those zones that, in the [List of tz&nbsp;database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), have the status _Canonical_; and the seconds field of the display of the offset has been elided because it's always zero. The section [The _extended_pg_timezone_names_ view](../timezones/extended-timezone-names/) explains how to create a view and write a query that produces the output as shown without massage.
 
 ## Two ways of conceiving of time: calendar-time and clock-time
 
@@ -269,7 +269,7 @@ For obvious reasons, most known ancient human cultures, from time immemorial, se
 
 As the ability to count developed, a (lunar) month was seen to be a roughly constant number of days, and a year was seen to be a roughly constant number of (lunar) months.
 
-It was only relatively recently in the history of human culture that clocks were invented: first sundials, then mechanical clocks, and eventually atomic clocks and in particular [the caesium standard](https://en.wikipedia.org/wiki/Caesium_standard). The adoption of hours, minutes, and seconds (as successive subdivisions of the length of a  day) came hand in hand with the invention of clocks. An increase in the accuracy and precision of clocks, and an improvement in observation and thinking in astronomy, brought the realization that one year is not exactly equal to 365 days—as nor need it be. There's no reason to expect that the time it takes for the earth to orbit the sun (one year) should be an integral multiple of the time between successive noons (one day)—nor even any reason to expect that the length of one year or one day should remain constant.
+It was only relatively recently in the history of human culture that clocks were invented: first sundials, then mechanical clocks, and eventually atomic clocks and in particular [the caesium standard](https://en.wikipedia.org/wiki/Caesium_standard). The adoption of hours, minutes, and seconds (as successive subdivisions of the length of a  day) came hand in hand with the invention of clocks. An increase in the accuracy and precision of clocks, and an improvement in observation and thinking in astronomy, brought the realization that one year is not exactly equal to 365 days—as nor need it be. There's no reason to expect that the time it takes for the earth to orbit the sun (one year) should be an integral multiple of the time between successive noons (one day).
 
 It was eventually decided that an atomic clock should define the ultimate standard unit of time and that the _second_ should be defined  as a multiple of the caesium standard unit. One second is defined to be 9,192,631,770 caesium units. See the Wikipedia article [Second](https://en.wikipedia.org/wiki/Second). One minute is defined as exactly 60 seconds. And one hour is defined as exactly 60 minutes. You might be tempted to extend this by saying that one day is exactly 24 hours. But this is complicated by the business of Daylight Savings Time. See [Calendar-time](#calendar-time) below.
 
@@ -298,7 +298,7 @@ Using _calendar-time-semantics_:
 
 The fact that the _clock-time-semantics_ duration of identically specified _calendar-time-semantics_ durations is not constant is defined to be unimportant. You cannot convert deterministically, in either direction, between a _calendar-time-semantics_ duration (years, months, and days) and a _clock-time-semantics_ duration (hours, minutes and seconds) except by asserting an arbitrary rule of thumb.
 
-The calendar encodes all of the relevant special rules—with the critical exception of the facts about Daylights Savings Time periods in all timezones for for all years that the calendar spans.
+The calendar encodes all of the relevant special rules—with the critical exception of the facts about Daylights Savings Time periods in all timezones for all years that the calendar spans. (This information is encoded separately as a mapping from timezone to transition dates.)
 
 Treating one day as exactly 24 hours, one month as 30 days, and one year as 12 months (or alternatively as 365 days) brings inaccuracies and mutual contradictions. Twelve months (30*60 days) is just 360 days—and not 365 (or 366) days. None of this matters at all when _calendar-time-semantics_ durations are needed, or given, only approximately. When you ask a child how old she is, and she answers "seven and three-quarters", this denotes a necessarily approximate _calendar-time-semantics_ duration. And the precision implied by how the duration is stated ("seven and three-quarters" rather then "eight") swamps any concerns about the exact durations of the days, months, and years that the child's lifetime spans.
 
@@ -320,7 +320,7 @@ Of course, you might prefer to use larger units so that you can quote smaller nu
 
 ### Practical examples
 
-The section [Interval arithmetic](../../type_datetime/date-time-data-types-semantics/type-interval/#interval-arithmetic), within the enclosing section [The _interval_ data type and its variants](../../type_datetime/date-time-data-types-semantics/type-interval/), explains the semantics of computing an _interval_ value by subtracting one _timestamp(tz)_ value from another or adding an _interval_ value to, for example, a _timestamp(tz)_ value. Briefly, _calendar-time_semantics_ is always used for the years, months, and days fields. And _clock-time-semantics_ is always used for the hours, minutes, and seconds fields. _Clock-time-semantics_ is used to compute the days field when one _timestamp(tz)_ value is subtracted from another (using the rule of thumb that one day  is _always_ exactly twenty-four hours). And _calendar-time-semantics_ is used when a days field is added to a _timestamp(tz)_ value. This asymmetry might surprise you.
+The section [Interval arithmetic](../../type_datetime/date-time-data-types-semantics/type-interval/#interval-arithmetic), within the enclosing section [The _interval_ data type and its variants](../../type_datetime/date-time-data-types-semantics/type-interval/), explains the semantics of computing an _interval_ value by subtracting one _timestamp(tz)_ value from another or adding an _interval_ value to, for example, a _timestamp(tz)_ value. Briefly, _calendar-time_semantics_ is always used for the years, months, and days fields. And _clock-time-semantics_ is always used for the hours, minutes, and seconds fields. _Clock-time-semantics_ is used to compute the days field when one _timestamp(tz)_ value is subtracted from another (using the rule of thumb that one day is _always_ exactly twenty-four hours). And _calendar-time-semantics_ is used when a days field is added to a _timestamp(tz)_ value. This asymmetry might surprise you.
 
 {{< note title="Interval arithmetic across the moment that the US adopted Standard Time." >}}
 See the section [The strange history of timezones](#the-strange-history-of-timezones) above. Try this:
@@ -374,4 +374,3 @@ The result _"t0 + 1 day"_ is a consequence of _calendar-time-semantics_ (calenda
 
 - one day after 08:00 on some day is just 08:00 on the next day—no matter what conventional adjustment is made to what your clock reads during that interval.
 {{< /note >}}
-

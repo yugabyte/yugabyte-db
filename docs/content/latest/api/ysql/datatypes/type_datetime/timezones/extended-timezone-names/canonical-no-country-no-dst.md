@@ -14,7 +14,6 @@ showAsideToc: true
 
 This table shows canonically-named timezones that are not associated with a specific country or region—in other words, they are _synthetic_ timezones, a.k.a. _time standards_. _UTC_ is the primary time standard. The remaining rows map all the offsets found among the real timezones that are multiples of one hour. (There are no synthetic timezones that correspond to real timezones with offsets that are non-integral multiples of one hour.) Do this to list the unusual timezones:
 
-
 ```plpgsql
 select
   name,

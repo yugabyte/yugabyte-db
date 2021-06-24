@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 {{< tip title="Install the user-defined interval utility functions now." >}}
-The code is included in a larger set of useful re-useable _date-time_ code. See [Download the '.zip' file to create the reusable code that this overall major section describes](../../#download).
+The code is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../#download).
 {{< /tip >}}
 
 ## Why does the interval data type exist?

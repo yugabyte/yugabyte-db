@@ -1,8 +1,8 @@
 ---
-title: Date and time data types [YSQL]
-headerTitle: Date and time data types
+title: Date and time data types—table of contents [YSQL]
+headerTitle: Date and time data types—table of contents
 linkTitle: Date and time
-description: YSQL supports the date, time, timestamp, and interval data types.
+description: YSQL supports the date, time, timestamp, and interval data types together with interval arithmetic.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -11,74 +11,80 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-<p id="download">&nbsp;</p>
 
-{{< tip title="Download the '.zip' file to create the reusable code that this overall major section describes." >}}
+Many users of all kinds of SQL databases have reported that they find everything about the _date-time_ story complex and confusing. This explains why this overall section is rather big and why the hierarchy of pages and child pages is both wide and deep. The order presented in the table of contents was designed so that the pages can be read just like the sections and subsections in a printed text book. (The order of the items in the navigation side-bar reflects this reading order too.) The overall pedagogy was designed with this reading order in mind. It is highly recommended, therefore, that you (at least once) read the whole story from start to finish in this order.
 
-These four sections each describe re-useable code that you might find useful:
+If you have to maintain extant application code, you'll probably need to understand everything that this overall section explains. This is likely to be especially the case when the legacy code is old and has, therefore, been migrated from PostgreSQL to YugabyteDB. However, if your purpose is only to write brand-new application code, and if you're happy simply to accept Yugabyte's various recommendations without studying the reasoning that supports these, then you'll need to read only a small part of the overall section. This is what you need:
 
-- [User-defined interval utility functions](./date-time-data-types-semantics/type-interval/interval-utilities/)
-- [Defining and using custom domain types to specialize the native interval functionality](./date-time-data-types-semantics/type-interval/custom-interval-domains/)
-- [The _extended_timezone_names view_](./timezones/extended-timezone-names/)
-- [Recommended practice for specifying the _UTC offset_](./timezones/recommendation/)
+- **Conceptual background [►](./conceptual-background/)**
+- **Real timezones that observe Daylight Savings Time [►](./timezones/extended-timezone-names/canonical-real-country-with-dst/)**
+- **Real timezones that do not observe Daylight Savings Time [►](./timezones/extended-timezone-names/canonical-real-country-no-dst/)**
+- **The plain timestamp and timestamptz data types [►](./date-time-data-types-semantics/type-timestamp/)**
+- **The sensitivity of the conversion between timestamptz and plain timestamp to the UTC offset [►](./timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/)**
+- **The sensitivity of timestamptz-interval arithmetic to the current timezone [►](./timezones/timezone-sensitive-operations/timestamptz-interval-day-arithmetic/)**
+- **Recommended practice for specifying the UTC offset [►](./timezones/recommendation/)**
+- **Defining and using custom domain types to specialize the native interval functionality [►](./date-time-data-types-semantics/type-interval/custom-interval-domains/)**
 
-Moreover, some of the code examples depend on some of this code. Yugabyte recommends therefore that you download and install the entire kit into the database that you use to these code examples.
+## Introduction [►](./intro/)
 
-[Download date-and-time-utilities.zip](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/date-and-time-utilities/date-and-time-utilities.zip) to any convenient directory and unzip it. It creates a small directory hierarchy.
+This page explains how to download the _.zip_ file to create the reusable code that this overall major section describes. And it lists the five _date-time_ data types whose use is recommended. (Yugabyte, following the PostgreSQL documentation, recommends against using the _time with time zone_ data type.)
 
-You'll find _README.pdf_ at the top level. It describes the rest of the content and tells you simply to start the master script _0.sql_ at the _psql_ or the _ysqlsh_ prompt. You can run it time and again. It will always finish silently.
-{{< /tip >}}
+## Conceptual background [►](./conceptual-background/)
 
-Many users of all kinds of SQL databases have reported that they find everything about the _date-time_ story complex and confusing. This explains why this overall section is rather big and the hierarchy of pages and child pages is both wide and deep. The pages can be read in a linear order, just like the sections and subsections in a printed text book. And the overall pedagogy has been designed with this in mind. The order of the items in the navigation side-bar reflects this reading order—and it is highly recommended, therefore, that you (at least once) read the whole story from start to finish in that order.
+This section explains the background for the accounts of the five _date-time_ data types that the [table](./intro/#table-of-five) shown in the _"Introduction"_ section lists. In particular, it explains the notions that underly the sensitivity to the reigning timezone of these operations:
 
-## Synopsis
+- [Converting between _timestamptz_ and plain _timestamp_ values](./timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
+- [Adding or subtracting an _interval_ value to/from a _timestamptz_ or plain _timestamp_ value](./date-time-data-types-semantics/type-interval/interval-arithmetic/moment-interval-overloads-of-plus-and-minus/).
 
-YSQL supports the following data types for values that represent a date, a time, a _date-time_ pair, or a duration:
+## Timezones and UTC offsets [►](./timezones/)
 
-| Data type                                                                               | Alias             | Description                            | Min                        | Max                     |
-| --------------------------------------------------------------------------------------- | ----------------- | -------------------------------------- | -------------------------- | ----------------------- |
-| [date](./date-time-data-types-semantics/type-date/)                                     |                   | date (4-bytes)                         | 4713 BC                    | 5874897 AD              |
-| [time](./date-time-data-types-semantics/type-time/) [(p)] [without time zone]           | time [(p)]        | time of day (8-bytes)                  | 00:00:00                   | 24:00:00                |
-| time [(p) with time zone                                                                | timetz [(p)]      | time of day (12-bytes)                 | 00:00:00+14:59             | 24:00:00-14:59          |
-| [timestamp](./date-time-data-types-semantics/type-timestamp/) [(p)] [without time zone] | timestamp [(p)]   | date and time (8-bytes)                | 4713 BC                    | 294276 AD               |
-| [timestamp](./date-time-data-types-semantics/type-timestamp/) [(p)] with time zone      | timestamptz [(p)] | date and time (8-bytes)                | 4713 BC                    | 294276 AD               |
-| [interval](./date-time-data-types-semantics/type-interval/) [fields] [(p)]              |                   | duration (16-bytes 3-field struct)     | -178000000 years (approx) | 178000000 years (approx) |
+This section explains: the purpose and significance of the _set timezone_ SQL statement; the _at time zone_ operator for plain _timestamp_ and _timestamptz_ expressions; the various other ways that, ultimately, the intended _UTC offset_ is specified; and which operations are sensitive to the specified _UTC offset_. It has these child pages:
 
-A value of one of the _date_, _time_, or _timestamp_ data types each represents a _point in time_ (a.k.a. a _moment_). In contrast, a value of the _interval_ data type represents a _duration_. These six data types will be referred to jointly as the _date-time_ data types.
+- **Catalog views for timezone information—pg_timezone_names and pg_timezone_abbrevs [►](./timezones/catalog-views/)**
+- **The extended_timezone_names view [►](./timezones/extended-timezone-names/)**
+  - **extended_timezone_names—unrestricted full projection [►](./timezones/extended-timezone-names/unrestricted-full-projection/)**
+  - **Real timezones that observe Daylight Savings Time [►](./timezones/extended-timezone-names/canonical-real-country-with-dst/)**
+  - **Real timezones that do not observe Daylight Savings Time [►](./timezones/extended-timezone-names/canonical-real-country-no-dst/)**
+  - **Synthetic timezones (do not observe Daylight Savings Time) [►](./timezones/extended-timezone-names/canonical-no-country-no-dst/)**
+- **Scenarios that are sensitive to the UTC offset and possibly, additionally, to the timezone [►](./timezones/timezone-sensitive-operations/)**
+  - **The sensitivity of the conversion between timestamptz and plain timestamp to the UTC offset [►](./timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/)**
+  - **The sensitivity of timestamptz-interval arithmetic to the current timezone [►](./timezones/timezone-sensitive-operations/timestamptz-interval-day-arithmetic/)**
+- **Four ways to specify the UTC offset [►](./timezones/ways-to-spec-offset/)**
+  - **Rules for resolving a string that's intended to identify a UTC offset [►](./timezones/ways-to-spec-offset/name-res-rules/)**
+    - **Rule 1 [►](./timezones/ways-to-spec-offset/name-res-rules/rule-1/)** — It's resolved case-insensitively.
+    - **Rule 2 [►](./timezones/ways-to-spec-offset/name-res-rules/rule-2/)** — It's never resolved in _pg_timezone_names.abbrev_.
+    - **Rule 3 [►](./timezones/ways-to-spec-offset/name-res-rules/rule-3/)** — It's never resolved in _pg_timezone_abbrevs.abbrev_ as the argument of set timezone but is resolved there as the argument of _at time zone_ (and, equivalently, in _timezone()_) and as the argument of _make_timestamptz()_ (and equivalently within a text literal for a _timestamptz_ value).
+    - **Rule 4 [►](./timezones/ways-to-spec-offset/name-res-rules/rule-4/)** — It's is resolved first in _pg_timezone_abbrevs.abbrev_ and, only if this fails, then in _pg_timezone_names.name_. This applies only in those syntax contexts where _pg_timezone_abbrevs.abbrev_ is a candidate for the resolution—so not for _set timezone_, which looks only in _pg_timezone_names.name_.
+    - **Helper functions [►](./timezones/ways-to-spec-offset/name-res-rules/helper-functions/)**
+- **Three syntax contexts that use the specification of a UTC offset [►](./timezones/syntax-contexts-to-spec-offset/)**
+- **Recommended practice for specifying the UTC offset [►](./timezones/recommendation/)**
 
-**Note:** The [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) recommends against using the _time with time zone_ (a.k.a. _timetz_) data type
+## Typecasting between date-time values and text values [►](./typecasting-between-date-time-and-text/)
 
-> The type _time with time zone_ is defined by the SQL standard, but the definition exhibits properties which lead to questionable usefulness. In most cases, a combination of _date_, _time_, _timestamp without time zone_, and _timestamp with time zone_ should provide a complete range of _date-time_ functionality required by any application.
+Many of the code examples rely on typecasting—especially from/to _text_ values to/from plain _timestamp_ and _timestamptz_ values. It's unlikely that you'll use such typecasting in actual application code. (Rather, you'll use dedicated built-in functions for the conversions.) But you'll rely heavily on typecasting for _ad hoc_ tests while you develop such code.
 
-The thinking is that a notion that expresses only what a clock might read in a particular timezone gives only part of the picture. For example when a clock reads 20:00 in _UTC_, it reads 03:00 in China Standard Time. But 20:00 _UTC_ is the evening of one day and 03:00 is in the small hours of the morning of the _next day_ in China Standard Time. (Neither _UTC_ nor China Standard Time adjusts its clocks for Daylight Savings.) The data type _timestamptz_ represents both the time of day and the date and so it handles the present use case naturally. No further reference will be made to _timetz_.
+## The semantics of the date-time data types] [►](./date-time-data-types-semantics/)
 
-**Note:** Because of their brevity, the aliases (plain) _timestamp_ and _timestamptz_ will be preferred in the rest of this main section to the respective verbose forms _timestamp without time zone_ and _timestamp with time zone_.
+This section defines the semantics of the _date_ data type, the _time_ data type, the plain _timestamp_ and _timestamptz_ data types, and the _interval_ data type. _Interval_ arithmetic is rather tricky. This explains the size of the subsection that's devoted to this data type. The section has these child pages:
 
-**Note:** You might discover that you can define an earlier _timestamp_ value than _4713-01-01 00:00:00 BC_, or a later one than  _294276-01-01 00:00:00_, without error. But you should not rely on this. Rather, you should accept that the values in the "Min" and "Max" columns in the table above specify the _supported_ range.
+- **The date data type [►](./date-time-data-types-semantics/type-date/)**
+- **The time data type [►](./date-time-data-types-semantics/type-time/)**
+- **The plain timestamp and timestamptz data types [►](./date-time-data-types-semantics/type-timestamp/)**
+- **The interval data type and its variants [►](./date-time-data-types-semantics/type-interval/)**
+  - **How does YSQL represent an interval value? [►](./date-time-data-types-semantics/type-interval/interval-representation/)**
+    - **Ad hoc examples of defining interval values [►](./date-time-data-types-semantics/type-interval/interval-representation/ad-hoc-examples/)**
+    - **Modeling the internal representation and comparing the model with the actual implementation [►](./date-time-data-types-semantics/type-interval/interval-representation/internal-representation-model/)**
+  - **Understanding and discovering the upper and lower limits for interval values [►](./date-time-data-types-semantics/type-interval/interval-limits/)**
+  - **Declaring intervals [►](./date-time-data-types-semantics/type-interval/declaring-intervals/)**
+  - **Interval arithmetic [►](./date-time-data-types-semantics/type-interval/interval-arithmetic/)**
+    - **Comparing two interval values for equality [►](./date-time-data-types-semantics/type-interval/interval-arithmetic/interval-interval-equality/)**
+    - **Adding or subtracting a pair of interval values [►](./date-time-data-types-semantics/type-interval/interval-arithmetic/interval-interval-addition/)**
+    - **Multiplying or dividing an interval value by a real or integral number [►](./date-time-data-types-semantics/type-interval/interval-arithmetic/interval-number-multiplication/)**
+    - **The moment-moment overloads of the "-" operator for timestamptz, timestamp, and time [►](./date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/)**
+    - **The moment-interval overloads of the "+" and "-" operators for timestamptz, timestamp, and time [►](./date-time-data-types-semantics/type-interval/interval-arithmetic/moment-interval-overloads-of-plus-and-minus/)**
+  - **Defining and using custom domain types to specialize the native interval functionality [►](./date-time-data-types-semantics/type-interval/custom-interval-domains/)**
+  - **User-defined interval utility functions [►](./date-time-data-types-semantics/type-interval/interval-utilities/)**
 
-{{< note title="Notice the 'approx' qualifier by the minimum and maximum interval values." >}}
-You need to understand how an _interval_ value is represented internally as a three-field _[mm, dd, ss]_ tuple to appreciate that the limits must be expressed individually in terms of these fields. The section [Understanding and discovering the upper and lower limits for _interval_ values](./date-time-data-types-semantics/type-interval/interval-limits/) explains all this.
-{{< /note >}}
+## Typecasting between values of different date-time datatypes [►](./typecasting-between-date-time-values/)
 
-<p id="table-of-five"> If you follow the advice (abve) and avoid <i>timetz</i>, then these _date-time_ data types remain:</p>
-
-| Data type                                                             | Comment                                                                                                          |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| [_date_](./date-time-data-types-semantics/type-date/)                 | wall-clock-time (local date) moment                                                                              |
-| [plain _time_](./date-time-data-types-semantics/type-time/)           | wall-clock-time (local time) moment                                                                              |
-| [plain _timestamp_](./date-time-data-types-semantics/type-timestamp/) | wall-clock-time (local _date-time_) moment                                                                       |
-| [_timestamptz_](./date-time-data-types-semantics/type-timestamp/)     | absolute _date-time_ moment                                                                                      |
-| [_interval_](./date-time-data-types-semantics/type-interval/)         | duration between EITHER two plain _time_ moments, OR two plain _timestamp_ moments, OR two _timestamptz_ moments |
-
-Modern applications almost always are designed for global deployment. This means that they must accommodate timezones—and that it will be the norm to use the _timestamptz_ data type and not _date_, plain _time_, or plain _timestamp_. Application code will therefore need to be aware of, and to set, the timezone. It's not uncommon to expose the ability to set the timezone to the user so that _date-time_ moments can be shown differently according to the user's present purpose.
-
-
-## The organization of the rest of this section
-
-[Conceptual background](./conceptual-background) provides the background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](#synopsis) lists.
-
-[Specifying the offset from the UTC Time Standard](./specify-timezone/) explains the _set timezone_ and _show timezone_ SQL statements, the _at time zone_ operator for a _timestamptz_ expression, and the various other ways that the time timezone of interest is specified.
-
-[The semantics of the _date-time_ data types](./date-time-data-types-semantics/) defines the semantics of the _date_ data type, the _time_ data type, the plain _timestamp_ and _timestamptz_ data types, the _interval_ data type..
-
-[Miscellaneous operations for the _date-time_ data types](./misc-date-time-operations/) describes how to construct _date-time_ values, how to inspect them, how to convert between them, and other related operations like getting the session's current time.
+This section presents the five-by-five matrix of all possible conversions between values of the _date-time_ datatypes. Many of the cells are empty because they correspond to operations that aren't supported (or, because the cell is on the diagonal representing the conversion between values of the same data type, it's tautologically uninteresting). This still leaves *twenty* typecasts whose semantics you need to understand. However, many can be understood as combinations of others, and this leaves only a few that demand careful study. The critical conversions are between plain _timestamp_ and _timestamptz_ values in each direction.
