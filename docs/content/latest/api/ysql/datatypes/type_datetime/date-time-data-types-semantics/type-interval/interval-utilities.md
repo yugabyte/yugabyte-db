@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 {{< tip title="Download the kit to create all of the code that this section describes." >}}
-The code is included in a larger set of useful re-useable _date-time_ code. See [Download the '.zip' file to create the reusable code that this overall major section describes](../../../#download).
+The code is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../../#download).
 {{< /tip >}}
 
 The code presented on this page was designed to support the pedagogy of the code examples in the other sections in the enclosing section [The _interval_ data type and its variants](../../type-interval/). You can install it all, in the order presented here, at any time. It depends only on built-in SQL functions and operators and, for some of the functions, on code that was created previously in the installation order that this page shows.
