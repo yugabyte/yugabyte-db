@@ -15,9 +15,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB is primarily written in C++, with some parts of the build system and test suite written in Python, Java, and Bash (to be replaced with Python). We also use [protocol buffers](https://developers.google.com/protocol-buffers) to define some data and network message formats.
+YugabyteDB is primarily written in C++ (the distributed storage and transactions layer and the YCQL query layer) and C (the YSQL layer based on PostgreSQL), with some parts of the build system and test suite written in Python, Java, and Bash. We also use [Protocol Buffers](https://developers.google.com/protocol-buffers) to define some data and network message formats.
 
-## Language-agnostic coding style
+## Language-agnostic style guidelines
 
 ### Variable names
 
@@ -27,9 +27,7 @@ Avoid rarely used abbreviations. Think about whether all other potential readers
 
 Start full sentences with a capital letter, and end them with a period. This rule doesn't apply if the comment is a single phrase on the same line as a code statement.
 
-Functions and classes in header files should be reasonably well commented, but the comments should not duplicate what is already obvious from the code. In fact, if the code can be restructured, or if functions or classes could be renamed to reduce the need for comments, that is the preferred way.
-
-Obvious comments like the following don't add anything useful:
+Functions and classes in header files should typically have detailed comments, but the comments should not duplicate what is already obvious from the code. In fact, if the code can be restructured, or if functions or classes could be renamed to reduce the need for comments, that is the preferred way. Obvious comments like the following don't add anything useful:
 
 ```cpp
   // Returns transaction ID.
@@ -40,7 +38,7 @@ Functions and classes in `.cc` files don't have to be commented as extensively a
 
 ## C coding style
 
-For the modified PostgreSQL C codebase residing inside the YugabyteDB codebase, we adhere to the [PostgreSQL Coding Conventions](https://www.postgresql.org/docs/13/source-format.html). Note that PostgreSQL code uses _tabs_ for indentation; we use spaces for indentation _everywhere else in YugabyteDB code_.
+For the modified PostgreSQL C codebase residing inside the YugabyteDB codebase, we adhere to the [PostgreSQL Coding Conventions](https://www.postgresql.org/docs/13/source-format.html). Note that PostgreSQL code uses _tabs_ for indentation and we follow that rule in the [`src/postgres`](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres) subdirectory; we use spaces for indentation _everywhere else in YugabyteDB code_.
 
 ## C++ coding style
 
@@ -55,7 +53,7 @@ Use one of the following formatting styles for function declarations and definit
 #### All arguments on one line
 
 ```cpp
-ReturnType ClassName::FunctionName(Type par_name1, Type par_name2) {
+ReturnType ClassName::FunctionName(ParameterType1 par_name1, ParameterType2 par_name2) {
   DoSomething();
   ...
 ```
@@ -65,9 +63,9 @@ ReturnType ClassName::FunctionName(Type par_name1, Type par_name2) {
 All arguments aligned with the opening parenthesis, one argument per line.
 
 ```cpp
-ReturnType ShortClassName::ShortFunctionName(Type par_name1,
-                                             Type par_name2,
-                                             Type par_name3) {
+ReturnType ShortClassName::ShortFunctionName(ParameterType1 par_name1,
+                                             ParameterType2 par_name2,
+                                             ParameterType3 par_name3) {
   DoSomething();  // 2-space indentation
   ...
 }
@@ -79,9 +77,9 @@ One argument per line, with four-space indentation for each argument.
 
 ```cpp
 ReturnType SomeClassName::ReallyLongFunctionName(
-    Type par_name1,  // 4-space indentation
-    Type par_name2,
-    Type par_name3) {
+    ParameterType1 par_name1,  // 4-space indentation
+    ParameterType2 par_name2,
+    ParameterType3 par_name3) {
   DoSomething();  // 2-space indentation
   ...
 }
@@ -95,8 +93,8 @@ Don't break the argument list arbitrarily, and only break the list if the next a
 
 ```cpp
 ReturnType SomeClassName::ReallyLongFunctionName(
-    Type par_name1, Type par_name2, Type par_name3, Type par_name4, Type par_name5,
-    Type par_name6, Type par_name7) {
+    ParameterType1 par_name1, ParameterType2 par_name2, ParameterType3 par_name3,
+    ParameterType4 par_name4, ParameterType1 par_name5) {  // 4-space indentation for these 2 lines
   DoSomething();  // 2-space indentation
   ...
 }
@@ -168,12 +166,12 @@ For string substitution and formatting functions (`Format`, `Substitute`, `Strin
 //                                                                                               |
 
 // Good:
-return Substitute(
+return Format(
     "My formatting string with arguments $0, $1, $2, $3, and $4",
     compute_arg0(), compute_arg1(), compute_arg2(), compute_arg3(), compute_arg4());
 
 // Bad: notice it's harder to see where the first substitution argument is.
-return Substitute(
+return Format(
     "My formatting string with arguments $0, $1, $2, $3, and $4", compute_arg0(),
     compute_arg1(), compute_arg2(), compute_arg3(), compute_arg4());
 ```
@@ -185,8 +183,6 @@ Indent multi-line expressions like this:
 ```cpp
 const bool is_fixed_point_get = !lower_doc_key.empty() &&
                                 upper_doc_key.HashedComponentsEqual(lower_doc_key);
-const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
-                  BloomFilterMode::DONT_USE_BLOOM_FILTER;
 ```
 
 Or like this:
@@ -195,9 +191,6 @@ Or like this:
 const bool is_fixed_point_get =
     !lower_doc_key.empty() &&
     upper_doc_key.HashedComponentsEqual(lower_doc_key);
-const auto mode =
-    is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
-    BloomFilterMode::DONT_USE_BLOOM_FILTER;
 ```
 
 The following style is also [widely used](https://gist.github.com/ttyusupov/fea3736f0265c11c4b1e8bc4d1e69f93) in our codebase, so it's acceptable to leave it as-is when modifying the surrounding code, but the two previous options are preferable for new code.
@@ -207,6 +200,20 @@ const bool is_fixed_point_get = !lower_doc_key.empty() &&
     upper_doc_key.HashedComponentsEqual(lower_doc_key);
 const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
     BloomFilterMode::DONT_USE_BLOOM_FILTER;
+```
+
+#### Ternary operator
+
+For expressions involving the ternary operator (`?` and `:`), prefer one of the following formatting styles:
+```
+const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
+                                     : BloomFilterMode::DONT_USE_BLOOM_FILTER;
+```
+or
+```
+const auto mode =
+    is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
+                       : BloomFilterMode::DONT_USE_BLOOM_FILTER;
 ```
 
 ### Command-line flag definitions
@@ -227,7 +234,7 @@ Note that in this code style, we've aligned the first line of the string constan
 
 ### Forward declarations
 
-You can use forward declarations in a header file, if the class you are referencing is to be defined in the related .cc file, essentially making it a private class implementation. This helps keep the header file cleaner, and keeps the definition and implementation of the private class together with the actual implementation of the main class.
+You can use forward declarations in a header file, if the class you are referencing is to be defined in the related `.cc` file, essentially making it a private class implementation. This helps keep the header file cleaner, and keeps the definition and implementation of the private class together with the actual implementation of the main class.
 
 We also frequently use special header files named `..._fwd.h` that forward-declare various classes and declare some types, including enums. This helps to avoid including full class declarations wherever possible, and reduces compilation time.
 
@@ -271,7 +278,7 @@ Similarly, for variable declarations and definitions:
 
 ### Get prefix for getters
 
-Some C++ coding styles (such as Google's) use the `Get` prefix for functions returning a value, and some don't (Boost, STL). In YugabyteDB code it is allowed to either use or not use the Get prefix.
+Some C++ coding styles (such as Google's) use the `Get` prefix for functions returning a value, and some don't (Boost, STL). In YugabyteDB code it is allowed to either use or not use the `Get` prefix.
 
 There are [many](https://gist.githubusercontent.com/mbautin/97c509b3b0ec206d87cdf5a225faa515/raw) different function names in our codebase with the `Get` prefix.
 
@@ -285,7 +292,7 @@ Try to reduce code duplication by extracting repeated code into reusable functio
 
 ### Switch statements over enums
 
-If you don't use the default statement in a switch over an enum, the compiler will warn you if some values aren't handled (and we have made that warning an error). This allows to enforce that all enum values are being handled by a switch over an enum, if that's your intention. This complicates default case handling a bit, though. If every case is followed by a return, you can simply move the default handler to right after the end of the switch statement, such as:
+If you don't use the default statement in a switch over an enum, the compiler will warn you if some values aren't handled (and we have made that warning an error). This allows the compiler to enforce that all enum values are being handled by a switch over an enum, if that's your intention. This complicates default case handling a bit, though. If every case is followed by a return, you can simply move the default handler to right after the end of the switch statement, such as:
 
 ```cpp
 switch (operation_type) {
@@ -318,7 +325,13 @@ if (!handled) {
 }
 ```
 
-Note that `FATAL_INVALID_ENUM_VALUE` will terminate the process, so for functions returning a `Status`, you should handle invalid enum values gracefully. We'll add specific examples of that to this document in a future revision.
+Note that `FATAL_INVALID_ENUM_VALUE` will terminate the process, so for functions returning a `Status`, you should handle invalid enum values gracefully, e.g.:
+
+```cpp
+return STATUS_FORMAT(
+    IllegalArgument, "Invalid value of operation type: $0",
+    operation_type);
+```
 
 ### Arguments passed by value
 
@@ -371,7 +384,7 @@ void ProcessWidget(const WidgetType widget_type,  // BAD: "const" should be remo
 
 ### The using keyword and namespaces
 
-You can use the `using` directive for inner utility namespaces, such as:
+You can use the `using` directive for inner utility namespaces in `.cc` files (but not in header files), e.g.:
 
 ```cpp
 using namespace std::placeholders;
@@ -387,7 +400,7 @@ When you define functions that should only be accessible within a `.cc` file, pr
 
 ### Static and global variables
 
-Using static objects _is allowed_ in our coding style with a few limitations, and with an understanding of the static object's lifecycle. The limitations are:
+Using static objects _is allowed_ in our coding style with a few limitations, and with an understanding of a static object's lifecycle. The limitations are:
 
 * Static global variables **must** be totally independent. The order of constructions/destructions should not matter.
 * Static objects **must not** lock anything or allocate global resources (except memory).
@@ -396,8 +409,7 @@ Using static objects _is allowed_ in our coding style with a few limitations, an
 If you are adding new static objects, remember:
 
 * Global static objects (as well as static class fields) are constructed before the `main()` function call.
-* Local static objects are constructed when they first come into variable scope (which is why this option is better than global static).
-* There is a [locking mechanism](http://stackoverflow.com/questions/8102125/is-local-static-variable-initialization-thread-safe-in-c11) needed so that a concurrent execution waits for initialization completion if the static variable is already being initialized by an earlier thread. For example, for a simple static variable defined in a function
+* Local static objects are constructed when they first come into variable scope. This option should be preferred. For local static objects, there is also a [locking mechanism](http://stackoverflow.com/questions/8102125/is-local-static-variable-initialization-thread-safe-in-c11) needed so that a concurrent execution waits for initialization completion if the static variable is already being initialized by another thread. For example, for a simple static variable defined in a function
 
     ```cpp
     void f() {
@@ -462,20 +474,50 @@ Another example:
 LOG(INFO) << (p ? p->DebugString() : "N/A");
 ```
 
-### CHECKs vs DCHECKs vs returning a Status
+### Error checking macros
 
-We sometimes use `DCHECKs` to verify function prerequisites.
+We use various macros for invariant checking:
 
-* If you never expect an incorrect parameter value to be passed into a function, because there is validation happening in the calling function, it's OK to keep that as a `DCHECK`.
-* If you could theoretically get bad data in production, then:
-  * If you can recover from this error, return an error `Status`.
-  * If this is a severe invariant violation and you can't recover from it, this could be a `CHECK`.
+#### Checking a condition and returning a Status with SCHECK {#scheck}
 
-Note that for returning a `Status` in case of errors, we also have the `SCHECK` macro, which acts as `CHECK` in debug builds, but returns an error `Status` in release builds.
+`SCHECK` (shorthand for "Status CHECK") check a condition and return a `Status` with the appropriate message if the condition is not true. It can only be used within a function that returns a `Status` or a `Result`.
+
+The `SCHECK` macro is a good way to check for errors that are expected to happen under some conditions, e.g. with invalid input, and the errors need to be ultimately reported to the user.
+
+```cpp
+SCHECK(key_opt.is_initialized(), InternalError, "Key is not initialized");
+```
+
+There are also various variants of `SCHECK` (`SCHECK_EQ`, `SCHECK_NE`, `SCHECK_GT`, `SCHECK_LT`, `SCHECK_GE`, and `SCHECK_LE`) that check for equality or various types of inequalities between two arguments.
+
+```cpp
+SCHECK_EQ(schedules.size(), 1, IllegalState,
+          Format("Expected exactly one schedule with id $0", schedule_id));
+```
+
+#### Returing a Status in release mode, triggering a fatal error in debug mode with RSTATUS_DCHECK {#rstatus_dcheck}
+
+`RSTATUS_DCHECK` works similarly to `SCHECK` in release mode, but triggers a fatal error and a log message in debug mode, terminating program execution. Similarly to `SCHECK`, it also has variants for checking for equality and inequality.
+
+`RSTATUS_DCHECK` can be used for invariant checks and sanity checks where the error is not expected to happen under normal circumstances (and so it is OK to cause a unit test to crash in debug mode), but for which there is a possible recovery so we can avoid a server restart in release mode.
+
+#### Checking an invariant that must always hold with CHECK {#check}
+
+For really important invariants that are difficult to recover from while still maintaining correctness, we sometimes use the `CHECK` macro and its variants. It should be used really carefully because if the condition is violated, a server restart will occur in release mode.
+
+#### Only checking a condition in debug mode with DCHECK
+
+This macro expands to a no-op in release mode. This is reserved for checking invariants or preconditions in performance-critical code, and typically only in cases when we already expect the condition to be true because other code guarantees it.
+
+We sometimes use `DCHECKs` to verify function prerequisites. If you never expect an incorrect parameter value to be passed into a function, because there is validation happening in the calling function, it's OK to keep that as a `DCHECK`.
+
+However, if you could theoretically get bad data in production, then:
+  * If you can recover from this error, return an error `Status` (e.g. using [`SCHECK`]({{< relref "#scheck" >}}) or [`RSTATUS_DCHECK`]({{< relref "#rstatus_dcheck" >}})).
+  * If this is a severe invariant violation and you can't recover from it, this could be a [`CHECK`]({{< relref "#check" >}}).
 
 ### PREDICT_TRUE and PREDICT_FALSE
 
-Don't use `PREDICT_TRUE` and `PREDICT_FALSE` macros unless you've proven that they improve performance.
+`PREDICT_TRUE` and `PREDICT_FALSE` are . Don't use `PREDICT_TRUE` and `PREDICT_FALSE` macros unless you've proven that they improve performance.
 
 ### Result vs Status with output parameters
 
@@ -495,9 +537,9 @@ Result<int> foo();
 
 ### String formatting
 
-Use the `Format` function to produce formatted strings, rather than `Substitute`.
+Use the `Format` function to produce formatted strings, rather than the older function `Substitute`.
 
-While the functions have somewhat similar syntax, with inline substitution parameters `$0`, `$1`, and so on, `Format` has several advantages:
+While the two functions have similar syntax, with inline substitution parameters `$0`, `$1`, and so on, `Format` has several advantages:
 
 * It uses the `ToString` utility, so it can convert many different types of objects to strings, such as collections, protobufs, or any class with a `ToString` member function.
 * You don't need to call `arg.ToString()`. Just pass `arg` to the `Format` function as-is, and it will call `ToString` for you.
@@ -511,19 +553,20 @@ While the functions have somewhat similar syntax, with inline substitution param
 
 We use Clang's [Thread Safety Analysis](https://clang.llvm.org/docs/ThreadSafetyAnalysis.html) annotations in parts of our code.
 
-Thread safety annotation is a C++ extension that provides compile-time checks for potential race conditions in code. Annotations are extremely useful for code maintainability, because they make locking semantics explicit, and the compiler warns about accessing memory without holding the necessary mutexes.
+Thread safety analysis is a C++ extension implemented as part of [Clang Static Analyzer](https://clang-analyzer.llvm.org/) that provides compile-time checks for potential race conditions in code. Annotations are extremely useful for code maintainability, because they make locking semantics explicit, and the compiler warns about accessing memory without holding the necessary mutexes.
 
 A few more things to keep in mind:
 
-* `std::unique_lock` doesn't work out of the box. We wrap it into our custom `yb::UniqueLock` wrapper.
-* Similarly, for `std::shared_lock` we have `yb::SharedLock`.
-* Occasionally, you may need to annotate some functions where thread safety analysis cannot be properly applied, with `NO_THREAD_SAFETY_ANALYSIS`, so that we can still use thread safety analysis in the surrounding code.
+* `std::unique_lock` doesn't work with thread safety annotations out of the box. We wrap it into our custom `yb::UniqueLock` wrapper.
+* Similarly, for `std::shared_lock` we have the `yb::SharedLock` wrapper.
+* Occasionally, you may need to annotate some functions where thread safety analysis cannot be properly applied, with `NO_THREAD_SAFETY_ANALYSIS`, so that we can still use thread safety analysis in the surrounding code. The situations in which thread safety analysis might not work include conditional locking and complex locking semantics where a unique lock is being passed around between member functions of different classes.
 
 Our build scripts enable thread safety analysis for Clang version 11 and above; earlier versions don't support certain features that we need. Thread safety analysis works very well on macOS with modern Clang compilers, providing instant hints if your environment is set up properly.
 
-### Unused C++ features
+### Unused C/C++ features
 
-In most of our code, we don't use C++ exceptions. However, in some cases, we still have to use C++ standard library functions that throw exceptions, and we catch those exceptions as early as possible and convert them to `Status` or `Result` return values.
+* **C++ exceptions.** In most of our code, we don't use C++ exceptions. However, in some cases, we still have to use C++ standard library functions that throw exceptions, and we catch those exceptions as early as possible and convert them to `Status` or `Result` return values.
+* **`assert`** C library macro. We use our own set of macros for invariant checking.
 
 ### Other related coding guidelines for C++
 
