@@ -125,7 +125,7 @@ class MultiThreadedLogTest : public LogTestBase {
 
         auto entry_batch_pb = CreateBatchFromAllocatedOperations(batch_replicates);
 
-        ASSERT_OK(log_->Reserve(REPLICATE, &entry_batch_pb, &entry_batch));
+        log_->Reserve(REPLICATE, &entry_batch_pb, &entry_batch);
       } // lock_guard scope
       auto cb = new CustomLatchCallback(&latch, &errors);
       ASSERT_OK(log_->TEST_AsyncAppendWithReplicates(

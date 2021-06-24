@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -26,26 +27,28 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.YBClient;
 import org.yb.client.AbstractModifyMasterClusterConfig;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.YBClient;
 import org.yb.master.Master;
 import play.libs.Json;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
   ShellResponse preflightSuccessResponse;
@@ -57,7 +60,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
@@ -66,8 +69,9 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
-    ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -77,23 +81,24 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     preflightSuccessResponse = new ShellResponse();
     preflightSuccessResponse.message = "{\"test\": true}";
     when(mockNodeManager.nodeCommand(eq(NodeCommandType.Precheck), any()))
-      .thenReturn(preflightSuccessResponse);
+        .thenReturn(preflightSuccessResponse);
     // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
     // anything..
     modifyUC = mock(ModifyUniverseConfig.class);
     amuc = mock(AbstractModifyMasterClusterConfig.class);
 
     Master.SysClusterConfigEntryPB.Builder configBuilder =
-      Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
     GetMasterClusterConfigResponse mockConfigResponse =
-      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     ChangeMasterClusterConfigResponse mockChangeConfigResponse =
-      new ChangeMasterClusterConfigResponse(1111, "", null);
+        new ChangeMasterClusterConfigResponse(1111, "", null);
 
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
-    } catch (Exception e) {}
+    } catch (Exception e) {
+    }
     // WaitForServer mock.
     mockWaits(mockClient);
   }
@@ -109,42 +114,42 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     return null;
   }
 
-  List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE = ImmutableList.of(
-      TaskType.AnsibleSetupServer,
-      TaskType.AnsibleUpdateNodeInfo,
-      TaskType.AnsibleConfigureServers,
-      TaskType.AnsibleConfigureServers,
-      TaskType.AnsibleClusterServerCtl,
-      TaskType.WaitForServer,
-      TaskType.SetNodeState,
-      TaskType.UpdatePlacementInfo,
-      TaskType.SwamperTargetsFileUpdate,
-      TaskType.UniverseUpdateSucceeded
-  );
+  List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.AnsibleSetupServer,
+          TaskType.AnsibleUpdateNodeInfo,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
+          TaskType.UpdatePlacementInfo,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS = ImmutableList.of(
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of())
-  );
+  List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
 
-  private void assertClusterCreateSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                           boolean masterUnderReplicated) {
+  private void assertClusterCreateSequence(
+      Map<Integer, List<TaskInfo>> subTasksByPosition, boolean masterUnderReplicated) {
     int position = 0;
-    for (TaskType taskType: CLUSTER_CREATE_TASK_SEQUENCE) {
+    for (TaskType taskType : CLUSTER_CREATE_TASK_SEQUENCE) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(1, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = CLUSTER_CREATE_TASK_EXPECTED_RESULTS.get(position);
-      List<JsonNode> taskDetails = tasks.stream().map(t -> t.getTaskDetails())
-                                                 .collect(Collectors.toList());
+      List<JsonNode> taskDetails =
+          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -152,12 +157,12 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
 
   @Test
   public void testClusterCreateSuccess() {
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.currentClusterType = ClusterType.ASYNC;
     UserIntent userIntent = new UserIntent();
     Region region = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
-    AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
@@ -166,8 +171,9 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.universeName = defaultUniverse.name;
     taskParams.clusters.add(new Cluster(ClusterType.ASYNC, userIntent));
-    PlacementInfoUtil.updateUniverseDefinition(taskParams, defaultCustomer.getCustomerId(),
-        taskParams.clusters.get(0).uuid, UniverseDefinitionTaskParams.ClusterOperationType.CREATE);
+    taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getCustomerId(), taskParams.clusters.get(0).uuid);
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {
       node.cloudInfo.private_ip = "10.9.22." + iter;
@@ -189,7 +195,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   @Test
   public void testClusterCreateFailure() {
     UniverseDefinitionTaskParams univUTP =
-      Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
+        Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;

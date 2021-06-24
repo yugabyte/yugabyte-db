@@ -4,8 +4,13 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,8 +27,11 @@ public class ExtraMigrationManager extends DevopsBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(ExtraMigrationManager.class);
 
-  @Inject
-  TemplateManager templateManager;
+  @Inject TemplateManager templateManager;
+
+  @Inject AlertDefinitionService alertDefinitionService;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Override
   protected String getCommandType() {
@@ -31,13 +39,17 @@ public class ExtraMigrationManager extends DevopsBase {
   }
 
   private void recreateProvisionScripts() {
-    for (AccessKey accessKey: AccessKey.getAll()) {
+    for (AccessKey accessKey : AccessKey.getAll()) {
       Provider p = Provider.get(accessKey.getProviderUUID());
       if (p != null && p.code.equals(onprem.name())) {
         AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
         templateManager.createProvisionTemplate(
-          accessKey, keyInfo.airGapInstall, keyInfo.passwordlessSudoAccess,
-          keyInfo.installNodeExporter, keyInfo.nodeExporterPort, keyInfo.nodeExporterUser);
+            accessKey,
+            keyInfo.airGapInstall,
+            keyInfo.passwordlessSudoAccess,
+            keyInfo.installNodeExporter,
+            keyInfo.nodeExporterPort,
+            keyInfo.nodeExporterUser);
       }
     }
   }
@@ -53,25 +65,38 @@ public class ExtraMigrationManager extends DevopsBase {
   private void recreateMissedAlertDefinitions() {
     LOG.info("recreateMissedAlertDefinitions");
     for (Customer c : Customer.getAll()) {
+      Config customerConfig = runtimeConfigFactory.forCustomer(c);
       for (UUID universeUUID : Universe.getAllUUIDs(c)) {
         Optional<Universe> u = Universe.maybeGet(universeUUID);
         if (u.isPresent()) {
           Universe universe = u.get();
           for (AlertDefinitionTemplate template : AlertDefinitionTemplate.values()) {
+            boolean definitionMissing =
+                alertDefinitionService
+                    .list(
+                        AlertDefinitionFilter.builder()
+                            .customerUuid(c.uuid)
+                            .name(template.getName())
+                            .label(KnownAlertLabels.UNIVERSE_UUID, universeUUID.toString())
+                            .build())
+                    .isEmpty();
             if (template.isCreateOnMigration()
-                && (AlertDefinition.get(c.uuid, universeUUID, template.getName()) == null)
+                && definitionMissing
                 && (universe.getUniverseDetails() != null)) {
               LOG.debug(
-                "Going to create alert definition for universe {} with name '{}'",
-                universeUUID,
-                template.getName());
-              AlertDefinition.create(
-                c.uuid,
-                AlertDefinition.TargetType.Universe,
-                template.getName(),
-                template.buildTemplate(universe.getUniverseDetails().nodePrefix),
-                true,
-                AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+                  "Going to create alert definition for universe {} with name '{}'",
+                  universeUUID,
+                  template.getName());
+              AlertDefinition alertDefinition =
+                  new AlertDefinition()
+                      .setCustomerUUID(c.getUuid())
+                      .setName(template.getName())
+                      .setQuery(template.buildTemplate(universe.getUniverseDetails().nodePrefix))
+                      .setQueryThreshold(
+                          customerConfig.getDouble(template.getDefaultThresholdParamName()))
+                      .setLabels(
+                          AlertDefinitionLabelsBuilder.create().appendTarget(universe).get());
+              alertDefinitionService.create(alertDefinition);
             }
           }
         } else {

@@ -63,6 +63,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/user.h"
 
 DECLARE_string(callhome_collection_level);
 DECLARE_string(callhome_tag);
@@ -177,7 +178,8 @@ TEST_F(MasterTest, TestCallHome) {
     if (collection_level.second.find("current_user") != collection_level.second.end()) {
       string received_user;
       ASSERT_OK(reader.ExtractString(reader.root(), "current_user", &received_user));
-      ASSERT_EQ(received_user, mini_master_->master()->get_current_user());
+      auto expected_user = ASSERT_RESULT(GetLoggedInUser());
+      ASSERT_EQ(received_user, expected_user);
     }
 
     auto count = reader.root()->MemberEnd() - reader.root()->MemberBegin();
@@ -763,34 +765,12 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
   s = DoCreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
-  // Succeed the CreateTable call, but expect to have errors on call.
+  // Fail because there are no TServers matching the given placement policy.
   pb->set_min_num_replicas(live_replicas->num_replicas());
   cloud_info->set_placement_cloud("fail");
   UpdateMasterClusterConfig(&cluster_config);
-  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
-
-  IsCreateTableDoneRequestPB is_create_req;
-  IsCreateTableDoneResponsePB is_create_resp;
-
-  is_create_req.mutable_table()->set_table_name(kTableName);
-  is_create_req.mutable_table()->mutable_namespace_()->set_name(default_namespace_name);
-
-  // TODO(bogdan): once there are mechanics to cancel a create table, or for it to be cancelled
-  // automatically by the master, refactor this retry loop to an explicit wait and check the error.
-  int num_retries = 10;
-  while (num_retries > 0) {
-    s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
-    LOG(INFO) << s.ToString();
-    // The RPC layer will respond OK, but the internal fields will be set to error.
-    ASSERT_TRUE(s.ok());
-    ASSERT_TRUE(is_create_resp.has_done());
-    ASSERT_FALSE(is_create_resp.done());
-    if (is_create_resp.has_error()) {
-      ASSERT_EQ(is_create_resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
-    }
-
-    --num_retries;
-  }
+  s = DoCreateTable(kTableName, schema, &req);
+  ASSERT_TRUE(s.IsInvalidArgument());
 }
 
 TEST_F(MasterTest, TestNamespaces) {
@@ -1634,6 +1614,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
 
     if (!del_resp.has_error()) {
       Status s = DeleteNamespaceWait(is_del_req);
+      ASSERT_FALSE(s.IsTimedOut()) << "Unexpected timeout: " << s;
       WARN_NOT_OK(s, "Expected failure");
       delete_failed = !s.ok();
     }

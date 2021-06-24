@@ -59,26 +59,23 @@ public class RegionControllerTest extends FakeDBApplication {
   }
 
   private Result listRegions(UUID providerUUID) {
-    String uri = "/api/customers/" + customer.uuid +
-        "/providers/" + providerUUID + "/regions";
+    String uri = "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/regions";
     return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result listAllRegions() {
-    String uri = "/api/customers/" + customer.uuid +
-        "/regions";
+    String uri = "/api/customers/" + customer.uuid + "/regions";
     return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result createRegion(UUID providerUUID, JsonNode body) {
-    String uri =  "/api/customers/" + customer.uuid +
-        "/providers/" + providerUUID + "/regions";
+    String uri = "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/regions";
     return FakeApiHelper.doRequestWithBody("POST", uri, body);
   }
 
   private Result deleteRegion(UUID providerUUID, UUID regionUUID) {
-    String uri =  "/api/customers/" + customer.uuid +
-        "/providers/" + providerUUID + "/regions/" + regionUUID;
+    String uri =
+        "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/regions/" + regionUUID;
     return FakeApiHelper.doRequest("DELETE", uri);
   }
 
@@ -103,7 +100,8 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListAllRegionsWithValidRegion() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
-    AvailabilityZone az = AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     Result result = listAllRegions();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -146,7 +144,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionsWithValidProviderUUID() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
-    AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone.createOrThrow(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -155,9 +153,8 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(json.get(0).path("code").asText(), r.code);
     assertEquals(json.get(0).path("name").asText(), r.name);
     assertThat(
-      json.get(0).path("zones"),
-      AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class))
-    );
+        json.get(0).path("zones"),
+        AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class)));
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -165,18 +162,17 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testListRegions() {
     Region r1 = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     Region r2 = Region.create(provider, "region-2", "PlacementRegion 2", "default-image");
-    AvailabilityZone.create(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
-    AvailabilityZone.create(r1, "PlacementAZ-1.2", "PlacementAZ 1.2", "Subnet - 1.2");
-    AvailabilityZone.create(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
-    AvailabilityZone.create(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
-    AvailabilityZone.create(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.2", "PlacementAZ 1.2", "Subnet - 1.2");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
+    AvailabilityZone.createOrThrow(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
+    AvailabilityZone.createOrThrow(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
     Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(2, json.size());
     assertAuditEntry(0, customer.uuid);
   }
-
 
   @Test
   public void testCreateRegionsWithInvalidProviderUUID() {
@@ -193,8 +189,9 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testCreateRegionsWithoutRequiredParams() {
     Result result = createRegion(provider.uuid, Json.newObject());
     assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result),
-            CoreMatchers.containsString("\"code\":[\"This field is required\"]"));
+    assertThat(
+        contentAsString(result),
+        CoreMatchers.containsString("\"code\":[\"This field is required\"]"));
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -229,7 +226,8 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateRegionWithMetadataValidVPCInfo() {
-    YugawareProperty.addConfigProperty(ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
         Json.parse("{\"foo-region\": {\"name\": \"Foo Region\", \"ybImage\": \"yb image\"}}"),
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
@@ -255,7 +253,8 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateRegionWithMetadataInvalidVPCInfo() {
-    YugawareProperty.addConfigProperty(ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
         Json.parse("{\"foo-region\": {\"name\": \"Foo Region\", \"ybImage\": \"yb image\"}}"),
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
@@ -278,16 +277,17 @@ public class RegionControllerTest extends FakeDBApplication {
     UUID randomUUID = UUID.randomUUID();
     Result result = deleteRegion(provider.uuid, randomUUID);
     assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result),
-            CoreMatchers.containsString("Invalid Provider/Region UUID:" + randomUUID));
+    assertThat(
+        contentAsString(result),
+        CoreMatchers.containsString("Invalid Provider/Region UUID:" + randomUUID));
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteRegionWithValidParams() {
     Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "AZ 2", "subnet-2");
     Result result = deleteRegion(provider.uuid, r.uuid);
     assertEquals(OK, result.status());
 
@@ -298,7 +298,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertFalse(r.active);
 
     List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(r.uuid);
-    for (AvailabilityZone az: zones) {
+    for (AvailabilityZone az : zones) {
       assertFalse(az.active);
     }
     assertAuditEntry(1, customer.uuid);

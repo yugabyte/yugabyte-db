@@ -9,9 +9,9 @@ import java.util.UUID;
 
 /**
  * The placement info is a tree. The first level contains a list of clouds. Every cloud contains a
- * list of regions. Each region has a list of AZs. The number of leaves in this tree should be
- * equal to the replication factor, and each leaf defines the data placement (by virtue of its
- * path from the first level).
+ * list of regions. Each region has a list of AZs. The number of leaves in this tree should be equal
+ * to the replication factor, and each leaf defines the data placement (by virtue of its path from
+ * the first level).
  */
 public class PlacementInfo {
   public static class PlacementCloud {
@@ -21,6 +21,7 @@ public class PlacementInfo {
     public String code;
     // The list of region in this cloud we want to place data in.
     public List<PlacementRegion> regionList = new ArrayList<PlacementRegion>();
+
     @Override
     public String toString() {
       String ret = "Cloud=" + code + " ";
@@ -40,6 +41,7 @@ public class PlacementInfo {
     public String name;
     // The list of AZs inside this region into which we want to place data.
     public List<PlacementAZ> azList = new ArrayList<PlacementAZ>();
+
     @Override
     public String toString() {
       String ret = "Region=" + code + " : ";
@@ -64,9 +66,16 @@ public class PlacementInfo {
     public int numNodesInAZ;
     // Is this an affinitized zone.
     public boolean isAffinitized;
+
     @Override
     public String toString() {
-      return "(AZ=" + name + ", count=" + numNodesInAZ + ", replication factor=" + replicationFactor + ")";
+      return "(AZ="
+          + name
+          + ", count="
+          + numNodesInAZ
+          + ", replication factor="
+          + replicationFactor
+          + ")";
     }
   }
 

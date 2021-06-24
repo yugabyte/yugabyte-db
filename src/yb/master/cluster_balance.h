@@ -136,9 +136,6 @@ class ClusterLoadBalancer {
   // depending on placement_uuid_.
   virtual const PlacementInfoPB& GetClusterPlacementInfo() const;
 
-  // Init tablespace information from catalog manager.
-  void InitTablespaceInfo();
-
   // Get the blacklist information.
   virtual const BlacklistPB& GetServerBlacklist() const;
 
@@ -210,6 +207,8 @@ class ClusterLoadBalancer {
 
   // Methods for load preparation, called by ClusterLoadBalancer while analyzing tablets and
   // building the initial state.
+
+  virtual void InitTablespaceManager();
 
   // Return the replication info for 'table'.
   Result<ReplicationInfoPB> GetTableReplicationInfo(const scoped_refptr<TableInfo>& table) const;
@@ -344,9 +343,6 @@ class ClusterLoadBalancer {
   int get_total_blacklisted_servers() const;
   int get_total_leader_blacklisted_servers() const;
 
-  // Specifies whether placement information for 'table_id' is available.
-  bool TablespacePlacementInformationFound(const TableId& table_id);
-
   std::unordered_map<TableId, std::unique_ptr<PerTableLoadState>> per_table_states_;
   // The state of the table load in the cluster, as far as this run of the algorithm is concerned.
   // It points to the appropriate object in per_table_states_.
@@ -358,11 +354,7 @@ class ClusterLoadBalancer {
   // managed by this class, but by the Master's unique_ptr.
   CatalogManager* catalog_manager_;
 
-  // Map to store tablespace information.
-  std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_placement_map_;
-
-  // Map to provide the tablespace associated with a given table.
-  std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map_;
+  std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 
   template <class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
 
@@ -423,7 +415,6 @@ class ClusterLoadBalancer {
   // skipped_tables_ is set at the end of each LB run using
   // skipped_tables_per_run_.
   vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
-
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

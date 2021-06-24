@@ -134,7 +134,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
       Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
       Format("rack$0", index_), "zone");
 
-  gscoped_ptr<Master> server(new enterprise::Master(*opts));
+  std::unique_ptr<Master> server(new enterprise::Master(*opts));
   RETURN_NOT_OK(server->Init());
 
   server::TEST_SetupConnectivity(server->messenger(), index_);

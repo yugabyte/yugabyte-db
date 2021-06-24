@@ -13,8 +13,7 @@ package com.yugabyte.yw.common.templates;
 import java.util.function.Function;
 
 /**
- * Replace placeholders, surrounded by prefix and suffix strings
- * with some values from domain model.
+ * Replace placeholders, surrounded by prefix and suffix strings with some values from domain model.
  */
 public class PlaceholderSubstitutor {
   private final String parameterPrefix;
@@ -25,20 +24,19 @@ public class PlaceholderSubstitutor {
     this("{{", "}}", valueProvider);
   }
 
-  public PlaceholderSubstitutor(String parameterPrefix, String parameterSuffix,
-                                Function<String, String> valueProvider) {
+  public PlaceholderSubstitutor(
+      String parameterPrefix, String parameterSuffix, Function<String, String> valueProvider) {
     this.parameterPrefix = parameterPrefix;
     this.parameterSuffix = parameterSuffix;
     this.valueProvider = valueProvider;
   }
 
   /**
-   * Substitutes all parameters of format '{{ config-path }}' with corresponding
-   * values from the configuration.<br>
-   * If the parameter doesn't exist in the configuration, it is simply removed
-   * from the string.
-   * <p>
-   * <b>Usage example:</b> <br>
+   * Substitutes all parameters of format '{{ config-path }}' with corresponding values from the
+   * configuration.<br>
+   * If the parameter doesn't exist in the configuration, it is simply removed from the string.
+   *
+   * <p><b>Usage example:</b> <br>
    * "database name is: {{ db.default.dbname }}" => "database name is: yugaware"
    *
    * @return String with substituted values
@@ -52,14 +50,14 @@ public class PlaceholderSubstitutor {
     int position = 0;
     int prefixPosition;
     while ((prefixPosition = templateStr.indexOf(parameterPrefix, position)) >= 0) {
-      int suffixPosition = templateStr.indexOf(parameterSuffix,
-        prefixPosition + parameterPrefix.length());
+      int suffixPosition =
+          templateStr.indexOf(parameterSuffix, prefixPosition + parameterPrefix.length());
       if (suffixPosition == -1) {
         break;
       }
       result.append(templateStr, position, prefixPosition);
-      String parameter = templateStr.substring(prefixPosition + parameterPrefix.length(),
-        suffixPosition);
+      String parameter =
+          templateStr.substring(prefixPosition + parameterPrefix.length(), suffixPosition);
       parameter = parameter.trim();
       result.append(valueProvider.apply(parameter));
       position = suffixPosition + parameterSuffix.length();

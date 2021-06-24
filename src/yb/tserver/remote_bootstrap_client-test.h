@@ -91,7 +91,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
  protected:
   CHECKED_STATUS CompareFileContents(const string& path1, const string& path2);
 
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<RemoteBootstrapClient> client_;

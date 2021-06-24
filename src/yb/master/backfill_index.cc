@@ -352,10 +352,10 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
       VLOG(1) << "Index permissions update skipped, leaving schema_version at "
               << indexed_table_pb.version();
     }
-    indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
-                                 Substitute("Alter table version=$0 ts=$1",
-                                            indexed_table_pb.version(),
-                                            LocalTimeAsString()));
+    indexed_table_data.set_state(
+        SysTablesEntryPB::ALTERING,
+        Format("Update index permission version=$0 ts=$1",
+               indexed_table_pb.version(), LocalTimeAsString()));
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
@@ -635,6 +635,28 @@ std::unordered_set<TableId> IndexIdsFromInfos(const std::vector<IndexInfoPB>& in
   return idx_ids;
 }
 
+std::string RetrieveIndexNames(CatalogManager* mgr,
+                               const std::unordered_set<std::string>& index_ids) {
+  std::ostringstream out;
+  out << "{ ";
+  bool first = true;
+  for (const auto& index_id : index_ids) {
+    const auto table_info = mgr->GetTableInfo(index_id);
+    if (!table_info) {
+      LOG(WARNING) << "No table info can be found with index table id " << index_id;
+      continue;
+    }
+    if (!first) {
+      out << ", ";
+    }
+    first = false;
+
+    out << table_info->name();
+  }
+  out << " }";
+  return out.str();
+}
+
 }  // namespace
 
 BackfillTable::BackfillTable(
@@ -645,20 +667,8 @@ BackfillTable::BackfillTable(
       indexed_table_(indexed_table),
       index_infos_(indexes),
       requested_index_ids_(IndexIdsFromInfos(indexes)),
+      requested_index_names_(RetrieveIndexNames(master->catalog_manager(), requested_index_ids_)),
       ns_info_(ns_info) {
-  std::ostringstream out;
-  out << "{ ";
-  bool first = true;
-  for (const auto& index_id : requested_index_ids_) {
-    if (!first) {
-      out << ", ";
-    }
-    out << master_->catalog_manager()->GetTableInfo(index_id)->name();
-    first = false;
-  }
-  out << " }";
-  requested_index_names_ = out.str();
-
   auto l = indexed_table_->LockForRead();
   schema_version_ = indexed_table_->metadata().state().pb.version();
   leader_term_ = master_->catalog_manager()->leader_ready_term();
@@ -1232,8 +1242,7 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
     VLOG(3) << "GetSafeTime for " << tablet_->ToString() << " got an error. Returning "
             << safe_time;
   } else if (state() != MonitoredTaskState::kComplete) {
-    status = STATUS_SUBSTITUTE(InternalError, "$0 in state $1", description(),
-                               ToString(state()));
+    status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
   } else {
     safe_time = HybridTime(resp_.safe_time());
     if (safe_time.is_special()) {
@@ -1244,6 +1253,20 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
   }
   WARN_NOT_OK(backfill_table_->UpdateSafeTime(status, safe_time),
     "Could not UpdateSafeTime");
+}
+
+BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
+                             const std::string& start_key)
+    : RetryingTSRpcTask(backfill_tablet->master(),
+                        backfill_tablet->threadpool(),
+                        std::unique_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
+                        backfill_tablet->tablet()->table().get()),
+      indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
+      backfill_tablet_(backfill_tablet),
+      start_key_(start_key),
+      requested_index_names_(RetrieveIndexNames(backfill_tablet->master()->catalog_manager(),
+                                                indexes_being_backfilled_)) {
+  deadline_ = MonoTime::Max(); // Never time out.
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -1371,9 +1394,14 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
 
   if (resp_.has_error()) {
     status = StatusFromPB(resp_.error().status());
-    for (int i = 0; i < resp_.failed_index_ids_size(); i++) {
-      VLOG(1) << " Added to failed index " << resp_.failed_index_ids(i);
-      failed_indexes.insert(resp_.failed_index_ids(i));
+    if (resp_.failed_index_ids_size() > 0) {
+      for (int i = 0; i < resp_.failed_index_ids_size(); i++) {
+        VLOG(1) << " Added to failed index " << resp_.failed_index_ids(i);
+        failed_indexes.insert(resp_.failed_index_ids(i));
+      }
+    } else {
+      // No specific index was marked as a failure. So consider all of them as failed.
+      failed_indexes = indexes_being_backfilled_;
     }
   } else if (state() != MonitoredTaskState::kComplete) {
     // There is no response, so the error happened even before we could
@@ -1382,8 +1410,7 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
     VLOG(3) << "Considering all indexes : "
             << yb::ToString(indexes_being_backfilled_)
             << " as failed.";
-    status = STATUS_SUBSTITUTE(InternalError, "$0 in state $1", description(),
-                               ToString(state()));
+    status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
   }
 
   if (resp_.has_backfilled_until()) {

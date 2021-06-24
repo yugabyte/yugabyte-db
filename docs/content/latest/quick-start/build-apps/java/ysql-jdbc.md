@@ -27,6 +27,12 @@ showAsideToc: true
     </a>
   </li>
   <li >
+    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - JDBC SSL/TLS
+    </a>
+  </li>
+  <li >
     <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
@@ -54,7 +60,7 @@ This tutorial assumes that:
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
-## Create the sample Java application
+## Create and configure the Java project
 
 1. Create a project called "MySample".
 
@@ -129,6 +135,8 @@ This tutorial assumes that:
     $ mvn install
     ```
 
+## Create the sample Java application
+
 1. Copy the following Java code to a new file named `src/main/java/com/yugabyte/HelloSqlApp.java`:
 
     ```java
@@ -172,7 +180,7 @@ This tutorial assumes that:
 1. Run your new program.
 
     ```sh
-    $ mvn -q exec:java -Dexec.mainClass=com.yugabyte.HelloSqlApp
+    $ mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.HelloSqlApp
     ```
 
     You should see the following as the output:

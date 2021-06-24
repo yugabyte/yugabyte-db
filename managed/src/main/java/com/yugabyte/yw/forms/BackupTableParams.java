@@ -3,6 +3,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.Backup;
 import org.yb.Common.TableType;
 import play.data.validation.Constraints;
 
@@ -19,8 +20,7 @@ public class BackupTableParams extends TableManagerParams {
     DELETE
   }
 
-  @Constraints.Required
-  public UUID storageConfigUUID;
+  @Constraints.Required public UUID storageConfigUUID;
 
   public UUID kmsConfigUUID = null;
 
@@ -28,8 +28,7 @@ public class BackupTableParams extends TableManagerParams {
   // the S3 url based on universeUUID and timestamp.
   public String storageLocation;
 
-  @Constraints.Required
-  public ActionType actionType;
+  @Constraints.Required public ActionType actionType;
 
   public TableType backupType;
 
@@ -62,6 +61,8 @@ public class BackupTableParams extends TableManagerParams {
 
   // The associated schedule UUID (if applicable)
   public UUID scheduleUUID = null;
+
+  @JsonIgnore public Backup backup = null;
 
   @JsonIgnore
   public Set<String> getTableNames() {

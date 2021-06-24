@@ -36,10 +36,10 @@
 
 
 // CDC Tablet metrics.
-METRIC_DEFINE_histogram(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
+// Todo(Rahul): Figure out appropriate aggregation functions for these metrics.
+METRIC_DEFINE_coarse_histogram(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
   yb::MetricUnit::kBytes,
-  "Payload size of responses to CDC GetChanges requests (only when records are included)",
-  60000000LU /* max int */, 2 /* digits */);
+  "Payload size of responses to CDC GetChanges requests (only when records are included)");
 METRIC_DEFINE_counter(cdc, rpc_heartbeats_responded, "CDC Rpc Heartbeat Count",
   yb::MetricUnit::kRequests,
   "Number of responses to CDC GetChanges requests without a record payload.");
@@ -67,11 +67,13 @@ METRIC_DEFINE_gauge_int64(cdc, last_readable_opid_index, "CDC Last Readable OpId
 METRIC_DEFINE_gauge_int64(cdc, async_replication_sent_lag_micros, "CDC Physical Time Lag Last Sent",
                           yb::MetricUnit::kMicroseconds,
                           "Lag between commit time of last record polled and last record applied on"
-                          "producer.");
+                          "producer.",
+                          {0, yb::AggregationFunction::kMax} /* optional_args */);
 METRIC_DEFINE_gauge_int64(cdc, async_replication_committed_lag_micros,
                           "CDC Physical Time Lag Last Committed",
                           yb::MetricUnit::kMicroseconds,
-                          "Lag between last record applied on consumer and producer.");
+                          "Lag between last record applied on consumer and producer.",
+                          {0, yb::AggregationFunction::kMax} /* optional_args */);
 
 // CDC Server Metrics
 METRIC_DEFINE_counter(server, cdc_rpc_proxy_count, "CDC Rpc Proxy Count", yb::MetricUnit::kRequests,

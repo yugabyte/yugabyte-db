@@ -7,16 +7,20 @@ import java.util.EnumSet;
 public enum AlertDefinitionTemplate {
 
   // @formatter:off
-  REPLICATION_LAG("Replication Lag Alert",
-      "max by (node_prefix) (avg_over_time(async_replication_committed_lag_micros" +
-      "{node_prefix=\"__nodePrefix__\"}[10m]) or avg_over_time(async_replication_sent_lag_micros" +
-      "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 > {{ yb.alert.replication_lag_ms }}",
-      EnumSet.noneOf(DefinitionSettings.class), "yb.alert.replication_lag_ms"),
+  REPLICATION_LAG(
+      "Replication Lag Alert",
+      "max by (node_prefix) (avg_over_time(async_replication_committed_lag_micros"
+          + "{node_prefix=\"__nodePrefix__\"}[10m]) or avg_over_time(async_replication_sent_lag_micros"
+          + "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 > {{ query_threshold }}",
+      EnumSet.noneOf(DefinitionSettings.class),
+      "yb.alert.replication_lag_ms"),
 
-  CLOCK_SKEW("Clock Skew Alert",
-      "max by (node_prefix) (max_over_time(hybrid_clock_skew" +
-      "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 > {{ yb.alert.max_clock_skew_ms }}",
-      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_UNIVERSE), "yb.alert.max_clock_skew_ms"),
+  CLOCK_SKEW(
+      "Clock Skew Alert",
+      "max by (node_prefix) (max_over_time(hybrid_clock_skew"
+          + "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 > {{ query_threshold }}",
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_UNIVERSE),
+      "yb.alert.max_clock_skew_ms"),
 
   MEMORY_CONSUMPTION(
       "Memory Consumption Alert",
@@ -32,14 +36,15 @@ public enum AlertDefinitionTemplate {
           + "   (avg_over_time(node_memory_Slab{node_prefix=\"__nodePrefix__\"}[10m]))) /"
           + " (max by (node_prefix)"
           + "   (avg_over_time(node_memory_MemTotal{node_prefix=\"__nodePrefix__\"}[10m])))"
-          + " > {{ yb.alert.max_memory_cons_pct }} / 100",
+          + " > {{ query_threshold }} / 100",
       EnumSet.of(
           DefinitionSettings.CREATE_FOR_NEW_UNIVERSE, DefinitionSettings.CREATE_ON_MIGRATION),
       "yb.alert.max_memory_cons_pct");
   // @formatter:on
 
   enum DefinitionSettings {
-    CREATE_FOR_NEW_UNIVERSE, CREATE_ON_MIGRATION
+    CREATE_FOR_NEW_UNIVERSE,
+    CREATE_ON_MIGRATION
   }
 
   private final String name;
@@ -48,11 +53,10 @@ public enum AlertDefinitionTemplate {
 
   private final EnumSet<DefinitionSettings> settings;
 
-  private final String paramName;
+  private final String defaultThresholdParamName;
 
   /**
-   * Prepares the template for further usage. Does a substitution for parameter
-   * '__nodePrefix__'.
+   * Prepares the template for further usage. Does a substitution for parameter '__nodePrefix__'.
    *
    * @param nodePrefix
    * @return Built string
@@ -61,12 +65,15 @@ public enum AlertDefinitionTemplate {
     return template.replaceAll("__nodePrefix__", nodePrefix);
   }
 
-  AlertDefinitionTemplate(String name, String template, EnumSet<DefinitionSettings> settings,
-      String paramName) {
+  AlertDefinitionTemplate(
+      String name,
+      String template,
+      EnumSet<DefinitionSettings> settings,
+      String defaultThresholdParamName) {
     this.name = name;
     this.template = template;
     this.settings = settings;
-    this.paramName = paramName;
+    this.defaultThresholdParamName = defaultThresholdParamName;
   }
 
   public boolean isCreateForNewUniverse() {
@@ -81,7 +88,7 @@ public enum AlertDefinitionTemplate {
     return name;
   }
 
-  public String getParameterName() {
-    return paramName;
+  public String getDefaultThresholdParamName() {
+    return defaultThresholdParamName;
   }
 }

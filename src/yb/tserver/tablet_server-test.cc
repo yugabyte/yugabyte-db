@@ -684,12 +684,10 @@ TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
 
 TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   METRIC_DEFINE_entity(test);
-  METRIC_DEFINE_histogram(test, insert_latency,
+  METRIC_DEFINE_coarse_histogram(test, insert_latency,
                           "Insert Latency",
                           MetricUnit::kMicroseconds,
-                          "TabletServer single threaded insert latency.",
-                          10000000,
-                          2);
+                          "TabletServer single threaded insert latency.");
 
   scoped_refptr<Histogram> histogram = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
 
@@ -772,7 +770,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   reg.Clear();
   tbo.fs_opts.data_paths = { GetTestPath("fake-ts") };
   tbo.rpc_opts = opts3;
-  enterprise::TabletServer server(tbo);
+  TabletServer server(tbo);
 
   ASSERT_NO_FATALS(WARN_NOT_OK(server.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
@@ -785,7 +783,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
   server::RpcServerOptions opts4;
   tbo.rpc_opts = opts4;
-  enterprise::TabletServer tserver2(tbo);
+  TabletServer tserver2(tbo);
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.GetRegistration(&reg), "Ignore"));

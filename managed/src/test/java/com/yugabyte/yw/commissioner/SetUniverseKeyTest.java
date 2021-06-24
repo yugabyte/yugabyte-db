@@ -45,6 +45,5 @@ public class SetUniverseKeyTest extends FakeDBApplication {
     verify(task, times(1)).handleCustomerError(eq(customer1.uuid), eq(customerTaskException));
     verify(task, times(1)).handleCustomerError(eq(customer2.uuid), eq(customerTaskException));
     verify(task, times(0)).setUniverseKey(any());
-
   }
 }

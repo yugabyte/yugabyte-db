@@ -39,8 +39,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/gutil/gscoped_ptr.h"
-
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -84,7 +82,7 @@ class YBTest : public ::testing::Test {
 
   uint16_t AllocateFreePort() { return port_picker_.AllocateFreePort(); }
 
-  gscoped_ptr<Env> env_;
+  std::unique_ptr<Env> env_;
   google::FlagSaver flag_saver_;  // Reset flags on every test.
   PortPicker port_picker_;
 
@@ -213,14 +211,6 @@ CHECKED_STATUS WaitFor(
     const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const std::string& description,
-    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
-    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
-
-void AssertLoggedWaitFor(
-    const std::function<Result<bool>()>& condition,
-    MonoDelta timeout,
-    const string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));

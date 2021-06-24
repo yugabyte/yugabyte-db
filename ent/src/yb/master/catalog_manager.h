@@ -71,6 +71,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                        ListSnapshotSchedulesResponsePB* resp,
                                        rpc::RpcContext* rpc);
 
+  CHECKED_STATUS DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
+                                        DeleteSnapshotScheduleResponsePB* resp,
+                                        rpc::RpcContext* rpc);
+
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
 
@@ -257,21 +261,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
-  void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                       const std::string& snapshot_id,
-                                       const SnapshotScheduleId& schedule_id,
-                                       HybridTime snapshot_hybrid_time,
-                                       TabletSnapshotOperationCallback callback) override;
+  AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
+      const TabletInfoPtr& tablet, const std::string& snapshot_id,
+      tserver::TabletSnapshotOpRequestPB::Operation operation,
+      TabletSnapshotOperationCallback callback) override;
 
-  void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                        const std::string& snapshot_id,
-                                        HybridTime restore_at,
-                                        SendMetadata send_metadata,
-                                        TabletSnapshotOperationCallback callback) override;
-
-  void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                       const std::string& snapshot_id,
-                                       TabletSnapshotOperationCallback callback) override;
+  void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) override;
 
   CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
 

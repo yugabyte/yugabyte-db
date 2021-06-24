@@ -13,15 +13,12 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Provider;
-import play.Application;
-import play.api.Play;
-import play.libs.Json;
 
 import java.util.Map;
 import java.util.UUID;
@@ -40,24 +37,20 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     }
   }
 
-  @Inject
-  KubernetesManager kubernetesManager;
+  private final KubernetesManager kubernetesManager;
 
   @Inject
-  Application application;
+  protected KubernetesCheckNumPod(
+      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
+    super(baseTaskDependencies);
+    this.kubernetesManager = kubernetesManager;
+  }
 
   // Number of iterations to wait for the pod to come up.
   private static final int MAX_ITERS = 10;
 
   // Time to sleep on each iteration of the pod to come up.
   private static final int SLEEP_TIME = 10;
-
-  @Override
-  public void initialize(ITaskParams params) {
-    this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
-    this.application = Play.current().injector().instanceOf(Application.class);
-    super.initialize(params);
-  }
 
   public static class Params extends AbstractTaskParams {
     public UUID providerUUID;
@@ -72,7 +65,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
   }
 
   protected KubernetesCheckNumPod.Params taskParams() {
-    return (KubernetesCheckNumPod.Params)taskParams;
+    return (KubernetesCheckNumPod.Params) taskParams;
   }
 
   @Override
@@ -107,7 +100,8 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     if (taskParams().config == null) {
       config = Provider.get(taskParams().providerUUID).getConfig();
     }
-    ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
+    ShellResponse podResponse =
+        kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
     JsonNode podInfos = parseShellResponseAsJson(podResponse);
     if (podInfos.path("items").size() == taskParams().podNum) {
       return true;

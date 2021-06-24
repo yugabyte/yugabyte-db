@@ -63,11 +63,6 @@ class MemTracker;
 class MetricEntity;
 class ThreadPoolToken;
 
-namespace log {
-class Log;
-class AsyncLogReader;
-}
-
 namespace consensus {
 class PeerMessageQueueObserver;
 struct MajorityReplicatedData;
@@ -378,6 +373,8 @@ class PeerMessageQueue {
     return clock_;
   }
 
+  Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
   FRIEND_TEST(ConsensusQueueTest, TestReadReplicatedMessagesForCDC);
@@ -447,7 +444,7 @@ class PeerMessageQueue {
     Mode mode = Mode::NON_LEADER;
 
     // The currently-active raft config. Only set if in LEADER mode.
-    gscoped_ptr<RaftConfigPB> active_config;
+    std::unique_ptr<RaftConfigPB> active_config;
 
     std::string ToString() const;
   };

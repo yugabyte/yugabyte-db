@@ -15,6 +15,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformBackupFrequencyFormData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import org.apache.commons.lang3.StringUtils;
@@ -37,11 +38,9 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(PlatformReplicationController.class);
 
-  @Inject
-  private PlatformReplicationManager replicationManager;
+  @Inject private PlatformReplicationManager replicationManager;
 
-  @Inject
-  private FormFactory formFactory;
+  @Inject private FormFactory formFactory;
 
   public Result startPeriodicBackup(UUID configUUID) {
     try {
@@ -51,7 +50,7 @@ public class PlatformReplicationController extends AuthenticatedController {
       }
 
       Form<PlatformBackupFrequencyFormData> formData =
-        formFactory.form(PlatformBackupFrequencyFormData.class).bindFromRequest();
+          formFactory.form(PlatformBackupFrequencyFormData.class).bindFromRequest();
 
       if (formData.hasErrors()) {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
@@ -119,12 +118,13 @@ public class PlatformReplicationController extends AuthenticatedController {
       }
 
       List<String> backups =
-        replicationManager.listBackups(new URL(leaderAddr))
-          .stream()
-          .map(File::getName)
-          .sorted(Collections.reverseOrder())
-          .collect(Collectors.toList());
-      return ApiResponse.success(backups);
+          replicationManager
+              .listBackups(new URL(leaderAddr))
+              .stream()
+              .map(File::getName)
+              .sorted(Collections.reverseOrder())
+              .collect(Collectors.toList());
+      return YWResults.withData(backups);
     } catch (Exception e) {
       LOG.error("Error listing backups", e);
 

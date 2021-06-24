@@ -17,9 +17,10 @@
 
 #include "yb/gutil/strings/join.h"
 
+#include <memory>
+
 #include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
-#include "yb/gutil/gscoped_ptr.h"
+
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/escaping.h"
 
@@ -109,11 +110,11 @@ char* JoinUsingToBuffer(const vector<const char*>& components,
 void JoinStringsInArray(string const* const* components,
                         int num_components,
                         const char* delim,
-                        string * result) {
+                        string* result) {
   CHECK(result != nullptr);
   result->clear();
   for (int i = 0; i < num_components; i++) {
-    if (i>0) {
+    if (i > 0) {
       (*result) += delim;
     }
     (*result) += *(components[i]);
@@ -194,7 +195,7 @@ void JoinCSVLineWithDelimiter(const vector<string>& cols, char delimiter,
       // Double the original size, for escaping, plus two bytes for
       // the bracketing double-quotes, and one byte for the closing \0.
       int size = 2 * col.size() + 3;
-      gscoped_array<char> buf(new char[size]);
+      std::unique_ptr<char[]> buf(new char[size]);
 
       // Leave space at beginning and end for bracketing double-quotes.
       int escaped_size = strings::EscapeStrForCSV(col.c_str(),

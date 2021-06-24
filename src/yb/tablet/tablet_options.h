@@ -21,6 +21,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/consensus/log_fwd.h"
+
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -36,12 +38,6 @@ namespace yb {
 
 class Env;
 class MetricRegistry;
-
-namespace log {
-
-class LogAnchorRegistry;
-
-}
 
 namespace tablet {
 
@@ -62,7 +58,7 @@ struct TabletInitData {
   std::shared_ptr<MemTracker> parent_mem_tracker;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker;
   MetricRegistry* metric_registry = nullptr;
-  scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
+  log::LogAnchorRegistryPtr log_anchor_registry;
   TabletOptions tablet_options;
   std::string log_prefix_suffix;
   TransactionParticipantContext* transaction_participant_context = nullptr;
@@ -72,7 +68,7 @@ struct TabletInitData {
   IsSysCatalogTablet is_sys_catalog = IsSysCatalogTablet::kFalse;
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
-  std::function<HybridTime(const RaftGroupMetadata&)> allowed_history_cutoff_provider;
+  std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
 };
 
 } // namespace tablet

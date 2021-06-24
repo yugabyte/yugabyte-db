@@ -6,14 +6,15 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.aws.AWSCloudModule;
 import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
@@ -22,6 +23,7 @@ import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
 import org.pac4j.oidc.client.OidcClient;
 import org.pac4j.oidc.config.OidcConfiguration;
+import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
@@ -31,7 +33,7 @@ import play.Environment;
 /**
  * This class is a Guice module that tells Guice to bind different types
  *
- * Play will automatically use any class called 'Module' in the root package
+ * <p>Play will automatically use any class called 'Module' in the root package
  */
 public class Module extends AbstractModule {
 
@@ -84,6 +86,7 @@ public class Module extends AbstractModule {
       bind(YamlWrapper.class).asEagerSingleton();
       bind(AlertManager.class).asEagerSingleton();
       bind(QueryAlerts.class).asEagerSingleton();
+      bind(AlertConfigurationWriter.class).asEagerSingleton();
       bind(PlatformReplicationManager.class).asEagerSingleton();
       bind(PlatformInstanceClientFactory.class).asEagerSingleton();
       bind(PlatformReplicationHelper.class).asEagerSingleton();
@@ -95,7 +98,7 @@ public class Module extends AbstractModule {
   }
 
   @Provides
-  protected OidcClient provideOidcClient() {
+  protected OidcClient<OidcProfile, OidcConfiguration> provideOidcClient() {
     final OidcConfiguration oidcConfiguration = new OidcConfiguration();
 
     if (config.getString("yb.security.type", "").equals("OIDC")) {
@@ -105,17 +108,17 @@ public class Module extends AbstractModule {
       oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI", ""));
       oidcConfiguration.setMaxClockSkew(3600);
       oidcConfiguration.setResponseType("code");
-      final OidcClient oidcClient = new OidcClient(oidcConfiguration);
-      return oidcClient;
+      return new OidcClient<>(oidcConfiguration);
     } else {
-      return new OidcClient(oidcConfiguration);
+      return new OidcClient<>(oidcConfiguration);
     }
   }
 
   @Provides
-  protected Config provideConfig(OidcClient oidcClient) {
-    final Clients clients = new Clients(String.format("%s/api/v1/callback",
-        config.getString("yb.url", "")), oidcClient);
+  protected Config provideConfig(OidcClient<OidcProfile, OidcConfiguration> oidcClient) {
+    final Clients clients =
+        new Clients(
+            String.format("%s/api/v1/callback", config.getString("yb.url", "")), oidcClient);
     final Config config = new Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
     return config;

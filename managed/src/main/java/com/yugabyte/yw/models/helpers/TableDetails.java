@@ -35,7 +35,7 @@ public class TableDetails {
   public static TableDetails createWithSchema(Schema schema) {
     TableDetails tableDetails = new TableDetails();
     if (schema.getTimeToLiveInMillis() > 0) {
-      tableDetails.ttlInSeconds = schema.getTimeToLiveInMillis()/1000;
+      tableDetails.ttlInSeconds = schema.getTimeToLiveInMillis() / 1000;
     }
     tableDetails.columns = new LinkedList<>();
     for (ColumnSchema columnSchema : schema.getColumns()) {
@@ -54,15 +54,8 @@ public class TableDetails {
 
   /**
    * This method produces a CQL statement of the following format to create a table from the
-   * TableDetails representation of it from the UI:
-   * CREATE TABLE tablename (
-   *   col1 type1,
-   *   col2 type2,
-   *   col3 type3,
-   *   col4 type4,
-   *   col5 type5,
-   *   primary key ((col1, col2), col3, col4)
-   * );
+   * TableDetails representation of it from the UI: CREATE TABLE tablename ( col1 type1, col2 type2,
+   * col3 type3, col4 type4, col5 type5, primary key ((col1, col2), col3, col4) );
    *
    * @return a CQL CREATE TABLE statement for the table represented by this TableDetails object
    */
@@ -166,5 +159,4 @@ public class TableDetails {
 
     return builder.toString();
   }
-
 }

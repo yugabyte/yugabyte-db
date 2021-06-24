@@ -11,103 +11,44 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.Alert.State;
-
+import com.yugabyte.yw.common.alerts.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.mail.MessagingException;
-
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Singleton
 public class AlertManager {
 
-  @VisibleForTesting
-  static final String ALERT_MANAGER_ERROR_CODE = "ALERT_MANAGER_FAILURE";
+  private static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
+
+  private final EmailHelper emailHelper;
+  private final AlertService alertService;
+  private final AlertReceiverManager receiversManager;
 
   @Inject
-  private EmailHelper emailHelper;
-
-  public static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
-
-  /**
-   * Sends email notification with information about the alert. Doesn't send email
-   * if:<br>
-   * <ul>
-   * <li>The alert has no flag {@link Alert#sendEmail} set;</li>
-   * <li>Destinations list (with recipients) for this customer is empty;</li>
-   * <li>SmtpData for this customer is empty/incorrect
-   * {@link CustomerRegisterFormData.SmtpData};</li>
-   * <li>The alert is related to a deleted universe.</li>
-   * </ul>
-   *
-   * @param alert  The alert to be processed
-   * @param state  The new state of the alert
-   */
-  public void sendEmail(Alert alert, String state) {
-    LOG.debug("sendEmail {}, state: {}", alert, state);
-    if (!alert.sendEmail) {
-      return;
-    }
-
-    Customer customer = Customer.get(alert.customerUUID);
-    List<String> destinations = emailHelper.getDestinations(customer.uuid);
-    // Skip sending email if there aren't any destinations to send it to.
-    if (destinations.isEmpty()) {
-      return;
-    }
-
-    CustomerRegisterFormData.SmtpData smtpData = emailHelper.getSmtpData(customer.uuid);
-    // Skip if the SMTP configuration is not completely defined.
-    if (smtpData == null) {
-      return;
-    }
-
-    String subject = String.format("Yugabyte Platform Alert - <%s>", customer.getTag());
-    AlertDefinition definition = alert.definitionUUID == null ? null
-        : AlertDefinition.get(alert.definitionUUID);
-    String content;
-    if (definition != null) {
-      // The universe should exist (otherwise the definition should not exist as
-      // well).
-      // TODO notification templates should be reimplemented to base on alert message
-      // For now this code only supports definitions with Universe target type.
-      Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
-      content = String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name,
-          state);
-    } else {
-      Universe universe = alert.targetType == Alert.TargetType.UniverseType
-          ? Universe.find.byId(alert.targetUUID)
-          : null;
-      if (universe != null) {
-        content = String.format(
-            "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
-            universe.name, state, alert.message);
-      } else {
-        content = String.format(
-            "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
-            customer.name, state, alert.message);
-      }
-    }
-
-    try {
-      emailHelper.sendEmail(customer, subject, String.join(",", destinations), smtpData,
-          Collections.singletonMap("text/plain; charset=\"us-ascii\"", content));
-      resolveAlerts(customer.uuid, smtpData.configUUID, ALERT_MANAGER_ERROR_CODE);
-    } catch (MessagingException e) {
-      String error = String.format("Error sending email for alert %s in state '%s': %s", alert.uuid,
-          state, e.getMessage());
-      LOG.error(error);
-      createAlert(customer, smtpData.configUUID, error);
-    }
+  public AlertManager(
+      EmailHelper emailHelper, AlertService alertService, AlertReceiverManager receiversManager) {
+    this.emailHelper = emailHelper;
+    this.alertService = alertService;
+    this.receiversManager = receiversManager;
   }
+
+  public static final UUID DEFAULT_ALERT_RECEIVER_UUID = new UUID(0, 0);
+
+  @VisibleForTesting static final UUID DEFAULT_ALERT_ROUTE_UUID = new UUID(0, 0);
 
   /**
    * A method to run a state transition for a given alert
@@ -115,55 +56,151 @@ public class AlertManager {
    * @param alert the alert to transition states on
    * @return the alert in a new state
    */
-  public Alert transitionAlert(Alert alert) {
+  public Alert transitionAlert(Alert alert, AlertNotificationReport report) {
     try {
-      switch (alert.state) {
+      switch (alert.getState()) {
         case CREATED:
-          LOG.info("Transitioning alert {} to active", alert.uuid);
-          sendEmail(alert, "FIRING");
+          LOG.info("Transitioning alert {} to active", alert.getUuid());
+          report.raiseAttempt();
           alert.setState(Alert.State.ACTIVE);
+          sendNotification(alert, report);
           break;
         case ACTIVE:
-          LOG.info("Transitioning alert {} to resolved (with email)", alert.uuid);
-          sendEmail(alert, "RESOLVED");
+          LOG.info("Transitioning alert {} to resolved (with email)", alert.getUuid());
+          report.resolveAttempt();
           alert.setState(Alert.State.RESOLVED);
+          sendNotification(alert, report);
           break;
-        case RESOLVED:
-          LOG.info("Transitioning alert {} to resolved (no email)", alert.uuid);
-          alert.setState(Alert.State.RESOLVED);
-          break;
+        default:
+          LOG.warn(
+              "Unexpected alert state {} during notification for alert {}",
+              alert.getState().name(),
+              alert.getUuid());
       }
 
       alert.save();
     } catch (Exception e) {
-      LOG.error("Error transitioning alert state for alert {}", alert.uuid, e);
+      report.failAttempt();
+      LOG.error("Error transitioning alert state for alert {}", alert.getUuid(), e);
     }
 
     return alert;
   }
 
-  /**
-   * Updates states of all active alerts (according to criteria) to RESOLVED.
-   *
-   * @param customerUUID
-   * @param targetUUID
-   * @param errorCode    Error code string (LIKE wildcards allowed)
-   */
-  public void resolveAlerts(UUID customerUUID, UUID targetUUID, String errorCode) {
-    List<Alert> activeAlerts = Alert.list(customerUUID, errorCode, targetUUID)
-        .stream().filter(alert -> alert.state == State.ACTIVE || alert.state == State.CREATED)
-        .collect(Collectors.toList());
-    LOG.debug("Resetting alerts for '{}', count {}", errorCode, activeAlerts.size());
-    for (Alert alert : activeAlerts) {
-      alert.setState(State.RESOLVED);
-      alert.save();
+  public void sendNotification(Alert alert, AlertNotificationReport report) {
+    Customer customer = Customer.get(alert.getCustomerUUID());
+
+    List<AlertRoute> routes =
+        alert.getDefinitionUUID() == null
+            ? new ArrayList<>()
+            : AlertRoute.listByDefinition(alert.getDefinitionUUID());
+
+    if (routes.isEmpty()) {
+      // Creating default route with email only, w/o saving it to DB.
+      LOG.debug("For alert {} no routes found, using default email.", alert.getUuid());
+      if (!alert.isSendEmail()) {
+        return;
+      }
+      routes.add(getDefaultRoute(alert));
+    }
+
+    boolean atLeastOneSucceeded = false;
+    for (AlertRoute route : routes) {
+      AlertReceiver receiver =
+          route.getReceiverUUID() == DEFAULT_ALERT_RECEIVER_UUID
+              ? getDefaultReceiver(alert.getCustomerUUID())
+              : AlertReceiver.get(alert.getCustomerUUID(), route.getReceiverUUID());
+      try {
+        AlertUtils.validate(receiver);
+      } catch (YWValidateException e) {
+        if (report.failuresByReceiver(receiver.getUuid()) == 0) {
+          LOG.warn("Route {} skipped: {}", route.getUuid(), e.getMessage(), e);
+        }
+        report.failReceiver(receiver.getUuid());
+        continue;
+      }
+
+      try {
+        AlertReceiverInterface handler =
+            receiversManager.get(AlertUtils.getJsonTypeName(receiver.getParams()));
+        handler.sendNotification(customer, alert, receiver);
+        atLeastOneSucceeded = true;
+        resolveAlert(customer, receiver);
+
+        if (!receiver.getParams().continueSend) {
+          break;
+        }
+      } catch (Exception e) {
+        if (report.failuresByReceiver(receiver.getUuid()) == 0) {
+          LOG.error(e.getMessage());
+        }
+        report.failReceiver(receiver.getUuid());
+        createOrUpdateAlert(customer, receiver, "Error sending notification: " + e);
+      }
+    }
+    if (!atLeastOneSucceeded) {
+      report.failAttempt();
     }
   }
 
-  private void createAlert(Customer c, UUID configUUID, String details) {
-    if (Alert.getActiveCustomerAlertsByTargetUuid(c.uuid, configUUID).size() == 0) {
-      Alert.create(c.uuid, configUUID, Alert.TargetType.CustomerConfigType,
-          ALERT_MANAGER_ERROR_CODE, "Error", details);
+  private AlertReceiver getDefaultReceiver(UUID customerUUID) {
+    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
+    params.recipients = emailHelper.getDestinations(customerUUID);
+    params.smtpData = emailHelper.getSmtpData(customerUUID);
+
+    AlertReceiver defaultReceiver = new AlertReceiver();
+    defaultReceiver.setUuid(DEFAULT_ALERT_RECEIVER_UUID);
+    defaultReceiver.setCustomerUuid(customerUUID);
+    defaultReceiver.setParams(params);
+    return defaultReceiver;
+  }
+
+  private AlertRoute getDefaultRoute(Alert alert) {
+    LOG.debug("Creating default route.");
+    AlertRoute route = new AlertRoute();
+    route.setUUID(DEFAULT_ALERT_ROUTE_UUID);
+    route.setDefinitionUUID(alert.getDefinitionUUID());
+    route.setReceiverUUID(DEFAULT_ALERT_RECEIVER_UUID);
+    return route;
+  }
+
+  private void createOrUpdateAlert(Customer c, AlertReceiver receiver, String details) {
+    AlertFilter filter =
+        AlertFilter.builder()
+            .customerUuid(c.getUuid())
+            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
+            .build();
+    Alert alert =
+        alertService
+            .listNotResolved(filter)
+            .stream()
+            .findFirst()
+            .orElse(
+                new Alert()
+                    .setCustomerUUID(c.getUuid())
+                    .setErrCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
+                    .setType(KnownAlertTypes.Error));
+    alert
+        .setMessage(details)
+        .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(receiver).getAlertLabels());
+    alertService.save(alert);
+    if (!receiver.getUuid().equals(DEFAULT_ALERT_RECEIVER_UUID)) {
+      // Resolve default in case it's active
+      resolveAlert(c, getDefaultReceiver(c.getUuid()));
+    }
+  }
+
+  private void resolveAlert(Customer c, AlertReceiver receiver) {
+    AlertFilter filter =
+        AlertFilter.builder()
+            .customerUuid(c.getUuid())
+            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
+            .label(KnownAlertLabels.TARGET_UUID, receiver.getUuid().toString())
+            .build();
+    alertService.markResolved(filter);
+    if (!receiver.getUuid().equals(DEFAULT_ALERT_RECEIVER_UUID)) {
+      // Resolve default in case it's active
+      resolveAlert(c, getDefaultReceiver(c.getUuid()));
     }
   }
 }

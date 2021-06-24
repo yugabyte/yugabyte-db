@@ -18,14 +18,14 @@ import static org.junit.Assert.assertNotNull;
 
 public class PriceComponentTest extends FakeDBApplication {
   private static final Map<String, PriceComponent.PriceDetails.Unit> EXPECTED_UNIT_STRINGS =
-    ImmutableMap.<String, PriceComponent.PriceDetails.Unit>builder()
-      .put("GB-Mo", PriceComponent.PriceDetails.Unit.GBMonth)
-      .put("GBMonth", PriceComponent.PriceDetails.Unit.GBMonth)
-      .put("Hrs", PriceComponent.PriceDetails.Unit.Hours)
-      .put("Hours", PriceComponent.PriceDetails.Unit.Hours)
-      .put("IOPS-MO", PriceComponent.PriceDetails.Unit.PIOPMonth)
-      .put( "GIBPS-MO", PriceComponent.PriceDetails.Unit.GiBpsMonth)
-      .build();
+      ImmutableMap.<String, PriceComponent.PriceDetails.Unit>builder()
+          .put("GB-Mo", PriceComponent.PriceDetails.Unit.GBMonth)
+          .put("GBMonth", PriceComponent.PriceDetails.Unit.GBMonth)
+          .put("Hrs", PriceComponent.PriceDetails.Unit.Hours)
+          .put("Hours", PriceComponent.PriceDetails.Unit.Hours)
+          .put("IOPS-MO", PriceComponent.PriceDetails.Unit.PIOPMonth)
+          .put("GIBPS-MO", PriceComponent.PriceDetails.Unit.GiBpsMonth)
+          .build();
   private Customer testCustomer;
   private Provider testProvider;
   private Region testRegion;

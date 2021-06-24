@@ -53,7 +53,7 @@ PeerManager::PeerManager(const std::string tablet_id,
                          PeerProxyFactory* peer_proxy_factory,
                          PeerMessageQueue* queue,
                          ThreadPoolToken* raft_pool_token,
-                         const scoped_refptr<log::Log>& log)
+                         const log::LogPtr& log)
     : tablet_id_(tablet_id),
       local_uuid_(local_uuid),
       peer_proxy_factory_(peer_proxy_factory),

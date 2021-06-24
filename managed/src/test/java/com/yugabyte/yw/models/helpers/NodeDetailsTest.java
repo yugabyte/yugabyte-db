@@ -23,11 +23,16 @@ public class NodeDetailsTest {
 
   @Test
   public void testToString() {
-    assertThat(nd.toString(), allOf(notNullValue(),
-                                    equalTo("name: host-n1, cloudInfo: az-1.test-region.aws, type: "
-                                            + ApiUtils.UTIL_INST_TYPE + ", ip: host-n1, " +
-                                            "isMaster: false, isTserver: true, state: Live, " +
-                                            "azUuid: null, placementUuid: null")));
+    assertThat(
+        nd.toString(),
+        allOf(
+            notNullValue(),
+            equalTo(
+                "name: host-n1, cloudInfo: az-1.test-region.aws, type: "
+                    + ApiUtils.UTIL_INST_TYPE
+                    + ", ip: host-n1, "
+                    + "isMaster: false, isTserver: true, state: Live, "
+                    + "azUuid: null, placementUuid: null")));
   }
 
   @Test
@@ -40,6 +45,7 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.UpgradeSoftware);
     activeStates.add(NodeDetails.NodeState.UpdateGFlags);
     activeStates.add(NodeDetails.NodeState.UpdateCert);
+    activeStates.add(NodeDetails.NodeState.ToggleTls);
     activeStates.add(NodeDetails.NodeState.Live);
     activeStates.add(NodeDetails.NodeState.Stopping);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
@@ -58,6 +64,7 @@ public class NodeDetailsTest {
     queryableStates.add(NodeDetails.NodeState.UpgradeSoftware);
     queryableStates.add(NodeDetails.NodeState.UpdateGFlags);
     queryableStates.add(NodeDetails.NodeState.UpdateCert);
+    queryableStates.add(NodeDetails.NodeState.ToggleTls);
     queryableStates.add(NodeDetails.NodeState.Live);
     queryableStates.add(NodeDetails.NodeState.ToBeRemoved);
     queryableStates.add(NodeDetails.NodeState.Removing);

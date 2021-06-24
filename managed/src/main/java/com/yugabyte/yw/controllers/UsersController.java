@@ -4,11 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.forms.YWResults;
@@ -32,106 +30,108 @@ public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
 
-  @Inject
-  ValidatingFormFactory formFactory;
+  @Inject ValidatingFormFactory formFactory;
 
-  @Inject
-  Environment environment;
+  @Inject Environment environment;
 
-  @Inject
-  PasswordPolicyService passwordPolicyService;
+  @Inject PasswordPolicyService passwordPolicyService;
 
   /**
    * GET endpoint for listing the provider User.
+   *
    * @return JSON response with user.
    */
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-    return ApiResponse.success(user);
+    return YWResults.withData(user);
   }
 
   /**
    * GET endpoint for listing all available Users for a customer
+   *
    * @return JSON response with users belonging to the customer.
    */
   public Result list(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
-    return ApiResponse.success(users);
+    return YWResults.withData(users);
   }
 
   /**
    * POST endpoint for creating new Users.
+   *
    * @return JSON response of newly created user.
    */
   public Result create(UUID customerUUID) {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Form<UserRegisterFormData> form = formFactory
-      .getFormDataOrBadRequest(UserRegisterFormData.class);
+    Form<UserRegisterFormData> form =
+        formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
-    Result passwordCheckResult = passwordPolicyService
-      .checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (passwordCheckResult != null) {
-      return passwordCheckResult;
-    }
-    Users user = Users.create(formData.getEmail(), formData.getPassword(),
-      formData.getRole(), customerUUID);
+    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
+    Users user =
+        Users.create(formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID);
     updateFeatures(user);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
-    return ApiResponse.success(user);
-
+    return YWResults.withData(user);
   }
 
   /**
    * DELETE endpoint for deleting an existing user.
+   *
    * @return JSON response on whether or not delete user was successful or not.
    */
   public Result delete(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      throw new YWServiceException(BAD_REQUEST,
-          String.format("User UUID %s does not belong to customer %s",
-                        userUUID.toString(), customerUUID.toString()));
+      throw new YWServiceException(
+          BAD_REQUEST,
+          String.format(
+              "User UUID %s does not belong to customer %s",
+              userUUID.toString(), customerUUID.toString()));
     }
     if (user.getIsPrimary()) {
-      throw new YWServiceException(BAD_REQUEST,
-          String.format("Cannot delete primary user %s for customer %s",
-                        userUUID.toString(), customerUUID.toString()));
+      throw new YWServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot delete primary user %s for customer %s",
+              userUUID.toString(), customerUUID.toString()));
     }
     if (user.delete()) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("success", true);
       auditService().createAuditEntry(ctx(), request());
-      return ApiResponse.success(responseJson);
+      return YWResults.YWSuccess.empty();
     } else {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
     }
   }
 
   /**
    * PUT endpoint for changing the role of an existing user.
+   *
    * @return JSON response on whether role change was successful or not.
    */
   public Result changeRole(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      throw new YWServiceException(BAD_REQUEST,
-          String.format("User UUID %s does not belong to customer %s",
-                        userUUID.toString(), customerUUID.toString()));
+      throw new YWServiceException(
+          BAD_REQUEST,
+          String.format(
+              "User UUID %s does not belong to customer %s",
+              userUUID.toString(), customerUUID.toString()));
     }
     if (request().getQueryString("role") != null) {
-        String role = request().getQueryString("role");
-        if (Role.SuperAdmin == user.getRole()) {
-          throw new YWServiceException(BAD_REQUEST, "Can't change super admin role.");
-        }
-        user.setRole(Role.valueOf(role));
-        user.save();
-        updateFeatures(user);
+      String role = request().getQueryString("role");
+      if (Role.SuperAdmin == user.getRole()) {
+        throw new YWServiceException(BAD_REQUEST, "Can't change super admin role.");
+      }
+      user.setRole(Role.valueOf(role));
+      user.save();
+      updateFeatures(user);
     } else {
       throw new YWServiceException(BAD_REQUEST, "Invalid Request");
     }
@@ -141,26 +141,25 @@ public class UsersController extends AuthenticatedController {
 
   /**
    * PUT endpoint for changing the password of an existing user.
+   *
    * @return JSON response on whether role change was successful or not.
    */
   public Result changePassword(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      throw new YWServiceException(BAD_REQUEST,
-          String.format("User UUID %s does not belong to customer %s",
-                        userUUID.toString(), customerUUID.toString()));
+      throw new YWServiceException(
+          BAD_REQUEST,
+          String.format(
+              "User UUID %s does not belong to customer %s",
+              userUUID.toString(), customerUUID.toString()));
     }
 
-    Form<UserRegisterFormData> form = formFactory
-      .getFormDataOrBadRequest(UserRegisterFormData.class);
+    Form<UserRegisterFormData> form =
+        formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
-    Result passwordCheckResult = passwordPolicyService
-      .checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (passwordCheckResult != null) {
-      return passwordCheckResult;
-    }
+    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
     if (formData.getEmail().equals(user.email)) {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());

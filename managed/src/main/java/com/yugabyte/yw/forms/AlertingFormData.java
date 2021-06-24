@@ -2,63 +2,52 @@
 
 package com.yugabyte.yw.forms;
 
-
 import play.data.validation.Constraints;
 import java.util.Map;
 
-/**
- * This class will be used by the API and UI Form Elements to validate constraints are met
- */
+import com.yugabyte.yw.common.alerts.SmtpData;
+
+/** This class will be used by the API and UI Form Elements to validate constraints are met */
 public class AlertingFormData {
-    @Constraints.MaxLength(15)
-    public String code;
+  @Constraints.MaxLength(15)
+  public String code;
 
-    public String email;
+  public String email;
 
-    public String password;
+  public String password;
 
-    public String confirmPassword;
+  public String confirmPassword;
 
-    public String name;
+  public String name;
 
-    public Map features;
+  public Map features;
 
-    static public class AlertingData {
-        @Constraints.Email
-        @Constraints.MinLength(5)
-        public String alertingEmail;
+  public static class AlertingData {
+    @Constraints.Email
+    @Constraints.MinLength(5)
+    public String alertingEmail;
 
-        public boolean sendAlertsToYb = false;
+    public boolean sendAlertsToYb = false;
 
-        public long checkIntervalMs = 0;
+    public long checkIntervalMs = 0;
 
-        public long statusUpdateIntervalMs = 0;
+    public long statusUpdateIntervalMs = 0;
 
-        public Boolean reportOnlyErrors = false;
+    public Boolean reportOnlyErrors = false;
 
-        public Boolean reportBackupFailures = false;
-    }
+    public Boolean reportBackupFailures = false;
 
-    static public class SmtpData {
-        public String smtpServer = null;
+    // TODO: Remove after implementation of a separate window for all definitions
+    // configuration.
+    public boolean enableClockSkew = true;
+  }
 
-        public int smtpPort = -1;
+  public AlertingData alertingData;
 
-        public String emailFrom = null;
+  public SmtpData smtpData;
 
-        public String smtpUsername = null;
-
-        public String smtpPassword = null;
-
-        public boolean useSSL = true;
-
-        public boolean useTLS = false;
-      }
-
-    public AlertingData alertingData;
-    public SmtpData smtpData;
-
-    @Constraints.Pattern(message="Must be one of NONE, LOW, MEDIUM, HIGH",
-                         value="\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
-    public String callhomeLevel = "MEDIUM";
+  @Constraints.Pattern(
+      message = "Must be one of NONE, LOW, MEDIUM, HIGH",
+      value = "\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
+  public String callhomeLevel = "MEDIUM";
 }
