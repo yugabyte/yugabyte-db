@@ -118,7 +118,6 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
                                    const TabletServerOptions& extra_opts,
                                    int index)
   : MiniTabletServer({ fs_root }, { fs_root }, rpc_port, extra_opts, index) {
->>>>>>> master
 }
 
 MiniTabletServer::~MiniTabletServer() {
