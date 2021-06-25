@@ -38,6 +38,7 @@ import { CreateUniverse } from './redesign/universe/CreateUniverse';
 import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
+import { AlertConfigurationContainer } from './components/alerts';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -259,6 +260,7 @@ export default (store) => {
         <Route path="/logs" component={YugawareLogs} />
         <Route path="/releases" component={Releases} />
         <Route path="/admin" component={Administration}>
+          <Route path="/admin/:tab" component={Administration} />
           <Route path="/admin/:tab/:section" component={Administration} />
         </Route>
         <Route path="/features" component={ToggleFeaturesInTest} />
