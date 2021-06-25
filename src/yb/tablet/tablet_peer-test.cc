@@ -218,18 +218,19 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
-    std::unique_ptr<WriteResponsePB> resp(new WriteResponsePB());
-    auto operation_state = std::make_unique<WriteOperationState>(
-        tablet_peer->tablet(), &req, resp.get());
+    WriteResponsePB resp;
+    auto operation = std::make_unique<WriteOperation>(
+        /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
+    *operation->AllocateRequest() = req;
 
     CountDownLatch rpc_latch(1);
-    operation_state->set_completion_callback(
-        MakeLatchOperationCompletionCallback(&rpc_latch, resp.get()));
+    operation->set_completion_callback(
+        MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
 
-    tablet_peer->WriteAsync(std::move(operation_state), 1, CoarseTimePoint::max() /* deadline */);
+    tablet_peer->WriteAsync(std::move(operation));
     rpc_latch.Wait();
-    CHECK(!resp->has_error())
-        << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp->DebugString();
+    CHECK(!resp.has_error())
+        << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp.DebugString();
 
     Synchronizer synchronizer;
     CHECK_OK(tablet_peer->log_->TEST_SubmitFuncToAppendToken([&synchronizer, tablet_peer] {
@@ -283,32 +284,6 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
-};
-
-// An operation that waits on the apply_continue latch inside of Apply().
-class DelayedApplyOperation : public WriteOperation {
- public:
-  DelayedApplyOperation(CountDownLatch* apply_started,
-                        CountDownLatch* apply_continue,
-                        std::unique_ptr<WriteOperationState> state)
-      : WriteOperation(std::move(state), consensus::LEADER, ScopedOperation(),
-                       CoarseTimePoint::max() /* deadline */, nullptr /* context */),
-        apply_started_(DCHECK_NOTNULL(apply_started)),
-        apply_continue_(DCHECK_NOTNULL(apply_continue)) {
-  }
-
-  Status DoReplicated(int64_t leader_term, Status* completion_status) override {
-    apply_started_->CountDown();
-    LOG(INFO) << "Delaying apply...";
-    apply_continue_->Wait();
-    LOG(INFO) << "Apply proceeding";
-    return WriteOperation::DoReplicated(leader_term, completion_status);
-  }
-
- private:
-  CountDownLatch* apply_started_;
-  CountDownLatch* apply_continue_;
-  DISALLOW_COPY_AND_ASSIGN(DelayedApplyOperation);
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.

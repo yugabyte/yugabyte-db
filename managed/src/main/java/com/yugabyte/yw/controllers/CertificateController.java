@@ -3,13 +3,12 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
-import com.yugabyte.yw.forms.YWError;
+import com.yugabyte.yw.forms.YWResults.YWError;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -85,10 +84,10 @@ public class CertificateController extends AuthenticatedController {
             certType,
             customCertInfo);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(certUUID);
+    return YWResults.withData(certUUID);
   }
 
-  @ApiOperation(value = "get certificate info", response = JsonNode.class)
+  @ApiOperation(value = "post certificate info", response = JsonNode.class)
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
     Customer.getOrBadRequest(customerUUID);
@@ -101,7 +100,7 @@ public class CertificateController extends AuthenticatedController {
         CertificateHelper.createClientCertificate(
             rootCA, null, formData.get().username, certStart, certExpiry);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(result);
+    return YWResults.withRawData(result);
   }
 
   @ApiOperation(value = "get root certificate", response = JsonNode.class)
@@ -113,7 +112,7 @@ public class CertificateController extends AuthenticatedController {
     auditService().createAuditEntry(ctx(), request());
     ObjectNode result = Json.newObject();
     result.put(CertificateHelper.ROOT_CERT, certContents);
-    return ApiResponse.success(result);
+    return YWResults.withRawData(result);
   }
 
   @ApiOperation(
@@ -127,13 +126,13 @@ public class CertificateController extends AuthenticatedController {
           response = YWError.class))
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    return ApiResponse.success(certs);
+    return YWResults.withData(certs);
   }
 
   @ApiOperation(value = "get certificate UUID", response = UUID.class)
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
-    return ApiResponse.success(cert.uuid);
+    return YWResults.withData(cert.uuid);
   }
 
   @ApiOperation(value = "delete certificate", response = YWResults.YWSuccess.class)
@@ -151,6 +150,6 @@ public class CertificateController extends AuthenticatedController {
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(rootCA, customerUUID);
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
     certificate.setCustomCertInfo(customCertInfo, rootCA, customerUUID);
-    return ApiResponse.success(certificate);
+    return YWResults.withData(certificate);
   }
 }

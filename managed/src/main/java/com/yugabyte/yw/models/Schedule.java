@@ -4,6 +4,9 @@ package com.yugabyte.yw.models;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -26,8 +29,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+@ApiModel(description = "Schedule with a status, frequency and task type")
 @Entity
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
@@ -46,12 +51,15 @@ public class Schedule extends Model {
 
   private static final int MAX_FAIL_COUNT = 3;
 
-  @Id public UUID scheduleUUID;
+  @ApiModelProperty(value = "Schedule uuid", accessMode = READ_ONLY)
+  @Id
+  public UUID scheduleUUID;
 
   public UUID getScheduleUUID() {
     return scheduleUUID;
   }
 
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   @Column(nullable = false)
   private UUID customerUUID;
 
@@ -59,6 +67,7 @@ public class Schedule extends Model {
     return customerUUID;
   }
 
+  @ApiModelProperty(value = "Failure count", accessMode = READ_ONLY)
   @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
 
@@ -66,6 +75,7 @@ public class Schedule extends Model {
     return failureCount;
   }
 
+  @ApiModelProperty(value = "Frequency of the schedule", accessMode = READ_WRITE)
   @Column(nullable = false)
   private long frequency;
 
@@ -73,6 +83,7 @@ public class Schedule extends Model {
     return frequency;
   }
 
+  @ApiModelProperty(value = "Schedule task params", accessMode = READ_WRITE)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
@@ -81,6 +92,7 @@ public class Schedule extends Model {
     return taskParams;
   }
 
+  @ApiModelProperty(value = "Type of the task to be schedules", accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
@@ -89,6 +101,7 @@ public class Schedule extends Model {
     return taskType;
   }
 
+  @ApiModelProperty(value = "Status of the task", accessMode = READ_ONLY)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private State status = State.Active;

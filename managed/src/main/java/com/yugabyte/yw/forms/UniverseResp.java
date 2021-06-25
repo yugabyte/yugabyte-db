@@ -11,6 +11,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -20,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.Play;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -28,6 +30,12 @@ import java.util.UUID;
 public class UniverseResp {
 
   public static final Logger LOG = LoggerFactory.getLogger(UniverseResp.class);
+
+  public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
+    UniverseResourceDetails resourceDetails =
+        UniverseResourceDetails.create(universe.getUniverseDetails(), config);
+    return new UniverseResp(universe, taskUUID, resourceDetails);
+  }
 
   public final String universeUUID;
   public final String name;
@@ -39,7 +47,7 @@ public class UniverseResp {
 
   public final UniverseDefinitionTaskParamsResp universeDetails;
   public final Map<String, String> universeConfig;
-  public final String taskUUID;
+  public final UUID taskUUID;
   public final String sampleAppCommandTxt;
 
   public UniverseResp(Universe entity) {
@@ -57,7 +65,7 @@ public class UniverseResp {
     version = entity.version;
     dnsName = entity.getDnsName();
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
-    this.taskUUID = taskUUID == null ? null : taskUUID.toString();
+    this.taskUUID = taskUUID;
     this.resources = resources;
     universeConfig = entity.getConfig();
     this.sampleAppCommandTxt = this.getManifest(entity);
@@ -99,8 +107,15 @@ public class UniverseResp {
     // If node to client TLS is enabled.
     if (cluster.userIntent.enableClientToNodeEncrypt) {
       String randomFileName = UUID.randomUUID().toString();
+      UUID certUUID =
+          universe.getUniverseDetails().rootAndClientRootCASame
+              ? universe.getUniverseDetails().rootCA
+              : universe.getUniverseDetails().clientRootCA;
+      if (certUUID == null) {
+        LOG.warn("!!! CertUUID cannot be null when TLS is enabled !!!");
+      }
       if (isKubernetesProvider) {
-        String certContent = CertificateHelper.getCertPEM(universe.getUniverseDetails().rootCA);
+        String certContent = certUUID == null ? "" : CertificateHelper.getCertPEM(certUUID);
         Yaml yaml = new Yaml();
         String sampleAppCommandTxt =
             yaml.dump(
@@ -131,11 +146,7 @@ public class UniverseResp {
                     + "--workload CassandraKeyValue --nodes <nodes> --ssl_cert /home/root.crt")
                 .replace(
                     "<root_cert_content>",
-                    universe.getUniverseDetails().rootAndClientRootCASame
-                        ? CertificateHelper.getCertPEMFileContents(
-                            universe.getUniverseDetails().rootCA)
-                        : CertificateHelper.getCertPEMFileContents(
-                            universe.getUniverseDetails().clientRootCA))
+                    certUUID == null ? "" : CertificateHelper.getCertPEMFileContents(certUUID))
                 .replace("<nodes>", nodeBuilder.toString());
       }
       sampleAppCommand = sampleAppCommand.replace("<file_name>", randomFileName);

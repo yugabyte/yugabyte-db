@@ -2327,6 +2327,14 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			ListCell   *columns;
 			IndexElem  *iparam;
 
+			if (index_elem->expr != NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("cannot create a primary key or unique constraint on expressions"),
+							 parser_errposition(cxt->pstate, constraint->location)));
+
+			Assert(key != NULL);
+
 			/* Make sure referenced column exist. */
 			foreach(columns, cxt->columns)
 			{

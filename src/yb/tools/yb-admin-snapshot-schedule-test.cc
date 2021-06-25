@@ -209,6 +209,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->bind_to_unique_loopback_addresses = true;
     options->use_same_ts_ports = true;
+    options->num_masters = 3;
   }
 
   std::unique_ptr<CppCassandraDriver> cql_driver_;
@@ -219,14 +220,22 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
+    opts->num_masters = 3;
   }
 };
+
+TEST_F(YbAdminSnapshotScheduleTest, BadArguments) {
+  BuildAndStart();
+
+  ASSERT_NOK(CreateSnapshotSchedule(
+      6s, 10min, kTableName.namespace_name(), kTableName.table_name()));
+}
 
 TEST_F(YbAdminSnapshotScheduleTest, Basic) {
   BuildAndStart();
 
   std::string schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
-      6s, 10min, kTableName.namespace_name(), kTableName.table_name()));
+      6s, 10min, kTableName.namespace_name()));
   std::this_thread::sleep_for(20s);
 
   Timestamp last_snapshot_time;
@@ -234,8 +243,20 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
     auto schedule = VERIFY_RESULT(GetSnapshotSchedule());
     auto received_schedule_id = VERIFY_RESULT(Get(schedule, "id")).get().GetString();
     SCHECK_EQ(schedule_id, received_schedule_id, IllegalState, "Wrong schedule id");
+    // Check schedule options.
+    auto& options = VERIFY_RESULT(Get(schedule, "options")).get();
+    std::string filter = VERIFY_RESULT(
+        Get(options, "filter")).get().GetString();
+    SCHECK_EQ(filter, Format("ycql.$0", kTableName.namespace_name()),
+              IllegalState, "Wrong filter");
+    std::string interval = VERIFY_RESULT(
+        Get(options, "interval")).get().GetString();
+    SCHECK_EQ(interval, "0 min", IllegalState, "Wrong interval");
+    std::string retention = VERIFY_RESULT(
+        Get(options, "retention")).get().GetString();
+    SCHECK_EQ(retention, "10 min", IllegalState, "Wrong retention");
+    // Check actual snapshots.
     const auto& snapshots = VERIFY_RESULT(Get(schedule, "snapshots")).get().GetArray();
-
     if (snapshots.Size() < 2) {
       return false;
     }
