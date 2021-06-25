@@ -45,11 +45,11 @@ YugabyteDB feature highlights are listed below.
 
 - SQL [JOINs](../../quick-start/explore-ysql/#3-joins) and [distributed transactions](../../quick-start/explore-ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
 
-- Transactional [document store](../../architecture/concepts/docdb/) backed by self-healing, strongly-consistent, synchronous [replication](../../architecture/concepts/docdb-replication/replication/).
+- Transactional [document store](../../architecture/docdb/) backed by self-healing, strongly-consistent, synchronous [replication](../../architecture/docdb-replication/replication/).
 
 ### High performance and massive scalability
 
-- Low latency for geo-distributed applications with multiple [read consistency levels](../../architecture/concepts/docdb-replication/replication/#tunable-read-consistency) and [read replicas](../../architecture/concepts/docdb-replication/replication/#read-replicas).
+- Low latency for geo-distributed applications with multiple [read consistency levels](../../architecture/docdb-replication/replication/#tunable-read-consistency) and [read replicas](../../architecture/docdb-replication/replication/#read-replicas).
 
 - Linearly scalable throughput for ingesting and serving ever-growing datasets.
 
@@ -107,7 +107,7 @@ If you have a specific use case in mind, share it in our [Slack community](https
 
 ## How does YugabyteDB's common document store work?
 
-[DocDB](../../architecture/concepts/docdb/), YugabyteDB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../../architecture/concepts/docdb-sharding/sharding/), [replication/fault-tolerance](../../architecture/concepts/docdb-replication/replication/) and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
+[DocDB](../../architecture/docdb/), YugabyteDB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../../architecture/docdb-sharding/sharding/), [replication/fault-tolerance](../../architecture/docdb-replication/replication/) and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
 
 ## What are the trade-offs involved in using YugabyteDB?
 
@@ -271,7 +271,7 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). \
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/).
 
 ## Is YugabyteDB open source?
 

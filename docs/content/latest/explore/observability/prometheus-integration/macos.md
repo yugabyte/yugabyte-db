@@ -46,7 +46,7 @@ showAsideToc: true
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
+This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted) cluster management utility.
 
 ## Prerequisite
 
@@ -171,7 +171,7 @@ Go to the directory where Prometheus is installed and start the Prometheus serve
 $ ./prometheus --config.file=yugabytedb.yml
 ```
 
-Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets page under Status.
+Open the Prometheus UI at <http://localhost:9090> and then navigate to the Targets page under Status.
 
 ![Prometheus Targets](/images/ce/prom-targets.png)
 
@@ -191,7 +191,7 @@ sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
->  Write IOPS
+> Write IOPS
 
 ```sh
 sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
@@ -239,4 +239,5 @@ $ ./bin/yugabyted destroy \
 ```
 
 ## What's next?
+
 You can [setup Grafana](https://prometheus.io/docs/visualization/grafana/) and import the [YugabyteDB dashboard](https://grafana.com/grafana/dashboards/12620 "YugabyteDB dashboard on grafana.com") for better visualization of the metrics being collected by Prometheus.

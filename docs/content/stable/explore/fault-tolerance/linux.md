@@ -74,14 +74,14 @@ Run the `SqlInserts` workload against the local universe using the following com
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
-                                    --nodes 127.0.0.1:5433 \
-                                    --num_threads_write 1 \
-                                    --num_threads_read 4
+                                 --nodes 127.0.0.1:5433 \
+                                 --num_threads_write 1 \
+                                 --num_threads_read 4
 ```
 
 The `SQLInserts` workload prints some stats while running, which is also shown below. You can read more details about the output of the workload applications at the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
 
-```
+```output
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 
 2018-05-10 09:10:24,539 [INFO|...] Read: 9110.92 ops/sec (0.44 ms/op), 863720 total ops  |  Write: 1034.06 ops/sec (0.97 ms/op), 102291 total ops  | ...
 ```
