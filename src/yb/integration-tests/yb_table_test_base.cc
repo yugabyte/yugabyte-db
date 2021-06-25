@@ -100,6 +100,9 @@ YBTableTestBase::YBTableTestBase() : ts_env_(new EnvWrapper(Env::Default())) {
 void YBTableTestBase::BeforeCreateTable() {
 }
 
+void YBTableTestBase::BeforeStartCluster() {
+}
+
 void YBTableTestBase::SetUp() {
   YBTest::SetUp();
 
@@ -125,6 +128,7 @@ void YBTableTestBase::SetUp() {
     SetAtomicFlag(enable_ysql(), &FLAGS_enable_ysql);
 
     mini_cluster_.reset(new MiniCluster(opts));
+    BeforeStartCluster();
     mini_cluster_status = mini_cluster_->Start();
   }
   if (!mini_cluster_status.ok()) {

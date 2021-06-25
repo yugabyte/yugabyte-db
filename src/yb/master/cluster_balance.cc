@@ -124,6 +124,10 @@ DEFINE_bool(load_balancer_count_move_as_add, true,
             "Should we enable state change to count add server triggered by load move as just an "
             "add instead of both an add and remove.");
 
+DEFINE_bool(load_balancer_drive_aware, true,
+            "When LB decides to move a tablet from server A to B, on the target LB "
+            "should select the tablet to move from most loaded drive.");
+
 namespace yb {
 namespace master {
 
@@ -133,6 +137,36 @@ using std::string;
 using std::set;
 using std::vector;
 using strings::Substitute;
+
+namespace {
+
+std::list<TabletId> GetTabletsOnTSToMove(bool drive_aware,
+                                         const CBTabletServerMetadata& from_ts_meta) {
+  std::list<TabletId> all_tablets;
+  if (drive_aware) {
+  for (const auto& path : from_ts_meta.sorted_path_load) {
+    auto path_list = from_ts_meta.path_to_tablets.find(path);
+    if (path_list == from_ts_meta.path_to_tablets.end()) {
+      LOG(INFO) << "Found uninitialized path "<< path;
+      continue;
+    }
+    const std::set<TabletId>& drive_tablets = path_list->second;
+    std::merge(
+        drive_tablets.begin(), drive_tablets.end(),
+        from_ts_meta.starting_tablets.begin(), from_ts_meta.starting_tablets.end(),
+        std::inserter(all_tablets, all_tablets.end()));
+  }
+  } else {
+    std::merge(
+        from_ts_meta.running_tablets.begin(), from_ts_meta.running_tablets.end(),
+        from_ts_meta.starting_tablets.begin(), from_ts_meta.starting_tablets.end(),
+        std::inserter(all_tablets, all_tablets.begin()));
+  }
+
+  return all_tablets;
+}
+
+} // namespace
 
 Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
     const scoped_refptr<TableInfo>& table) const {
@@ -565,6 +599,7 @@ void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
 void ClusterLoadBalancer::ResetGlobalState(bool initialize_ts_descs) {
   per_table_states_.clear();
   global_state_ = std::make_unique<GlobalLoadState>();
+  global_state_->drive_aware_ = FLAGS_load_balancer_drive_aware;
   if (initialize_ts_descs) {
     // Only call GetAllDescriptors once for a LB run, and then cache it in global_state_.
     GetAllDescriptors(&global_state_->ts_descs_);
@@ -623,6 +658,10 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
 
   // Since leader load is only needed to rebalance leaders, we keep the sorting separate.
   state_->SortLeaderLoad();
+
+  if (global_state_->drive_aware_) {
+    state_->SortTabletServerDriveLoad();
+  }
 
   VLOG(1) << Substitute(
       "Table: $0. Total running tablets: $1. Total overreplication: $2. Total starting tablets: $3."
@@ -881,12 +920,8 @@ Result<bool> ClusterLoadBalancer::ShouldSkipLeaderAsVictim(const TabletId& table
 Result<bool> ClusterLoadBalancer::GetTabletToMove(
     const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id) {
   const auto& from_ts_meta = state_->per_ts_meta_[from_ts];
-  set<TabletId> non_over_replicated_tablets;
-  set<TabletId> all_tablets;
-  std::merge(
-      from_ts_meta.running_tablets.begin(), from_ts_meta.running_tablets.end(),
-      from_ts_meta.starting_tablets.begin(), from_ts_meta.starting_tablets.end(),
-      std::inserter(all_tablets, all_tablets.begin()));
+  std::list<TabletId> all_tablets = GetTabletsOnTSToMove(global_state_->drive_aware_, from_ts_meta);
+  std::list<TabletId> non_over_replicated_tablets;
   for (const TabletId& tablet_id : all_tablets) {
     // We don't want to add a new replica to an already over-replicated tablet.
     //
@@ -897,13 +932,13 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
     }
 
      // Don't move a replica right after split
-    if (ContainsKey(from_ts_meta.parent_data_tablets, tablet_id)) {
+    if (ContainsKey(from_ts_meta.disabled_by_ts_tablets, tablet_id)) {
       continue;
     }
 
     if (VERIFY_RESULT(
         state_->CanAddTabletToTabletServer(tablet_id, to_ts, &GetPlacementByTablet(tablet_id)))) {
-      non_over_replicated_tablets.insert(tablet_id);
+      non_over_replicated_tablets.push_back(tablet_id);
     }
   }
 
