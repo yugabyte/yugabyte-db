@@ -923,7 +923,7 @@ CREATE AGGREGATE balk(int4)
 );
 
 -- force use of parallelism
--- TODO(jayden): ALTER TABLE SET name not yet implemented (#1124).
+-- TODO(jayden): ALTER TABLE SET not yet implemented (#1124).
 -- ALTER TABLE tenk1 set (parallel_workers = 4);
 SET LOCAL parallel_setup_cost=0;
 SET LOCAL max_parallel_workers_per_gather=4;
