@@ -338,9 +338,9 @@ return STATUS_FORMAT(
 
 ### Arguments passed by value
 
-**Don't** use const in function (including member function) declarations when the argument is passed by value.
+**Don't** use `const` in function (including member function) declarations when the argument is passed by value.
 
-**Do** use const in function (including member function) definitions wherever appropriate to indicate (and enforce) that the object is not modified inside the function body.
+**Do** use `const` in function (including member function) definitions wherever appropriate to indicate (and enforce) that the object is not modified inside the function body.
 
 In `widget.h`:
 
@@ -406,7 +406,7 @@ When you define functions that should only be accessible within a `.cc` file, pr
 Using static objects _is allowed_ in our coding style with a few limitations, and with an understanding of a static object's lifecycle. The limitations are:
 
 * Static global variables **must** be totally independent. The order of constructions/destructions should not matter.
-* Static objects **must not** lock anything or allocate global resources (except memory).
+* Static objects **must not** lock anything or allocate global resources (except memory) during their construction.
 * Static objects should be as simple as possible.
 
 If you are adding new static objects, remember:
