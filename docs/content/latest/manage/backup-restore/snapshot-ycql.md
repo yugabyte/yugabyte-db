@@ -35,6 +35,15 @@ showAsideToc: true
 
 A YCQL backup is done at the scope of a table and all of its secondary indexes. This is a safety requirement, to ensure that data is consistent between the main table and the indexes.
 
+**Implementation notes**:
+
+* Massively parallel, efficient for very large data sets.
+* Once the snapshot command is issued, the database will “buffer” newly incoming writes to that tablet without writing them immediately.
+* The existing data will be flushed to disk and hard links to the files will be created in a `.snapshots` directory on each tablet.
+* The flush to disk and creation of hard links happen quickly. In most cases, the buffered incoming operations won't time out.
+* The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
+* If the snapshot takes an unusually long time, some operations may time out. In practice, users should expect such slowness occasionally when using network storage (such as AWS EBS, Persistent Disk in GCP, or SAN storage).
+
 ## Try it out
 
 To demonstrate YugabyteDB's snapshot functionality, the following example steps through creating a local cluster, adding a table, creating a snapshot, and then restoring that snapshot onto a fresh cluster.
