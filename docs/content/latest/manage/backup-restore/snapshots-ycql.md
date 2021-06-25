@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: snapshots-2-ycql
     parent: backup-restore
-    weight: 705
+    weight: 704
 isTocNested: true
 showAsideToc: true
 ---
@@ -33,7 +33,7 @@ showAsideToc: true
 
 </ul>
 
-You can create a transactional backup for a YCQL table (including associated secondary indexes) using snapshots.
+A YCQL backup is done at the scope of a table and all of its secondary indexes. This is a safety requirement, to ensure that data is consistent between the main table and the indexes.
 
 **Implementation notes**:
 

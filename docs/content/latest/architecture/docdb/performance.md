@@ -46,6 +46,14 @@ Multi-version concurrency control (MVCC) in DocDB is done at a higher layer, and
 
 The mutations to records in the system are versioned using hybrid-timestamps maintained at the YBase layer. As a result, the notion of MVCC as implemented in a vanilla RocksDB (using sequence IDs) is not necessary and only adds overhead. YugabyteDB does not use RocksDB’s sequence IDs, and instead uses hybrid-timestamps that are part of the encoded key to implement MVCC.
 
+This allows us to however keep multiple versions of the same key, across different timestamps. We refer to this as **history retention**. We can control the number of seconds of retention using this configuration flag (timestamp_history_retention_interval_sec)[LINK TBD].
+
+### Filter by HybridTime
+
+For various features, we've found it useful to be able to ignore certain data inside the persisted RocksDB SST files. In particular, we have added a metadata to allow us to filter out data older than a particular HybridTime. This allows us to, for example:
+- Rewind tablet data, to a specific point in time.
+- Build a distributed snapshot mechanism, across many tablets, that guarantees a consistent cut, at a fixed point in time.
+
 ### Backups and snapshots
 
 These need to be higher level operations that take into consideration data in DocDB as well as in the Raft logs to get a consistent cut of the state of the system.
