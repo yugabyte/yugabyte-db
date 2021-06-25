@@ -50,9 +50,7 @@ For instance, to use TLS with both `md5` and `cert` authentication, you can set 
 hostssl all all all md5 clientcert=1
 ```
 
-{{< note title="Note" >}}
 The `ysql_hba_conf_csv` rules are added above the auto-generated rules in the `ysql_hba.conf` file, so if they do not match the connection type, database, user, or host, then the auto-generated rules (that is, from the table above) may still be used.
-{{< /note >}}
 
 If the custom user-defined rules only apply to some connection types (for example, host vs hostssl), databases, users, or hosts, the auto-generated rules are applied to the non-matching hosts, users, or databases. To fully disable the auto-generated rules, use the `reject` auth option.
 
@@ -75,9 +73,7 @@ $ CERTS=`pwd`
 $ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"
 ```
 
-{{< note title="Note" >}}
-`node.<ip>.crt/key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively use `ysql_pg_conf` to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
-{{< /note >}}
+`node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively use `ysql_pg_conf` to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
 
 ### TLS without authentication
 
@@ -89,7 +85,7 @@ Create the database:
 $ ./bin/yb-ctl destroy && ./bin/yb-ctl create --tserver_flags="$ENABLE_TLS"
 ```
 
-To connect, SSL must be enabled in the client.
+Without SSL enabled in the client, the connection fails.
 
 ```sh
 $ ./bin/ysqlsh "sslmode=disable"
@@ -98,6 +94,8 @@ $ ./bin/ysqlsh "sslmode=disable"
 ```output
 ysqlsh: FATAL:  no pg_hba.conf entry for host "127.0.0.1", user "yugabyte", database "yugabyte", SSL off
 ```
+
+To connect, SSL must be enabled in the client.
 
 ```sh
 $ ./bin/ysqlsh "sslmode=require"
@@ -123,15 +121,13 @@ SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 25
 Type "help" for help.
 ```
 
-{{< note title="Note" >}}
 The following examples omit setting `sslmode` for brevity.
-{{< /note >}}
 
 ### TLS with authentication
 
 This configuration requires the client to use client-to-server encryption and authenticate with a password to connect.
 
-Create the database:
+To create the database, execute the following command:
 
 ```sh
 $ ./bin/yb-ctl destroy && ./bin/yb-ctl create --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true"
@@ -160,7 +156,7 @@ This configuration requires the client to use client-to-server encryption and au
 This was the previous default for TLS without authentication; this example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
 {{< /note >}}
 
-Create the database:
+To create the database, execute the following command:
 
 ```sh
 $ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
@@ -168,7 +164,7 @@ $ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
     --ysql_hba_conf_csv="hostssl all all all cert"
 ```
 
-To connect, a certificate is required, but no password.
+Without a certificate, the connection fails.
 
 ```sh
 $ ./bin/ysqlsh
@@ -178,6 +174,8 @@ $ ./bin/ysqlsh
 ysqlsh: FATAL:  connection requires a valid client certificate
 FATAL:  no pg_hba.conf entry for host "127.0.0.1", user "yugabyte", database "yugabyte", SSL off
 ```
+
+Use the following command to connect with a certificate:
 
 ```sh
 $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.key sslrootcert=$CERTS/ca.crt"
@@ -196,10 +194,9 @@ This configuration requires the client to use client-to-server encryption and au
 {{< note title="Note" >}}
 This was the previous default for TLS with authentication; this example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
 
-The `ysql_enable_auth=true` flag is redundant here because we are overriding the auto-generated configuration; we are adding it to demonstrate the ability to override the auto-generated configuration using `ysql_hba_conf_csv`.
 {{< /note >}}
 
-Create the database:
+To create the database, execute the following command:
 
 ```sh
 $ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
@@ -207,7 +204,9 @@ $ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
     --ysql_hba_conf_csv="hostssl all all all md5 clientcert=1"
 ```
 
-To connect, both a certificate and password are required.
+The `ysql_enable_auth=true` flag is redundant in this case, but included to demonstrate the ability to override the auto-generated configuration using `ysql_hba_conf_csv`.
+
+Without a certificate and password, the connection fails.
 
 ```sh
 $ ./bin/ysqlsh
@@ -217,6 +216,8 @@ $ ./bin/ysqlsh
 ysqlsh: FATAL:  connection requires a valid client certificate
 FATAL:  no pg_hba.conf entry for host "127.0.0.1", user "yugabyte", database "yugabyte", SSL off
 ```
+
+Use the following command to connect with a certificate and password:
 
 ```sh
 $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.key sslrootcert=$CERTS/ca.crt"
