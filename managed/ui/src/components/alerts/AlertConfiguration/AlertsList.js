@@ -13,7 +13,7 @@ import { YBPanelItem } from '../../panels';
 /**
  * This is the header for YB Panel Item.
  */
-const header = () => (
+const header = (onCreateAlert) => (
   <>
     <h2 className="table-container-title pull-left">Alert Configurations</h2>
     <FlexContainer className="pull-right">
@@ -24,7 +24,7 @@ const header = () => (
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem>
+          <MenuItem onClick={() => onCreateAlert(true)}>
             <i className="fa fa-pencil"></i> Universe Alert
           </MenuItem>
 
@@ -38,7 +38,7 @@ const header = () => (
 );
 
 export const AlertsList = (props) => {
-  const { data } = props;
+  const { data, onCreateAlert } = props;
 
   // This method will handle all the required actions for the particular row.
   const formatConfigActions = (cell, row) => {
@@ -66,7 +66,7 @@ export const AlertsList = (props) => {
   // For now, we're dealing with the mock data.
   return (
     <YBPanelItem
-      header={header()}
+      header={header(onCreateAlert)}
       body={
         <>
           <BootstrapTable className="backup-list-table middle-aligned-table" data={data}>

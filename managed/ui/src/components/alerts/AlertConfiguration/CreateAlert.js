@@ -25,6 +25,7 @@ import AlertsPolicy from './AlertsPolicy';
 const required = (value) => (value ? undefined : 'This field is required.');
 
 const CreateAlert = (props) => {
+  const { onCreateCancel } = props;
   const universes = useSelector((state) => {});
   /**
    * Constant option for metrics condition
@@ -59,21 +60,21 @@ const CreateAlert = (props) => {
   ];
 
   /**
-   * 
-   * @param {Event} event 
+   *
+   * @param {Event} event
    * TODO: Change the state to disable/enable the universe multi-select list.
    */
   const handleMetricConditionChange = (event) => {
-    console.log('val', event.target.value)
+    console.log('val', event.target.value);
   };
   /**
-   * 
-   * @param {Formvalues} values 
+   *
+   * @param {Formvalues} values
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
   const handleOnSubmit = (values) => {
     // console.log(values)
-  }
+  };
   return (
     <Formik initialValues={{ ALERT_TARGET_TYPE: 'allCluster' }}>
       <form name="alertConfigForm" onSubmit={props.handleSubmit(handleOnSubmit)}>
@@ -167,8 +168,14 @@ const CreateAlert = (props) => {
             </Col>
           </Row>
           <Row className="form-action-button-container">
-            <Col lg={4} lgOffset={8}>
-              <YBButton btnText="Cancel" btnClass="btn" onClick={() => {}} />
+            <Col lg={6} lgOffset={6}>
+              <YBButton
+                btnText="Cancel"
+                btnClass="btn"
+                onClick={() => {
+                  onCreateCancel(false);
+                }}
+              />
               <YBButton btnText="Save" btnType="submit" btnClass="btn btn-orange" />
             </Col>
           </Row>
