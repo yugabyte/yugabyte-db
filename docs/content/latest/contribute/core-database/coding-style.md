@@ -567,7 +567,7 @@ A few more things to keep in mind:
 * Similarly, for `std::shared_lock` we have the `yb::SharedLock` wrapper.
 * Occasionally, you may need to annotate some functions where thread safety analysis cannot be properly applied, with `NO_THREAD_SAFETY_ANALYSIS`, so that we can still use thread safety analysis in the surrounding code. The situations in which thread safety analysis might not work include conditional locking and complex locking semantics where a unique lock is being passed around between member functions of different classes.
 
-Our build scripts enable thread safety analysis for Clang version 11 and above; earlier versions don't support certain features that we need. Thread safety analysis works very well on macOS with modern Clang compilers, providing instant hints if your environment is set up properly.
+Our build scripts enable thread safety analysis for Clang version 11 and above; earlier versions of the Clang compiler don't support certain features that we need. Thread safety analysis works very well on macOS with modern Clang compilers, providing instant hints if your environment is set up properly.
 
 ### Unused C/C++ features
 
