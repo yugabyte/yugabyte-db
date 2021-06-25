@@ -875,8 +875,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     CleanupIntentFiles();
   }
 
-  template <class Functor, class Value>
-  Value GetRegularDbStat(const Functor& functor, const Value& default_value) const;
+  template <class F>
+  auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
