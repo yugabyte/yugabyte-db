@@ -36,10 +36,13 @@
 #include "yb/gutil/dynamic_annotations.h"
 
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(load_balancer_drive_aware);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(TEST_load_balancer_wait_after_count_pending_tasks_ms);
+DECLARE_bool(tserver_heartbeat_metrics_add_drive_data);
 DECLARE_int32(load_balancer_max_concurrent_moves);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 
 using namespace std::literals;
 
@@ -78,17 +81,18 @@ const auto kDefaultTimeout = 30000ms;
 class LoadBalancerMiniClusterTest : public YBTableTestBase {
  protected:
   void SetUp() override {
-    StatEmuEnv* env = new StatEmuEnv();
-    ts_env_.reset(env);
+    emu_env = new StatEmuEnv();
+    ts_env_.reset(emu_env);
     YBTableTestBase::SetUp();
-    // ts1 (free, used, total)
-    env->AddPathStats(mini_cluster()->GetTabletServerDrive(0, 0), { 50, 150, 200});
-    env->AddPathStats(mini_cluster()->GetTabletServerDrive(0, 1), {100, 100, 200});
-    env->AddPathStats(mini_cluster()->GetTabletServerDrive(0, 2), {150,  50, 200});
-    // ts2 (free, used, total)
-    env->AddPathStats(mini_cluster()->GetTabletServerDrive(1, 0), { 50, 150, 200});
-    env->AddPathStats(mini_cluster()->GetTabletServerDrive(1, 1), {100, 100, 200});
-    env->AddPathStats(mini_cluster()->GetTabletServerDrive(1, 2), {150,  50, 200});
+  }
+
+  void BeforeStartCluster() override {
+    for (int i = 0; i < num_tablet_servers(); ++i) {
+      // ts (free, used, total)
+      emu_env->AddPathStats(mini_cluster()->GetTabletServerDrive(i, 0), {150,  50, 200});
+      emu_env->AddPathStats(mini_cluster()->GetTabletServerDrive(i, 1), {100, 100, 200});
+      emu_env->AddPathStats(mini_cluster()->GetTabletServerDrive(i, 2), { 50, 150, 200});
+    }
   }
 
   bool use_yb_admin_client() override { return true; }
@@ -107,6 +111,104 @@ class LoadBalancerMiniClusterTest : public YBTableTestBase {
     // Do not create the transaction status table.
     return false;
   }
+
+  void WaitForReplicaOnTS(const std::string& ts_uuid) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
+      if (!leader_mini_master.ok()) {
+        return false;
+      }
+      scoped_refptr<master::TableInfo> tbl_info =
+        (*leader_mini_master)->master()->catalog_manager()->
+            GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
+                                                      table_name().namespace_name(),
+                                                      table_name().table_name());
+      vector<scoped_refptr<master::TabletInfo>> tablets;
+      tbl_info->GetAllTablets(&tablets);
+      for (const auto& tablet : tablets) {
+        auto replica_map = tablet->GetReplicaLocations();
+        if (replica_map->find(ts_uuid) != replica_map->end()) {
+          return true;
+        }
+      }
+      return false;
+    }, kDefaultTimeout, "WaitForAddTaskToBeProcessed"));
+  }
+
+  void WaitForAllTabletsDataSize() {
+    auto num_peers = ListTabletPeers(mini_cluster(), ListPeersFilter::kAll).size();
+
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
+      if (!leader_mini_master.ok()) {
+        return false;
+      }
+      scoped_refptr<master::TableInfo> tbl_info =
+        (*leader_mini_master)->master()->catalog_manager()->
+            GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
+                                                      table_name().namespace_name(),
+                                                      table_name().table_name());
+      vector<scoped_refptr<master::TabletInfo>> tablets;
+      tbl_info->GetAllTablets(&tablets);
+
+      int updated = 0;
+      for (const auto& tablet : tablets) {
+        auto replica_map = tablet->GetReplicaLocations();
+        for (const auto& replica : *replica_map.get()) {
+          if (!replica.second.drive_info.ts_path.empty()) {
+            ++updated;
+          }
+        }
+      }
+      return updated == num_peers;
+    }, kDefaultTimeout, "WaitForAllTabletsDataSize"));
+  }
+
+  typedef std::unordered_map<std::string,
+                             std::pair<std::unordered_map<std::string, int>, int>> DriveStats;
+
+  void GetTabletsDriveStats(DriveStats* stats) {
+    scoped_refptr<master::TableInfo> tbl_info =
+      ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->
+          GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
+                                                    table_name().namespace_name(),
+                                                    table_name().table_name());
+
+    vector<scoped_refptr<master::TabletInfo>> tablets;
+    tbl_info->GetAllTablets(&tablets);
+
+    for (const auto& tablet : tablets) {
+      auto replica_map = tablet->GetReplicaLocations();
+      for (const auto& replica : *replica_map.get()) {
+        auto ts = stats->find(replica.first);
+        if (ts == stats->end()) {
+          ts = stats->insert({replica.first,
+                             std::make_pair(std::unordered_map<std::string, int>(), 0)}).first;
+        }
+        if (replica.second.role == consensus::RaftPeerPB::LEADER) {
+          ++ts->second.second;
+        }
+        if (!replica.second.drive_info.ts_path.empty()) {
+          auto& ts_map = ts->second.first;
+          auto path = ts_map.find(replica.second.drive_info.ts_path);
+          if (path == ts_map.end()) {
+            ts_map.insert({replica.second.drive_info.ts_path, 1});
+          } else {
+            ++path->second;
+          }
+        }
+      }
+    }
+
+    for (const auto& ts : *stats) {
+      LOG(INFO) << "Stats on ts " << ts.first << " leaders " << ts.second.second;
+      for (const auto& path : ts.second.first) {
+        LOG(INFO) << path.first << " tablets " << path.second;
+      }
+    }
+  }
+
+  StatEmuEnv* emu_env;
 };
 
 // See issue #6278. This test tests the segfault that used to occur during a rare race condition,
@@ -272,29 +374,70 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
 
 // Check flow tablet size data from tserver to master
 TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
-    if (!leader_mini_master.ok()) {
-      return false;
-    }
-    scoped_refptr<master::TableInfo> tbl_info =
-      (*leader_mini_master)->master()->catalog_manager()->
-          GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
-                                                    table_name().namespace_name(),
-                                                    table_name().table_name());
-    vector<scoped_refptr<master::TabletInfo>> tablets;
-    tbl_info->GetAllTablets(&tablets);
+  WaitForAllTabletsDataSize();
+}
 
-    for (const auto& tablet : tablets) {
-      auto replica_map = tablet->GetReplicaLocations();
-      for (const auto& replica : *replica_map.get()) {
-        if (!replica.second.drive_info.ts_path.empty()) {
-          return true;
-        }
-      }
+TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDisabledDriveAware) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_drive_aware) = false;
+
+  // Add new tserver to force load balancer moves.
+  auto newts = mini_cluster()->num_tablet_servers();
+  ASSERT_OK(mini_cluster()->AddTabletServer());
+  ASSERT_OK(mini_cluster()->WaitForTabletServerCount(newts + 1));
+  const auto newts_uuid = mini_cluster()->mini_tablet_server(newts)->server()->permanent_uuid();
+
+  // Wait for the add task to be processed (at least one replica reporting on the new tserver).
+  WaitForReplicaOnTS(newts_uuid);
+}
+
+TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceWithoutDriveData) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_add_drive_data) = false;
+
+  // Add new tserver to force load balancer moves.
+  auto newts = mini_cluster()->num_tablet_servers();
+  ASSERT_OK(mini_cluster()->AddTabletServer());
+  ASSERT_OK(mini_cluster()->WaitForTabletServerCount(newts + 1));
+  const auto newts_uuid = mini_cluster()->mini_tablet_server(newts)->server()->permanent_uuid();
+
+  // Wait for the add task to be processed (at least one replica reporting on the new tserver).
+  WaitForReplicaOnTS(newts_uuid);
+
+  // Drive data should be empty
+  scoped_refptr<master::TableInfo> tbl_info =
+    ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->
+        GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
+                                                  table_name().namespace_name(),
+                                                  table_name().table_name());
+  vector<scoped_refptr<master::TabletInfo>> tablets;
+  tbl_info->GetAllTablets(&tablets);
+
+  for (const auto& tablet : tablets) {
+    auto replica_map = tablet->GetReplicaLocations();
+    for (const auto& replica : *replica_map.get()) {
+      ASSERT_TRUE(replica.second.drive_info.ts_path.empty());
     }
-    return false;
-  }, MonoDelta::FromMilliseconds(10000), "WaitForTabletDataSize"));
+  }
+}
+
+TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceAfterRemoveTablets) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  // Wait for drives metrics update.
+  WaitForAllTabletsDataSize();
+
+  // Add new tserver to force load balancer moves.
+  auto newts = mini_cluster()->num_tablet_servers();
+  ASSERT_OK(mini_cluster()->AddTabletServer());
+  ASSERT_OK(mini_cluster()->WaitForTabletServerCount(newts + 1));
+  const auto newts_uuid = mini_cluster()->mini_tablet_server(newts)->server()->permanent_uuid();
+
+  // Wait for drives metrics update.
+  WaitForAllTabletsDataSize();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = true;
+
+  // Wait for the add task to be processed (at least one replica reporting on the new tserver).
+  WaitForReplicaOnTS(newts_uuid);
 }
 
 } // namespace integration_tests
