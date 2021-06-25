@@ -44,8 +44,7 @@ venv/
 *.bak
 
 # Core dumps
-core*
-!java/yb-cql/src/test/java/com/datastax/driver/core
+core.*
 
 # CLion directories
 /cmake-build-debug

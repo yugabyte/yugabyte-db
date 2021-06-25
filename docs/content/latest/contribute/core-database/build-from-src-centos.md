@@ -53,7 +53,7 @@ Update packages on your system, install development tools and additional package
 ```sh
 sudo yum update
 sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-devel python3 python3-pip python3-devel
+sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-devel python3 python3-pip python3-devel which
 sudo yum install -y cmake3 ctest3 ninja-build
 ```
 
@@ -71,10 +71,11 @@ You could also symlink them into another directory that is on your `PATH`.
 {{< note title="Note" >}}
 
 We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party dependencies on CentOS.
+Linuxbrew allows us to create a portable package that contains its own copy of glibc and can be installed on most Linux distributions.
+However, we are transitioning away from using Linuxbrew and towards native toolchains on various platforms.
 
-During the build, we install Linuxbrew in a separate directory, `~/.linuxbrew-yb-build/linuxbrew-<version>`, so that it does not conflict with any other Linuxbrew installation on your workstation, and does not contain any unnecessary packages that would interfere with the build.
-
-We don't need to add `~/.linuxbrew-yb-build/linuxbrew-<version>/bin` to `PATH`. The build scripts will automatically discover this Linuxbrew installation.
+Our build scripts may automatically install Linuxbrew in a directory such as `/opt/yb-build/brew/linuxbrew-<version>` or `~/.linuxbrew-yb-build/linuxbrew-<version>`.
+There is no need to add any of those directories to PATH.
 
 {{< /note >}}
 
@@ -98,7 +99,7 @@ The command above will build the release configuration, add the C++ binaries int
 
 {{< tip title="Tip" >}}
 
-You can find the binaries you just built in `build/latest` directory.
+You can find the binaries you just built in `build/latest` directory, which would be a symbolic link to `build/release-gcc-dynamic-ninja` in this case.
 
 {{< /tip >}}
 
