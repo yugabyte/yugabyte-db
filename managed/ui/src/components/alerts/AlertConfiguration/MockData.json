@@ -1,0 +1,22 @@
+[
+  {
+    "configUUID": 123,
+    "configName": "Cluster CPU alert",
+    "type": "Universe",
+    "severity": "Sever",
+    "destination": "Slack, Email",
+    "created": "01-01-2021",
+    "occurance": "2",
+    "status": "Active"
+  },
+  {
+    "configUUID": 456,
+    "configName": "Platform alert",
+    "type": "Platform",
+    "severity": "Warning",
+    "destination": "Slack, Email",
+    "created": "01-01-2021",
+    "occurance": "25",
+    "status": "Active"
+  }
+]
