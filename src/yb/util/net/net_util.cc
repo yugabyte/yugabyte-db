@@ -426,6 +426,10 @@ Status GetFQDN(string* hostname) {
     }
   }
 
+  if (!result->ai_canonname) {
+    return STATUS(NetworkError, "Canonical name not specified");
+  }
+
   *hostname = result->ai_canonname;
   freeaddrinfo(result);
   return Status::OK();

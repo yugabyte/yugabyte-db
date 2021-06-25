@@ -99,10 +99,6 @@ class MemTracker;
 class MetricEntity;
 class RowChangeList;
 
-namespace docdb {
-class ConsensusFrontier;
-}
-
 namespace server {
 class Clock;
 }
@@ -661,6 +657,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS RestoreStarted(const TxnSnapshotRestorationId& restoration_id);
   CHECKED_STATUS RestoreFinished(
       const TxnSnapshotRestorationId& restoration_id, HybridTime restoration_hybrid_time);
+  CHECKED_STATUS CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
  private:
   friend class Iterator;

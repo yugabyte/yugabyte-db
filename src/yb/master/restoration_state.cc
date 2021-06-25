@@ -37,6 +37,10 @@ CHECKED_STATUS RestorationState::ToPB(RestorationInfoPB* out) {
 
   entry.set_state(VERIFY_RESULT(AggregatedState()));
 
+  if (complete_time_) {
+    entry.set_complete_time_ht(complete_time_.ToUint64());
+  }
+
   TabletsToPB(entry.mutable_tablet_restorations());
 
   return Status::OK();

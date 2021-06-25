@@ -41,6 +41,7 @@
 
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"
 
 using namespace std::literals;
@@ -50,6 +51,9 @@ DECLARE_int32(sys_catalog_write_timeout_ms);
 
 DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
               "Poll interval for snapshot coordinator in milliseconds.");
+
+DEFINE_test_flag(bool, skip_sending_restore_finished, false,
+                 "Whether we should skip sending RESTORE_FINISHED to tablets.");
 
 namespace yb {
 namespace master {
@@ -378,7 +382,7 @@ class MasterSnapshotCoordinator::Impl {
         postponed_restores_.push_back(restoration);
       }
     }
-    RETURN_NOT_OK_PREPEND(context_.RestoreSysCatalog(restoration.get()),
+    RETURN_NOT_OK_PREPEND(context_.RestoreSysCatalog(restoration.get(), operation.tablet()),
                           "Restore sys catalog failed");
     return Status::OK();
   }
@@ -456,10 +460,7 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (schedules_.empty()) {
-      return Status::OK();
-    }
-    auto* out = resp->mutable_snapshot_schedules();
+    auto* out = resp->mutable_snapshots_info();
     for (const auto& schedule : schedules_) {
       // Don't send deleted schedules.
       if (schedule->deleted()) {
@@ -471,6 +472,16 @@ class MasterSnapshotCoordinator::Impl {
       auto time = LastSnapshotTime(id);
       if (time) {
         out_schedule->set_last_snapshot_hybrid_time(time.ToUint64());
+      }
+    }
+    out->set_last_restorations_update_ht(last_restorations_update_ht_.ToUint64());
+    for (const auto& restoration : restorations_) {
+      auto* out_restoration = out->add_restorations();
+      const auto& id = restoration->restoration_id();
+      out_restoration->set_id(id.data(), id.size());
+      auto complete_time = restoration->complete_time();
+      if (complete_time) {
+        out_restoration->set_complete_time_ht(complete_time.ToUint64());
       }
     }
     return Status::OK();
@@ -538,6 +549,10 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   void Start() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      last_restorations_update_ht_ = context_.Clock()->Now();
+    }
     poller_.Start(&context_.Scheduler(), FLAGS_snapshot_coordinator_poll_interval_ms * 1ms);
   }
 
@@ -950,6 +965,13 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
 
+    last_restorations_update_ht_ = context_.Clock()->Now();
+    restoration->set_complete_time(last_restorations_update_ht_);
+
+    if (FLAGS_TEST_skip_sending_restore_finished) {
+      return;
+    }
+
     auto temp_ids = restoration->tablet_ids();
     std::vector<TabletId> tablet_ids(temp_ids.begin(), temp_ids.end());
     auto tablets = context_.GetTabletInfos(tablet_ids);
@@ -958,7 +980,7 @@ class MasterSnapshotCoordinator::Impl {
           tablet, std::string(), tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED,
           /* callback= */ nullptr);
       task->SetRestorationId(restoration->restoration_id());
-      task->SetRestorationTime(context_.Clock()->Now());
+      task->SetRestorationTime(restoration->complete_time());
       context_.ScheduleTabletSnapshotOp(task);
     }
   }
@@ -1025,6 +1047,7 @@ class MasterSnapshotCoordinator::Impl {
       if (phase == RestorePhase::kInitial) {
         auto restoration = std::make_unique<RestorationState>(&context_, restoration_id, &snapshot);
         restoration_ptr = restorations_.emplace(std::move(restoration)).first->get();
+        last_restorations_update_ht_ = context_.Clock()->Now();
       } else {
         restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
       }
@@ -1118,6 +1141,7 @@ class MasterSnapshotCoordinator::Impl {
 
   Snapshots snapshots_ GUARDED_BY(mutex_);
   Restorations restorations_ GUARDED_BY(mutex_);
+  HybridTime last_restorations_update_ht_ GUARDED_BY(mutex_);
   Schedules schedules_ GUARDED_BY(mutex_);
   rpc::Poller poller_;
 

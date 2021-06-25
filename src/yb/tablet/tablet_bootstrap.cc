@@ -899,7 +899,7 @@ class TabletBootstrap {
     SnapshotOperation operation(tablet_.get(), snapshot);
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
-    return operation.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
+    return operation.Replicated(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
 
   CHECKED_STATUS PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {

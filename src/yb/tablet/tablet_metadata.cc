@@ -535,7 +535,10 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
-    restoration_hybrid_time_ = HybridTime::FromPB(superblock.restoration_hybrid_time());
+    auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
+    if (restoration_hybrid_time) {
+      restoration_hybrid_time_ = restoration_hybrid_time;
+    }
 
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
@@ -852,7 +855,7 @@ bool RaftGroupMetadata::hidden() const {
 
 void RaftGroupMetadata::SetRestorationHybridTime(HybridTime value) {
   std::lock_guard<MutexType> lock(data_mutex_);
-  restoration_hybrid_time_ = value;
+  restoration_hybrid_time_ = std::max(restoration_hybrid_time_, value);
 }
 
 HybridTime RaftGroupMetadata::restoration_hybrid_time() const {
@@ -915,6 +918,35 @@ void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& rest
 void RaftGroupMetadata::UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
   Erase(restoration_id, &active_restorations_);
+}
+
+HybridTime RaftGroupMetadata::CheckCompleteRestorations(
+    const RestorationCompleteTimeMap& restoration_complete_time) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  auto result = HybridTime::kMin;
+  for (const auto& restoration_id : active_restorations_) {
+    auto it = restoration_complete_time.find(restoration_id);
+    if (it != restoration_complete_time.end() && it->second) {
+      result = std::max(result, it->second);
+    }
+  }
+  return result;
+}
+
+bool RaftGroupMetadata::CleanupRestorations(
+    const RestorationCompleteTimeMap& restoration_complete_time) {
+  bool result = false;
+  std::lock_guard<MutexType> lock(data_mutex_);
+  for (auto it = active_restorations_.begin(); it != active_restorations_.end();) {
+    auto known_restoration_it = restoration_complete_time.find(*it);
+    if (known_restoration_it == restoration_complete_time.end() || known_restoration_it->second) {
+      it = active_restorations_.erase(it);
+      result = true;
+    } else {
+      ++it;
+    }
+  }
+  return result;
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {

@@ -96,6 +96,10 @@ message SysRestorationEntryPB {
   optional SysSnapshotEntryPB.State state = 1 [ default = UNKNOWN ];
   repeated TabletRestorationPB tablet_restorations = 2;
   optional bytes snapshot_id = 8;
+
+  // Time when restoration finished. Computed on master after received response from the last
+  // tablet.
+  optional fixed64 complete_time_ht = 3;
 }
 
 message RestorationInfoPB {
