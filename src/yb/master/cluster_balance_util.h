@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
 
@@ -172,6 +173,13 @@ struct CBTabletServerMetadata {
   // The TSDescriptor for this tablet server.
   std::shared_ptr<TSDescriptor> descriptor = nullptr;
 
+  // Map from path to the set of tablet ids that this tablet server is currently running
+  // on the path.
+  std::unordered_map<std::string, std::set<TabletId>> path_to_tablets;
+
+  // Set of paths sorted ascending by used space.
+  vector<std::string> sorted_path_load;
+
   // The set of tablet ids that this tablet server is currently running.
   std::set<TabletId> running_tablets;
 
@@ -181,9 +189,8 @@ struct CBTabletServerMetadata {
   // The set of tablet leader ids that this tablet server is currently running.
   std::set<TabletId> leaders;
 
-  // The set of tablet ids that have possible non relevant data. Replica should be compacted
-  // first before moving
-  std::set<TabletId> parent_data_tablets;
+  // The set of tablet ids that this tablet server disabled (ex. after split).
+  std::set<TabletId> disabled_by_ts_tablets;
 };
 
 struct CBTabletServerLoadCounts {
@@ -274,6 +281,8 @@ class GlobalLoadState {
   }
 
   TSDescriptorVector ts_descs_;
+
+  bool drive_aware_ = true;
 };
 
 class PerTableLoadState {
@@ -437,11 +446,10 @@ class PerTableLoadState {
       } else if (replica_is_stale) {
         VLOG(1) << "Replica is stale: " << replica.second.ToString();
       }
+      RETURN_NOT_OK(AddTabletOnTSPath(tablet_id, replica.second.drive_info.ts_path, ts_uuid));
       if (replica.second.should_disable_lb_move) {
-        RETURN_NOT_OK(AddParentDataTablet(tablet_id, ts_uuid));
-        VLOG(1) << "Replica might have non relevant data: " << replica.second.ToString();
-      } else {
-        RETURN_NOT_OK(RemoveParentDataTablet(tablet_id, ts_uuid));
+        RETURN_NOT_OK(AddDisabledByTSTablet(tablet_id, ts_uuid));
+        VLOG(1) << "Replica was disabled by TS: " << replica.second.ToString();
       }
 
       // If this replica is blacklisted, we want to keep track of these specially, so we can
@@ -780,6 +788,7 @@ class PerTableLoadState {
 
   Status RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts) {
     RETURN_NOT_OK(RemoveRunningTablet(tablet_id, from_ts));
+    RETURN_NOT_OK(RemoveTabletOnTSPath(tablet_id, from_ts));
     if (per_ts_meta_[from_ts].starting_tablets.count(tablet_id)) {
       LOG(DFATAL) << "Invalid request: remove starting tablet " << tablet_id
                   << " from ts " << from_ts;
@@ -802,6 +811,41 @@ class PerTableLoadState {
   void SortLoad() {
     auto comparator = Comparator(this);
     sort(sorted_load_.begin(), sorted_load_.end(), comparator);
+  }
+
+  void SortTabletServerDriveLoad() {
+    for (const auto& ts : sorted_load_) {
+      auto& ts_meta = per_ts_meta_[ts];
+      auto path_metrics = ts_meta.descriptor->path_metrics();
+      std::vector<std::pair<std::string, uint64>> sorted_drive_load;
+      for (const auto& path_to_tablet : ts_meta.path_to_tablets) {
+        if (path_to_tablet.first.empty()) {
+          continue;
+        }
+        auto it_path = find_if(path_metrics.begin(), path_metrics.end(), [=](const auto& p){
+          return boost::starts_with(path_to_tablet.first, p.first);
+        });
+        uint64 used_perc = 0;
+        if (it_path == path_metrics.end()) {
+          LOG(WARNING) << "Path " << path_to_tablet.first << " wasn't found on TS " << ts;
+        } else if (it_path->second.total_space != 0) {
+          used_perc = 100 * it_path->second.used_space / it_path->second.total_space;
+        }
+        sorted_drive_load.emplace_back(std::pair<std::string, uint>({path_to_tablet.first,
+                                                                     used_perc}));
+      }
+      // sort by decreasing load.
+      sort(sorted_drive_load.begin(), sorted_drive_load.end(),
+           [](const std::pair<std::string, uint64>& l, const std::pair<std::string, uint64>& r) {
+               return l.second > r.second;
+             });
+      std::transform(sorted_drive_load.begin(), sorted_drive_load.end(),
+                     std::back_inserter(ts_meta.sorted_path_load),
+                     [](const std::pair<std::string, uint64>& v) { return v.first;});
+      // add empty path to the end to move tablets without path with low priority
+      ts_meta.sorted_path_load.push_back(std::string());
+      ts_meta.path_to_tablets.emplace(std::string(), std::set<TabletId>());
+    }
   }
 
   Status MoveLeader(
@@ -889,7 +933,7 @@ class PerTableLoadState {
     return replica_locations;
   }
 
-  Status AddRunningTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+  Status AddRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid) {
     SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     // Set::Insert returns a pair where the second value is whether or not an item was inserted.
@@ -902,7 +946,7 @@ class PerTableLoadState {
     return Status::OK();
   }
 
-  Status RemoveRunningTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+  Status RemoveRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid) {
     SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     int num_erased = per_ts_meta_.at(ts_uuid).running_tablets.erase(tablet_id);
@@ -918,7 +962,7 @@ class PerTableLoadState {
     return Status::OK();
   }
 
-  Status AddStartingTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+  Status AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid) {
     SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     auto ret = per_ts_meta_.at(ts_uuid).starting_tablets.insert(tablet_id);
@@ -935,7 +979,7 @@ class PerTableLoadState {
     return Status::OK();
   }
 
-  Status AddLeaderTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+  Status AddLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid) {
     SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     auto ret = per_ts_meta_.at(ts_uuid).leaders.insert(tablet_id);
@@ -945,7 +989,7 @@ class PerTableLoadState {
     return Status::OK();
   }
 
-  Status RemoveLeaderTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+  Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid) {
     SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     int num_erased = per_ts_meta_.at(ts_uuid).leaders.erase(tablet_id);
@@ -953,19 +997,34 @@ class PerTableLoadState {
     return Status::OK();
   }
 
-  Status AddParentDataTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+  Status AddDisabledByTSTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid) {
     SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
-    per_ts_meta_.at(ts_uuid).parent_data_tablets.insert(tablet_id);
+    per_ts_meta_.at(ts_uuid).disabled_by_ts_tablets.insert(tablet_id);
     return Status::OK();
   }
 
-  Status RemoveParentDataTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+  Status AddTabletOnTSPath(const TabletId& tablet_id,
+                           const std::string& path,
+                           const TabletServerId& ts_uuid) {
     SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
-    if (per_ts_meta_.at(ts_uuid).parent_data_tablets.erase(tablet_id) != 0) {
-      VLOG(1) << "Updated replica have relevant data, tablet id: " << tablet_id;
+    per_ts_meta_.at(ts_uuid).path_to_tablets[path].insert(tablet_id);
+    return Status::OK();
+  }
+
+  Status RemoveTabletOnTSPath(const TabletId& tablet_id,
+                              const TabletServerId& ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    bool found = false;
+    for (auto &path : per_ts_meta_.at(ts_uuid).path_to_tablets) {
+      if (path.second.erase(tablet_id) == 0) {
+        found = true;
+        break;
+      }
     }
+    VLOG_IF(1, !found) << "Updated replica doesn't have relevant data, tablet id: " << tablet_id;
     return Status::OK();
   }
 

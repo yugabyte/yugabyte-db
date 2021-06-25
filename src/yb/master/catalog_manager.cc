@@ -7496,14 +7496,14 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
 
     // Do not update replicas in the NOT_STARTED or BOOTSTRAPPING state (unless they are stale).
     bool use_existing = false;
-    const TabletReplica* existing_replica;
-    if (peer.permanent_uuid() != sender_uuid) {
-      auto it = prev_rl->find(ts_desc->permanent_uuid());
-      if (it != prev_rl->end()) {
-        existing_replica = &it->second;
-        // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
-        use_existing = existing_replica->IsStarting() && !existing_replica->IsStale();
-      }
+    const TabletReplica* existing_replica = nullptr;
+    auto it = prev_rl->find(ts_desc->permanent_uuid());
+    if (it != prev_rl->end()) {
+      existing_replica = &it->second;
+    }
+    if (existing_replica && peer.permanent_uuid() != sender_uuid) {
+      // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
+      use_existing = existing_replica->IsStarting() && !existing_replica->IsStale();
     }
     if (use_existing) {
       InsertOrDie(replica_locations.get(), existing_replica->ts_desc->permanent_uuid(),
@@ -7511,7 +7511,11 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
     } else {
       TabletReplica replica;
       CreateNewReplicaForLocalMemory(ts_desc.get(), &consensus_state, report, &replica);
-      InsertOrDie(replica_locations.get(), replica.ts_desc->permanent_uuid(), replica);
+      auto result = replica_locations.get()->insert({replica.ts_desc->permanent_uuid(), replica});
+      LOG_IF(FATAL, !result.second) << "duplicate uuid: " << replica.ts_desc->permanent_uuid();
+      if (existing_replica) {
+        result.first->second.UpdateDriveInfo(existing_replica->drive_info);
+      }
     }
   }
 
@@ -9753,6 +9757,7 @@ void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
         SharedLock lock(mutex_);
         tablet = FindPtrOrNull(*tablet_map_, tablet_id);
       }
+
       if (!tablet) {
         VLOG(1) << Format("Tablet $0 not found on ts $1", tablet_id, ts_uuid);
         continue;
