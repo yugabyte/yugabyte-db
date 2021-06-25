@@ -479,7 +479,7 @@ LOG(INFO) << (p ? p->DebugString() : "N/A");
 
 ### Error checking macros
 
-We use various macros for invariant checking:
+We use various macros for error/invariant checking.
 
 #### Checking a condition and returning a Status with SCHECK {#scheck}
 
