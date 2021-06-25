@@ -1441,10 +1441,10 @@ Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData
   return tablet_peer()->tablet()->snapshots().Create(data);
 }
 
-Status CatalogManager::RestoreSysCatalog(SnapshotScheduleRestoration* restoration) {
+Status CatalogManager::RestoreSysCatalog(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
   // Restore master snapshot and load it to RocksDB.
-  auto* tablet = tablet_peer()->tablet();
   auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
       restoration->snapshot_id, restoration->restore_at));
   rocksdb::Options rocksdb_options;
