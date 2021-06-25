@@ -3,9 +3,14 @@
 
   The base path is /docs/static.
 
- {{% includeCode "code-samples/include.sql" %}}
-
- */}}
+  {{% includeCode "code-samples/include.sql" %}}
+*/}}
 
 {{ $includePath := (.Get 0) | printf "static/%s" }}
 {{- readFile $includePath | chomp | safeHTML -}}
+
+{{/*
+  {{ $file := .Get "file" | readFile }}
+  {{ $lang := .Get "language" }}
+  {{ (print "```" $lang "\n" $file "\n```") | markdownify }}
+*/}}
