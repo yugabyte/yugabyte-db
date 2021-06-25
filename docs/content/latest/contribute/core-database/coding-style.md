@@ -483,7 +483,7 @@ We use various macros for invariant checking:
 
 #### Checking a condition and returning a Status with SCHECK {#scheck}
 
-`SCHECK` (shorthand for "Status CHECK") check a condition and return a `Status` with the appropriate message if the condition is not true. It can only be used within a function that returns a `Status` or a `Result`.
+`SCHECK` (shorthand for "Status CHECK") checks a condition and returns a `Status` with the appropriate message if the condition is not true. It can only be used within a function that returns a `Status` or a `Result`.
 
 The `SCHECK` macro is a good way to check for errors that are expected to happen under some conditions, e.g. with invalid input, and the errors need to be ultimately reported to the user.
 
@@ -491,22 +491,20 @@ The `SCHECK` macro is a good way to check for errors that are expected to happen
 SCHECK(key_opt.is_initialized(), InternalError, "Key is not initialized");
 ```
 
-There are also various variants of `SCHECK` (`SCHECK_EQ`, `SCHECK_NE`, `SCHECK_GT`, `SCHECK_LT`, `SCHECK_GE`, and `SCHECK_LE`) that check for equality or various types of inequalities between two arguments.
+There are also variants the `SCHECK` macro for equality checks and comparisons: `SCHECK_EQ`, `SCHECK_NE`, `SCHECK_GT`, `SCHECK_LT`, `SCHECK_GE`, and `SCHECK_LE`.
 
 ```cpp
 SCHECK_EQ(schedules.size(), 1, IllegalState,
           Format("Expected exactly one schedule with id $0", schedule_id));
 ```
 
-#### Returing a Status in release mode, triggering a fatal error in debug mode with RSTATUS_DCHECK {#rstatus_dcheck}
+#### Returing a Status in release mode, but triggering a fatal error in debug mode, with RSTATUS_DCHECK {#rstatus_dcheck}
 
-`RSTATUS_DCHECK` works similarly to `SCHECK` in release mode, but triggers a fatal error and a log message in debug mode, terminating program execution. Similarly to `SCHECK`, it also has variants for checking for equality and inequality.
-
-`RSTATUS_DCHECK` can be used for invariant checks and sanity checks where the error is not expected to happen under normal circumstances (and so it is OK to cause a unit test to crash in debug mode), but for which there is a possible recovery so we can avoid a server restart in release mode.
+`RSTATUS_DCHECK` works similarly to `SCHECK` in release mode, but triggers a fatal error and a log message in debug mode, terminating program execution. Similarly to `SCHECK`, it also has variants for checking for equality and inequality. `RSTATUS_DCHECK` can be used for invariant checks and sanity checks where the error is not expected to happen under normal circumstances but there is a recovery path from this error in a production situation. In these cases it is OK to cause a unit test to crash in debug mode when the error is encountered.
 
 #### Checking an invariant that must always hold with CHECK {#check}
 
-For really important invariants that are difficult to recover from while still maintaining correctness, we sometimes use the `CHECK` macro and its variants. It should be used really carefully because if the condition is violated, a server restart will occur in release mode.
+For really important invariants that are difficult to recover from while still maintaining correctness, we sometimes use the `CHECK` macro and its variants. It is enabled in both debug and release modes and causes program termination if the condition is not true. It should be used really carefully to avoid causing unnecessary server restarts in release mode.
 
 #### Only checking a condition in debug mode with DCHECK
 
@@ -514,21 +512,26 @@ This macro expands to a no-op in release mode. This is reserved for checking inv
 
 We sometimes use `DCHECKs` to verify function prerequisites. If you never expect an incorrect parameter value to be passed into a function, because there is validation happening in the calling function, it's OK to keep that as a `DCHECK`.
 
-However, if you could theoretically get bad data in production, then:
+However, if you could theoretically get bad data in production at a certain point in the code, then:
   * If you can recover from this error, return an error `Status` (e.g. using [`SCHECK`]({{< relref "#scheck" >}}) or [`RSTATUS_DCHECK`]({{< relref "#rstatus_dcheck" >}})).
   * If this is a severe invariant violation and you can't recover from it, this could be a [`CHECK`]({{< relref "#check" >}}).
 
 ### PREDICT_TRUE and PREDICT_FALSE
 
-`PREDICT_TRUE` and `PREDICT_FALSE` are . Don't use `PREDICT_TRUE` and `PREDICT_FALSE` macros unless you've proven that they improve performance.
+`PREDICT_TRUE` and `PREDICT_FALSE` macros expand to hints to the compiler that a particular codepath is likely or unlikely. In theory these macros could allow better compiler optimizations. However, we don't use them in new code as it is difficult to check if they really improve performance.
 
 ### Result vs Status with output parameters
 
-For new code, use `Result`.
+For new code, use [`Result`](https://github.com/yugabyte/yugabyte-db/blob/master/src/yb/util/result.h), e.g.:
+
+```cpp
+static Result<DocKeyHash> DecodeHash(const Slice& slice);
+```
 
 Much of our code is wired to return `Status`, so we are able to get a sense of whether a function completed successfully (OK), or if there was some kind of an error. However, we sometimes want to also get legitimate output from these functions. We used to do this by using function signatures such as
 
 ```cpp
+// Old approach, don't use this in new code.
 Status foo(int* return_variable);
 ```
 
