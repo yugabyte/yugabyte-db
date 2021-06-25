@@ -28,24 +28,30 @@ TBD from design doc
 
 ### Single tablet snapshots
 
-- Native RocksDB operation.
-- Flushing RocksDB memstore on all peers.
-- Not needing Raft WAL entries anymore, can strictly rely on RocksDB files.
-- Snapshot lives on every raft peer, for fault tolerance.
+Our tablet level snapshot implementation is based on the existing snapshot mechanism available in RocksDB. This is implemented as a highly efficient operation, where upon processing the snapshot operation, we will:
+- Flush the data in the RocksDB memstore to disk, generating a new SST file. This is done to ensure we dump to disk all of the writes in the system, at the time of the request.
+- Generate hardlinks of all the RocksDB SST files into a separate `.snapshots` directory, corresponding to this snapshot UUID. Since this operation uses hardlinks, it is generally very fast.
+- Since RocksDB is an LSM database, the SST files are immutable and would only be deleted, if compacted away. This will happen naturally for the active RocksDB directory for the tablet. However, since every snapshot holds hardlinks to its respective set of files, even if the original files get deleted, the snapshot retains its data.
+
+Furthermore, our snapshots are implemented as an actual Raft level operation, that is quorum replicated to all peers of a tablet. This allows us to get several benefits to the process:
+- Since we have modified RocksDB to not use its WAL (TBD LINK), but instead rely on the Raft WAL instead, for durability, we would need to keep track of the Raft WAL entries as well, for a complete picture of a tablet's data. However, by forcing a flush of RocksDB when processing the snapshot operation, we can guarantee that the data in the snapshot is a complete view of the system, at the time of the request, across all peers. This allows us to not keep track of any Raft WAL entries with the snapshot data and instead rely strictly on the RocksDB files.
+- Since the snapshots have the same lifecycle as RocksDB, which is bound to the lifecycle of a Raft tablet peer, we then get the same fault tolerance properties of raft, for all the snapshots. This means, as tablets move around in the cluster, so do their corresponding snapshots. Moreover, the replication factor of normal data also applies to snapshot data.
 
 ### Picking a timestamp
 
-TBD
+TBD from design doc
 
 ### Snapshot on all involved tablets
 
 TBD from design doc
+
 - reference to HT filter
 - reference to history retention
 
 ### Glue together into a backup
 
-TBD
+TBD from design doc
+
 - distributed snapshot
 - schema from master
 
