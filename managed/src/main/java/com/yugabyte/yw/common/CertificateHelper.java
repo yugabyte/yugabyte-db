@@ -89,7 +89,7 @@ public class CertificateHelper {
       UUID rootCA_UUID = UUID.randomUUID();
       Calendar cal = Calendar.getInstance();
       Date certStart = cal.getTime();
-      cal.add(Calendar.YEAR, 1);
+      cal.add(Calendar.YEAR, 4);
       Date certExpiry = cal.getTime();
       X500Name subject =
           new X500NameBuilder(BCStyle.INSTANCE)
@@ -178,7 +178,7 @@ public class CertificateHelper {
         certStart = cal.getTime();
       }
       if (certExpiry == null) {
-        cal.add(Calendar.YEAR, 1);
+        cal.add(Calendar.YEAR, 4);
         certExpiry = cal.getTime();
       }
 

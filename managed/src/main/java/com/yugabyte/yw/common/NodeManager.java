@@ -361,7 +361,10 @@ public class NodeManager extends DevopsBase {
             subcommand.add(customCertInfo.nodeCertPath);
             subcommand.add("--node_key_path");
             subcommand.add(customCertInfo.nodeKeyPath);
-            if (customCertInfo.clientCertPath != null) {
+            if (customCertInfo.clientCertPath != null
+                && !customCertInfo.clientCertPath.isEmpty()
+                && customCertInfo.clientKeyPath != null
+                && !customCertInfo.clientKeyPath.isEmpty()) {
               subcommand.add("--client_cert_path");
               subcommand.add(customCertInfo.clientCertPath);
               subcommand.add("--client_key_path");
@@ -484,7 +487,10 @@ public class NodeManager extends DevopsBase {
           subcommand.add(customCertInfo.nodeCertPath);
           subcommand.add("--node_key_path");
           subcommand.add(customCertInfo.nodeKeyPath);
-          if (customCertInfo.clientCertPath != null) {
+          if (customCertInfo.clientCertPath != null
+              && !customCertInfo.clientCertPath.isEmpty()
+              && customCertInfo.clientKeyPath != null
+              && !customCertInfo.clientKeyPath.isEmpty()) {
             subcommand.add("--client_cert_path");
             subcommand.add(customCertInfo.clientCertPath);
             subcommand.add("--client_key_path");
