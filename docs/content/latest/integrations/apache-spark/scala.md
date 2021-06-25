@@ -4,18 +4,16 @@ headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
-  - /latest/develop/ecosystem-integrations/apache-spark/
 menu:
   latest:
     identifier: apache-spark-1-scala
-    parent: ecosystem-integrations
+    parent: integrations
     weight: 572
 showAsideToc: true
 isTocNested: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="{{< relref "./scala.md" >}}" class="nav-link active">
       <i class="icon-scala" aria-hidden="true"></i>

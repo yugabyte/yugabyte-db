@@ -6,7 +6,7 @@ aliases:
 menu:
   latest:
     identifier: kairosdb
-    parent: ecosystem-integrations
+    parent: integrations
     weight: 574
 isTocNested: true
 showAsideToc: true
@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## 1. Start local cluster
 
-Follow [Quick start](../../../quick-start/) to run a local YugabyteDB cluster and test YugabyteDB's YCQL API to confirm that you have a YCQL service running on `localhost:9042`.
+Follow [Quick start](../quick-start/) to run a local YugabyteDB cluster and test YugabyteDB's YCQL API to confirm that you have a YCQL service running on `localhost:9042`.
 
 ## 2. Download KairosDB
 
@@ -34,7 +34,7 @@ You can follow the [Getting started](http://kairosdb.github.io/docs/build/html/G
 #kairosdb.service.datastore=org.kairosdb.datastore.h2.H2Module
 ```
 
-Uncomment the following line to make Cassandra the datastore.
+Uncomment the following line to make Cassandra the datastore:
 
 ```cfg
 kairosdb.service.datastore=org.kairosdb.datastore.cassandra.CassandraModule
@@ -60,7 +60,7 @@ You should see the following lines if KairosDB starts up successfully.
 
 Run `ycqlsh` to connect and use YugabyteDB's YCQL API.
 
-Assuming you are using the macOS or Linux binary
+Assuming you are using the macOS or Linux binary, execute the following:
 
 ```sh
 $ ./bin/ycqlsh localhost
@@ -73,7 +73,7 @@ Use HELP for help.
 ycqlsh>
 ```
 
-- Run a cql command to verify it is working.
+- Run a cql command to verify it is working:
 
 ```sql
 ycqlsh> describe keyspaces;
