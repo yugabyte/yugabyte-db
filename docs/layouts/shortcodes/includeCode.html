@@ -1,2 +1,11 @@
+{{/*
+  Outputs the contents of a file.
+
+  The base path is /docs/static.
+
+ {{% includeCode "code-samples/include.sql" %}}
+
+ */}}
+
 {{ $includePath := (.Get 0) | printf "static/%s" }}
 {{- readFile $includePath | chomp | safeHTML -}}

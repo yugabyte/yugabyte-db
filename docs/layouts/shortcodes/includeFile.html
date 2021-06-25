@@ -1,3 +1,30 @@
+{{/*
+  Outputs the contents of a file into a highlighted code block.
+
+  The logic attempts to infer the code language based on the file
+  extension. You can override this by specifying a language when
+  you call the shortcode.
+
+  The base path is /docs/static.
+
+  NOTE! If you want to supply highlight options, you have to also
+  supply the language. Revisions to this logic are welcome!
+
+  Basic call:
+
+    {{% includeFile "code-samples/include.sql" %}}
+
+  Specify a language (`sql`):
+
+    {{% includeFile "code-samples/include.sql" sql %}}
+
+  Specify a language and some highlighting options:
+
+    {{% includeFile "code-samples/include.sql" sql "hl_lines=2 5-7" %}}
+*/}}
+
+{{/* Grab language from either the file extension or the second argument */}}
+
 {{- if gt ( len .Params ) 1 -}}
 {{- $.Scratch.Set "format" ( .Get 1 ) -}}
 {{- else -}}
@@ -6,12 +33,21 @@
 {{- $.Scratch.Set "format" $format -}}
 {{- end -}}
 
+{{/* Grab any highlight options from the third argument */}}
+
+{{- if gt ( len .Params ) 2 -}}
+{{- $.Scratch.Set "highlightFormat" ( .Get 2 ) -}}
+{{- else -}}
+{{- $.Scratch.Set "highlightFormat" "" -}}
+{{- end -}}
+
+
 {{- $file := ( .Get 0 ) | printf "static/%s" -}}
 {{- $format := ( $.Scratch.Get "format" ) -}}
+{{- $highlightFormat := ( $.Scratch.Get "highlightFormat" ) -}}
 
 {{/*
 {{- ( print "```" $format "\n" ( readFile $file| chomp ) "\n" "```" "\n" ) | safeHTML -}}
 */}}
 
-{{- highlight ( readFile $file | safeHTML | chomp ) $format "" -}}
-
+{{ highlight ( readFile $file | safeHTML | chomp ) $format $highlightFormat }}
