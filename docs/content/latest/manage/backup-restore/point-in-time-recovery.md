@@ -21,11 +21,24 @@ _Point-in-time recovery_ (also referred to here as PITR) helps in recovering fro
 
 PITR depends on _full backups_ (also referred to as base backups). A full backup, as the name suggests, is a complete transactional backup of data up to a certain point in time. The entire data set in the database is backed up for all of the namespaces and tables you selected. Full backups are resource-intensive, and can consume considerable amounts of CPU time, bandwidth, and disk space.
 
-To learn more about YugabyteDB's point-in-time recovery feature, refer to the [Recovery scenarios](#recovery-scenarios), [Features](#features), [Use cases](#use-cases), and [Limitations](#limitations) sections on this page. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin#backup-and-snapshot-commands) section of the yb-admin documentation.
+To learn more about YugabyteDB's point-in-time recovery feature, refer to the [Recovery scenarios](#recovery-scenarios), [Features](#features), [Use cases](#use-cases), and [Limitations](#limitations) sections on this page. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin#backup-and-snapshot-commands) section of the yb-admin documentation. For information on how to setup PITR in production, refer to [Production recommendations](#production-recommendations)
 
 ## Try out the PITR feature
 
 There are several recovery scenarios [for YSQL](../../../explore/backup-restore/point-in-time-recovery-ysql/) and [for YCQL](../../../explore/backup-restore/point-in-time-recovery-ycql/) in the Explore section.
+
+## Use cases
+
+The following table provides a quick comparison of the intended usage patterns.
+
+| Scenario | In-cluster flashback DB | Off-cluster flashback DB |
+| :------- | :---------------------- | :----------------------- | :----------------- |
+| **Disk/file corruption** | Handled by replication in cluster | Handled by replication in cluster |
+| **App/operator error** | Yes | Yes |
+| **RPO** | Very low | High |
+| **RTO** | Very low | High |
+| **Disaster Recovery** | No (replication in cluster) | Yes |
+| **Impact / Cost** | Very low | High (snapshot and copy) |
 
 ## Recovery scenarios
 
@@ -52,38 +65,6 @@ In a distributed SQL database such as YugabyteDB, the first two scenarios can be
 
 This is the scenario in which the data in the entire source cluster is lost irrecoverably, and a restore needs to be performed from a remote location. While the likelihood of this scenario is low, it's still important to understand the probability of correlated failures. For example, loss due to a natural disaster has a very low probability of occurrence in a multi-region deployment, but its probability increases with the proximity of the replicas.
 
-## Features
-
-{{< note title="Not all features are implemented yet" >}}
-
-As this feature is in active development, not all features are implemented yet. Refer to the [Limitations](#limitations) section for details.
-
-{{< /note >}}
-
-This section describes the features that enable PITR and incremental backups.
-
-### Flashback database
-
-The flashback database feature allows restoring an existing database or an existing backup to a specific point in time in the past, up to some maximum time history. For example, if a database is configured for flashback up to the last 25 hours, you can restore this database back to a point in time that is up to 25 hours ago.
-
-**Notes**:
-
-* The time granularity of the point in time that one can restore to is in microseconds, as that is the precision at which we store data.
-* This feature does not help with reducing the size of backups, since this would be comparable to a full backup
-
-## Use cases
-
-The following table provides a quick comparison of the intended usage patterns.
-
-| Scenario | In-cluster flashback DB | Off-cluster flashback DB |
-| :------- | :---------------------- | :----------------------- | :----------------- |
-| **Disk/file corruption** | Handled by replication in cluster | Handled by replication in cluster |
-| **App/operator error** | Yes | Yes |
-| **RPO** | Very low | High |
-| **RTO** | Very low | High |
-| **Disaster Recovery** | No (replication in cluster) | Yes |
-| **Impact / Cost** | Very low | High (snapshot and copy) |
-
 ## Production recommendations
 
 Configuring PITR has to go hand in hand with configuring your backup schedules. [TBD some more info on why external backups are your disaster recovery safeguard]
@@ -102,6 +83,8 @@ For how to configure PITR, refer to the yb-admin pages (TBD).
 ## Limitations
 
 This feature is in active development. YSQL and YCQL support different features, as detailed in the sections that follow.
+
+A generic limitation across both APIs is the ability to use PITR on data from an external backup. Support for data only is tracked in [issue 8846](https://github.com/yugabyte/yugabyte-db/issues/8846). Support for metadata is tracked in [issue 8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
 
 ### YSQL limitations
 
