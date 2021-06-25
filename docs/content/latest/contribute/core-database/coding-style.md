@@ -92,6 +92,10 @@ Pack arguments into the fewest number of lines&mdash;but not exceeding the maxim
 Don't break the argument list arbitrarily, and only break the list if the next argument won't fit within the line-length limit.
 
 ```cpp
+// Suppose this is the right margin -----------------------------------------------------------> |
+//                                                                                               |
+//                                                                                               |
+
 ReturnType SomeClassName::ReallyLongFunctionName(
     ParameterType1 par_name1, ParameterType2 par_name2, ParameterType3 par_name3,
     ParameterType4 par_name4, ParameterType1 par_name5) {  // 4-space indentation for these 2 lines
@@ -134,6 +138,10 @@ bool result = DoSomething(
 Start a new line after the opening parenthesis, with a four-space indentation, and pack arguments into as few lines as possible.
 
 ```cpp
+// Suppose this is the right margin -----------------------------------------------------------> |
+//                                                                                               |
+//                                                                                               |
+
 bool result = DoSomething(
     argument1, argument2, argument3, argument4, argument5, argument6, argument7, argument8,
     argument9, argument10, argument11, argument12, argument13, argument14, argument15,
