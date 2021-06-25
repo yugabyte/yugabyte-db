@@ -133,10 +133,12 @@ class LockFreeStack {
   }
 
  private:
+  // The clang compiler may generate code that requires 16-byte alignment
+  // that causes SEGV if this struct is not aligned properly.
   struct Head {
     T* pointer;
     size_t version;
-  };
+  } __attribute__((aligned(16)));
 
   boost::atomic<Head> head_{Head{nullptr, 0}};
 };
