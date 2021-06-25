@@ -1,0 +1,84 @@
+--
+-- ALTER_TABLE
+--
+-- Clean up in case a prior regression run failed
+SET client_min_messages TO 'warning';
+DROP ROLE IF EXISTS regress_alter_table_user1;
+RESET client_min_messages;
+CREATE USER regress_alter_table_user1;
+--
+-- typed tables: OF / NOT OF
+--
+CREATE TYPE tt_t0 AS (z inet, x int, y numeric(8,2));
+ALTER TYPE tt_t0 DROP ATTRIBUTE z;
+ERROR:  ALTER TYPE DROP ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE tt_t0 DROP ATTRIBUTE z;
+                         ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+CREATE TABLE tt0 (x int NOT NULL, y numeric(8,2));	-- OK
+CREATE TABLE tt1 (x int, y bigint);					-- wrong base type
+CREATE TABLE tt2 (x int, y numeric(9,2));			-- wrong typmod
+CREATE TABLE tt3 (y numeric(8,2), x int);			-- wrong column order
+CREATE TABLE tt4 (x int);							-- too few columns
+CREATE TABLE tt5 (x int, y numeric(8,2), z int);	-- too few columns
+CREATE TABLE tt6 () INHERITS (tt0);					-- can't have a parent
+ERROR:  INHERITS not supported yet
+LINE 1: CREATE TABLE tt6 () INHERITS (tt0);
+                            ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+CREATE TABLE tt7 (x int, q text, y numeric(8,2)) WITH OIDS;
+ERROR:  OIDs are not supported for user tables.
+ALTER TABLE tt7 DROP q;								-- OK
+ERROR:  relation "tt7" does not exist
+ALTER TABLE tt0 OF tt_t0;
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt0 OF tt_t0;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ALTER TABLE tt1 OF tt_t0;
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt1 OF tt_t0;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ALTER TABLE tt2 OF tt_t0;
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt2 OF tt_t0;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ALTER TABLE tt3 OF tt_t0;
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt3 OF tt_t0;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ALTER TABLE tt4 OF tt_t0;
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt4 OF tt_t0;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ALTER TABLE tt5 OF tt_t0;
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt5 OF tt_t0;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ALTER TABLE tt6 OF tt_t0;
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt6 OF tt_t0;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ALTER TABLE tt7 OF tt_t0;
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt7 OF tt_t0;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
+ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
+ERROR:  ALTER TABLE OF not supported yet
+LINE 1: ALTER TABLE tt7 OF tt_t1;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ALTER TABLE tt7 NOT OF;
+ERROR:  ALTER TABLE NOT OF not supported yet
+LINE 1: ALTER TABLE tt7 NOT OF;
+                        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+\d tt7
