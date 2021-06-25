@@ -1,10 +1,15 @@
 # src/test/regress/yb_table_serial_schedule
 #
-####################################################################################################
+################################################################################
 # TABLE Testsuite: All DDL Statments on Tables
 # - CREATE and CREATE AS
 # - ALTER
 # - DROP
-####################################################################################################
+################################################################################
+
+# Upstream postgres ported tests.  Skip yb_pg_create_table since it is already
+# run as a dependency in many other schedules.
+test: yb_pg_alter_table
+
 test: yb_create_table
 test: yb_drop_table
