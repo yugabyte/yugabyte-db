@@ -456,6 +456,11 @@ bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
 }
 
 void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
+  auto* strand = strand_.get();
+  if (strand) {
+    strand->Shutdown();
+  }
+
   preparing_operations_counter_.Shutdown();
 
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
