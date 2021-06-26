@@ -7,47 +7,38 @@
 
   The base path is /docs/static.
 
-  NOTE! If you want to supply highlight options, you have to also
-  supply the language. Revisions to this logic are welcome!
-
   Basic call:
 
-    {{% includeFile "code-samples/include.sql" %}}
+    {{% includeFile file="code-samples/include.sql" %}}
 
-  Specify a language (`sql`):
+  Specify a language (default is "output" otherwise):
 
-    {{% includeFile "code-samples/include.sql" sql %}}
+    {{% includeFile file="code-samples/include.sql" lang="sql" %}}
 
   Specify a language and some highlighting options:
 
-    {{% includeFile "code-samples/include.sql" sql "hl_lines=2 5-7" %}}
+    {{% includeFile file="code-samples/include.sql" lang="sql" hl_options="hl_lines=2 5-7" spaces=4 %}}
 */}}
 
-{{/* Grab language from either the file extension or the second argument */}}
+{{- $includePath := (.Get "file") | printf "static/%s" -}}
+{{- $file := readFile $includePath | chomp -}}
 
-{{- if gt ( len .Params ) 1 -}}
-{{- $.Scratch.Set "format" ( .Get 1 ) -}}
+{{- $language := "output" -}}
+{{- $highlightFormat := "" -}}
+{{- $content := "" -}}
+
+{{- with .Get "lang" -}}
+  {{- $language = . | printf "%s" -}}
 {{- else -}}
-{{- $format := ( .Get 0 ) | path.Ext -}}
-{{- $format := strings.TrimPrefix "." $format -}}
-{{- $.Scratch.Set "format" $format -}}
+  {{- $format := $includePath | path.Ext -}}
+  {{- $language = strings.TrimPrefix "." $format -}}
+  {{- if eq $language "" -}}
+    {{- $language = "output" -}}
+  {{- end -}}
 {{- end -}}
 
-{{/* Grab any highlight options from the third argument */}}
-
-{{- if gt ( len .Params ) 2 -}}
-{{- $.Scratch.Set "highlightFormat" ( .Get 2 ) -}}
-{{- else -}}
-{{- $.Scratch.Set "highlightFormat" "" -}}
+{{- with .Get "hl_options" -}}
+  {{- $highlightFormat = . | printf "%s" -}}
 {{- end -}}
 
-
-{{- $file := ( .Get 0 ) | printf "static/%s" -}}
-{{- $format := ( $.Scratch.Get "format" ) -}}
-{{- $highlightFormat := ( $.Scratch.Get "highlightFormat" ) -}}
-
-{{/*
-{{- ( print "```" $format "\n" ( readFile $file| chomp ) "\n" "```" "\n" ) | safeHTML -}}
-*/}}
-
-{{ highlight ( readFile $file | safeHTML | chomp ) $format $highlightFormat }}
+{{- highlight $file $language $highlightFormat | safeHTML -}}
