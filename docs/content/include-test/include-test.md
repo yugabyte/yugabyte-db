@@ -12,6 +12,8 @@ isTocNested: true
 showAsideToc: true
 ---
 
+**REMOVE THIS PAGE** before merging!
+
 1. Here's what we want:
 
     ```sql {hl_lines=[2,"5-7"]}
@@ -30,13 +32,21 @@ showAsideToc: true
 1. Call `includeCode` within a fenced code block:
 
     ```sql
-    {{% includeCode file="code-samples/include.sql" spaces=4 %}}
+    {{% includeCode file="code-samples/include.sql" spaces=4 hl_options="hl_lines=2 5-7" %}}
     ```
+
+    * Test further nesting...
+
+      ```sql
+      {{% includeCode file="code-samples/include.sql" spaces=6 hl_options="hl_lines=2 5-7" %}}
+      ```
 
 1. The `includeFile` version that infers the code language and does its own code block:
 
+    {{< includeFile file="code-samples/include.sql" hl_options="hl_lines=2 5-7" >}}
+
     * and it's nested more...
 
-        {{< includeFile file="code-samples/include.sql" hl_options="hl_lines=2 5-7" >}}
+      {{< includeFile file="code-samples/include.sql" hl_options="hl_lines=2 5-7" >}}
 
 1. Last item to check on numbering.
