@@ -267,7 +267,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
         Json.newObject()
             .put("universeName", "importUniv")
             .put("masterAddresses", "incorrect_format");
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Could not parse host:port from masterAddresseses: incorrect_format");
     assertAuditEntry(1, customer.uuid);
   }
@@ -280,7 +281,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
             .put("universeName", "importUniv")
             .put("masterAddresses", MASTER_ADDRS)
             .put("currentState", ImportUniverseFormData.State.IMPORTED_TSERVERS.name());
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Valid universe uuid needs to be set.");
     assertAuditEntry(1, customer.uuid);
   }
@@ -292,7 +294,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
     ObjectNode bodyJson =
         Json.newObject().put("universeName", "importUniv").put("masterAddresses", MASTER_ADDRS);
     // Master phase
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertInternalServerError(result, "java.lang.RuntimeException: WaitForServer");
     JsonNode resultJson = Json.parse(contentAsString(result));
     String univUUID = resultJson.get("error").get("universeUUID").asText();
