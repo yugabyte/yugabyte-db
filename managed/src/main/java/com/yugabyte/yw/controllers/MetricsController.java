@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.yugabyte.yw.common.YWServiceException;
+
 import play.mvc.Result;
 import play.mvc.Controller;
 import play.mvc.Results;
@@ -13,8 +15,6 @@ import io.prometheus.client.exporter.common.TextFormat;
 import io.prometheus.client.CollectorRegistry;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStreamWriter;
-
-import com.yugabyte.yw.common.ApiResponse;
 
 public class MetricsController extends Controller {
 
@@ -30,7 +30,7 @@ public class MetricsController extends Controller {
       response.flush();
       response.close();
     } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
     return Results.status(OK, response.toString());
