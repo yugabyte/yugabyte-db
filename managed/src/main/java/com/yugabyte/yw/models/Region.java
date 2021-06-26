@@ -14,7 +14,10 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 import javax.persistence.*;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static io.ebean.Ebean.*;
@@ -72,7 +75,7 @@ public class Region extends Model {
 
   @OneToMany(cascade = CascadeType.ALL)
   @JsonManagedReference("region-zones")
-  public Set<AvailabilityZone> zones;
+  public List<AvailabilityZone> zones;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
   public Boolean active = true;
@@ -233,9 +236,6 @@ public class Region extends Model {
   /**
    * Fetch Regions with the minimum zone count and having a valid yb server image.
    *
-   * @param customerUUID
-   * @param providerUUID
-   * @param minZoneCount
    * @return List of PlacementRegion
    */
   public static List<Region> fetchValidRegions(

@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -35,15 +34,10 @@ public class HAController extends AuthenticatedController {
 
   @Inject private PlatformReplicationManager replicationManager;
 
-  @Inject private FormFactory formFactory;
-
   // TODO: (Daniel) - This could be a task
   public Result createHAConfig() {
     try {
-      Form<HAConfigFormData> formData = formFactory.form(HAConfigFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+      Form<HAConfigFormData> formData = formFactory.getFormDataOrBadRequest(HAConfigFormData.class);
 
       if (HighAvailabilityConfig.get().isPresent()) {
         LOG.error("An HA Config already exists");
@@ -87,10 +81,7 @@ public class HAController extends AuthenticatedController {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
-      Form<HAConfigFormData> formData = formFactory.form(HAConfigFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+      Form<HAConfigFormData> formData = formFactory.getFormDataOrBadRequest(HAConfigFormData.class);
 
       replicationManager.stop();
       HighAvailabilityConfig.update(config.get(), formData.get().cluster_key);

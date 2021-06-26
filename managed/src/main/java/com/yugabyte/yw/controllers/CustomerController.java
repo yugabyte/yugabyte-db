@@ -23,7 +23,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.AlertingFormData;
@@ -50,8 +53,6 @@ import java.util.stream.Collectors;
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject private MetricQueryHelper metricQueryHelper;
 

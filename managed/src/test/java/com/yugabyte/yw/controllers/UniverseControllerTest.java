@@ -18,16 +18,22 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
+import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
+import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.*;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.io.FileUtils;
@@ -107,7 +113,6 @@ public class UniverseControllerTest extends WithApplication {
   protected PlayCacheSessionStore mockSessionStore;
   private AlertConfigurationWriter mockAlertConfigurationWriter;
   private Config mockRuntimeConfig;
-  private RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Override
   protected Application provideApplication() {
@@ -125,13 +130,10 @@ public class UniverseControllerTest extends WithApplication {
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     mockRuntimeConfig = mock(Config.class);
-    mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
     healthChecker = mock(HealthChecker.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
-    when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockRuntimeConfig);
-    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -148,7 +150,9 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
-        .overrides(bind(RuntimeConfigFactory.class).toInstance(mockRuntimeConfigFactory))
+        .overrides(
+            bind(RuntimeConfigFactory.class)
+                .toInstance(new DummyRuntimeConfigFactoryImpl(mockRuntimeConfig)))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .build();
   }
@@ -223,6 +227,7 @@ public class UniverseControllerTest extends WithApplication {
     authToken = user.createAuthToken();
 
     when(mockAppConfig.getString("yb.storage.path")).thenReturn("/tmp");
+    when(mockRuntimeConfig.getString("yb.storage.path")).thenReturn("/tmp");
   }
 
   @After
@@ -887,15 +892,12 @@ public class UniverseControllerTest extends WithApplication {
 
     // Add the cloud info into the universe.
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-            UserIntent userIntent = new UserIntent();
-            userIntent.providerType = CloudType.aws;
-            universeDetails.upsertPrimaryCluster(userIntent, null);
-            universe.setUniverseDetails(universeDetails);
-          }
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+          UserIntent userIntent = new UserIntent();
+          userIntent.providerType = CloudType.aws;
+          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, updater);
@@ -2125,11 +2127,6 @@ public class UniverseControllerTest extends WithApplication {
     userIntentJson.set("deviceInfo", createValidDeviceInfo(CloudType.aws));
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    NodeDetails nodeDetails1 = new NodeDetails();
-    nodeDetails1.nodeName = "testing-1";
-    nodeDetails1.cloudInfo = new CloudSpecificInfo();
-    nodeDetails1.cloudInfo.region = "region-1";
-    JsonNode jsonObject = Json.toJson(nodeDetails1);
 
     ObjectNode cloudInfo = Json.newObject();
     cloudInfo.put("region", "region1");
@@ -2150,8 +2147,6 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
 
-    // Check that the encryption was enabled successfully
-    JsonNode userIntent = json.get("universeDetails").get("clusters").get(0).get("userIntent");
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
 
     ArgumentCaptor<UniverseTaskParams> argCaptor =
@@ -2262,60 +2257,6 @@ public class UniverseControllerTest extends WithApplication {
             "Universe UUID: %s doesn't belong to Customer UUID: %s",
             u.universeUUID, customer.uuid));
     assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testRunInShellWithInvalidUniverse() {
-    Customer c2 = ModelFactory.testCustomer("tc2", "Test Customer 2");
-    Universe u = createUniverse(c2.getCustomerId());
-    ObjectNode bodyJson = Json.newObject();
-    String url =
-        "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/run_in_shell";
-    Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, UniverseController.DEPRECATED);
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testRunInShellWithoutInsecureMode() {
-    Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
-    ObjectNode bodyJson =
-        Json.newObject().put("query", "select * from product limit 1").put("db_name", "demo");
-    String url =
-        "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/run_in_shell";
-    Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, UniverseController.DEPRECATED);
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testRunInShellWithInsecureMode() {
-    Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithYSQLNodes(true));
-
-    ConfigHelper configHelper = new ConfigHelper();
-    configHelper.loadConfigToDB(
-        ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
-
-    String url =
-        "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/run_in_shell";
-    for (RunInShellFormData.ShellType shellType : RunInShellFormData.ShellType.values()) {
-      ObjectNode bodyJson =
-          Json.newObject()
-              .put("db_name", "demo")
-              .put("shell_type", shellType.name())
-              .put("command", "select * from product limit 1");
-      Result result =
-          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-      assertBadRequest(result, UniverseController.DEPRECATED);
-      assertAuditEntry(0, customer.uuid);
-    }
   }
 
   @Test

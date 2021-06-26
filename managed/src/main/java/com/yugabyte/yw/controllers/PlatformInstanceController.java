@@ -12,7 +12,6 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
@@ -36,8 +35,6 @@ public class PlatformInstanceController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceController.class);
 
   @Inject private PlatformReplicationManager replicationManager;
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject CustomerTaskManager taskManager;
 

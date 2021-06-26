@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -43,8 +42,6 @@ import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse
 
 public class TablesController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
-
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject Commissioner commissioner;
 

@@ -5,7 +5,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.YWResults;
@@ -24,8 +23,6 @@ public class ReleaseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseController.class);
 
   @Inject ReleaseManager releaseManager;
-
-  @Inject ValidatingFormFactory formFactory;
 
   public Result create(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

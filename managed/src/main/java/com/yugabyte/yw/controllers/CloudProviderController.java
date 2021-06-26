@@ -10,7 +10,7 @@ import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -30,8 +30,6 @@ import java.util.UUID;
 @Api(value = "Provider", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderController extends AuthenticatedController {
   @Inject private CloudProviderHandler cloudProviderHandler;
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject private AWSInitializer awsInitializer;
 

@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
 import com.yugabyte.yw.forms.YWResults;
@@ -26,10 +26,7 @@ import java.util.UUID;
 @Api
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
-
-  @Inject play.Configuration appConfig;
-
-  @Inject ValidatingFormFactory formFactory;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(value = "upload", response = UUID.class)
   public Result upload(UUID customerUUID) {
@@ -85,7 +82,7 @@ public class CertificateController extends AuthenticatedController {
         CertificateHelper.uploadRootCA(
             label,
             customerUUID,
-            appConfig.getString("yb.storage.path"),
+            runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
             certContent,
             keyContent,
             certStart,
@@ -101,8 +98,8 @@ public class CertificateController extends AuthenticatedController {
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
     Customer.getOrBadRequest(customerUUID);
-    Long certTimeMillis = formData.get().certStart;
-    Long certExpiryMillis = formData.get().certExpiry;
+    long certTimeMillis = formData.get().certStart;
+    long certExpiryMillis = formData.get().certExpiry;
     Date certStart = certTimeMillis != 0L ? new Date(certTimeMillis) : null;
     Date certExpiry = certExpiryMillis != 0L ? new Date(certExpiryMillis) : null;
 

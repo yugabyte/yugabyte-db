@@ -8,13 +8,15 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.controllers;
+package com.yugabyte.yw.controllers.handlers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -25,11 +27,13 @@ import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.queries.QueryHelper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
 import play.libs.Json;
+import play.mvc.Http;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -39,16 +43,15 @@ import java.util.stream.Collectors;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+@Slf4j
 public class UniverseInfoHandler {
-  private static final Logger LOG = LoggerFactory.getLogger(UniverseInfoHandler.class);
   @Inject private MetricQueryHelper metricQueryHelper;
   @Inject private QueryHelper queryHelper;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private YBClientService ybService;
+  @Inject private NodeUniverseManager nodeUniverseManager;
 
-  public UniverseInfoHandler() {}
-
-  UniverseResourceDetails getUniverseResources(UniverseDefinitionTaskParams taskParams) {
+  public UniverseResourceDetails getUniverseResources(UniverseDefinitionTaskParams taskParams) {
     Set<NodeDetails> nodesInCluster;
     if (taskParams
         .getCurrentClusterType()
@@ -71,7 +74,7 @@ public class UniverseInfoHandler {
         nodesInCluster, taskParams, runtimeConfigFactory.globalRuntimeConf());
   }
 
-  List<UniverseResourceDetails> universeListCost(Customer customer) {
+  public List<UniverseResourceDetails> universeListCost(Customer customer) {
     Set<Universe> universeSet;
     try {
       universeSet = customer.getUniverses();
@@ -86,13 +89,13 @@ public class UniverseInfoHandler {
             UniverseResourceDetails.create(
                 universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf()));
       } catch (Exception e) {
-        LOG.error("Could not add cost details for Universe with UUID: " + universe.universeUUID);
+        log.error("Could not add cost details for Universe with UUID: " + universe.universeUUID);
       }
     }
     return response;
   }
 
-  JsonNode status(Universe universe) {
+  public JsonNode status(Universe universe) {
     JsonNode result;
     try {
       result = PlacementInfoUtil.getUniverseAliveStatus(universe, metricQueryHelper);
@@ -104,7 +107,7 @@ public class UniverseInfoHandler {
     return result;
   }
 
-  List<String> healthCheck(UUID universeUUID) {
+  public List<String> healthCheck(UUID universeUUID) {
     List<String> detailsList = new ArrayList<>();
     try {
       List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
@@ -118,60 +121,76 @@ public class UniverseInfoHandler {
     return detailsList;
   }
 
-  HostAndPort getMasterLeaderIP(Universe universe) {
+  public HostAndPort getMasterLeaderIP(Universe universe) {
     final String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     // Get and return Leader IP
-    HostAndPort leaderMasterHostAndPort = null;
     try {
       client = ybService.getClient(hostPorts, certificate);
-      leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
+      return client.getLeaderMasterHostAndPort();
     } catch (RuntimeException e) {
       throw new YWServiceException(BAD_REQUEST, e.getMessage());
     } finally {
       ybService.closeClient(client, hostPorts);
     }
-    return leaderMasterHostAndPort;
   }
 
-  JsonNode getLiveQuery(Universe universe) {
+  public JsonNode getLiveQuery(Universe universe) {
     JsonNode resultNode;
     try {
       resultNode = queryHelper.liveQueries(universe);
     } catch (NullPointerException e) {
-      LOG.error("Universe does not have a private IP or DNS", e);
+      log.error("Universe does not have a private IP or DNS", e);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
     } catch (Throwable t) {
-      LOG.error("Error retrieving queries for universe", t);
+      log.error("Error retrieving queries for universe", t);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
     }
     return resultNode;
   }
 
-  JsonNode getSlowQueries(Universe universe) {
+  public JsonNode getSlowQueries(Universe universe) {
     JsonNode resultNode;
     try {
       resultNode = queryHelper.slowQueries(universe);
     } catch (NullPointerException e) {
-      LOG.error("Universe does not have a private IP or DNS", e);
+      log.error("Universe does not have a private IP or DNS", e);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
     } catch (Throwable t) {
-      LOG.error("Error retrieving queries for universe", t);
+      log.error("Error retrieving queries for universe", t);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
     }
     return resultNode;
   }
 
-  JsonNode resetSlowQueries(Universe universe) {
+  public JsonNode resetSlowQueries(Universe universe) {
     try {
-      JsonNode resultNode = queryHelper.resetQueries(universe);
-      return resultNode;
+      return queryHelper.resetQueries(universe);
     } catch (NullPointerException e) {
+      // TODO: Investigate why catch NPE??
       throw new YWServiceException(INTERNAL_SERVER_ERROR, "Failed reach node, invalid IP or DNS.");
     } catch (Throwable t) {
-      LOG.error("Error resetting slow queries for universe", t);
+      // TODO: Investigate why catch Throwable??
+      log.error("Error resetting slow queries for universe", t);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
     }
+  }
+
+  public Path downloadNodeLogs(UUID customerUUID, UUID universeUUID, String nodeName) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    log.debug("Retrieving logs for " + nodeName);
+    NodeDetails node = universe.getNode(nodeName);
+    String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+    String tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
+    Path targetFile = Paths.get(storagePath + "/" + tarFileName);
+    ShellResponse response =
+        nodeUniverseManager.downloadNodeLogs(node, universe, targetFile.toString());
+
+    if (response.code != 0) {
+      throw new YWServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
+    }
+    return targetFile;
   }
 }

@@ -8,7 +8,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.controllers;
+package com.yugabyte.yw.controllers.handlers;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
@@ -47,7 +47,7 @@ public class UniverseCRUDHandler {
 
   @Inject play.Configuration appConfig;
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   /**
    * Function to Trim keys and values of the passed map.
@@ -56,7 +56,7 @@ public class UniverseCRUDHandler {
    * @return key value pairs with trim keys and values.
    */
   @VisibleForTesting
-  static Map<String, String> trimFlags(Map<String, String> data) {
+  public static Map<String, String> trimFlags(Map<String, String> data) {
     Map<String, String> trimData = new HashMap<>();
     for (Map.Entry<String, String> intent : data.entrySet()) {
       String key = intent.getKey();
@@ -66,7 +66,7 @@ public class UniverseCRUDHandler {
     return trimData;
   }
 
-  void configure(Customer customer, UniverseConfigureTaskParams taskParams) {
+  public void configure(Customer customer, UniverseConfigureTaskParams taskParams) {
     if (taskParams.currentClusterType == null) {
       throw new YWServiceException(BAD_REQUEST, "currentClusterType must be set");
     }
@@ -91,7 +91,7 @@ public class UniverseCRUDHandler {
     }
   }
 
-  UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
+  public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create for {}.", customer.uuid);
     // Get the user submitted form data.
 
@@ -345,7 +345,8 @@ public class UniverseCRUDHandler {
     return UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
   }
 
-  UUID update(Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
+  public UUID update(
+      Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
 
     LOG.info(
         "Update universe {} [ {} ] customer {}.",
@@ -462,7 +463,7 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
-  List<UniverseResp> list(Customer customer) {
+  public List<UniverseResp> list(Customer customer) {
     List<UniverseResp> universes = new ArrayList<>();
     // TODO: Restrict the list api json payload, possibly to only include UUID, Name etc
     for (Universe universe : customer.getUniverses()) {
@@ -473,7 +474,7 @@ public class UniverseCRUDHandler {
     return universes;
   }
 
-  List<UniverseResp> findByName(String name) {
+  public List<UniverseResp> findByName(String name) {
     return Universe.maybeGetUniverseByName(name)
         .map(
             value ->
@@ -482,7 +483,7 @@ public class UniverseCRUDHandler {
         .orElseGet(Collections::emptyList);
   }
 
-  UUID destroy(
+  public UUID destroy(
       Customer customer, Universe universe, boolean isForceDelete, boolean isDeleteBackups) {
     LOG.info(
         "Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
@@ -529,7 +530,7 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
-  UUID createCluster(
+  public UUID createCluster(
       Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create cluster for {} in {}.", customer.uuid, universe.universeUUID);
     // Get the user submitted form data.
@@ -621,7 +622,7 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
-  UUID clusterDelete(
+  public UUID clusterDelete(
       Customer customer, Universe universe, UUID clusterUUID, Boolean isForceDelete) {
     List<UniverseDefinitionTaskParams.Cluster> existingReadOnlyClusters =
         universe.getUniverseDetails().getReadOnlyClusters();
@@ -728,7 +729,7 @@ public class UniverseCRUDHandler {
     }
   }
 
-  UUID upgrade(Customer customer, Universe universe, UpgradeParams taskParams) {
+  public UUID upgrade(Customer customer, Universe universe, UpgradeParams taskParams) {
     if (taskParams.taskType == null) {
       throw new YWServiceException(BAD_REQUEST, "task type is required");
     }
@@ -915,7 +916,8 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
-  UUID updateDiskSize(Customer customer, Universe universe, DiskIncreaseFormData taskParams) {
+  public UUID updateDiskSize(
+      Customer customer, Universe universe, DiskIncreaseFormData taskParams) {
     LOG.info("Disk Size Increase {} for {}.", customer.uuid, universe.universeUUID);
     if (taskParams.size == 0) {
       throw new YWServiceException(BAD_REQUEST, "Size cannot be 0.");

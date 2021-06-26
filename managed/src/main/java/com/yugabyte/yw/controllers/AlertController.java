@@ -18,7 +18,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
@@ -38,8 +37,6 @@ import java.util.UUID;
 
 @Slf4j
 public class AlertController extends AuthenticatedController {
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject private AlertDefinitionService alertDefinitionService;
 

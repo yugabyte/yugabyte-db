@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.YWResults;
@@ -26,8 +25,6 @@ import java.util.UUID;
 
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
-
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject Commissioner commissioner;
 

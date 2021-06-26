@@ -14,7 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -27,8 +27,6 @@ import java.util.UUID;
 
 @Api(value = "Provider1", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderApiController extends AuthenticatedController {
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject private CloudProviderHandler cloudProviderHandler;
 

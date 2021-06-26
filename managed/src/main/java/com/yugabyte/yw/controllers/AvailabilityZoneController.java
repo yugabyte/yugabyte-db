@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.google.inject.Inject;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
 import com.yugabyte.yw.forms.YWResults;
@@ -27,8 +25,6 @@ import java.util.UUID;
 public class AvailabilityZoneController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZoneController.class);
-
-  @Inject ValidatingFormFactory formFactory;
 
   /**
    * GET endpoint for listing availability zones

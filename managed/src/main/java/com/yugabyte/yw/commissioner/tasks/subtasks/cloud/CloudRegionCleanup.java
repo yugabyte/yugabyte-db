@@ -44,7 +44,7 @@ public class CloudRegionCleanup extends CloudTaskBase {
     }
     NetworkManager networkManager = Play.current().injector().instanceOf(NetworkManager.class);
 
-    JsonNode vpcInfo = networkManager.cleanup(region.uuid);
+    JsonNode vpcInfo = networkManager.cleanupOrFail(region.uuid);
     if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
       throw new RuntimeException("Region cleanup failed for: " + regionCode);
     }

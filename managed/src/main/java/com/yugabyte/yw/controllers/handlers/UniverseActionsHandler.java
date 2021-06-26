@@ -8,7 +8,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.controllers;
+package com.yugabyte.yw.controllers.handlers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -38,16 +39,24 @@ import java.util.UUID;
 public class UniverseActionsHandler {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseActionsHandler.class);
 
-  @Inject Commissioner commissioner;
-  @Inject play.Configuration appConfig;
+  private final Commissioner commissioner;
+  private final RuntimeConfigFactory runtimeConfigFactory;
 
-  void setBackupFlag(Universe universe, Boolean value) {
+  @Inject
+  public UniverseActionsHandler(
+      Commissioner commissioner, RuntimeConfigFactory runtimeConfigFactory) {
+    this.commissioner = commissioner;
+    this.runtimeConfigFactory = runtimeConfigFactory;
+  }
+
+  public void setBackupFlag(Universe universe, Boolean value) {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, value.toString());
     universe.updateConfig(config);
   }
 
-  UUID setUniverseKey(Customer customer, Universe universe, EncryptionAtRestKeyParams taskParams) {
+  public UUID setUniverseKey(
+      Customer customer, Universe universe, EncryptionAtRestKeyParams taskParams) {
     try {
       TaskType taskType = TaskType.SetUniverseKey;
       taskParams.expectedUniverseVersion = universe.version;
@@ -101,7 +110,7 @@ public class UniverseActionsHandler {
     }
   }
 
-  UUID toggleTls(Customer customer, Universe universe, ToggleTlsParams requestParams) {
+  public UUID toggleTls(Customer customer, Universe universe, ToggleTlsParams requestParams) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universeDetails.getPrimaryCluster().userIntent;
@@ -179,7 +188,7 @@ public class UniverseActionsHandler {
               : CertificateHelper.createRootCA(
                   universeDetails.nodePrefix,
                   customer.uuid,
-                  appConfig.getString("yb.storage.path"));
+                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
     }
 
     // Create client certificate if not exists
@@ -190,7 +199,7 @@ public class UniverseActionsHandler {
             taskParams.rootCA,
             String.format(
                 CertificateHelper.CERT_PATH,
-                appConfig.getString("yb.storage.path"),
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
                 customer.uuid.toString(),
                 taskParams.rootCA.toString()),
             CertificateHelper.DEFAULT_CLIENT,
@@ -221,7 +230,7 @@ public class UniverseActionsHandler {
     return taskUUID;
   }
 
-  void setHelm3Compatible(Universe universe) {
+  public void setHelm3Compatible(Universe universe) {
     // Check if the provider is k8s and that we haven't already marked this universe
     // as helm compatible.
     Map<String, String> universeConfig = universe.getConfig();
@@ -240,7 +249,7 @@ public class UniverseActionsHandler {
     universe.updateConfig(config);
   }
 
-  void configureAlerts(Universe universe, Form<AlertConfigFormData> formData) {
+  public void configureAlerts(Universe universe, Form<AlertConfigFormData> formData) {
     Map<String, String> config = new HashMap<>();
 
     AlertConfigFormData alertConfig = formData.get();
@@ -265,7 +274,7 @@ public class UniverseActionsHandler {
     universe.updateConfig(config);
   }
 
-  UUID pause(Customer customer, Universe universe) {
+  public UUID pause(Customer customer, Universe universe) {
     LOG.info(
         "Pause universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.uuid,
@@ -297,7 +306,7 @@ public class UniverseActionsHandler {
     return taskUUID;
   }
 
-  UUID resume(Customer customer, Universe universe) {
+  public UUID resume(Customer customer, Universe universe) {
     LOG.info(
         "Resume universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.uuid,

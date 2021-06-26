@@ -5,7 +5,6 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.TemplateManager;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.YWResults;
@@ -30,8 +29,6 @@ import java.util.UUID;
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
 public class AccessKeyController extends AuthenticatedController {
-
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject AccessManager accessManager;
 
