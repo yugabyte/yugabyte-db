@@ -7,7 +7,6 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -30,15 +29,12 @@ public class InstanceTypeController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
   private final Config config;
-  private final ValidatingFormFactory formFactory;
   private final CloudAPI.Factory cloudAPIFactory;
 
   // TODO: Remove this when we have HelperMethod in place to get Config details
   @Inject
-  public InstanceTypeController(
-      Config config, ValidatingFormFactory formFactory, CloudAPI.Factory cloudAPIFactory) {
+  public InstanceTypeController(Config config, CloudAPI.Factory cloudAPIFactory) {
     this.config = config;
-    this.formFactory = formFactory;
     this.cloudAPIFactory = cloudAPIFactory;
   }
 

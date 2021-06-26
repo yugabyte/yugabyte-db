@@ -8,7 +8,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.controllers;
+package com.yugabyte.yw.controllers.handlers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -36,11 +36,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class UniverseYbDbAdminHandler {
   @VisibleForTesting
-  static final String RUN_QUERY_ISNT_ALLOWED = "run_query not supported for this application";
+  public static final String RUN_QUERY_ISNT_ALLOWED =
+      "run_query not supported for this application";
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseYbDbAdminHandler.class);
 
-  @VisibleForTesting static final String LEARN_DOMAIN_NAME = "learn.yugabyte.com";
+  @VisibleForTesting public static final String LEARN_DOMAIN_NAME = "learn.yugabyte.com";
 
   @Inject play.Configuration appConfig;
   @Inject ConfigHelper configHelper;
@@ -63,7 +64,7 @@ public class UniverseYbDbAdminHandler {
     return correctOrigin;
   }
 
-  void setDatabaseCredentials(
+  public void setDatabaseCredentials(
       Customer customer, Universe universe, DatabaseSecurityFormData dbCreds) {
     if (!customer.code.equals("cloud")) {
       throw new YWServiceException(BAD_REQUEST, "Invalid Customer type.");
@@ -80,7 +81,7 @@ public class UniverseYbDbAdminHandler {
     }
   }
 
-  void createUserInDB(Customer customer, Universe universe, DatabaseUserFormData data) {
+  public void createUserInDB(Customer customer, Universe universe, DatabaseUserFormData data) {
     if (!customer.code.equals("cloud")) {
       throw new YWServiceException(BAD_REQUEST, "Invalid Customer type.");
     }
@@ -94,7 +95,8 @@ public class UniverseYbDbAdminHandler {
     }
   }
 
-  JsonNode validateRequestAndExecuteQuery(Universe universe, RunQueryFormData runQueryFormData) {
+  public JsonNode validateRequestAndExecuteQuery(
+      Universe universe, RunQueryFormData runQueryFormData) {
     String mode = appConfig.getString("yb.mode", "PLATFORM");
     if (!mode.equals("OSS")) {
       throw new YWServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
