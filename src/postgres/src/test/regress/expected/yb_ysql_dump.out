@@ -25,7 +25,7 @@ SET default_with_oids = false;
 
 CREATE TABLE public.chat_user (
     "chatID" text NOT NULL,
-    PRIMARY KEY(("chatID") HASH)
+    CONSTRAINT chat_user_pkey PRIMARY KEY(("chatID") HASH)
 );
 
 
@@ -38,7 +38,7 @@ ALTER TABLE public.chat_user OWNER TO yugabyte_test;
 CREATE TABLE public.rls_private (
     k integer NOT NULL,
     v text,
-    PRIMARY KEY((k) HASH)
+    CONSTRAINT rls_private_pkey PRIMARY KEY((k) HASH)
 );
 
 ALTER TABLE ONLY public.rls_private FORCE ROW LEVEL SECURITY;
@@ -53,7 +53,7 @@ ALTER TABLE public.rls_private OWNER TO yugabyte_test;
 CREATE TABLE public.rls_public (
     k integer NOT NULL,
     v text,
-    PRIMARY KEY((k) HASH)
+    CONSTRAINT rls_public_pkey PRIMARY KEY((k) HASH)
 );
 
 
@@ -80,7 +80,7 @@ CREATE TABLE public.tbl10 (
     b integer NOT NULL,
     c integer NOT NULL,
     d integer,
-    PRIMARY KEY((a, c) HASH, b ASC)
+    CONSTRAINT tbl10_pkey PRIMARY KEY((a, c) HASH, b ASC)
 );
 
 
@@ -94,7 +94,7 @@ CREATE TABLE public.tbl11 (
     a integer NOT NULL,
     b integer NOT NULL,
     c integer,
-    PRIMARY KEY(a DESC, b ASC)
+    CONSTRAINT tbl11_pkey PRIMARY KEY(a DESC, b ASC)
 );
 
 
@@ -109,7 +109,7 @@ CREATE TABLE public.tbl12 (
     b integer,
     c integer NOT NULL,
     d integer NOT NULL,
-    PRIMARY KEY(a ASC, d DESC, c DESC)
+    CONSTRAINT tbl12_pkey PRIMARY KEY(a ASC, d DESC, c DESC)
 );
 
 
@@ -124,7 +124,7 @@ CREATE TABLE public.tbl13 (
     b integer NOT NULL,
     c integer NOT NULL,
     d integer,
-    PRIMARY KEY((b, c) HASH)
+    CONSTRAINT tbl13_pkey PRIMARY KEY((b, c) HASH)
 );
 
 
@@ -192,7 +192,7 @@ ALTER SEQUENCE public.tbl2_a_seq OWNED BY public.tbl2.a;
 CREATE TABLE public.tbl3 (
     a integer NOT NULL,
     b integer,
-    PRIMARY KEY(a ASC)
+    CONSTRAINT tbl3_pkey PRIMARY KEY(a ASC)
 );
 
 
@@ -205,7 +205,7 @@ ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
 CREATE TABLE public.tbl4 (
     a integer NOT NULL,
     b integer NOT NULL,
-    PRIMARY KEY((a) HASH, b ASC)
+    CONSTRAINT tbl4_pkey PRIMARY KEY((a) HASH, b ASC)
 );
 
 
@@ -219,7 +219,7 @@ CREATE TABLE public.tbl5 (
     a integer NOT NULL,
     b integer,
     c integer,
-    PRIMARY KEY((a) HASH)
+    CONSTRAINT tbl5_pkey PRIMARY KEY((a) HASH)
 );
 
 
@@ -231,7 +231,7 @@ ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
 
 CREATE TABLE public.tbl6 (
     a integer NOT NULL,
-    PRIMARY KEY((a) HASH)
+    CONSTRAINT tbl6_pkey PRIMARY KEY((a) HASH)
 );
 
 
@@ -246,7 +246,7 @@ CREATE TABLE public.tbl7 (
     b integer NOT NULL,
     c integer NOT NULL,
     d integer,
-    PRIMARY KEY((b) HASH, c ASC)
+    CONSTRAINT tbl7_pkey PRIMARY KEY((b) HASH, c ASC)
 );
 
 
@@ -261,7 +261,7 @@ CREATE TABLE public.tbl8 (
     b integer,
     c integer,
     d integer NOT NULL,
-    PRIMARY KEY((a) HASH, d ASC)
+    CONSTRAINT tbl8_pkey PRIMARY KEY((a) HASH, d ASC)
 );
 
 
@@ -275,7 +275,7 @@ CREATE TABLE public.tbl9 (
     a integer NOT NULL,
     b integer NOT NULL,
     c integer,
-    PRIMARY KEY((a, b) HASH)
+    CONSTRAINT tbl9_pkey PRIMARY KEY((a, b) HASH)
 );
 
 

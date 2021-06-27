@@ -2312,15 +2312,46 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
   }
 }
 
-Status TSTabletManager::UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info) {
-  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
-  ++snapshot_schedules_version_;
-  snapshot_schedule_allowed_history_cutoff_.clear();
-  for (const auto& schedule : info.schedules()) {
-    auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
-    snapshot_schedule_allowed_history_cutoff_.emplace(
-        schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
-    missing_snapshot_schedules_.erase(schedule_id);
+Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info) {
+  bool restorations_updated;
+  tablet::RestorationCompleteTimeMap restoration_complete_time;
+  {
+    std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    ++snapshot_schedules_version_;
+    snapshot_schedule_allowed_history_cutoff_.clear();
+    for (const auto& schedule : info.schedules()) {
+      auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
+      snapshot_schedule_allowed_history_cutoff_.emplace(
+          schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+      missing_snapshot_schedules_.erase(schedule_id);
+    }
+    HybridTime restorations_update_ht(info.last_restorations_update_ht());
+    restorations_updated = restorations_update_ht != last_restorations_update_ht_;
+    if (restorations_updated) {
+      last_restorations_update_ht_ = restorations_update_ht;
+      for (const auto& entry : info.restorations()) {
+        auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(entry.id()));
+        auto complete_time = HybridTime::FromPB(entry.complete_time_ht());
+        restoration_complete_time.emplace(id, complete_time);
+      }
+    }
+  }
+  if (!restorations_updated) {
+    return Status::OK();
+  }
+  std::vector<tablet::TabletPtr> tablets;
+  {
+    SharedLock<RWMutex> shared_lock(mutex_);
+    tablets.reserve(tablet_map_.size());
+    for (const auto& entry : tablet_map_) {
+      auto tablet = entry.second->shared_tablet();
+      if (tablet) {
+        tablets.push_back(tablet);
+      }
+    }
+  }
+  for (const auto& tablet : tablets) {
+    RETURN_NOT_OK(tablet->CheckRestorations(restoration_complete_time));
   }
   return Status::OK();
 }

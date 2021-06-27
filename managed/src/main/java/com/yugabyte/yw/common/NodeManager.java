@@ -370,33 +370,46 @@ public class NodeManager extends DevopsBase {
               throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
             }
 
-            if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
-              subcommand.add("--rootCA_cert");
-              subcommand.add(rootCert.certificate);
-              subcommand.add("--rootCA_key");
-              subcommand.add(rootCert.privateKey);
-            } else {
-              CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
-              subcommand.add("--use_custom_certs");
-              subcommand.add("--root_cert_path");
-              subcommand.add(customCertInfo.rootCertPath);
-              subcommand.add("--node_cert_path");
-              subcommand.add(customCertInfo.nodeCertPath);
-              subcommand.add("--node_key_path");
-              subcommand.add(customCertInfo.nodeKeyPath);
-              if (customCertInfo.clientCertPath != null
-                  && !customCertInfo.clientCertPath.isEmpty()
-                  && customCertInfo.clientKeyPath != null
-                  && !customCertInfo.clientKeyPath.isEmpty()) {
-                // These client certs are used for node to postgres communication
-                // These are seprate from clientRoot certs which are used for server to client comm
-                // These are not required anymore as this is not mandatory now and can be removed
-                // The code is still here to mantain backward compatibility
-                subcommand.add("--client_cert_path");
-                subcommand.add(customCertInfo.clientCertPath);
-                subcommand.add("--client_key_path");
-                subcommand.add(customCertInfo.clientKeyPath);
-              }
+            switch (rootCert.certType) {
+              case SelfSigned:
+                {
+                  subcommand.add("--rootCA_cert");
+                  subcommand.add(rootCert.certificate);
+                  subcommand.add("--rootCA_key");
+                  subcommand.add(rootCert.privateKey);
+                  break;
+                }
+              case CustomCertHostPath:
+                {
+                  CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                  subcommand.add("--use_custom_certs");
+                  subcommand.add("--root_cert_path");
+                  subcommand.add(customCertInfo.rootCertPath);
+                  subcommand.add("--node_cert_path");
+                  subcommand.add(customCertInfo.nodeCertPath);
+                  subcommand.add("--node_key_path");
+                  subcommand.add(customCertInfo.nodeKeyPath);
+                  if (customCertInfo.clientCertPath != null
+                      && !customCertInfo.clientCertPath.isEmpty()
+                      && customCertInfo.clientKeyPath != null
+                      && !customCertInfo.clientKeyPath.isEmpty()) {
+                    // These client certs are used for node to postgres communication
+                    // These are seprate from clientRoot certs which are used for server to client
+                    // comm
+                    // These are not required anymore as this is not mandatory now and can be
+                    // removed
+                    // The code is still here to mantain backward compatibility
+                    subcommand.add("--client_cert_path");
+                    subcommand.add(customCertInfo.clientCertPath);
+                    subcommand.add("--client_key_path");
+                    subcommand.add(customCertInfo.clientKeyPath);
+                  }
+                  break;
+                }
+              case CustomServerCert:
+                {
+                  throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
+                }
             }
           } else {
             if (taskParam.enableNodeToNodeEncrypt) {
@@ -409,20 +422,31 @@ public class NodeManager extends DevopsBase {
                 throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
               }
 
-              if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
-                subcommand.add("--rootCA_cert");
-                subcommand.add(rootCert.certificate);
-                subcommand.add("--rootCA_key");
-                subcommand.add(rootCert.privateKey);
-              } else {
-                CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
-                subcommand.add("--use_custom_certs");
-                subcommand.add("--root_cert_path");
-                subcommand.add(customCertInfo.rootCertPath);
-                subcommand.add("--node_cert_path");
-                subcommand.add(customCertInfo.nodeCertPath);
-                subcommand.add("--node_key_path");
-                subcommand.add(customCertInfo.nodeKeyPath);
+              switch (rootCert.certType) {
+                case SelfSigned:
+                  {
+                    subcommand.add("--rootCA_cert");
+                    subcommand.add(rootCert.certificate);
+                    subcommand.add("--rootCA_key");
+                    subcommand.add(rootCert.privateKey);
+                    break;
+                  }
+                case CustomCertHostPath:
+                  {
+                    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                    subcommand.add("--use_custom_certs");
+                    subcommand.add("--root_cert_path");
+                    subcommand.add(customCertInfo.rootCertPath);
+                    subcommand.add("--node_cert_path");
+                    subcommand.add(customCertInfo.nodeCertPath);
+                    subcommand.add("--node_key_path");
+                    subcommand.add(customCertInfo.nodeKeyPath);
+                    break;
+                  }
+                case CustomServerCert:
+                  {
+                    throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
+                  }
               }
             }
             if (taskParam.enableClientToNodeEncrypt) {
@@ -436,27 +460,41 @@ public class NodeManager extends DevopsBase {
                     "No valid clientRootCA found for " + taskParam.universeUUID);
               }
 
-              if (clientRootCert.certType == CertificateInfo.Type.SelfSigned) {
-                subcommand.add("--clientRootCA_cert");
-                subcommand.add(clientRootCert.certificate);
-                subcommand.add("--clientRootCA_key");
-                subcommand.add(clientRootCert.privateKey);
-              } else {
-                CertificateParams.CustomCertInfo customCertInfo =
-                    clientRootCert.getCustomCertInfo();
-                subcommand.add("--use_custom_client_certs");
-                subcommand.add("--client_root_cert_path");
-                subcommand.add(customCertInfo.rootCertPath);
-                subcommand.add("--client_node_cert_path");
-                subcommand.add(customCertInfo.nodeCertPath);
-                subcommand.add("--client_node_key_path");
-                subcommand.add(customCertInfo.nodeKeyPath);
+              switch (clientRootCert.certType) {
+                case SelfSigned:
+                  {
+                    subcommand.add("--clientRootCA_cert");
+                    subcommand.add(clientRootCert.certificate);
+                    subcommand.add("--clientRootCA_key");
+                    subcommand.add(clientRootCert.privateKey);
+                    break;
+                  }
+                case CustomCertHostPath:
+                  {
+                    CertificateParams.CustomCertInfo customCertInfo =
+                        clientRootCert.getCustomCertInfo();
+                    subcommand.add("--use_custom_client_certs");
+                    subcommand.add("--client_root_cert_path");
+                    subcommand.add(customCertInfo.rootCertPath);
+                    subcommand.add("--client_node_cert_path");
+                    subcommand.add(customCertInfo.nodeCertPath);
+                    subcommand.add("--client_node_key_path");
+                    subcommand.add(customCertInfo.nodeKeyPath);
+                    break;
+                  }
+                case CustomServerCert:
+                  {
+                    CertificateInfo.CustomServerCertInfo customServerCertInfo =
+                        clientRootCert.getCustomServerCertInfo();
+                    subcommand.add("--use_custom_server_certs");
+                    subcommand.add("--server_root_cert");
+                    subcommand.add(clientRootCert.certificate);
+                    subcommand.add("--server_node_cert");
+                    subcommand.add(customServerCertInfo.serverCert);
+                    subcommand.add("--server_node_key");
+                    subcommand.add(customServerCertInfo.serverKey);
+                  }
               }
-
-              subcommand.add("--client_cert");
-              subcommand.add(CertificateHelper.getClientCertFile(taskParam.clientRootCA));
-              subcommand.add("--client_key");
-              subcommand.add(CertificateHelper.getClientKeyFile(taskParam.clientRootCA));
             }
           }
         }

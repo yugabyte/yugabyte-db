@@ -35,21 +35,17 @@ For information on Hasura Cloud, refer to [Getting Started with Hasura Cloud](ht
 
 To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, except that the port should be `5433`.
 
-For a local Mac setup, the configuration should be:
+For a local Mac setup, the configuration should be as follows:
 
 ```sh
 docker run -d -p 8080:8080 \
   -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:@host.docker.internal:5433/yugabyte \
   -e HASURA_GRAPHQL_ENABLE_CONSOLE=true \
-  hasura/graphql-engine:v2.0.0
+  hasura/graphql-engine:v1.3.3
 ```
 
-{{< note title="Note" >}}
-
-- v2.0.0 refers to the version of `hasura/graphql-engine` you are using, you can change it to a different version as per your needs.
-- `@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
-
-{{< /note >}}
+`v1.3.3` refers to the version of `hasura/graphql-engine` you are using; you can change it to a different version as per your needs.
+`@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
 
 ## Create sample tables and relationships
 
