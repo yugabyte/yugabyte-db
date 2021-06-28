@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: wso2
     parent: integrations
-    weight: 571
+    weight: 577
 isTocNested: true
 showAsideToc: true
 ---

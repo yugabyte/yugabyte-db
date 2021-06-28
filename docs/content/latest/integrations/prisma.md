@@ -6,7 +6,7 @@ menu:
   latest:
     identifier: prisma
     parent: integrations
-    weight: 583
+    weight: 579
 isTocNested: true
 showAsideToc: true
 ---

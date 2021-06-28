@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: graphql-hasura
     parent: integrations
-    weight: 575
+    weight: 580
 isTocNested: true
 showAsideToc: true
 ---

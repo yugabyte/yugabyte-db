@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: spring
     parent: integrations
-    weight: 571
+    weight: 578
 isTocNested: true
 showAsideToc: true
 ---
