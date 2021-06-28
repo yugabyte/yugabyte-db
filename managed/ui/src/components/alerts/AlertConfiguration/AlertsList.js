@@ -38,7 +38,10 @@ const header = (onCreateAlert) => (
 );
 
 export const AlertsList = (props) => {
-  const { data, onCreateAlert } = props;
+  const {
+    data: { payload },
+    onCreateAlert
+  } = props;
 
   // This method will handle all the required actions for the particular row.
   const formatConfigActions = (cell, row) => {
@@ -69,7 +72,7 @@ export const AlertsList = (props) => {
       header={header(onCreateAlert)}
       body={
         <>
-          <BootstrapTable className="backup-list-table middle-aligned-table" data={data}>
+          <BootstrapTable className="backup-list-table middle-aligned-table" data={payload}>
             <TableHeaderColumn dataField="configUUID" isKey={true} hidden={true} />
             <TableHeaderColumn
               dataField="configName"

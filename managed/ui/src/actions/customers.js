@@ -4,6 +4,7 @@ import axios from 'axios';
 import { IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO } from '../config';
 import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
+import mockdata from '../components/alerts/AlertConfiguration/MockData.json'
 
 // Get current user(me) from token in localStorage
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
@@ -49,6 +50,8 @@ export const FETCH_CUSTOMER_COUNT = 'FETCH_CUSTOMER_COUNT';
 export const GET_ALERTS = 'GET_ALERTS';
 export const GET_ALERTS_SUCCESS = 'GET_ALERTS_SUCCESS';
 export const GET_ALERTS_FAILURE = 'GET_ALERTS_FAILURE';
+
+export const GET_ALERT_CONFIGS = 'GET_ALERT_CONFIGS';
 
 export const FETCH_YUGAWARE_VERSION = 'FETCH_YUGAWARE_VERSION';
 export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE';
@@ -430,6 +433,13 @@ export function getAlerts() {
     type: GET_ALERTS,
     payload: request
   };
+}
+
+export function alertConfigs() {
+  return {
+    type: GET_ALERT_CONFIGS,
+    payload: mockdata
+  }
 }
 
 export function getAlertsSuccess(response) {

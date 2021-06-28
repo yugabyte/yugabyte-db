@@ -3,16 +3,20 @@
 // Author: Nishant Sharma(nishant.sharma@hashedin.com)
 //
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tab } from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
 import { AlertsList } from './AlertsList';
 import CreateAlert from './CreateAlert';
-import mockData from './MockData.json';
 
 export const AlertConfiguration = (props) => {
+  const [alertList, setAlertList] = useState([]);
+  const [listView, setListView] = useState(false);
   const { activeTab, defaultTab, routePrefix } = props;
-  const [listView, setListView] = useState(false)
+
+  useEffect(() => {
+    setAlertList(props.alertConfigs());
+  }, []);
 
   return (
     <div className="provider-config-container">
@@ -35,7 +39,7 @@ export const AlertConfiguration = (props) => {
           {listView ? (
             <CreateAlert onCreateCancel={setListView} />
           ) : (
-            <AlertsList data={mockData} onCreateAlert={setListView} />
+            <AlertsList data={alertList} onCreateAlert={setListView} />
           )}
         </Tab>
       </YBTabsPanel>

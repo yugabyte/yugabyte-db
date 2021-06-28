@@ -27,8 +27,8 @@ const required = (value) => (value ? undefined : 'This field is required.');
 const CreateAlert = (props) => {
   const { onCreateCancel } = props;
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
-
   const universes = useSelector((state) => {});
+
   /**
    * Constant option for metrics condition
    * TODO: Source and values of actual list may differ.
@@ -41,6 +41,7 @@ const CreateAlert = (props) => {
       {'Memory Utilization'}
     </option>
   ];
+
   /**
    * Constant option for universe list
    * TODO: Get the list of universe from API
@@ -189,12 +190,5 @@ const CreateAlert = (props) => {
 
 export default reduxForm({
   form: 'alertConfigForm',
-  enableReinitialize: true,
-  fields: [
-    'ALERT_CONFIGURATION_NAME',
-    'ALERT_CONFIGURATION_DESCRIPTION',
-    'ALERT_TARGET_TYPE',
-    'ALERT_UNIVERSE_LIST',
-    'ALERT_METRICS_CONDITION'
-  ]
+  enableReinitialize: true
 })(CreateAlert);

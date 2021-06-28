@@ -6,14 +6,20 @@
 // will be finalized and be available.
 
 import { connect } from 'react-redux';
+import { alertConfigs } from '../../../actions/customers';
 import { AlertConfiguration } from './AlertConfiguration';
 
 const mapStateToProps = (state) => {
+  // console.log(state' ******** state');
   return {};
 };
 
 const mapDispatchToProps = (dispatch) => {
-  return {};
+  return {
+    alertConfigs: () => {
+      return dispatch(alertConfigs());
+    }
+  };
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(AlertConfiguration);
