@@ -87,8 +87,6 @@ namespace {
 static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
 static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
 
-static const string kPgSequencesDataNamespaceId = GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
-
 // Columns names and ids.
 static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
 
