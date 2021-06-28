@@ -302,7 +302,7 @@ class PostgresBuilder(YbBuildToolBase):
             for source_path in get_absolute_path_aliases(self.postgres_src_dir)
         ]
 
-        if self.compiler_type == 'gcc':
+        if self.compiler_type.startswith('gcc'):
             additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in ['CFLAGS', 'CXXFLAGS']:
@@ -586,7 +586,7 @@ class PostgresBuilder(YbBuildToolBase):
                     )
                     if make_result.failure():
                         transient_err = False
-                        for line in make_result.get_stderr():
+                        for line in make_result.get_stderr().split('\n'):
                             if any(x in line for x in TRANSIENT_BUILD_ERRORS):
                                 transient_err = True
                                 logging.info(f'Error: {line}')

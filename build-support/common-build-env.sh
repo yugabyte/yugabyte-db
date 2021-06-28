@@ -175,10 +175,19 @@ make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 readonly -a VALID_COMPILER_TYPES=(
   clang
   gcc
+  gcc5
+  gcc6
+  gcc7
   gcc8
   gcc9
+  gcc10
+  gcc11
+  clang7
+  clang8
+  clang9
   clang10
   clang11
+  clang12
   zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
@@ -913,42 +922,29 @@ find_compiler_by_type() {
       cc_executable+=${YB_GCC_SUFFIX:-}
       cxx_executable+=${YB_GCC_SUFFIX:-}
     ;;
-    # TODO mbautin: remove repetition in handling of various versions of GCC.
-    # TODO mbautin: do we actually need separate YB_GCC<n>_PREFIX environment variables?
-    gcc8)
+    gcc*)
+      local gcc_major_version=${YB_COMPILER_TYPE#gcc}
+      if [[ ! $gcc_major_version =~ ^[0-9]+$ ]]; then
+        fatal "Invalid GCC major version: '$gcc_major_version'" \
+              "(from compiler type '$YB_COMPILER_TYPE')."
+      fi
       if is_centos; then
-        cc_executable=/opt/rh/devtoolset-8/root/usr/bin/gcc
-        cxx_executable=/opt/rh/devtoolset-8/root/usr/bin/g++
-      elif [[ -n ${YB_GCC8_PREFIX:-} ]]; then
-        if [[ ! -d $YB_GCC8_PREFIX/bin ]]; then
-          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
+        local gcc_bin_dir
+        if [[ -d /opt/rh/gcc-toolset-$gcc_major_version ]]; then
+          gcc_bin_dir=/opt/rh/gcc-toolset-$gcc_major_version/root/usr/bin
+        else
+          gcc_bin_dir=/opt/rh/devtoolset-$gcc_major_version/root/usr/bin
         fi
-        cc_executable=$YB_GCC8_PREFIX/bin/gcc-8
-        cxx_executable=$YB_GCC8_PREFIX/bin/g++-8
+        cc_executable=$gcc_bin_dir/gcc
+        cxx_executable=$gcc_bin_dir/g++
       else
         # shellcheck disable=SC2230
-        cc_executable=$(which gcc-8)
+        cc_executable=$(which "gcc-$gcc_major_version")
         # shellcheck disable=SC2230
-        cxx_executable=$(which g++-8)
+        cxx_executable=$(which "g++-$gcc_major_version")
       fi
     ;;
-    gcc9)
-      if is_centos; then
-        cc_executable=/opt/rh/devtoolset-9/root/usr/bin/gcc
-        cxx_executable=/opt/rh/devtoolset-9/root/usr/bin/g++
-      elif [[ -n ${YB_GCC9_PREFIX:-} ]]; then
-        if [[ ! -d $YB_GCC9_PREFIX/bin ]]; then
-          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
-        fi
-        cc_executable=$YB_GCC9_PREFIX/bin/gcc-9
-        cxx_executable=$YB_GCC9_PREFIX/bin/g++-9
-      else
-        # shellcheck disable=SC2230
-        cc_executable=$(which gcc-9)
-        # shellcheck disable=SC2230
-        cxx_executable=$(which g++-9)
-      fi
-    ;;
+    # This is the old Linuxbrew-based Clang 7 build type.
     clang)
       if [[ -n ${YB_CLANG_PREFIX:-} ]]; then
         if [[ ! -d $YB_CLANG_PREFIX/bin ]]; then
@@ -984,7 +980,7 @@ find_compiler_by_type() {
       cc_executable+=${YB_CLANG_SUFFIX:-}
       cxx_executable+=${YB_CLANG_SUFFIX:-}
     ;;
-    clang10|clang11)
+    clang*)
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
         cc_executable=$YB_LLVM_TOOLCHAIN_DIR/bin/clang
         cxx_executable=$YB_LLVM_TOOLCHAIN_DIR/bin/clang++

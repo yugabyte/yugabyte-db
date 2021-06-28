@@ -220,7 +220,7 @@ endif()
 if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "${YB_BUILD_TYPE}")
 elseif ("${COMPILER_FAMILY}" STREQUAL "clang")
-  if(NOT APPLE AND
+  if(APPLE OR
      (NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx" OR
       "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0"))
     # This must be a Clang third-party build where we use "uninstrumented" instead of
