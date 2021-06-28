@@ -237,4 +237,36 @@ public class TestAlterTable extends BaseCQLTest {
     assertFalse(row.getColumnDefinitions().contains("v1"));
   }
 
+  @Test
+  public void testTransactionAndTTLAfterAlterTable() throws Exception {
+    LOG.info("Creating table ...");
+    session.execute("CREATE TABLE tbl(id int primary key) WITH transactions={'enabled' : 'true'}");
+
+    LOG.info("Alter table ...");
+    session.execute("ALTER TABLE tbl WITH default_time_to_live=20");
+
+    LOG.info("Start transaction ...");
+    session.execute("BEGIN TRANSACTION" +
+                    "  INSERT INTO tbl(id) VALUES (1);" +
+                    "  INSERT INTO tbl(id) VALUES (2);" +
+                    "END TRANSACTION;");
+
+    assertQuery("select * from tbl", "Row[1]Row[2]");
+    LOG.info("Wait for end of time_to_live ...");
+    Thread.sleep(22 * 1000);
+    assertQuery("select * from tbl", "");
+  }
+
+  @Test
+  public void testInvalidAlterTable() throws Exception {
+    LOG.info("Creating table ...");
+    session.execute("CREATE TABLE tbl(id int primary key) WITH transactions={'enabled' : 'true'}");
+
+    LOG.info("Alter table ...");
+    runInvalidStmt("ALTER TABLE tbl WITH tablets=1",
+                   "Feature Not Supported. Changing the number of tablets is not supported yet");
+
+    runInvalidStmt("ALTER TABLE tbl WITH transactions={'enabled' : 'false'}",
+                   "Invalid SQL Statement. syntax error, unexpected '{'");
+  }
 }

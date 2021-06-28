@@ -247,6 +247,13 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
 
   PTAlterTable *alter_table = sem_context->current_alter_table();
   if (alter_table != nullptr) {
+    // Some table properties are not supported in ALTER TABLE.
+    if (iterator->second == KVProperty::kNumTablets) {
+      return sem_context->Error(this,
+                                "Changing the number of tablets is not supported yet",
+                                ErrorCode::FEATURE_NOT_SUPPORTED);
+    }
+
     RETURN_NOT_OK(alter_table->AppendAlterProperty(sem_context, this));
   }
   return Status::OK();
