@@ -211,6 +211,8 @@ public class MultiTableBackup extends UniverseTaskBase {
         tableBackupParams.transactionalBackup = params().transactionalBackup;
         tableBackupParams.backupType = params().backupType;
         Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+        backup.setTaskUUID(userTaskUUID);
+        LOG.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
         for (BackupTableParams backupParams : backupParamsList) {
           createEncryptedUniverseKeyBackupTask(backupParams)
@@ -223,6 +225,8 @@ public class MultiTableBackup extends UniverseTaskBase {
               || (params().backupType == TableType.YQL_TABLE_TYPE
                   && params().transactionalBackup))) {
         Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+        backup.setTaskUUID(userTaskUUID);
+        LOG.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
         createEncryptedUniverseKeyBackupTask(backup.getBackupInfo())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         createTableBackupTask(tableBackupParams, backup)
@@ -230,6 +234,8 @@ public class MultiTableBackup extends UniverseTaskBase {
       } else {
         for (BackupTableParams tableParams : backupParamsList) {
           Backup backup = Backup.create(params().customerUUID, tableParams);
+          backup.setTaskUUID(userTaskUUID);
+          LOG.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
           createEncryptedUniverseKeyBackupTask(tableParams)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
           createTableBackupTask(tableParams, backup)
