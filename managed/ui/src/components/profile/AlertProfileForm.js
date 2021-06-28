@@ -113,10 +113,9 @@ export default class AlertProfileForm extends Component {
         sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
         reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors,
         reportBackupFailures: customer.data.alertingData && customer.data.alertingData.reportBackupFailures,
-        enableClockSkew: customer.data.alertingData &&
-           (isEmptyObject(customer.data.alertingData.enableClockSkew) || 
-            customer.data.alertingData.enableClockSkew)
-      },
+        enableClockSkew: !customer.data.alertingData ||
+                         isEmptyObject(customer.data.alertingData.enableClockSkew) ||
+                         customer.data.alertingData.enableClockSkew      },
       customSmtp: isNonEmptyObject(_.get(customer, 'data.smtpData', {})),
       smtpData: {
         smtpServer: _.get(customer, 'data.smtpData.smtpServer', ''),
