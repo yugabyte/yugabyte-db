@@ -292,7 +292,7 @@ class PostgresBuilder(YbBuildToolBase):
             for source_path in get_absolute_path_aliases(self.postgres_src_dir)
         ]
 
-        if self.compiler_type == 'gcc':
+        if self.compiler_type.startswith('gcc'):
             additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in ['CFLAGS', 'CXXFLAGS']:

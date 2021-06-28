@@ -213,8 +213,7 @@ if (YB_USE_TSAN)
 elseif (YB_USE_ASAN)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "asan")
 elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before building 3rd party
-  if(NOT APPLE AND
-     NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
+  if(APPLE OR NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
     # This must be a Clang third-party build where we use "uninstrumented" instead of
     # "clang_uninstrumented" because everything is built with Clang.
     set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
