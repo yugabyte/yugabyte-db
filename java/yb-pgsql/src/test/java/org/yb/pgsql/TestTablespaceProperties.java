@@ -71,7 +71,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
           "placement_zone", "zone3"));
   @Override
   public int getTestMethodTimeoutSec() {
-    return getPerfMaxRuntime(1000, 1200, 1500, 1500, 1500);
+    return getPerfMaxRuntime(1500, 1700, 2000, 2000, 2000);
   }
 
   @Override
@@ -109,7 +109,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     try (Statement setupStatement = connection.createStatement()) {
       // Create tables in default and custom tablespaces.
       setupStatement.execute(
-          "CREATE TABLE " +  customTable + "(a int) TABLESPACE testTablespace");
+          "CREATE TABLE " +  customTable + "(a SERIAL) TABLESPACE testTablespace");
 
       setupStatement.execute(
           "CREATE TABLE " + defaultTable + "(a int)");

@@ -302,6 +302,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       // if placement stays missing over period of time.
       YB_LOG_EVERY_N(INFO, 10) << "Skipping load balancing for table " << table.second->name()
                                << " as its placement information is not available yet";
+      master_errors++;
       continue;
     }
     ResetTableStatePtr(table_id, options);
