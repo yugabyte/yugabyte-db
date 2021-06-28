@@ -596,11 +596,15 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_cert')
         self.parser.add_argument('--use_custom_certs', action="store_true")
         self.parser.add_argument('--use_custom_client_certs', action="store_true")
+        self.parser.add_argument('--use_custom_server_certs', action="store_true")
         self.parser.add_argument('--rotating_certs', action="store_true")
         self.parser.add_argument('--adding_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
         self.parser.add_argument('--node_cert_path')
         self.parser.add_argument('--node_key_path')
+        self.parser.add_argument('--server_root_cert')
+        self.parser.add_argument('--server_node_cert')
+        self.parser.add_argument('--server_node_key')
         self.parser.add_argument('--client_root_cert_path')
         self.parser.add_argument('--client_node_cert_path')
         self.parser.add_argument('--client_node_key_path')
@@ -709,6 +713,15 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.node_key_path is not None:
             self.extra_vars["node_key_path"] = args.node_key_path.strip()
 
+        if args.server_root_cert is not None:
+            self.extra_vars["server_root_cert"] = args.server_root_cert.strip()
+
+        if args.server_node_cert is not None:
+            self.extra_vars["server_node_cert"] = args.server_node_cert.strip()
+
+        if args.server_node_key is not None:
+            self.extra_vars["server_node_key"] = args.server_node_key.strip()
+
         if args.client_root_cert_path is not None:
             self.extra_vars["client_root_cert_path"] = args.client_root_cert_path.strip()
 
@@ -782,12 +795,14 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 self.cloud.compare_root_certs(self.extra_vars, ssh_options)
             logging.info("Copying custom certificates to {}.".format(args.search_pattern))
             self.cloud.copy_certs(self.extra_vars, ssh_options)
-        else:
-            if ((args.clientRootCA_cert and args.clientRootCA_cert is not None)
-                    or (args.rootCA_cert and args.rootCA_key is not None)):
-                logging.info("Creating and copying over client TLS certificate to {}".format(
-                    args.search_pattern))
-                self.cloud.generate_client_cert(self.extra_vars, ssh_options)
+        if args.use_custom_server_certs:
+            logging.info("Copying custom certificates to {}.".format(args.search_pattern))
+            self.cloud.copy_server_certs(self.extra_vars, ssh_options)
+        if ((args.clientRootCA_cert and args.clientRootCA_cert is not None)
+                or (args.rootCA_cert and args.rootCA_key is not None)):
+            logging.info("Creating and copying over client TLS certificate to {}".format(
+                args.search_pattern))
+            self.cloud.generate_client_cert(self.extra_vars, ssh_options)
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
             logging.info("Copying over encryption-at-rest certificate from {} to {}".format(

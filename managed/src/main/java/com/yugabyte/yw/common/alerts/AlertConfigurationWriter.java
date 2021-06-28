@@ -124,7 +124,7 @@ public class AlertConfigurationWriter {
   void syncDefinitions() {
     if (running.compareAndSet(false, true)) {
       try {
-        AlertDefinitionFilter filter = new AlertDefinitionFilter().setConfigWritten(false);
+        AlertDefinitionFilter filter = AlertDefinitionFilter.builder().configWritten(false).build();
         alertDefinitionService.process(
             filter,
             definition -> {
@@ -133,7 +133,7 @@ public class AlertConfigurationWriter {
 
         List<UUID> configUuids = swamperHelper.getAlertDefinitionConfigUuids();
         Set<UUID> definitionUuids =
-            new HashSet<>(alertDefinitionService.listIds(new AlertDefinitionFilter()));
+            new HashSet<>(alertDefinitionService.listIds(AlertDefinitionFilter.builder().build()));
 
         configUuids
             .stream()

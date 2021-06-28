@@ -29,7 +29,7 @@ import java.util.UUID;
 
 @Api(value = "Provider", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderController extends AuthenticatedController {
-  @Inject private CloudProviderService cloudProviderService;
+  @Inject private CloudProviderHandler cloudProviderHandler;
 
   @Inject private ValidatingFormFactory formFactory;
 
@@ -49,7 +49,7 @@ public class CloudProviderController extends AuthenticatedController {
     CloudProviderFormData cloudProviderFormData =
         formFactory.getFormDataOrBadRequest(reqBody, CloudProviderFormData.class);
     Provider provider =
-        cloudProviderService.createProvider(
+        cloudProviderHandler.createProvider(
             Customer.getOrBadRequest(customerUUID),
             cloudProviderFormData.code,
             cloudProviderFormData.name,
@@ -66,7 +66,7 @@ public class CloudProviderController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, KubernetesProviderFormData.class);
 
     Provider provider =
-        cloudProviderService.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
+        cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
     auditService().createAuditEntry(ctx(), request(), requestBody);
     return YWResults.withData(provider);
   }
@@ -80,7 +80,7 @@ public class CloudProviderController extends AuthenticatedController {
       response = KubernetesProviderFormData.class)
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(cloudProviderService.suggestedKubernetesConfigs());
+    return YWResults.withData(cloudProviderHandler.suggestedKubernetesConfigs());
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this
@@ -94,7 +94,7 @@ public class CloudProviderController extends AuthenticatedController {
       return YWResults.withData(providerList.get(0));
     }
 
-    Provider newProvider = cloudProviderService.setupNewDockerProvider(customer);
+    Provider newProvider = cloudProviderHandler.setupNewDockerProvider(customer);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.withData(newProvider);
   }
@@ -117,7 +117,7 @@ public class CloudProviderController extends AuthenticatedController {
     JsonNode requestBody = request().body().asJson();
     CloudBootstrap.Params taskParams =
         formFactory.getFormDataOrBadRequest(requestBody, CloudBootstrap.Params.class);
-    UUID taskUUID = cloudProviderService.bootstrap(customer, provider, taskParams);
+    UUID taskUUID = cloudProviderHandler.bootstrap(customer, provider, taskParams);
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
     return new YWResults.YWTask(taskUUID).asResult();
   }
@@ -151,7 +151,7 @@ public class CloudProviderController extends AuthenticatedController {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     EditProviderRequest editProviderReq =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
-    cloudProviderService.editProvider(provider, editProviderReq);
+    cloudProviderHandler.editProvider(provider, editProviderReq);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(editProviderReq));
     return YWResults.withData(provider);
   }

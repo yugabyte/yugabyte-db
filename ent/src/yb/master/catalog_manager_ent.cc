@@ -1441,32 +1441,28 @@ Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData
   return tablet_peer()->tablet()->snapshots().Create(data);
 }
 
-Status CatalogManager::RestoreSysCatalog(SnapshotScheduleRestoration* restoration) {
+Status CatalogManager::RestoreSysCatalog(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
   // Restore master snapshot and load it to RocksDB.
-  auto& tablet = *tablet_peer()->tablet();
-  auto dir = VERIFY_RESULT(tablet.snapshots().RestoreToTemporary(
+  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
       restoration->snapshot_id, restoration->restore_at));
   rocksdb::Options rocksdb_options;
   std::string log_prefix = LogPrefix();
   // Remove ": " to patch suffix.
   log_prefix.erase(log_prefix.size() - 2);
-  tablet.InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
   auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
 
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
   RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadObjects(schema(), doc_db));
-  {
-    SharedLock lock(mutex_);
-    RETURN_NOT_OK(state.PatchVersions(*table_ids_map_));
-  }
-  RETURN_NOT_OK(state.DetermineEntries());
-  {
-    auto existing = VERIFY_RESULT(CollectEntriesForSnapshot(restoration->filter.tables().tables()));
-    RETURN_NOT_OK(state.DetermineObsoleteObjects(existing));
-  }
+  RETURN_NOT_OK(state.LoadRestoringObjects(schema(), doc_db));
+  // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
+  // catalog state.
+  RETURN_NOT_OK(state.LoadExistingObjects(schema(), tablet->doc_db()));
+  RETURN_NOT_OK(state.Process());
 
   // Generate write batch.
   docdb::DocWriteBatch write_batch(doc_db, docdb::InitMarkerBehavior::kOptional);
@@ -1499,7 +1495,7 @@ Status CatalogManager::RestoreSysCatalog(SnapshotScheduleRestoration* restoratio
   set_op_id(restoration->op_id, &frontiers);
   set_hybrid_time(restoration->write_time, &frontiers);
 
-  tablet.WriteToRocksDB(
+  tablet->WriteToRocksDB(
       &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
 
   // TODO(pitr) Handle master leader failover.

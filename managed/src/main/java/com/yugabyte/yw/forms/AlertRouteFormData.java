@@ -2,12 +2,13 @@
 
 package com.yugabyte.yw.forms;
 
+import java.util.List;
 import java.util.UUID;
 
 import play.data.validation.Constraints;
 
 public class AlertRouteFormData {
-  @Constraints.Required() public UUID definitionUUID;
+  @Constraints.Required() public String name;
 
-  @Constraints.Required() public UUID receiverUUID;
+  @Constraints.Required() public List<UUID> receivers;
 }

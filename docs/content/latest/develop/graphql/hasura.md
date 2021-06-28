@@ -27,28 +27,32 @@ PostgreSQL-compatible YSQL API is now available to serve application client requ
 
 To install the Hasura GraphQL engine on an existing PostgreSQL database, follow the steps in the Hasura [Quick start with Docker](https://hasura.io/docs/latest/graphql/core/deployment/deployment-guides/docker.html).
 
+{{< note title="Note" >}}
+You can also connect YugabyteDB to [Hasura Cloud](https://cloud.hasura.io/). The following example assumes a local installation.
+
+For information on Hasura Cloud, refer to [Getting Started with Hasura Cloud](https://hasura.io/docs/latest/graphql/cloud/getting-started/index.html).
+{{< /note >}}
+
 To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, except that the port should be `5433`.
 
-For a local Mac setup, the configuration should be:
+For a local Mac setup, the configuration should be as follows:
 
 ```sh
 docker run -d -p 8080:8080 \
   -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:@host.docker.internal:5433/yugabyte \
   -e HASURA_GRAPHQL_ENABLE_CONSOLE=true \
-  hasura/graphql-engine:v2.0.0
+  hasura/graphql-engine:v1.3.3
 ```
 
-{{< note title="Note" >}}
-- v2.0.0 refers to the version of `hasura/graphql-engine` you are using, you can change it to a different version as per your needs.
-- `@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
-{{< /note >}}
+`v1.3.3` refers to the version of `hasura/graphql-engine` you are using; you can change it to a different version as per your needs.
+`@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
 
 ## Create sample tables and relationships
 
 Follow the steps below to add tables to the `yugabyte` database specified in the configuration above.
 You can use another database, if you want, but make sure to change the database name in the `HASURA_GRAPHQL_DATABASE_URL` setting.
 
-To perform the steps below, open the Hasura UI on http://localhost:8080 and go to the `DATA` tab as shown here.
+To perform the steps below, open the Hasura UI on <http://localhost:8080> and go to the `DATA` tab as shown here.
 
 ![DATA tab in Hasura UI](/images/develop/graphql/hasura/data-tab.png)
 
@@ -78,9 +82,11 @@ After completing the entries, click **Save** for the foreign key constraint, and
 
 1. Go to the article table on the left-side menu, then click the **Relationships** tab.
 
-![relationships form](/images/develop/graphql/hasura/relationships.png)
+    </br></br>
 
-2. Click **Add**, and then click **Save**.
+    ![relationships form](/images/develop/graphql/hasura/relationships.png)
+
+1. Click **Add**, and then click **Save**.
 
 ### 4. Create an array relationship
 
@@ -94,9 +100,9 @@ Click **Add**, and then click **Save**.
 
 1. On the command line, change your directory to the root `yugabyte` directory, and then open `ysqlsh` (the YSQL CLI) to connect to the YugabyteDB cluster:
 
-```sh
-$ ./bin/ysqlsh
-```
+    ```sh
+    $ ./bin/ysqlsh
+    ```
 
 1. Copy the YSQL statements below into the shell and press **Enter**.
 
@@ -168,13 +174,16 @@ Now that you're done with this exploration, you can clean up the pieces for your
     ./bin/yb-ctl stop
     ```
 
-    Note: To completely remove all YugabyteDB data/cluster-state you can instead run:
+    {{< note title="Note" >}}
+To completely remove all YugabyteDB `data/cluster-state` you can instead run:
 
-    ```sh
-    ./bin/yb-ctl destroy
-    ```
+```sh
+./bin/yb-ctl destroy
+```
 
-2. Stop The Hasura container,
+    {{< /note >}}
+
+1. Stop the Hasura container.
 
     ```sh
     docker stop <container-id>

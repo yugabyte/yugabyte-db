@@ -82,13 +82,18 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return result;
   }
 
-  CHECKED_STATUS RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
+  Result<std::string> StartRestoreSnapshotSchedule(
+      const std::string& schedule_id, Timestamp restore_at) {
     auto out = VERIFY_RESULT(CallJsonAdmin(
         "restore_snapshot_schedule", schedule_id, restore_at.ToFormattedString()));
     std::string restoration_id = VERIFY_RESULT(Get(out, "restoration_id")).get().GetString();
     LOG(INFO) << "Restoration id: " << restoration_id;
+    return restoration_id;
+  }
 
-    return WaitRestorationDone(restoration_id, 40s);
+  CHECKED_STATUS RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
+    return WaitRestorationDone(
+        VERIFY_RESULT(StartRestoreSnapshotSchedule(schedule_id, restore_at)), 40s);
   }
 
   CHECKED_STATUS WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
@@ -129,7 +134,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
              "--history_cutoff_propagation_interval_ms=1000" };
   }
 
-  std::vector<std::string> ExtraMasterFlags() {
+  virtual std::vector<std::string> ExtraMasterFlags() {
     // To speed up tests.
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500" };
@@ -209,6 +214,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->bind_to_unique_loopback_addresses = true;
     options->use_same_ts_ports = true;
+    options->num_masters = 3;
   }
 
   std::unique_ptr<CppCassandraDriver> cql_driver_;
@@ -219,6 +225,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
+    opts->num_masters = 3;
   }
 };
 
@@ -585,7 +592,7 @@ TEST_F(YbAdminSnapshotScheduleTest, AlterTable) {
 class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
  public:
   virtual std::vector<std::string> ExtraTSFlags() {
-    return { "--consistent_restore=true", "--TEST_tablet_delay_restore_ms=400" };
+    return { "--consistent_restore=true", "--TEST_tablet_delay_restore_ms=0" };
   }
 };
 
@@ -807,6 +814,45 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotCons
         << "i: " << i << ", key: " << keys[i] << ", batch: "
         << AsString(RangeOfSize<size_t>((i / kBatchSize - 1) * kBatchSize, kBatchSize * 3)[keys]);
   }
+}
+
+class YbAdminSnapshotConsistentRestoreFailoverTest : public YbAdminSnapshotScheduleTest {
+ public:
+  std::vector<std::string> ExtraTSFlags() override {
+    return { "--consistent_restore=true" };
+  }
+
+  std::vector<std::string> ExtraMasterFlags() override {
+    return { "--TEST_skip_sending_restore_finished=true" };
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestoreFailover,
+          YbAdminSnapshotConsistentRestoreFailoverTest) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"));
+  auto expr = "INSERT INTO test_table (k1) VALUES ($0)";
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 1));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 2));
+
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
+
+  for (auto* master : cluster_->master_daemons()) {
+    master->Shutdown();
+    ASSERT_OK(master->Restart());
+  }
+
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 3));
+
+  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
+  ASSERT_EQ(rows, "1;3");
 }
 
 }  // namespace tools

@@ -16,7 +16,7 @@ showAsideToc: true
 A string that's intended to identify a _UTC offset_ is never resolved in _pg_timezone_abbrevs.abbrev_ as the argument of _set timezone_ but is resolved there as the argument of _at time zone_ (and, equivalently, in _timezone()_) and as the argument of _make_timestamptz()_ (and equivalently within a _text_ literal for a _timestamptz_ value).
 {{< /tip >}}
 
-You can discover, with _ad hoc_ queries. that the string _AZOT_ occurs uniquely in _pg_timezone_names.abbrev_. Use the function [_occurrences()_](../helpers/#function-occurrences-string-in-text) to confirm it thus:
+You can discover, with _ad hoc_ queries. that the string _AZOT_ occurs uniquely in _pg_timezone_names.abbrev_. Use the function [_occurrences()_](../helper-functions/#function-occurrences-string-in-text) to confirm it thus:
 
 ```plpgsql
 with c as (select occurrences('AZOT') as r)
@@ -35,7 +35,7 @@ This is the result:
  false       | false         | true
 ```
 
-This means that the string _AZOT_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helpers/#function-legal-scopes-for-syntax-context-string-in-text)_:
+This means that the string _AZOT_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helper-functions/#function-legal-scopes-for-syntax-context-string-in-text)_:
 
 ```plpgsql
 select x from legal_scopes_for_syntax_context('AZOT');

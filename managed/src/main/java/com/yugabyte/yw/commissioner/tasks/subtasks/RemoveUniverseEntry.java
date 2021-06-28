@@ -10,15 +10,19 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import javax.inject.Inject;
 
 public class RemoveUniverseEntry extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(RemoveUniverseEntry.class);
+  @Inject
+  protected RemoveUniverseEntry(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected DestroyUniverse.Params taskParams() {

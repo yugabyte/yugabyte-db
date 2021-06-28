@@ -2,13 +2,6 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
-
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -18,18 +11,19 @@ import com.yugabyte.yw.common.alerts.YWNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
-
-import static org.junit.Assert.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-
-import java.util.Collections;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
 
 import javax.mail.MessagingException;
+import java.util.Collections;
+
+import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertReceiverEmailTest extends FakeDBApplication {
@@ -59,7 +53,7 @@ public class AlertReceiverEmailTest extends FakeDBApplication {
     AlertReceiver receiver = createFilledReceiver();
     AlertReceiverEmailParams params = ((AlertReceiverEmailParams) receiver.getParams());
 
-    Alert alert = Alert.create(defaultCustomer.uuid, "errCode", "", "");
+    Alert alert = ModelFactory.createAlert(defaultCustomer);
     are.sendNotification(defaultCustomer, alert, receiver);
     verify(emailHelper, times(1))
         .sendEmail(
@@ -77,7 +71,7 @@ public class AlertReceiverEmailTest extends FakeDBApplication {
         .when(emailHelper)
         .sendEmail(any(), any(), any(), any(), any());
 
-    Alert alert = Alert.create(defaultCustomer.uuid, "errCode", "", "");
+    Alert alert = ModelFactory.createAlert(defaultCustomer);
     assertThrows(
         YWNotificationException.class,
         () -> {

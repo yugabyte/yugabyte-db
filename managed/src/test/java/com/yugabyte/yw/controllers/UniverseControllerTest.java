@@ -89,7 +89,6 @@ public class UniverseControllerTest extends WithApplication {
 
   @Mock private play.Configuration mockAppConfig;
 
-  private AlertConfigurationWriter alertConfigurationWriter;
   private HealthChecker healthChecker;
   private Customer customer;
   private Users user;
@@ -106,6 +105,7 @@ public class UniverseControllerTest extends WithApplication {
   private ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  private AlertConfigurationWriter mockAlertConfigurationWriter;
   private Config mockRuntimeConfig;
   private RuntimeConfigFactory mockRuntimeConfigFactory;
 
@@ -123,9 +123,9 @@ public class UniverseControllerTest extends WithApplication {
     mockShellProcessHandler = mock(ShellProcessHandler.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     mockRuntimeConfig = mock(Config.class);
     mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
-    alertConfigurationWriter = mock(AlertConfigurationWriter.class);
     healthChecker = mock(HealthChecker.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
@@ -135,6 +135,7 @@ public class UniverseControllerTest extends WithApplication {
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
+        .overrides(bind(YBClientService.class).toInstance(mockService))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
@@ -146,8 +147,8 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(bind(RuntimeConfigFactory.class).toInstance(mockRuntimeConfigFactory))
-        .overrides(bind(AlertConfigurationWriter.class).toInstance(alertConfigurationWriter))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .build();
   }
@@ -322,14 +323,13 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testGetMasterLeaderWithValidParams() {
     Universe universe = createUniverse(customer.getCustomerId());
+    String url =
+        "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/leader";
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
-    UniverseController universeController = new UniverseController(mockService);
-
-    Result result = universeController.getMasterLeaderIP(customer.uuid, universe.universeUUID);
-
+    Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "privateIP", host);
@@ -1345,7 +1345,7 @@ public class UniverseControllerTest extends WithApplication {
     data.put(" Test ", " One ");
     data.put(" Test 2 ", " Two ");
 
-    Map<String, String> result = UniverseController.trimFlags(data);
+    Map<String, String> result = UniverseCRUDHandler.trimFlags(data);
     assertEquals(result.size(), 2);
     assertEquals(result.get("Test"), "One");
     assertEquals(result.get("Test 2"), "Two");
@@ -2254,7 +2254,7 @@ public class UniverseControllerTest extends WithApplication {
         Helpers.fakeRequest("POST", url)
             .header("X-AUTH-TOKEN", authToken)
             .bodyJson(bodyJson)
-            .header("Origin", "https://" + UniverseController.LEARN_DOMAIN_NAME);
+            .header("Origin", "https://" + UniverseYbDbAdminHandler.LEARN_DOMAIN_NAME);
     Result result = routeWithYWErrHandler(request, app);
     assertBadRequest(
         result,
@@ -2658,7 +2658,7 @@ public class UniverseControllerTest extends WithApplication {
       assertEquals("bar", json.get("foo").asText());
       assertAuditEntry(1, customer.uuid);
     } else {
-      assertBadRequest(result, UniverseController.RUN_QUERY_ISNT_ALLOWED);
+      assertBadRequest(result, UniverseYbDbAdminHandler.RUN_QUERY_ISNT_ALLOWED);
       assertAuditEntry(0, customer.uuid);
     }
   }

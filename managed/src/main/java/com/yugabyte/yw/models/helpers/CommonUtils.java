@@ -4,25 +4,34 @@ package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.Iterables;
 import com.yugabyte.yw.common.YWServiceException;
+import io.ebean.ExpressionList;
+import io.ebean.Junction;
+import io.ebean.common.BeanList;
+import io.jsonwebtoken.lang.Collections;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+@Slf4j
 public class CommonUtils {
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
 
   private static final String maskRegex = "(?<!^.?).(?!.?$)";
 
   private static final String MASKED_FIELD_VALUE = "********";
+
+  public static final int DB_MAX_IN_CLAUSE_ITEMS = 1000;
+  public static final int DB_IN_CLAUSE_TO_WARN = 50000;
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
@@ -174,5 +183,109 @@ public class CommonUtils {
       }
     }
     return currentNode;
+  }
+
+  public static <T> ExpressionList<T> appendInClause(
+      ExpressionList<T> query, String field, Collection<?> values) {
+    if (!Collections.isEmpty(values)) {
+      if (values.size() > DB_IN_CLAUSE_TO_WARN) {
+        log.warn(
+            "Querying for {} entries in field {} - may affect performance", values.size(), field);
+      }
+      Junction<T> orExpr = query.or();
+      for (List<?> batch : Iterables.partition(values, CommonUtils.DB_MAX_IN_CLAUSE_ITEMS)) {
+        orExpr.in(field, batch);
+      }
+      query.endOr();
+    }
+    return query;
+  }
+
+  public static <T> ExpressionList<T> appendNotInClause(
+      ExpressionList<T> query, String field, Collection<?> values) {
+    if (!Collections.isEmpty(values)) {
+      for (List<?> batch : Iterables.partition(values, CommonUtils.DB_MAX_IN_CLAUSE_ITEMS)) {
+        query.notIn(field, batch);
+      }
+    }
+    return query;
+  }
+
+  /**
+   * Should be used to set ebean entity list value in case list contains values, which are unique by
+   * key. In this case list is not in fact ordered - it's more like map.
+   *
+   * <p>In case exactly the same value exists in the list - it remains in the list. In case exactly
+   * the same value was removed from the BeanList earlier - it is restored so that it's not inserted
+   * twice. In case value with same key is in the list - it's replaced with the new value. Otherwise
+   * value is just added.
+   *
+   * @param list current list
+   * @param entry entry to add
+   * @param <T> entry type
+   * @return resulting list
+   */
+  public static <T extends UniqueKeyListValue<T>> List<T> setUniqueListValue(
+      List<T> list, T entry) {
+    if (list == null) {
+      list = new ArrayList<>();
+    }
+    T removedValue = getRemovedValue(list, entry, T::valueEquals);
+    if (removedValue != null) {
+      list.add(removedValue);
+      return list;
+    }
+    T currentValue = list.stream().filter(e -> e.keyEquals(entry)).findFirst().orElse(null);
+    if (currentValue != null) {
+      if (currentValue.valueEquals(entry)) {
+        return list;
+      }
+      list.remove(currentValue);
+    }
+
+    list.add(entry);
+    return list;
+  }
+
+  /**
+   * Should be used to set ebean entity list values in case list contains values, which are unique
+   * by key. See setUniqueListValue for more details.
+   *
+   * @param list current list
+   * @param values values to set
+   * @param <T> entry type
+   * @return resulting list
+   */
+  public static <T extends UniqueKeyListValue<T>> List<T> setUniqueListValues(
+      List<T> list, List<T> values) {
+    List<T> result = list != null ? list : values;
+    if (list != null) {
+      // Ebean ORM requires us to update existing loaded field rather than replace it completely.
+      result.clear();
+      values.forEach(value -> setUniqueListValue(result, value));
+    }
+    return result;
+  }
+
+  /*
+   * Ebean ORM does not allow us to remove child object and add back exactly the same new object -
+   * it tries to add it without prior removal. Once you add it back -
+   * it removes it from "removed beans" list and just tries to insert it once again.
+   */
+  private static <T> T getRemovedValue(
+      List<T> list, T entry, BiFunction<T, T, Boolean> equalityCheck) {
+    if (list instanceof BeanList) {
+      BeanList<T> beanList = (BeanList<T>) list;
+      Set<T> removedBeans = beanList.getModifyRemovals();
+      if (CollectionUtils.isEmpty(removedBeans)) {
+        return null;
+      }
+      return removedBeans
+          .stream()
+          .filter(e -> equalityCheck.apply(e, entry))
+          .findFirst()
+          .orElse(null);
+    }
+    return null;
   }
 }
