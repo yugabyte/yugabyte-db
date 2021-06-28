@@ -34,18 +34,17 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    UUID sourceTableUUID = UUID.randomUUID();
-    UUID targetTableUUID = UUID.randomUUID();
+    String sourceTableID = "sourceTableID";
+    String targetTableID = "targetTableID";
 
     AsyncReplicationRelationship relationship =
-        AsyncReplicationRelationship.create(
-            source, sourceTableUUID, target, targetTableUUID, false);
+        AsyncReplicationRelationship.create(source, sourceTableID, target, targetTableID, false);
 
     assertNotNull(relationship.uuid);
     assertEquals(source, relationship.sourceUniverse);
-    assertEquals(sourceTableUUID, relationship.sourceTableUUID);
+    assertEquals(sourceTableID, relationship.sourceTableID);
     assertEquals(target, relationship.targetUniverse);
-    assertEquals(targetTableUUID, relationship.targetTableUUID);
+    assertEquals(targetTableID, relationship.targetTableID);
     assertFalse(relationship.active);
   }
 
@@ -53,7 +52,7 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
   public void testGetByUUID() {
     AsyncReplicationRelationship relationship =
         AsyncReplicationRelationship.create(
-            source, UUID.randomUUID(), target, UUID.randomUUID(), false);
+            source, "sourceTableID", target, "targetTableID", false);
 
     AsyncReplicationRelationship queryResult = AsyncReplicationRelationship.get(relationship.uuid);
     assertEquals(relationship, queryResult);
@@ -63,12 +62,12 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
   public void testGetByProperties() {
     AsyncReplicationRelationship relationship =
         AsyncReplicationRelationship.create(
-            source, UUID.randomUUID(), target, UUID.randomUUID(), false);
+            source, "sourceTableID", target, "targetTableID", false);
 
     AsyncReplicationRelationship queryResult =
         AsyncReplicationRelationship.get(
-            relationship.sourceUniverse.universeUUID, relationship.sourceTableUUID,
-            relationship.targetUniverse.universeUUID, relationship.targetTableUUID);
+            relationship.sourceUniverse.universeUUID, relationship.sourceTableID,
+            relationship.targetUniverse.universeUUID, relationship.targetTableID);
 
     assertEquals(relationship, queryResult);
   }
@@ -77,7 +76,7 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
   public void testDeleteExistingRelationship() {
     AsyncReplicationRelationship relationship =
         AsyncReplicationRelationship.create(
-            source, UUID.randomUUID(), target, UUID.randomUUID(), false);
+            source, "sourceTableID", target, "targetTableID", false);
 
     assertTrue(AsyncReplicationRelationship.delete(relationship.uuid));
     assertNull(AsyncReplicationRelationship.get(relationship.uuid));
@@ -92,7 +91,7 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
   public void testUpdate() {
     AsyncReplicationRelationship relationship =
         AsyncReplicationRelationship.create(
-            source, UUID.randomUUID(), target, UUID.randomUUID(), false);
+            source, "sourceTableID", target, "targetTableID", false);
 
     assertFalse(relationship.active);
     relationship.update(true);
@@ -101,12 +100,11 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
 
   @Test
   public void testToJson() {
-    UUID sourceTableUUID = UUID.randomUUID();
-    UUID targetTableUUID = UUID.randomUUID();
+    String sourceTableID = "sourceTableID";
+    String targetTableID = "targetTableID";
 
     AsyncReplicationRelationship relationship =
-        AsyncReplicationRelationship.create(
-            source, sourceTableUUID, target, targetTableUUID, false);
+        AsyncReplicationRelationship.create(source, sourceTableID, target, targetTableID, false);
 
     JsonNode jsonNode = relationship.toJson();
 
@@ -114,11 +112,11 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
     assertEquals(
         relationship.sourceUniverse.universeUUID.toString(),
         jsonNode.get("sourceUniverseUUID").asText());
-    assertEquals(relationship.sourceTableUUID.toString(), jsonNode.get("sourceTableUUID").asText());
+    assertEquals(relationship.sourceTableID, jsonNode.get("sourceTableID").asText());
     assertEquals(
         relationship.targetUniverse.universeUUID.toString(),
         jsonNode.get("targetUniverseUUID").asText());
-    assertEquals(relationship.targetTableUUID.toString(), jsonNode.get("targetTableUUID").asText());
+    assertEquals(relationship.targetTableID, jsonNode.get("targetTableID").asText());
     assertEquals(relationship.active, jsonNode.get("active").asBoolean());
   }
 }

@@ -81,6 +81,8 @@ public enum TaskType {
 
   StartMasterOnNode("StartMasterOnNode"),
 
+  SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
@@ -194,7 +196,11 @@ public enum TaskType {
 
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
-  UniverseSetTlsParams("subtasks.UniverseSetTlsParams");
+  UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
+
+  AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
+
+  ResetUniverseVersion("subtasks.ResetUniverseVersion");
 
   private String relativeClassPath;
 

@@ -1306,6 +1306,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createAsyncReplicationPlatformSyncTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AsyncReplicationPlatformSync", executor);
+    AsyncReplicationPlatformSync task = createTask(AsyncReplicationPlatformSync.class);
+    task.initialize(taskParams());
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createResetUniverseVersionTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ResetUniverseVersion", executor);
+    ResetUniverseVersion task = createTask(ResetUniverseVersion.class);
+    task.initialize(taskParams());
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public void updateBackupState(boolean state) {
     UniverseUpdater updater =
         new UniverseUpdater() {
