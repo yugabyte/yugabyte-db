@@ -51,6 +51,6 @@ This is the result:
  select '2021-06-07 12:00:00 AZOT'::timestamptz;              > OK
 ```
 
-You can copy-and-paste the offending expression and use it as the argument of a _select_ to see each error occurring "live".
+You can copy-and-paste the offending expression and use it as the argument of a _select_ to see the error occurring "live".
 
-This outcome supports the formulation of the rule that this page addresses.
+**This outcome supports the formulation of the rule that this page addresses.**

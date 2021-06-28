@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) section recommends that you avoid arithmetic that uses _hybrid interval_ semantics—in other words that you perform _interval_ arithmetic using only values that have just one of the fields of the internal _[&#91;mm. dd, ss&#93;](../../../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation tuple non-zero. The section [Defining and using custom domain types to specialize the native interval functionality](../../../../date-time-data-types-semantics/type-interval/custom-interval-domains/) explains a coding practice that supports this recommendation.
+The [moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) section recommends that you avoid arithmetic that uses _hybrid interval_ semantics—in other words that you perform _interval_ arithmetic using only values that have just one of the fields of the internal _[&#91;mm. dd, ss&#93;](../../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation tuple non-zero. The section [Defining and using custom domain types to specialize the native interval functionality](../../../date-time-data-types-semantics/type-interval/custom-interval-domains/) explains a coding practice that supports this recommendation.
 
 Following the recommendation, this demonstration uses only pure days _interval_ values and pure seconds _interval_ values.
 
@@ -22,9 +22,9 @@ The demonstration shows that, in contrast, the outcome of corresponding arithmet
 
 ## The philosophy of the demonstration's design
 
-When you run a query that selects a _timestamptz_ value at the _ysqlsh_ prompt, you'll see a _text_ rendition whose spelling depends on the session's _TimeZone_ setting. This behavior is critical to the data type's usefulness. But it can confound the interpretation of demonstrations that, like the present one, aim to show what happens to actual internally represented _timestamptz_ values under critical operations. You can adopt the practice always to observe results with a current _TimeZone_ setting of _UTC_. But the most robust test of your understanding is always to use a PL/pgSQL encapsulation that uses _assert_ statement(s) to check that the actual outcome of a test agrees with what your mental model predicts. The demonstration that is presented on this page uses the _assert_ approach. Critically, the entire test uses only _timestamptz_ values (and, of course, _interval_ values) to avoid conflating the outcome with the effects of data type conversions.
+When you run a query that selects a _timestamptz_ value at the _ysqlsh_ prompt, you'll see a _text_ rendition whose spelling depends on the session's _TimeZone_ setting. This behavior is critical to the data type's usefulness. But it can confound the interpretation of demonstrations that, like the present one, aim to show what happens to actual internally represented _timestamptz_ values under critical operations. You can adopt the practice always to observe results with a current _TimeZone_ setting of _UTC_. But the most robust test of your understanding is always to use a PL/pgSQL encapsulation that uses _assert_ statement(s) to check that the actual outcome of a test agrees with what your mental model predicts. The demonstration that is presented on this page uses the _assert_ approach. Critically, the entire test uses only _timestamptz_ values (and, of course, _interval_ values) to avoid conflating the outcome with the effects of data type conversions to _text_—supposedly to allow the human to use what is seen to confirm understanding of the rules.
 
-Further, by using a table function encapsulation, it also displays the results—as long as the assertions all hold. It has two display modes:
+Further, by using a table function encapsulation, the demonstration also also displays the results—_as long as the assertions all hold_. It has two display modes:
 
 - Display all the results using _UTC_.
 - Display the results that were computed with a session timezone set to _X_ using that same timezone _X_.
@@ -96,7 +96,7 @@ These values are used, as manifest constants, in the test table function's sourc
 
 ## The demonstration
 
-The demonstration uses the [_interval_arithmetic_results()_](#interval-arithmetic-results) table funtion. Its design is very similar to that of the [_plain_timestamp_to_from_timestamp_tz()_](../timestamptz-plain-timestamp-conversion/#plain-timestamp-to-from-timestamp-tz) table function, presented in the "sensitivity of the conversion between _timestamptz_ and plain _timestamp_ to the _UTC offset_" section.
+The demonstration uses the [_interval_arithmetic_results()_](#interval-arithmetic-results) table function. Its design is very similar to that of the [_plain_timestamp_to_from_timestamp_tz()_](../timestamptz-plain-timestamp-conversion/#plain-timestamp-to-from-timestamp-tz) table function, presented in the _"sensitivity of the conversion between timestamptz and plain timestamp to the UTC offset"_ section.
 
 The _interval_arithmetic_results()_ function depends on some helper functions. First create a trivial wrapper for _to_char()_ to improve the readability of the output without cluttering the code by repeating the verbose format mask.
 
@@ -269,7 +269,7 @@ You can see clearly that the rule for adding the pure seconds _'24 hours'::inter
 
 - If, in the reigning timezone, the addition _does_ cross the "spring forward" moment, then the result is given by adding _less than_ _24_ hours. The delta is equal to the size of the "spring forward" amount.
 
-In other words, when _timestamptz-interval_ arithmetic uses a pure days _interval_ value in a current timezone that causes crossing the Daylight Savings Time transition, the resulting _timestamptz_ value is calculated using _calendar-time-semantics_. The rule to add fewer than _24_ hours aligns exactly with the human experience. If you go to bed at your normal time on the Saturday evening before the "spring forward" moment (in a region whose timezone observes Daylight Savings Time with a one hour "spring forward" amount), and if you get up after your normal number of hours in bed, then the self-adjusting clock on your smart phone will read _one hour later_ than it usually does. In other words, you'll experience a waking day on the Sunday that's _one hour shorter_ than usual—just _twenty-three_ hours.
+In other words, when _timestamptz-interval_ arithmetic uses a pure days _interval_ value in a current timezone that causes crossing the Daylight Savings Time transition, the resulting _timestamptz_ value is calculated using _calendar-time-semantics_. The rule to add less than _24_ hours aligns exactly with the human experience. If you go to bed at your normal time on the Saturday evening before the "spring forward" moment (in a region whose timezone observes Daylight Savings Time with a one hour "spring forward" amount), and if you get up after your normal number of hours in bed, then the self-adjusting clock on your smart phone will read _one hour later_ than it usually does—hence the mnemonic "spring _forward_". In other words, you'll experience a waking day on the Sunday that's _one hour shorter_ than usual—just _twenty-three_ hours.
 
 You might find that the displayed results feel counter-intuitive until you've fully grasped all the central concepts here. But things usually feel satisfyingly natural when you observe the very same results using the timezone that was in force when the _interval_ arithmetic was performed.
 
@@ -320,7 +320,7 @@ This is the new result:
 From this perspective, adding one day takes you to the same wall-clock time on the next day. But watching a stop watch until it reads twenty-four hours, takes you to the next day at a moment where the wall-clock reads _one hour_ (or _thirty minutes_ in one of the unusual timezones) _later_ than when you started the stop watch. 
 
 {{< tip title="Observe what happens at the 'fall back' moments" >}}
-You might like to redefine the _start_moments_ array in the _interval_arithmetic_results()_ function's source code to use the "fall back" moments for each of the timezones. Internet search finds these easily. Doing this will show you that pure days _interval_ arithmetic semantics respects the feeling you get on the Sunday after the transition that you have one hour _more_ than usual of waking time.
+You might like to redefine the _start_moments_ array in the _interval_arithmetic_results()_ function's source code to use the "fall back" moments for each of the timezones. Internet search finds these easily. Doing this will show you that pure days _interval_ arithmetic semantics respects the feeling you get on the Sunday after the transition that you have one hour _more_ than usual of waking time—hence the mnemonic "fall _back_".
 
 The resulting _timestamptz_ values when a pure days _'1 day'::interval_ value is used follow these rules—according, critically, to which timezone is the session's current value:
 
