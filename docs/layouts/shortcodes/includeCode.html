@@ -5,7 +5,9 @@
 
   The base path is /docs/static.
 
-  {{% includeCode file="code-samples/include.sql" spaces="4" %}}
+  {{% includeCode file="code-samples/include.sql" spaces=4 %}}
+
+  Thanks to Ian Maddaus (https://github.com/IanMadd) for the indentation logic.
 */}}
 
 {{- $includePath := (.Get "file") | printf "static/%s" -}}

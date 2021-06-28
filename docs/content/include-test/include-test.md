@@ -5,9 +5,10 @@ linkTitle: include-test
 description: include-test.
 menu:
   latest:
+    name: 99. DELETE ME
     identifier: include-test
-    parent: name-res-rules
-    weight: 99
+    weight: 9999
+type: page
 isTocNested: true
 showAsideToc: true
 ---
@@ -16,7 +17,7 @@ showAsideToc: true
 
 1. Here's what we want:
 
-    ```sql {hl_lines=[2,"5-7"]}
+    ```sql {hl_lines=[1,"7-10"]}
     set timezone = 'Atlantic/Faeroe';
     with v as (
       select 
@@ -31,22 +32,22 @@ showAsideToc: true
 
 1. Call `includeCode` within a fenced code block:
 
-    ```sql
-    {{% includeCode file="code-samples/include.sql" spaces=4 hl_options="hl_lines=2 5-7" %}}
+    ```sql {hl_lines=[1,"7-10"]}
+    {{% includeCode file="code-samples/include.sql" spaces=4 %}}
     ```
 
     * Test further nesting...
 
-      ```sql
-      {{% includeCode file="code-samples/include.sql" spaces=6 hl_options="hl_lines=2 5-7" %}}
+      ```sql {hl_lines=[1,"7-10"]}
+      {{% includeCode file="code-samples/include.sql" spaces=6 %}}
       ```
 
 1. The `includeFile` version that infers the code language and does its own code block:
 
-    {{< includeFile file="code-samples/include.sql" hl_options="hl_lines=2 5-7" >}}
+    {{< includeFile file="code-samples/include.sql" hl_options="hl_lines=1 7-10" >}}
 
     * and it's nested more...
 
-      {{< includeFile file="code-samples/include.sql" hl_options="hl_lines=2 5-7" >}}
+      {{< includeFile file="code-samples/include.sql" hl_options="hl_lines=1 7-10" >}}
 
 1. Last item to check on numbering.
