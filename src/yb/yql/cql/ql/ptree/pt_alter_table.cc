@@ -129,6 +129,9 @@ CHECKED_STATUS PTAlterTable::AppendAlterProperty(SemContext *sem_context, PTTabl
 }
 
 CHECKED_STATUS PTAlterTable::ToTableProperties(TableProperties *table_properties) const {
+  DCHECK_ONLY_NOTNULL(table_.get());
+  // Init by values from the current table properties.
+  *DCHECK_NOTNULL(table_properties) = table_->schema().table_properties();
   for (const auto& table_property : mod_props_) {
       RETURN_NOT_OK(table_property->SetTableProperty(table_properties));
   }
