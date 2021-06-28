@@ -14,12 +14,12 @@ showAsideToc: true
 ---
 
 {{< tip title="Install the user-defined interval utility functions now." >}}
-The code is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../#download).
+The code is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../intro/#download).
 {{< /tip >}}
 
 ## Why does the interval data type exist?
 
-Briefly, and trivially, the _interval_ data type exists because the SQL Standard prescribes it. Of course, it does this for a reason: because the semantics of _interval_ arithmetic is rather special and reflect real-world requirements that arise from the [difference between _clock-time-semantics_ and _calendar-time-semantics](../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time).
+Briefly, and trivially, the _interval_ data type exists because the SQL Standard prescribes it. Of course, it does this for a reason: because the semantics of _interval_ arithmetic is rather special and reflect real-world requirements that arise from the [difference between _clock-time-semantics_ and _calendar-time-semantics_](../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time).
 
 ### The SQL Standard prescribes support for the interval data type
 
@@ -147,7 +147,7 @@ This is the result:
  t0 + '24 hours': 2021-03-14 21:00:00-07
 ```
 
-How can it be that, while _'1 day'_ is equal to _'24 hours'_, _t0 + '1 day'_ is _not_ equal to _t0 + '24 hours'_? The short answer, of course, is that  _'1 day'_ is _not_ equal to _'24 hours'_ when _interval_ equality is defined strictly. The native _interval-interval_ overload of the `=` operator implements only a loose notion of _interval_ equality. You also need a _strict_ _interval_ equality notion. The section [Implement the "strict equals" operator](./interval-arithmetic/interval-interval-equality/#implement-the-strict-equals-interval-interval-operator) shows you how to do this.
+How can it be that, while _'1 day'_ is equal to _'24 hours'_, _t0 + '1 day'_ is _not_ equal to _t0 + '24 hours'_? The short answer, of course, is that  _'1 day'_ is _not_ equal to _'24 hours'_ when _interval_ equality is defined strictly. The native _interval-interval_ overload of the `=` operator implements only a loose notion of _interval_ equality. You also need a _strict_ _interval_ equality notion. The section [The "strict equals" operator](./interval-arithmetic/interval-interval-equality/#the-strict-equals-interval-interval-operator) shows you how to do this.
 
 In the present contrived but crucial example, _t0_ is just before the "spring forward" moment in the _America/Los_Angeles_ timezone. And the loosely, but not strictly, equal durations of _'1 day'_ and _'24 hours'_ are both long enough to take you from _Pacific Standard Time_ to _Pacific Daylight Savings Time_. Bearing in mind the _[&#91;mm, dd, ss&#93;](./interval-representation/)_ internal representation, you can immediately see this:
 
@@ -206,7 +206,7 @@ This is the result:
 
 This outcome, too, does reflect convention. Are you setting up reminders to tell you to water your hardy succulents every month? Here, you simply want a reminder on, say, the 10th of each calendar month. Or are you taking a package tour (starting, say, mid-week)  that is advertised to last thirty days? Here, whether or not 29-February in a leap year occurs during the vacation affects when you get back home.
 
-Everything that explains these differing semantics, and the philosophy of why they should differ, is explained in the section [_Interval_ arithmetic](interval-arithmetic) and its child-sections.
+Everything that explains these differing semantics, and the philosophy of why they should differ, is explained in the section [_Interval_ arithmetic](interval-arithmetic) and its child pages.
 
 ## Organization of the rest of the interval section
 
@@ -219,4 +219,4 @@ The notions that the account of the _interval_ data type explains are interdepen
 - [Defining and using custom domain types to specialize the native _interval_ functionality](custom-interval-domains)
 - [User-defined _interval_ utility functions](interval-utilities)
 
-See the generic section [Setting and getting _date-time_ values](../../misc-date-time-operations/setting-and-getting-date-time-values/) for the account of the ways to construct and to read values for all of the _date-time_ data types.
+See the generic section [Typecasting between date-time values and text values](../../typecasting-between-date-time-and-text/) for the account of the ways to construct and to read values for all of the _date-time_ data types.
