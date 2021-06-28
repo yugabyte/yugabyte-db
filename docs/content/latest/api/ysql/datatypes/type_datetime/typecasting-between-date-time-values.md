@@ -61,7 +61,7 @@ You can see the correctness of these critical facts from the summary table. The 
 The account on this page demonstrates that the decomposition rules for _data_type_x_ to _timestamptz_ and _timestamptz_ to _data_type_x_ hold; it demonstrates the outcomes for the typecasts between plain _timestamp_ values and _timestamptz_ values; and it shows that they are the same as when you use the _at time zone_ operator.
 
 {{< tip title="The semantics for the mutual conversions between 'plain timestamp' and 'timestamptz' is defined elsewhere." >}}
-The outcomes depend mandatorily on specifying the value of the _UTC offset_. There's more than one way to specify this. See the section [Four ways to specify the UTC offset](../timezones/ways-to-spec-offset/). The actual conversion semantics is explained in the section [Sensitivity of the conversion between timestamptz and plain timestamp to the UTC offset](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
+The outcomes depend mandatorily on specifying the value of the _UTC offset_. There's more than one way to specify this. See the section [Four ways to specify the _UTC offset_](../timezones/ways-to-spec-offset/). The actual conversion semantics is explained in the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
 {{< /tip >}}
 
 The outcomes of the typecasts between _date-time_ values and _text_ values, corresponding to all the cells in the bottom row and the right-most column, depend on the current setting of the _DateStyle_ or _IntervalStyle_ session parameters. This is explained in the section [Typecasting between date-time values and text values](../typecasting-between-date-time-and-text/).
@@ -333,7 +333,7 @@ select (
   )::text;
 ```
 
-The result is _true_. See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the UTC offset](..//timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
+The result is _true_. See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](..//timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
 
 #### plain _timestamp_ to _text_
 
@@ -455,7 +455,7 @@ select
 
 The result is _true_.
 
-Notice that the date displayed here, 2-June, is later that the date that defines the _timestamptz_ value. This is the effect that was referred to in the section [_timestamptz_ to _date_](#timestamptz-to-date). See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the UTC offset](..//timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
+Notice that the date displayed here, 2-June, is later that the date that defines the _timestamptz_ value. This is the effect that was referred to in the section [_timestamptz_ to _date_](#timestamptz-to-date). See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](..//timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
 
 #### _timestamptz_ to _text_
 

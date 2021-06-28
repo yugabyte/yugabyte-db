@@ -195,4 +195,4 @@ This is the result:
 
 This last result simply shows that the user-defined `==` operator handles `null` arguments correctly.
 
-The section [The moment-interval overloads of the "+" and "-" operators and the moment-moment overloads of the "-" operator](..//moment-interval-arithmetic//) demonstrates the value of the _interval-interval_ `==` operator.
+The section [The moment-interval overloads of the "+" and "-" operators for _timestamptz_, _timestamp_, and _time_](../moment-interval-overloads-of-plus-and-minus/) demonstrates the value of the _interval-interval_ `==` operator.

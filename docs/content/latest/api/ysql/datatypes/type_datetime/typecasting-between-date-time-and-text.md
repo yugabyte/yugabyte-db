@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section and its peer, [Timezones and UTC offsets](../timezones/), are placed, with respect to the sequential reading order of the overall [Date and time data types](../../type_datetime/) section that the left-hand navigation bar presents, before the main treatment of the [semantics of the _date-time_ data types](../date-time-data-types-semantics/) because the code examples in those subsequent sections rely on typecasting between _date-time_ values and _text_ values and on setting the timezone, either as a session parameter or as part of a _date-time_ expression with the _at time zone_ operator.
+This section and its peer, [Timezones and _UTC offsets_](../timezones/), are placed, with respect to the sequential reading order of the overall _date-time_ time data types section that the [table of contents](../../type_datetime/) presents, before the main treatment of the [semantics of the _date-time_ data types](../date-time-data-types-semantics/) because the code examples in those subsequent sections rely on typecasting between _date-time_ values and _text_ values and on setting the timezone, either as a session parameter or as part of a _date-time_ expression with the _at time zone_ operator.
 
 ## Introduction
 
-Typecasting between _date-time_ values and _text_ values, rather than using explicit built-in functions like _to_char()_, _to_timestamp()_, or _to_date()_ allows the code to be uncluttered and easy to understand. However, as this section shows, the typecast semantics is sensitive to the current settings of the _DateStyle_ and _IntervalStyle_ session parameters.
+Typecasting between _date-time_ values and _text_ values, rather than using explicit built-in functions like _to_char()_, _to_timestamp()_, or _to_date()_ allows the demonstration code to be uncluttered and easy to understand. However, as this section shows, the typecast semantics is sensitive to the current settings of the _DateStyle_ and _IntervalStyle_ session parameters.
 
 {{< note title="'Date-time' functions and operators in the PostgreSQL documentation." >}}
 PostgreSQL, and therefore YSQL, provide many functions and equivalent syntactical constructs that operate on, or produce, _date-time_ values. These will presently be documented in a dedicated section within the main section [Functions and operators](../../../exprs/). Meanwhile, refer to the PostgreSQL documentation sections:
@@ -38,7 +38,7 @@ select
 from a;
 ```
 
-See the Wikipedia article [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601). The [next section](#the-datestyle-session-parameter) explains the significance of the _DateStyle_ session parameter. And the section [Specifying the offset from the UTC Time Standard](../specify-timezone/) explains the significance of the _TimeZone_ session parameter.
+See the Wikipedia article [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601). The [next section](#the-datestyle-session-parameter) explains the significance of the _DateStyle_ session parameter. And the section [Timezones and _UTC offsets_](../timezones/) explains the significance of the _TimeZone_ session parameter.
 
 This is the result:
 
@@ -485,9 +485,9 @@ The results are consistent with the fact that the _IntervalStyle_ setting has no
 {{< tip title="Never rely on typecasting from 'interval' values to 'text' values unless you set 'IntervalStyle' explicitly." >}}
 Yugabyte recommends that application code should convert between _text_ values and _interval_ values using explicit conversion functions.
 
-The _make_interval()_ built-in function creates an _interval_ value using explicitly specified values in the units that you prefer—like _years_, _days_, _hours_, or _weeks_. Yugabyte recommends always using this approach and never using the _::interval_ typecast. This advice rests on ideas developed in the section [Interval arithmetic](../date-time-data-types-semantics/type-interval/interval-arithmetic/). The recommended approach is formalized in the section [Defining and using custom domain types to specialize the native interval functionality](../date-time-data-types-semantics/type-interval/custom-interval-domains/).
+The _make_interval()_ built-in function creates an _interval_ value using explicitly specified values in the units that you prefer—like _years_, _days_, _hours_, or _weeks_. Yugabyte recommends always using this approach and never using the _::interval_ typecast. This advice rests on ideas developed in the section [Interval arithmetic](../date-time-data-types-semantics/type-interval/interval-arithmetic/). The recommended approach is formalized in the section [Defining and using custom domain types to specialize the native _interval_ functionality](../date-time-data-types-semantics/type-interval/custom-interval-domains/).
 
-The _extract_ SQL functionality lets you assign values like the _years_ or _days_ components of an _interval_ value to dedicated destinations. This approach is used in the definition of [function interval_mm_dd_ss (interval) returns interval_mm_dd_ss_t](../date-time-data-types-semantics/type-interval/interval-utilities/#function-interval-mm-dd-ss-interval-returns-interval-mm-dd-ss-t), described in the [User-defined interval utility functions](../date-time-data-types-semantics/type-interval/interval-utilities/) section.
+The _extract_ SQL functionality lets you assign values like the _years_ or _days_ components of an _interval_ value to dedicated destinations. This approach is used in the definition of [function interval_mm_dd_ss (interval) returns interval_mm_dd_ss_t](../date-time-data-types-semantics/type-interval/interval-utilities/#function-interval-mm-dd-ss-interval-returns-interval-mm-dd-ss-t), described in the [User-defined _interval_ utility functions](../date-time-data-types-semantics/type-interval/interval-utilities/) section.
 
 Of course, it's safe to use the typecasting approach in _ad hoc_ tests where you can set _IntervalStyle_ to whatever you want to without worrying that it might affect the behavior of existing application code that doesn't set the parameter explicitly. The same applies to small stand-alone code examples that support documentation.
 

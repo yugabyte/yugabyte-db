@@ -60,7 +60,7 @@ This is the result:
 
 Notice that _Australia/Lord_Howe_ and _Australia/LHI_ change the offset by just thirty minutes for Daylight Savings Time.
 
-The results that the table below presents are based on the view _canonical_no_country_no_dst_ and are are ordered by the _utc_offset_ column and then by the _name_ column. Trivial code adds the Markdown table notation. The view is defined thus:
+The results that the table below presents are based on the view _canonical_no_country_no_dst_ and are ordered by the _utc_offset_ column and then by the _name_ column. Trivial code adds the Markdown table notation. The view is defined thus:
 
 ```plpgsql
 drop view if exists canonical_no_country_no_dst cascade;
@@ -135,6 +135,6 @@ Here is the result:
 | Etc/GMT-13                       |  13:00     |
 | Etc/GMT-14                       |  14:00     |
 
-Notice that these timezones are named in accordance with the POSIX convention. This defines locations to the west of Greenwich UK to have a _positive_ offset. But the value of the offset in _pg_timezone_names_ for such a location is shown as a _negative_ value.
+Notice that these timezones are named in accordance with the [POSIX](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) convention. This defines locations to the west of Greenwich UK to have a _positive_ offset. But the value of the offset in _pg_timezone_names_ for such a location is shown as a _negative_ value.
 
 You must be very careful to type correctly when you type these names. Because, for example, _Etc/GMT-99_ is not found in _pg_timezone_names_, it is interpreted at a POSIX-syntax specification of the offset—in this example _positive_ ninety-nine hours.

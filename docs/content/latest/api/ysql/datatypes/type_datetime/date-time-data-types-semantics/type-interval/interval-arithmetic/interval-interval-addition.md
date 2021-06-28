@@ -118,7 +118,7 @@ This is the result:
  ultimate model result: 8 mons 56 days 39:24:00
 ```
 
-Notice that the "spill-down" is an explicit consequence of the design of the algorithm that transforms an _interval_ specification that uses values for each of _years_, _months_, _days_, _hours_, _minutes_, and _seconds_ to the target _[mm, dd, ss]_ internal representation. (See the function _[interval_mm_dd_ss (interval_parameterization_t) returns interval_mm_dd_ss_t](../interval-representation/internal-representation-model/#function-interval-mm-dd-ss-interval-parameterization-t-returns-interval-mm-dd-ss-t)_.) So it affects the calculation of the values _mm_dd_ss_1_ and _mm_dd_ss_2_. But thereafter, addition or subtraction of the already integral _mm_ and _dd_ fields can only produce integral totals; and so no further "spill-down" can take place. This is why the _"intermediate model mm_dd_ss"_ row and the _"ultimate model mm_dd_ss"_ row in the output are identical.  (Multiplication and division of an _interval_ value by a real number are critically different in this respect.)
+Notice that the "spill-down" is an explicit consequence of the design of the algorithm that transforms an _interval_ specification that uses values for each of _years_, _months_, _days_, _hours_, _minutes_, and _seconds_ to the target _[mm, dd, ss]_ internal representation. (See the function _[interval_mm_dd_ss (interval_parameterization_t) returns interval_mm_dd_ss_t](../../interval-representation/internal-representation-model/#function-interval-mm-dd-ss-interval-parameterization-t-returns-interval-mm-dd-ss-t)_.) So it affects the calculation of the values _mm_dd_ss_1_ and _mm_dd_ss_2_. But thereafter, addition or subtraction of the already integral _mm_ and _dd_ fields can only produce integral totals; and so no further "spill-down" can take place. This is why the _"intermediate model mm_dd_ss"_ row and the _"ultimate model mm_dd_ss"_ row in the output are identical.  (Multiplication and division of an _interval_ value by a real number are critically different in this respect.)
 
 This result shows that a practice that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-interval_ addition or subtraction. The section [Defining and using custom domain types to specialize the native interval functionality](../../custom-interval-domains/) shows how you can guarantee that you avoid this problem.
 
@@ -153,9 +153,7 @@ end;
 $body$;
 ```
 
-Notice the use of the [user-defined "strict equals" operator](../../interval-utilities/#the-user-defined-strict-equals-interval-interval-operator), `==`. It's essential to use this, and not the native `=`, because two _interval_ values that compare as _true_ with the native `=` operator but as _false_ with the strict `==` operator can produce different results when added to a _timestamptz_ value—see the section [The moment-_interval_ overloads of the "+" and "-" operators](../moment-interval-arithmetic/#the-moment-interval-overloads-of-the-and-operators).
-
-Use the procedure thus:
+Notice the use of the [user-defined "strict equals" operator](../../interval-utilities/#the-user-defined-strict-equals-interval-interval-operator), `==`. It's essential to use this, and not the native `=`, because two _interval_ values that compare as _true_ with the native `=` operator but as _false_ with the strict `==` operator can produce different results when added to a _timestamptz_ value—see the section [The moment-_interval_ overloads of the "+" and "-" operators](../moment-interval-overloads-of-plus-and-minus/). Use the _assert_ procedure thus:
 
 ```plpgsql
 call assert_interval_interval_addition_model_ok(

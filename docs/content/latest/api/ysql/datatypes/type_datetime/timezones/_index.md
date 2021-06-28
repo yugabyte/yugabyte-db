@@ -25,7 +25,7 @@ Usually, the spelling of both the single word and the two separate words is case
 The YSQL documentation, in the prose accounts, always spells _"timezone"_ as a single word. And where the SQL syntax allows a choice, it is always spelled as a single word there too.
 {{< /note >}}
 
-It's very likely indeed that anybody who has reason to read the YSQL documentation has large experience of attending, and arranging, meetings where the participants will join remotely from locations spread over the planet. These days, this experience is commonplace, too, for anybody whose network of friends and relatives spans several countries, several states in North America, or the like—and who takes part in virtual social gatherings. Such meetings invariably use an online calendar that allows anyone who consults it to see the dates and times in their own [local time](../conceptual-background/#wall-clock-time-and-local-time).
+It's very likely indeed that anybody who has reason to read the YSQL documentation has large experience of attending, and arranging, meetings where the participants join remotely from locations spread over the planet. These days, this experience is commonplace, too, for anybody whose network of friends and relatives spans several countries, several states in North America, or the like—and who takes part in virtual social gatherings. Such meetings invariably use an online calendar that allows anyone who consults it to see the dates and times in their own [local time](../conceptual-background/#wall-clock-time-and-local-time).
 
 Some of these calendar implementations will use a PostgreSQL or YugabyteDB database. Systems backed by these two databases (or, for that matter, by _any_ SQL database) would doubtless represent events by their starts and ends, using a pair of  [_timestamptz_](../date-time-data-types-semantics/type-timestamp/) values—or, maybe by their start and duration, using a _[timestamptz_, _[interval](../date-time-data-types-semantics/type-interval/)]_ value tuple.
 
@@ -45,6 +45,10 @@ The _extended_timezone_names_ view joins the _tz&nbsp;database_ data to the _pg_
 
 - [The _extended_timezone_names_ view](./extended-timezone-names/)
 
-- [Specifying the offset from the UTC Time Standard](./specify-timezone/)
+- [Scenarios that are sensitive to the _UTC offset_ and possibly, additionally, to the timezone](./timezone-sensitive-operations/)
+
+- [Four ways to specify the _UTC offset_](./ways-to-spec-offset/)
+
+- [Three syntax contexts that use the specification of a _UTC offset_](./syntax-contexts-to-spec-offset/)
 
 - [Recommended practice for specifying the _UTC offset_](./recommendation/)

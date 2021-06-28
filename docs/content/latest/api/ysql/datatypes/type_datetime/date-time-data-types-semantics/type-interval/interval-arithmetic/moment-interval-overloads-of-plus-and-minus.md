@@ -16,7 +16,7 @@ This section presents PL/pgSQL implementations that model the semantics of the _
 
 The code examples that this page shows elaborate on those that are shown on the main parent page [The _interval_ data type and its variants](../../../type-interval/).
 
-If you haven't already done so, then install the code presented in the section [User-defined interval utility functions](../interval-utilities/).
+If you haven't already done so, then install the code presented in the section [User-defined interval utility functions](../../interval-utilities/).
 
 ## Defining three kinds of interval value: pure seconds, pure days, and pure months.
 

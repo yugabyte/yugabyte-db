@@ -131,9 +131,9 @@ end;
 $body$;
 ```
 
-Notice the use of the [user-defined _"strict equals"_ interval-interval `==` operator](../../interval-utilities#the-user-defined-strict-equals-interval-interval-operator). It's essential to use this, and not the native `=`, because two _interval_ values that compare as _true_ with the native `=` operator but as _false_ with the strict `==` operator can produce different results when added to a _timestamptz_ value—see the section [The moment-_interval_ overloads of the "+" and "-" operators.](../moment-interval-arithmetic/#the-moment-interval-overloads-of-the-and-operators).
+Notice the use of the [user-defined _"strict equals"_ interval-interval `==` operator](../../interval-utilities#the-user-defined-strict-equals-interval-interval-operator). It's essential to use this, and not the native `=`, because two _interval_ values that compare as _true_ with the native `=` operator but as _false_ with the strict `==` operator can produce different results when added to a _timestamptz_ value—see the section [The moment-_interval_ overloads of the "+" and "-" operators.](../moment-interval-overloads-of-plus-and-minus/).
 
-Use the procedure thus:
+Use the _assert_ procedure thus:
 
 ```plpgsql
 call assert_interval_multiplication_model_ok('2 months'::interval, 1.2345678);
