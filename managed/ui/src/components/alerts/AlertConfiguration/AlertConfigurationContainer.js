@@ -7,11 +7,16 @@
 
 import { connect } from 'react-redux';
 import { alertConfigs } from '../../../actions/customers';
+import { CustomerProfile } from '../../profile';
 import { AlertConfiguration } from './AlertConfiguration';
 
 const mapStateToProps = (state) => {
-  // console.log(state' ******** state');
-  return {};
+  return {
+    customer: state.customer.currentCustomer,
+    users: state.customer.users.data,
+    apiToken: state.customer.apiToken,
+    customerProfile: state.customer ? state.customer.profile : null
+  };
 };
 
 const mapDispatchToProps = (dispatch) => {
@@ -22,4 +27,4 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-export default connect(mapStateToProps, mapDispatchToProps)(AlertConfiguration);
+export default connect(mapStateToProps, mapDispatchToProps)(AlertConfiguration, CustomerProfile);
