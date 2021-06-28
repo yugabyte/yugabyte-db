@@ -80,20 +80,20 @@
 <td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
 </tr>
 <td  colspan="2"><a href="https://github.com/yugabyte/orm-examples">Sequalize</a></td>
-<td>&nbsp;</td>
-<td > ✅ Done</td>
+<td><a href="https://sequelize.org/v5/">v5 or above</a></td>
+<td> ✅ Done</td>
 <td></td>
 </tr>
-<td  rowspan="4">Python</td>
-<td  colspan="2">Django</td>
-<td>&nbsp;</td>
-<td >Done</td>
-<td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
+<td rowspan="4">Python</td>
+<td colspan="2"><a href="https://github.com/yugabyte/orm-examples/blob/master/python/django/README.md">Django</td>
+<td><a href="https://docs.djangoproject.com/en/2.2/topics/install/">2.2 or above</a></td>
+<td> ✅ Done</td>
+<td></td>
 </tr>
-<td  colspan="2"><a href="https://github.com/yugabyte/orm-examples">SQLAlchemy</a></td>
+<td colspan="2"><a href="https://github.com/yugabyte/orm-examples">SQLAlchemy</a></td>
 <td>&nbsp;</td>
-<td >Beta</td>
-<td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
+<td> ✅ Done</td>
+<td></td>
 </tr>
 <td  colspan="2">peewee&nbsp;</td>
 <td>&nbsp;</td>
@@ -151,7 +151,7 @@
 </tr>
 <td colspan="3"><strong>Application Frameworks</strong></td>
 <td>
-<div>Supported Version</div>
+<div>Recommended Version</div>
 </td>
 <td>
 <div>Status</div>
@@ -182,7 +182,7 @@
 </tr>
 <td colspan="3"><strong>Schema Migration tools</strong></td>
 <td>
-<div>Supported Version</div>
+<div>Recommended Version</div>
 </td>
 <td>
 <div>Status</div>
@@ -208,45 +208,52 @@
 </tr>
 <td colspan="3"><strong>Connectors</strong></td>
 <td>
-<div>Supported Version</div>
+<div>Recommended Version</div>
 </td>
-<td>
-<div">Status</div>
-</td>
-<td>
-<div>Progress</div>
+<td colspan="2">
+<div>Status</div>
 </td>
 </tr>
 <td colspan="3">Kafka</td>
 <td>&nbsp;</td>
-<td>&nbsp;</td>
-<td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
+<td colspan="2"> ✅ Done</a></td>
 </tr>
 <td colspan="3">Spark</td>
 <td>&nbsp;</td>
-<td>&nbsp;</td>
-<td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
+<td colspan="2"> ✅ Done</a></td>
 </tr>
-<td colspan="3"><strong>GUI&nbsp;Clients</strong></td>
+<td colspan="3"><strong>GUI&nbsp;Clients and Tools</strong></td>
 <td>
-<div>Supported Version</div>
+<div>Recommended Version</div>
 </td>
-<td>
+<td colspan="2">
 <div>Status</div>
 </td>
-<td>
-<div>Progress</div>
-</td>
 </tr>
-<td colspan="3">DBeaver</td>
+<td colspan="3"><a href="https://docs.yugabyte.com/latest/tools/dbeaver-ysql/">DBeaver</a></td>
 <td>&nbsp;</td>
-<td>&nbsp;</td>
-<td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
+<td colspan="2"> ✅ Done</a></td>
 </tr>
-<td  colspan="3">TablePlus</td>
+<td colspan="3"><a href="https://docs.yugabyte.com/latest/tools/tableplus/">TablePlus</a></td>
 <td>&nbsp;</td>
+<td colspan="2"> ✅ Done</td>
+</tr>
+                                                                           
+<td colspan="3"><a href="https://docs.yugabyte.com/latest/tools/dbschema/">DBSchema</a></td>
 <td>&nbsp;</td>
-<td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
+<td colspan="2"> ✅ Done</a></td>
+</tr>
+<td colspan="3"><a href="https://docs.yugabyte.com/latest/tools/sql-workbench/">SQL Workbench/J</a></td>
+<td>&nbsp;</td>
+<td colspan="2"> ✅ Done</td>
+</tr>
+<td colspan="3"><a href="https://docs.yugabyte.com/latest/tools/visualstudioworkbench/#install-the-vs-code-extension">Visual Studio Code</a></td>
+<td>&nbsp;</td>
+<td colspan="2"> ✅ Done</td>
+</tr>
+<td colspan="3"><a href="https://docs.yugabyte.com/latest/tools/pgadmin/">pgAdmin</a></td>
+<td>&nbsp;</td>
+<td colspan="2"> ✅ Done</td>
 </tr>
 </tbody>
 </table>
