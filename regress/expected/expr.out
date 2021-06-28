@@ -5210,15 +5210,15 @@ SELECT * FROM cypher('opt_forms', $$MATCH (u)--(v) RETURN u.i, v.i$$) AS (u agty
 SELECT * FROM cypher('opt_forms', $$MATCH (u)-->(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
  u | v 
 ---+---
- 3 | 2
  1 | 2
+ 3 | 2
 (2 rows)
 
 SELECT * FROM cypher('opt_forms', $$MATCH (u)<--(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
  u | v 
 ---+---
- 2 | 3
  2 | 1
+ 2 | 3
 (2 rows)
 
 SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);

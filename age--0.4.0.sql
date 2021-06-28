@@ -1331,7 +1331,8 @@ CREATE OPERATOR = (
   COMMUTATOR = =,
   NEGATOR = <>,
   RESTRICT = eqsel,
-  JOIN = eqjoinsel
+  JOIN = eqjoinsel,
+  HASHES
 );
 
 CREATE FUNCTION ag_catalog.agtype_any_eq(agtype, smallint)
