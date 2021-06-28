@@ -204,7 +204,10 @@ public class MultiTableBackup extends UniverseTaskBase {
         tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
         tableBackupParams.transactionalBackup = params().transactionalBackup;
         tableBackupParams.backupType = params().backupType;
-        tableBackupParams.backup = Backup.create(params().customerUUID, tableBackupParams);
+        Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+        backup.setTaskUUID(userTaskUUID);
+        tableBackupParams.backup = backup;
+        log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
         for (BackupTableParams backupParams : backupParamsList) {
           createEncryptedUniverseKeyBackupTask(backupParams)
@@ -216,14 +219,20 @@ public class MultiTableBackup extends UniverseTaskBase {
           && (params().backupType == TableType.PGSQL_TABLE_TYPE
               || (params().backupType == TableType.YQL_TABLE_TYPE
                   && params().transactionalBackup))) {
-        tableBackupParams.backup = Backup.create(params().customerUUID, tableBackupParams);
+        Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+        backup.setTaskUUID(userTaskUUID);
+        tableBackupParams.backup = backup;
+        log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
         createEncryptedUniverseKeyBackupTask(tableBackupParams.backup.getBackupInfo())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         createTableBackupTask(tableBackupParams)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
       } else {
         for (BackupTableParams tableParams : backupParamsList) {
-          tableParams.backup = Backup.create(params().customerUUID, tableParams);
+          Backup backup = Backup.create(params().customerUUID, tableParams);
+          backup.setTaskUUID(userTaskUUID);
+          tableParams.backup = backup;
+          log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
           createEncryptedUniverseKeyBackupTask(tableParams)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
           createTableBackupTask(tableParams)
