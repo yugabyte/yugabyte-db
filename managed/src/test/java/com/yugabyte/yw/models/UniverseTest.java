@@ -742,11 +742,8 @@ public class UniverseTest extends FakeDBApplication {
 
   private AsyncReplicationRelationship setupAsyncReplicationRelationship(
       Universe source, Universe target) {
-    UUID sourceTableUUID = UUID.randomUUID();
-    UUID targetTableUUID = UUID.randomUUID();
-
     return AsyncReplicationRelationship.create(
-        source, sourceTableUUID, target, targetTableUUID, false);
+        source, "sourceTableID", target, "targetTableID", false);
   }
 
   @Test
@@ -758,7 +755,8 @@ public class UniverseTest extends FakeDBApplication {
     source.refresh();
 
     assertEquals(1, source.sourceAsyncReplicationRelationships.size());
-    assertEquals(relationship, source.sourceAsyncReplicationRelationships.get(0));
+    assertEquals(
+        relationship, source.sourceAsyncReplicationRelationships.stream().findFirst().orElse(null));
 
     assertTrue(source.targetAsyncReplicationRelationships.isEmpty());
   }
@@ -772,7 +770,8 @@ public class UniverseTest extends FakeDBApplication {
     target.refresh();
 
     assertEquals(1, target.targetAsyncReplicationRelationships.size());
-    assertEquals(relationship, target.targetAsyncReplicationRelationships.get(0));
+    assertEquals(
+        relationship, target.targetAsyncReplicationRelationships.stream().findFirst().orElse(null));
 
     assertTrue(target.sourceAsyncReplicationRelationships.isEmpty());
   }
