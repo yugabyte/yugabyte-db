@@ -62,8 +62,7 @@ public class Backup extends Model {
   @DbJson
   private BackupTableParams backupInfo;
 
-  @Column(unique = true)
-  public UUID taskUUID;
+  @Column public UUID taskUUID;
 
   @Column private UUID scheduleUUID;
 
@@ -210,8 +209,8 @@ public class Backup extends Model {
     return find.query().where().idEq(backupUUID).eq("customer_uuid", customerUUID).findOne();
   }
 
-  public static Backup fetchByTaskUUID(UUID taskUUID) {
-    return Backup.find.query().where().eq("task_uuid", taskUUID).findOne();
+  public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
+    return Backup.find.query().where().eq("task_uuid", taskUUID).findList();
   }
 
   public static Map<Customer, List<Backup>> getExpiredBackups() {

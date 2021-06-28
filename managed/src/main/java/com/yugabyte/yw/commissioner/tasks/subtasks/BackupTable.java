@@ -21,6 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 import javax.inject.Inject;
+
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -40,7 +42,12 @@ public class BackupTable extends AbstractTaskBase {
   public void run() {
     Backup backup = taskParams().backup;
     if (backup == null) {
-      backup = Backup.fetchByTaskUUID(userTaskUUID);
+      List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
+      if (backups.size() == 1) {
+        backup = backups.get(0);
+      } else {
+        throw new RuntimeException("Unable to fetch backup info");
+      }
     }
 
     try {
