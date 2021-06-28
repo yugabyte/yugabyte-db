@@ -30,7 +30,7 @@
 <td  rowspan="2">Go</td>
 <td >pgx</td>
 <td >&nbsp;</td>
-<td colspan="3"> ✅ Done</td>
+<td colspan="3"> </td>
 </tr>
 <td><a href="https://docs.yugabyte.com/latest/quick-start/build-apps/go/#ysql">pq </a></td>
 <td><a href="https://docs.yugabyte.com/latest/quick-start/build-apps/go/#ycql">gocql</a></td>
@@ -39,7 +39,7 @@
 <td>C</td>
 <td><a href="https://docs.yugabyte.com/latest/quick-start/build-apps/c/#ysql">libpq</a></td>
 <td>&nbsp;</td>
-<td colspan="3"> ✅ Done</td>
+<td colspan="3"> </td>
 </tr>
 <td>C++</td>
 <td><a href="https://docs.yugabyte.com/latest/quick-start/build-apps/cpp/#ysql">libpqxx</a></td>
@@ -81,8 +81,8 @@
 </tr>
 <td  colspan="2"><a href="https://github.com/yugabyte/orm-examples">Sequalize</a></td>
 <td>&nbsp;</td>
-<td >Done</td>
-<td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
+<td > ✅ Done</td>
+<td></td>
 </tr>
 <td  rowspan="4">Python</td>
 <td  colspan="2">Django</td>
@@ -139,6 +139,12 @@
 <td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
 </tr>
 <td  colspan="2">MyBatis&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
+</tr>
+<td>Elixir</td>
+<td colspan="2">Ecto</td>
 <td>&nbsp;</td>
 <td>&nbsp;</td>
 <td><a href="https://github.com/yugabyte/yugabyte-db/issues/">Track</a></td>
