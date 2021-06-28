@@ -21,7 +21,7 @@ Each of these five sections describes re-useable code that you might find useful
 - [Defining and using custom domain types to specialize the native interval functionality](../date-time-data-types-semantics/type-interval/custom-interval-domains/)
 - [The _extended_timezone_names view_](../timezones/extended-timezone-names/)
 - [Recommended practice for specifying the _UTC offset_](../timezones/recommendation/)
-- [Rules for resolving a string that's intended to identify a UTC offset](../timezones/ways-to-spec-offset/name-res-rules/)
+- [Rules for resolving a string that's intended to identify a _UTC offset_](../timezones/ways-to-spec-offset/name-res-rules/)
 
 Moreover, some of the code examples depend on some of this code. Yugabyte recommends therefore that you download and install the entire kit into the database that you use to support your study of the _date-time_ data types. With this code installed, all the code examples on every page listed in the [Table of contents](../../type_datetime/) will run without error provided only that, in the general case, you run them in the order in which a particular page presents them.
 

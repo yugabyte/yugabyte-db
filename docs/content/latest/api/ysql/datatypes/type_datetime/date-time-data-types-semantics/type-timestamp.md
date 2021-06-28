@@ -13,25 +13,27 @@ showAsideToc: true
 ---
 
 {{< tip title="Understanding this section depends on understanding the 'Timezones' section." >}}
-To understand the _timestamptz_ data type, and converting its values to/from plain _timestamp_ values, you need to understand what the [Timezones and UTC offsets](../../timezones/) section explains.
+To understand the _timestamptz_ data type, and converting its values to/from plain _timestamp_ values, you need to understand what the [Timezones and _UTC offsets_](../../timezones/) section explains.
 {{< /tip >}}
 
 **Note:** Because of their brevity, the aliases _timestamp_ and _timestamptz_ will be preferred in the [Date and time data types](../../../type_datetime/) main section to the respective verbose forms _timestamp without time zone_ and _timestamp with time zone_.
 
-The plain _timestamp_ data type and the _timestamptz_ data type are closely related. But there are critical differences.
+The plain _timestamp_ data type and the _timestamptz_ data type are cousins. But there are critical differences:
 
-- Both a plain _timestamp_ datum and a _timestamptz_ datum have the identical internal representation as the number of seconds from a reference moment (_12:00_ on _1-Jan-1970_). The _extract(epoch from t)_ function, where _t_ is either a plain _timestamp_ value or a _timestamptz_ value, returns this number with microsecond precision. Moreover, the result is independent of the session's current _TimeZone_ setting. (See the [demonstration](#interpretation-and-statement-of-the-rules) below.)
+- Both a plain _timestamp_ datum and a _timestamptz_ datum have the identical internal representation. You can picture it as the real number of seconds (with microsecond precision) from a reference moment (_12:00_ on _1-Jan-1970_). The _extract(epoch from t)_ function, where _t_ is either a plain _timestamp_ value or a _timestamptz_ value, returns this number. Moreover, the result is independent of the session's current _TimeZone_ setting for both of these data types. (See the [demonstration](#interpretation-and-statement-of-the-rules) below.)
 - The difference is in the _metadata_ that describes the datum: each knows which kind it is. And the difference is significant when a datum is recorded or read back.
 
 You need a clear understanding of the differences so that you can make the appropriate choice between these two data types according to the use case.
 
 {{< tip title="You need a very good reason to prefer plain 'timestamp' to 'timestamptz'." >}}
-You should definitely consider _timestamptz_ to be your default choice—and to be able to write down a clear account of your reasoning when you decide that plain _timestamp_ is the better choice in the present application design context.
+You should definitely consider _timestamptz_ to be your default choice for a persistent representation. And you should be able to write down a clear account of your reasoning when you decide that plain _timestamp_ is the better choice in the present application design context.
+
+For example, you might choose plain _timestamp_ to send the representation of a moment of interest to a client (or to receive it back from a client) where the scenario in which the value is used has pre-defined the reigning timezone as a defining property for the ongoing scenario. Here, you'd convert from/to the ultimate _timestamptz_ value to/from plain _timestamp_ at the timezone of interest and then you'd convert this to/from _text_, using the specified representation format, to send to, or receive from, the client.
 {{< /tip >}}
 
 ## The plain timestamp data type
 
-Plain _timestamp_ values represent the date and the time-of-day of some moment in a [local time](../../conceptual-background/#wall-clock-time-and-local-time) regime. There is no timezone-sensitivity, neither when a plain _timestamp_ value is created and nor when it is read. Such a value therefore represents a moment at some unspecified location—just as a clockwork wall-clock that shows the date does. You can picture a _timestamp_ value as the number of microseconds to the present moment from the start of some epoch.
+Plain _timestamp_ values represent the date and the time-of-day of some moment in a [local time](../../conceptual-background/#wall-clock-time-and-local-time) regime. There is no timezone-sensitivity, neither when a plain _timestamp_ value is created, nor when it is read. Such a value therefore represents a moment at some unspecified location—just as a clockwork wall-clock that shows the date does. You can picture a _timestamp_ value as the number of microseconds to the present moment from the start of some epoch.
 
 Because there's no timezone-sensitivity, there's no sensitivity to Daylight Savings regimes either: every day runs from midnight (inclusive) through the next midnight (exclusive). (PostgresSQL, and therefore YSQL, don't support [leap seconds](https://www.timeanddate.com/time/leapseconds.html).) However the same quirk that allows _'24:00:00'_ as a _time_ value allows this as the time-of-day component when you specify a _timestamp_ value. Try this:
 
@@ -76,7 +78,7 @@ Though the representations of an actual plain _timestamp_ value and an actual _t
 
 The _UTC offset_ may be specified implicitly (using the session's current _TimeZone_ setting) or explicitly—either within the text of the _timestamptz_ literal, or using the _at time zone_ operator. Further, the specification of the offset may be explicit, as an _interval_ value, or implicit using the _name_ of a timezone. When a timezone observes Daylight Savings Time, it's name denotes different offsets during the Standard Time period and the Summer Time period.
 
-The rules for this, and examples that show all of the possible ways to assign a _timestamptz_ value, are given in the section [Timezones and UTC offsets](../../timezones/) and its subsections.
+The rules for this, and examples that show all of the possible ways to assign a _timestamptz_ value, are given in the section [Timezones and _UTC offsets_](../../timezones/) and its subsections.
 
 Here is a small illustration:
 
@@ -111,7 +113,7 @@ And this is the result of the second query:
 This outcome needs careful interpretation. It turns out that, using ordinary SQL, there is no _direct_ way to inspect what is actually held by the internal representation as an easily-readable _date-time_ value.
 
 - You can of course, apply the _at time zone 'UTC'_ operator to the value of interest. But this implies understanding what you see in the light of a rule that you must accept. And this section aims to demonstrate that the rule in question is correct, given that you know already what value is internally represented—in other words, you'd be "proving" that you understand correctly by assuming that you have!
-- The better way is to use the _extract(epoch from timestamptz_value)_ function. But even this requires an act of faith: you must be convinced that the result of _extract()_ here is not sensitive to the current _TimeZone_ setting. The [demonstration](#interpretation-and-statement-of-the-rules) shows that you can indeed rely on this.
+- The better way is to use the _extract(epoch from timestamptz_value)_ function. But even this requires an act of faith (or lots of empirical testing): you must be convinced that the result of _extract()_ here is not sensitive to the current _TimeZone_ setting. The [demonstration](#interpretation-and-statement-of-the-rules) shows that you can indeed rely on this.
 
 Usually, you "see" the value represented only indirectly. In the present case—for example as the _::text_ typecast of the value. And the evaluation of this typecast _is_ sensitive to the current _TimeZone_ setting.
 
@@ -119,7 +121,7 @@ You can readily understand that the three values _'2021-02-14 13:30:35+03:00'_, 
 
 > We'll talk next Tuesday at _08:00 my time_ (i.e. _UTC-8_)—in other words _17:00  your time_ (i.e. _UTC+1_).
 
-The meeting partners both have a background knowledge of their timezone. But the important fact for each, for the day of the meeting, is what time to set the reminder on their clock—which setting is done only in terms of the local time of day. 
+The meeting partners both have a background knowledge of their timezone. But the important fact for each, for the day of the meeting, is what time to set the reminder on their clock (which setting is done only in terms of the local time of day): respectively _08:00_ and _17:00_.
 
 Notice that when a timezone respects Daylight Savings Time, this is taken account of just like it is in the example above. Consider this extension of the meeting scenario:
 
@@ -183,7 +185,7 @@ This is Vincent's result:
 
 Because Europe's "spring forward" moment is two weeks after it is in the US, Vincent sees that the second meeting is one hour earlier than the first while the timezone specification is unchanged. If he doesn't know that the US is out of step on Daylight Savings Time, he might think that Rickie has simply done this on a whim. But this hardly matters: he knows when he has to attend each meeting.
 
-Imagine trying to write the logic that brings the correct, and useful, functionality that the code above demonstrates if you used the bare _timestamp_ data type. The code would be voluminous, obscure, and very likely to be buggy. In contrast, the _timestamptz_ data type brought the required functionality with no no application code except to set the timezone specifically for each user.
+Imagine trying to write the logic that brings the correct, and useful, functionality that the code above demonstrates if you used the bare _timestamp_ data type. The code would be voluminous, obscure, and very likely to be buggy. In contrast, the _timestamptz_ data type brought the required functionality with no application code except to set the timezone specifically for each user.
 
 Another way to "see" a _timestamptz_ value is to compare it with what you reason it will be. Try this:
 
@@ -201,11 +203,9 @@ select (
 
 The result is _true_.
 
-See the section [Converting between _timestamp_ and _timestamptz_ values](../../misc-date-time-operations/converting-between-timestamp-and-timestamptz-values/) for more critical information about "absolute" and "local" moments.
-
 ### More Daylight Savings Time examples
 
-The US recognizes Daylight Savings Time. It starts, in 2021, in the 'America/Los_Angeles' zone on 14-Mar at 02:00. Watch what a clock that automatically adjusts according to Daylight Savings Time start/end moments (like on a smartphone) does. It goes from _'01:59:59'_ to _'03:00:00'_. Try this:
+The US recognizes Daylight Savings Time. It starts, in 2021, in the 'America/Los_Angeles' zone, on 14-Mar at 02:00. Watch what a clock that automatically adjusts according to Daylight Savings Time start/end moments (like on a smartphone) does. It goes from _'01:59:59'_ to _'03:00:00'_. Try this:
 
 ```plpgsql
 set timezone = 'America/Los_Angeles';
@@ -223,9 +223,9 @@ This is the result:
  2021-03-14 01:30:00-08 | 2021-03-14 03:30:00-07 | 2021-03-14 03:30:00-07
 ```
 
-<p id="just-after-fall-back">It's weird because <i>'2021-03-14 02:30:00'</i> doesn't exist. The design could have made the attempt to set this cause an error. But it decided to be forgiving.</p>
+<p id="just-after-fall-back">The value in the column with the alias <i>"weird"</i> is weird because <i>'2021-03-14 02:30:00'</i> doesn't exist. The design could have made the attempt to set this cause an error. But it decided to be forgiving.</p>
 
-Daylight Savings Time in the America/Los_Angeles zone ends, in 2021, on 7-Nov at 02:00:00. Watch what a clock that automatically adjusts according to Daylight Savings Time start/end does now. It goes from _'01:59:59'_ back to _'01:00:00'_. This means that, for example, _'01:30:00'_ on 7-Nov is ambiguous. If you ring your room-mate latish on Saturday evening 6-Nov to say that you'll won't be back home until the small hours, probably about one-thirty, they won't know what you mean because the clock will read this time _twice_. It's easiest to see this in reverse. Try this:
+Daylight Savings Time in the America/Los_Angeles timezone ends, in 2021, on 7-Nov at 02:00:00. Watch what a clock that automatically adjusts according to Daylight Savings Time start/end does now. It falls back from _'01:59:59'_ to _'01:00:00'_. This means that, for example, _'01:30:00'_ on 7-Nov is ambiguous. If you ring your room-mate latish on Saturday evening 6-Nov to say that you'll won't be back home until the small hours, probably about one-thirty, they won't know what you mean because the clock will read this time _twice_. It's easiest to see this in reverse. Try this:
 
 ```plpgsql
 set timezone = 'America/Los_Angeles';
@@ -245,13 +245,13 @@ This is the result:
 So you have to tell them that you'll be back in an elaborate way:
 
 - _either_ at about one-thirty _PDT_ (or about one-thirty _PST_)
-- _or equivalently_ at about one-thirty _before_ the fall back moment (or one- thirty _after_ the fall back moment)
+- _or equivalently_ at about one-thirty _before_ the fall back moment (or one-thirty _after_ the fall back moment)
 - _or_ at about one-thirty _UTC-7_ (or about one-thirty _UTC-8_)
 - _or even_ at about eight-thirty _UTC_ (or nine-thirty _UTC_).
 
 Confused? Your room-mate soon will be!
 
-This strange (but logically unavoidable) consequence of observing Daylight Savings Time means that you have to be careful in the other direction. Try this:
+This strange (but logically unavoidable) consequence of observing Daylight Savings Time means that you have to be careful in the other direction too. Try this:
 
 ```plpgsql
 select
@@ -271,8 +271,8 @@ PostgreSQL (and therefore YSQL) resolve the ambiguity by convention: the later m
 ```plpgsql
 set timezone = 'UTC';
 select
-  to_char('2021-11-07 01:30:00 PDT'::timestamptz, 'hh24:mi:ss') as "Before fallback",
-  to_char('2021-11-07 01:30:00 PST'::timestamptz, 'hh24:mi:ss') as "After fallback";
+  to_char('2021-11-07 01:30:00 -07:00'::timestamptz, 'hh24:mi:ss TZ') as "Before fallback",
+  to_char('2021-11-07 01:30:00 -08:00'::timestamptz, 'hh24:mi:ss TZ') as "After fallback";
 ```
 
 This is the result:
@@ -280,7 +280,24 @@ This is the result:
 ```output
  Before fallback | After fallback 
 -----------------+----------------
- 08:30:00        | 09:30:00
+ 08:30:00 UTC    | 09:30:00 UTC
+```
+
+Or, according to the display that best suits your purpose, you might do this instead:
+
+```plpgsql
+set timezone = 'America/Los_Angeles';
+select
+  to_char('2021-11-07 01:30:00 -07:00'::timestamptz, 'hh24:mi:ss TZ') as "Before fallback",
+  to_char('2021-11-07 01:30:00 -08:00'::timestamptz, 'hh24:mi:ss TZ') as "After fallback";
+```
+
+This is the now result:
+
+```output
+ Before fallback | After fallback 
+-----------------+----------------
+ 01:30:00 PDT    | 01:30:00 PST
 ```
 
 {{< tip title="The mapping 'abbrev' to 'utc_offset' in the 'pg_timezone_names' view isn't unique." >}}
@@ -310,25 +327,27 @@ This is the result:
 
 Some results were elided. The blank lines were added manually to improve the readability.
 
-However, the _[name, abbrev]_ tuple _does_ uniquely identify a _utc_offset_ value. It turns out that in the example above, _PST_ and _PDT_ are looked up internally in _pg_timezone_abbrevs.abbrev_. Such abbreviations are never looked up in _pg_timezone_names.abbrev_. This can confuse the application programmer and lead, therefore, to possible wrong results. The complex rules in this space are explained in the section [Rules for resolving a string that's intended to identify a _UTC offset_](../../timezones/ways-to-spec-offset/name-res-rules/).
+However, the _[name, abbrev]_ tuple _does_ uniquely identify a _utc_offset_ value.
 
-Yugabyte recommends that you program defensively to avoid these pitfalls and follow what the approach described in the section [Recommended practice for specifying the _UTC offset_](../../timezones/recommendation/).
+You might be tempted to write _PDT_ and _PST_ in the example above in place of _-07:00_ and _-08:00_. That would work, in this specific use, but it won't work reliably in general because the abbreviations are looked up internally in _pg_timezone_abbrevs.abbrev_. But such abbreviations are never looked up in _pg_timezone_names.abbrev_. However, some abbreviations are found _only_ in  _pg_timezone_names.abbrev_. This can confuse the application programmer and lead, in some unfortunate circumstances, even to wrong results. The complex rules in this space are explained in the section [Rules for resolving a string that's intended to identify a _UTC offset_](../../timezones/ways-to-spec-offset/name-res-rules/).
+
+Yugabyte recommends that you program defensively to avoid these pitfalls and follow the approach described in the section [Recommended practice for specifying the _UTC offset_](../../timezones/recommendation/).
 {{< /tip >}}
 
 ## Demonstrating the rule for displaying a timestamptz value in a timezone-sensitive way
 
-The code blocks above, and especially those in the section [More Daylight Savings Time examples](), are just that: _examples_ that show the functional benefit that the _timestamptz_ data type brings. The outcomes that are shown accord with intuition. But, so that you can write reliable application code, you must also understand the _rules_ that explain, and let you reliably predict, these beneficial outcomes.
+The code blocks above, and especially those in the section [More Daylight Savings Time examples](#more-daylight-savings-time-examples), are just that: _examples_ that show the functional benefit that the _timestamptz_ data type brings. The outcomes that are shown accord with intuition. But, so that you can write reliable application code, you must also understand the _rules_ that explain, and let you reliably predict, these beneficial outcomes.
 
 ### The philosophy of the demonstration's design
 
 The demonstration uses the [_timestamptz_vs_plain_timestamp()_](#timestamptz-vs-plain-timestamp) table function. The overall shape of this is very similar to that of the table function
-[_plain_timestamp_to_from_timestamp_tz()_](../../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/#plain-timestamp-to-from-timestamp-tz) presented in the "sensitivity of the conversion between _timestamptz_ and plain _timestamp_ to the _UTC offset_" section.
+[_plain_timestamp_to_from_timestamp_tz()_](../../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/#plain-timestamp-to-from-timestamp-tz) presented in the _"sensitivity of the conversion between timestamptz and plain timestamp to the UTC offset"_ section.
 
 The demonstration does two things:
 
-- It shows the result produced by the _extract(epoch from timestamp-[tz]-value)_ function is insensitive to the session's _Time_Zone_ setting—for both data types.
+- It shows that the result produced by the _extract(epoch from timestamp-[tz]-value)_ function is insensitive to the session's _Time_Zone_ setting—for both data types.
 
-- It informs the underlying semantic rules for [the _text_ to _timestamptz_](../../typecasting-between-date-time-values/#text-to-timestamptz) conversion.
+- It tests the correctness of tersest statement the underlying semantic rules for [the _text_ to _timestamptz_](../../typecasting-between-date-time-values/#text-to-timestamptz) conversion.
 
 The demonstration that follows is designed like this:
 
@@ -336,30 +355,32 @@ The demonstration that follows is designed like this:
 
 - Two _constant_ values, one with data type plain _timestamp_ and one with data type _timestamptz_ are initialized so that the internal representations (as opposed to the metadata) are identical. Look:
 
-```output
-  ts_plain    constant timestamp   not null := make_timestamp  (yyyy, mm, dd, hh, mi, ss);
-  ts_with_tz  constant timestamptz not null := make_timestamptz(yyyy, mm, dd, hh, mi, ss, 'UTC');
-```
+    ```output
+    ts_plain    constant timestamp   not null := make_timestamp  (yyyy, mm, dd, hh, mi, ss);
+    ts_with_tz  constant timestamptz not null := make_timestamptz(yyyy, mm, dd, hh, mi, ss, 'UTC');
+    ```
+
 - Each uses the same _constant int_ values, _yyyy_, _mm_, _dd_, _hh_, _mi_, and _ss_, to define the identical _date-and-time_ part for each of the two moments. The fact that _UTC_ is used for the _timezone_ argument of the _make_timestamptz()_ invocation ensures the required identity of the internal representations of the two moments—actually, both as plain _timestamp_ values.
 
-- The _extract(epoch from ... )_ function is used to get the numbers of seconds, as _constant double precision_ values, from the start of the epoch for the two moment values. An _assert_ statement will confirm that these two numbers of seconds are identical.
+- The _extract(epoch from ... )_ function is used to get the numbers of seconds, as _constant double precision_ values, from the start of the epoch for the two moment values. An _assert_ statement confirms that these two numbers of seconds are identical.
 
 - A _constant_ array,  _timezones_, is populated by this query:
 
-```plpgsql
-  select name
-  from pg_timezone_names
-  where name like 'Etc/GMT%'
-  and utc_offset <> make_interval()
-  order by utc_offset;
-```
+    ```plpgsql
+    select name
+    from pg_timezone_names
+    where name like 'Etc/GMT%'
+    and utc_offset <> make_interval()
+    order by utc_offset;
+    ```
+
 - The query produces timezones that are listed on the _[synthetic timezones](../../timezones/extended-timezone-names/canonical-no-country-no-dst/)_ page. This is a convenient way to define a set of _UTC offset_ values, independently of when during the winter or summer you execute the query, that span the range from _-12:00_ to _+14:00_ in steps of _one hour_.
 
 - A _foreach_ loop is run thus:
 
-```output
-  foreach z in array timezones loop
-```
+    ```output
+    foreach z in array timezones loop
+    ```
 
 - At each loop iteration:
   - The session's _TimeZone_ setting is set to the value that the iterand, _z_, specifies.
@@ -367,31 +388,29 @@ The demonstration that follows is designed like this:
 
   - Using the _utc_offset()_ user-defined function (it looks up the _UTC offset_ for the timezone _z_ in the _pg_timezone_names_ catalog view) these values are obtained:
 
-```output
-    t1             double precision := extract(epoch from ts_plain);
-    t2             double precision := extract(epoch from ts_with_tz);
-    tz_of_timezone interval         := utc_offset(z);
-    tz_display     interval         := to_char(ts_with_tz, 'TZH:TZM');
-    ts_display     timestamp        := to_char(ts_with_tz, 'yyyy-mm-dd hh24:mi:ss');
-    delta          interval         := ts_display - ts_plain;
-```
+      ```output
+      t1             double precision := extract(epoch from ts_plain);
+      t2             double precision := extract(epoch from ts_with_tz);
+      tz_of_timezone interval         := utc_offset(z);
+      tz_display     interval         := to_char(ts_with_tz, 'TZH:TZM');
+      ts_display     timestamp        := to_char(ts_with_tz, 'yyyy-mm-dd hh24:mi:ss');
+      delta          interval         := ts_display - ts_plain;
+      ```
 
-- _(still for each loop iteration)_
   - These _assert_ statements are executed:
 
-```output
-    assert (t1 = ts_plain_epoch),         'Assert #1 failed';
-    assert (t2 = ts_with_tz_epoch),       'Assert #2 failed';
-    assert (tz_display = tz_of_timezone), 'Assert #3 failed';
-    assert (tz_display = delta),          'Assert #4 failed';
-```
+      ```output
+      assert (t1 = ts_plain_epoch),         'Assert #1 failed';
+      assert (t2 = ts_with_tz_epoch),       'Assert #2 failed';
+      assert (tz_display = tz_of_timezone), 'Assert #3 failed';
+      assert (tz_display = delta),          'Assert #4 failed';
+      ```
 
-- _(still for each loop iteration)_
   - Running commentary output is generated thus:
 
-```output
-    report_line(z, ts_plain, ts_with_tz);
-```
+      ```output
+      report_line(z, ts_plain, ts_with_tz);
+      ```
 
 - Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practice to do this for any settings that your programs need, temporarily, to change.)
 
@@ -542,7 +561,7 @@ This is the result:
  Etc/GMT-14        Sat 11:00   Sun 01:00 +14:00
 ```
 
-The execution finishes without error, confirming that the four tested assertions held.
+The execution finishes without error, confirming that the four tested assertions hold.
 
 ### Interpretation and statement of the rules
 
@@ -551,12 +570,12 @@ The execution finishes without error, confirming that the four tested assertions
 - The timezone-sensitive formatting of the displayed _timestamptz_ values lines up consistently with what the examples in the previous sections on this page (and on other pages in this overall _date-time_ section) show: informally (as was stated above) that _(10 + 1)_ and _(14 - 3)_ both represent the same value.
 - This is the careful statement of the rule, supported by the fact that all the _assert_ statements succeeded: 
 
-```output
-  [timestamptz-value] display ==
-    [internal-timestamp-value + UTC-offset-value-from-session-timezone] display
-    with
-    [UTC-offset-value-from-session-timezone] display
-```
+    ```output
+    [timestamptz-value] display ◄—
+      [internal-timestamp-value + UTC-offset-value-from-session-timezone] display
+      annotated with
+      [UTC-offset-value-from-session-timezone] display
+    ```
 
 - This rule statement lines up with what meeting partners living in the US Pacific coastal region and London, in the winter, understand:
 
