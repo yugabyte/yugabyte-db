@@ -31,7 +31,7 @@ You can also create a functional-based index, in which case you would replace an
 
 The only type of index that is currently supported by YSQL is called LSM (log-structured merge-tree). This index is based on YugabyteDB's DocDB storage and is similar in functionality to PostgreSQL's B-tree. When you create an index, you do not need to specify the type because YSQL always maps it to LSM; if you do specify the type, such as `btree`, in your `CREATE INDEX` statement, you will receive a notification about replacement of the `btree` method with `lsm`. 
 
-You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC examples](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
+You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC examples](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 
 You can use the `EXPLAIN` statement to check if a query uses an index.
 
@@ -58,7 +58,7 @@ The following example shows a query that finds employees working in Operations:
 SELECT * FROM employees WHERE department = 'Operations';
 ```
 
-To process the preceding query, the whole `employees` table needs to be scanned. For large organizations, this might take significant amount of time.
+To process the preceding query, the whole `employees` table needs to be scanned. For large organizations, this might take a significant amount of time.
 
 To speed up the process, you create an index for the department column, as follows:
 
@@ -119,7 +119,7 @@ CREATE INDEX index_name ON table_name(expression);
 
 *expression* involves table columns of the *table_name* table. When the index expression is defined, this index is used when the expression that defines the index is included in the `WHERE` or `ORDER BY` clause in the YSQL statement.
 
-The following example uses the `employees` table from [Create indexes](#create-indexes) to show how to create an index on expression that converts the department to lowercase to improve searchability:
+The following example uses the `employees` table from [Create indexes](#create-indexes) to show how to create an index on an expression that converts the department to lowercase to improve searchability:
 
 ```sql
 CREATE INDEX index_employees_department_lc
