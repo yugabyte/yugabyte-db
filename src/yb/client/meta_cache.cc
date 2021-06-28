@@ -1924,14 +1924,14 @@ template <class Lock>
 bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
                                    CoarseTimePoint deadline,
                                    LookupTabletRangeCallback* callback) {
-  LOG(INFO) << "DoLookupAllTablets()";
+  VLOG(3) << "DoLookupAllTablets() for table: " << table->ToString();
   int64_t request_no;
   {
     Lock lock(mutex_);
     if (PREDICT_TRUE(!FLAGS_TEST_force_master_lookup_all_tablets)) {
       auto tablets = FastLookupAllTabletsUnlocked(table);
       if (tablets.has_value()) {
-        LOG(INFO) << "tablets has value";
+        VLOG(4) << "tablets has value";
         (*callback)(*tablets);
         return true;
       }
