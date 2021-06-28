@@ -1875,6 +1875,11 @@ void CatalogManager::DoRefreshTablespaceInfo() {
         continue;
       }
 
+      if (ns.first == kPgSequencesDataNamespaceId) {
+        // Skip the database created for sequences system table.
+        continue;
+      }
+
       // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
       namespace_id_vec.emplace_back(ns.first);
     }

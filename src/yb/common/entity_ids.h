@@ -35,6 +35,7 @@ static const uint32_t kPgFirstNormalObjectId = 16384; // Hardcoded in transam.h
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgTablespaceTableId;
+extern const string kPgSequencesDataNamespaceId;
 
 // Get YB namespace id for a Postgres database.
 NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);
