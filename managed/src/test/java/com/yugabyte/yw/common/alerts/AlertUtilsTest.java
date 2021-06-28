@@ -21,9 +21,11 @@ import static org.junit.Assert.*;
 @RunWith(MockitoJUnitRunner.class)
 public class AlertUtilsTest extends FakeDBApplication {
 
-  private static final String TEST_TITLE_TEMPLATE = "<b>Title template</b>";
+  private static final String TITLE_TEMPLATE = "<b>Title template</b>";
 
-  private static final String TEST_TEXT_TEMPLATE = "<html>Text template is here</html>";
+  private static final String TEXT_TEMPLATE = "<html>Text template is here</html>";
+
+  private static final String ALERT_RECEIVER_NAME = "Test AlertReceiver";
 
   private Customer defaultCustomer;
 
@@ -36,10 +38,10 @@ public class AlertUtilsTest extends FakeDBApplication {
     AlertReceiverEmailParams params = new AlertReceiverEmailParams();
     params.continueSend = true;
     params.recipients = Arrays.asList("test@test.com", "me@google.com");
-    params.textTemplate = TEST_TEXT_TEMPLATE;
-    params.titleTemplate = TEST_TITLE_TEMPLATE;
+    params.textTemplate = TEXT_TEMPLATE;
+    params.titleTemplate = TITLE_TEMPLATE;
     params.smtpData = EmailFixtures.createSmtpData();
-    return AlertReceiver.create(defaultCustomer.uuid, params);
+    return AlertReceiver.create(defaultCustomer.uuid, ALERT_RECEIVER_NAME, params);
   }
 
   private AlertReceiver createEmailReceiverWithEmptyTemplates() {
@@ -64,14 +66,15 @@ public class AlertUtilsTest extends FakeDBApplication {
   public void testFromDB_Slack() {
     AlertReceiverSlackParams params = new AlertReceiverSlackParams();
     params.continueSend = true;
-    params.textTemplate = TEST_TEXT_TEMPLATE;
-    params.titleTemplate = TEST_TITLE_TEMPLATE;
+    params.textTemplate = TEXT_TEMPLATE;
+    params.titleTemplate = TITLE_TEMPLATE;
 
     params.channel = "channel";
     params.webhookUrl = "hook-url";
     params.iconUrl = "icon-url";
 
-    AlertReceiver receiver = AlertReceiver.create(defaultCustomer.uuid, params);
+    AlertReceiver receiver =
+        AlertReceiver.create(defaultCustomer.uuid, ALERT_RECEIVER_NAME, params);
     AlertReceiver fromDb = AlertReceiver.get(defaultCustomer.uuid, receiver.getUuid());
     assertNotNull(fromDb);
     assertEquals(receiver, fromDb);

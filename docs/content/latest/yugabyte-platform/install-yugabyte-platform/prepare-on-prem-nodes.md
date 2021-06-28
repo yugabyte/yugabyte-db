@@ -36,7 +36,7 @@ The following nodes must be available to your application or any user attempting
 * 9042 - YCQL server
 * 6379 - YEDIS server
 
-For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports).
 
 ## Preparing nodes
 

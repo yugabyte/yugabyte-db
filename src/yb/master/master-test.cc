@@ -63,6 +63,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/user.h"
 
 DECLARE_string(callhome_collection_level);
 DECLARE_string(callhome_tag);
@@ -177,7 +178,8 @@ TEST_F(MasterTest, TestCallHome) {
     if (collection_level.second.find("current_user") != collection_level.second.end()) {
       string received_user;
       ASSERT_OK(reader.ExtractString(reader.root(), "current_user", &received_user));
-      ASSERT_EQ(received_user, mini_master_->master()->get_current_user());
+      auto expected_user = ASSERT_RESULT(GetLoggedInUser());
+      ASSERT_EQ(received_user, expected_user);
     }
 
     auto count = reader.root()->MemberEnd() - reader.root()->MemberBegin();

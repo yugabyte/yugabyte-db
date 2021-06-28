@@ -2,7 +2,7 @@
 title: Rule 4 (for string intended to specify the UTC offset) [YSQL]
 headerTitle: Rule 4
 linkTitle: 4 ~abbrevs.abbrev before ~names.name
-description: ZZZ [YSQL].
+description: Substantiates the rule that a string that's intended to identify a UTC offset is resolved first in pg_timezone_abbrevs.abbrev and, only if this fails, then in pg_timezone_names.name. [YSQL]
 menu:
   latest:
     identifier: rule-4
@@ -22,7 +22,7 @@ The page for [Rule 3](../rule-3) tested with a string that's found uniquely in _
 
 ## Test with a string that's found uniquely in 'pg_timezone_names.name'
 
-You can discover, with _ad hoc_ queries. that the string _Europe/Amsterdam_ occurs only in _pg_timezone_names.name_. Use the function [_occurrences()_](../helpers/#function-occurrences-string-in-text) to confirm it thus
+You can discover, with _ad hoc_ queries. that the string _Europe/Amsterdam_ occurs only in _pg_timezone_names.name_. Use the function [_occurrences()_](../helper-functions/#function-occurrences-string-in-text) to confirm it thus
 
 ```plpgsql
 with c as (select occurrences('Europe/Amsterdam') as r)
@@ -41,7 +41,7 @@ This is the result:
  true        | false         | false
 ```
 
-This means that the string _Europe/Amsterdam_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helpers/#function-legal-scopes-for-syntax-context-string-in-text)_:
+This means that the string _Europe/Amsterdam_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helper-functions/#function-legal-scopes-for-syntax-context-string-in-text)_:
 
 ```plpgsql
 select x from legal_scopes_for_syntax_context('Europe/Amsterdam');
@@ -62,7 +62,7 @@ So _pg_timezone_names.name_ is searched in each of the three syntax contexts.
 
 The outcomes of the test that substantiated [Rule-3](../rule-3) and of the test [above](#test-with-a-string-that-s-found-uniquely-in-pg-timezone-names-names) raise the question of priority: what if the string that's intended to specify the _UTC offset_ occurs in _both_ columns?
 
-You can discover, with _ad hoc_ queries. that the string _MET_ occurs both in _pg_timezone_names.name_ and in _pg_timezone_abbrevs.abbrev_. Use the function [_occurrences()_](../helpers/#function-occurrences-string-in-text) to confirm it thus
+You can discover, with _ad hoc_ queries. that the string _MET_ occurs both in _pg_timezone_names.name_ and in _pg_timezone_abbrevs.abbrev_. Use the function [_occurrences()_](../helper-functions/#function-occurrences-string-in-text) to confirm it thus
 
 ```plpgsql
 with c as (select occurrences('MET') as r)
@@ -81,7 +81,7 @@ This is the result:
  true        | false         | true
 ```
 
-This means that the string _MET_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helpers/#function-legal-scopes-for-syntax-context-string-in-text)_:
+This means that the string _MET_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helper-functions/#function-legal-scopes-for-syntax-context-string-in-text)_:
 
 ```plpgsql
 select x from legal_scopes_for_syntax_context('MET');

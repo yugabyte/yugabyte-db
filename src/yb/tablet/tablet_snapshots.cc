@@ -166,16 +166,6 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
   }
 
-  // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
-  // the flushed frontier to have this exact value, although in practice it will, since this is the
-  // latest operation we've ever executed in this Raft group. This way we keep the current value
-  // of history cutoff.
-  docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(data.op_id);
-  frontier.set_hybrid_time(data.hybrid_time);
-  RETURN_NOT_OK(tablet().ModifyFlushedFrontier(
-      frontier, rocksdb::FrontierModificationMode::kUpdate));
-
   LOG_WITH_PREFIX(INFO) << "Complete snapshot creation in folder: " << snapshot_dir
                         << ", snapshot hybrid time: " << snapshot_hybrid_time;
 
