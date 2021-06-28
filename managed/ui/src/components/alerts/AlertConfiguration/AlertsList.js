@@ -19,7 +19,7 @@ const header = (onCreateAlert) => (
     <FlexContainer className="pull-right">
       <FlexShrink>
         <DropdownButton
-          className="backup-config-actions btn btn-default"
+          className="alert-config-actions btn btn-default"
           title="Create Alert"
           id="bg-nested-dropdown"
           pullRight

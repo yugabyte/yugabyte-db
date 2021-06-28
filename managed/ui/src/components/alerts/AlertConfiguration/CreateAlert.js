@@ -6,8 +6,8 @@
 // alert creation.
 // TODO: Platform alert creation.
 
-import { change, Field, reduxForm, FieldArray } from 'redux-form';
-import React from 'react';
+import { Field, reduxForm, FieldArray } from 'redux-form';
+import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import {
   YBButton,
@@ -19,13 +19,15 @@ import {
 } from '../../common/forms/fields';
 import { Formik } from 'formik';
 import '../CreateAlerts.scss';
-import { useDispatch, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import AlertsPolicy from './AlertsPolicy';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
 const CreateAlert = (props) => {
   const { onCreateCancel } = props;
+  const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
+
   const universes = useSelector((state) => {});
   /**
    * Constant option for metrics condition
@@ -65,7 +67,8 @@ const CreateAlert = (props) => {
    * TODO: Change the state to disable/enable the universe multi-select list.
    */
   const handleMetricConditionChange = (event) => {
-    console.log('val', event.target.value);
+    const value = event.target.value;
+    value === 'allCluster' ? setIsAllUniversesDisabled(true) : setIsAllUniversesDisabled(false);
   };
   /**
    *
@@ -119,9 +122,8 @@ const CreateAlert = (props) => {
                 hideSelectedOptions={false}
                 data-yb-field="regions"
                 isMulti={true}
-                selectValChanged={(val) => {
-                  console.log(val);
-                }}
+                isDisabled={isAllUniversesDisabled}
+                // selectValChanged={handleMetricConditionChange}
                 providerSelected={'puppy-food-4s-1'}
               />
             </Col>
