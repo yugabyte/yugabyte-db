@@ -15,7 +15,7 @@
       - cloud_subnet is defined
 
 - name: Select target instance
-  ec2_remote_facts:
+  ec2_instance_facts:
     region: "{{ cloud_region }}"
     filters:
       instance-state-name: ["running", "stopped"]
@@ -28,6 +28,6 @@
 - name: Destroy target instance
   ec2:
     region: "{{ cloud_region }}"
-    instance_ids: "{{ ec2_instances.instances | map(attribute='id') | list }}"
+    instance_ids: "{{ ec2_instances.instances | map(attribute='instance_id') | list }}"
     state: absent
   when: ec2_instances.instances is defined and ec2_instances.instances | length >  0
