@@ -25,7 +25,7 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link">
+    <a href="/latest/manage/backup-restore/snapshot-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
