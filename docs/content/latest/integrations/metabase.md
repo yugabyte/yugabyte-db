@@ -6,17 +6,19 @@ aliases:
 menu:
   latest:
     identifier: metabase
-    parent: ecosystem-integrations
+    parent: integrations
     weight: 576
 isTocNested: true
 showAsideToc: true
 ---
 
-[Metabase](https://www.metabase.com/) is an extremly easy-to-use Business Intelligence (BI) tool. It bills itself as `the easy, open source way for everyone in your company to ask questions and learn from data`. This page shows how Metabase can be setup to integrate with YugabyteDB's PostgreSQL compatible API.
+[Metabase](https://www.metabase.com/) is a Business Intelligence (BI) tool. 
+
+This document shows how Metabase can be set up to integrate with YugabyteDB's PostgreSQL-compatible API.
 
 ## 1. Start local cluster
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL compatible service running on `localhost:5433`. 
+Follow [Quick Start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL-compatible YSQL API as [documented](../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL-compatible service running on `localhost:5433`. 
 
 ## 2. Load data
 
@@ -46,7 +48,7 @@ orders.sql  products.sql  reviews.sql  users.sql
 
 ### Connect to YugabyteDB using ysqlsh
 
-You can do this as shown below.
+You can do this by executing the following:
 
 ```sh
 $ ./bin/ysqlsh
@@ -69,13 +71,13 @@ yugabyte=# \c yb-demo;
 
 ### Create schema and load data
 
-First create the 4 tables necessary to store the data.
+First create the 4 tables necessary to store the data:
 
 ```sql
 yugabyte=# \i 'schema.sql';
 ```
 
-Now load the data into the tables.
+Now load the data into the tables:
 
 ```sql
 yugabyte=# \i 'data/products.sql'
@@ -86,7 +88,7 @@ yugabyte=# \i 'data/reviews.sql'
 
 ## 3. Download and configure Metabase
 
-Detailed steps for setting up Metabase are available in the [Metabase documentation](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal setup steps for getting started.
+Detailed steps for setting up Metabase are available in the [Metabase documentation](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal setup steps for getting started:
 
 ```sh
 $ wget http://downloads.metabase.com/v0.30.4/metabase.jar
@@ -105,6 +107,7 @@ Detailed steps on how to use Metabase are available in the [Metabase documentati
 - Filter data using WHERE clauses
 - Join data between tables
 - Perform data aggregation using GROUP BY
-- Use built-in functions such as SUM, MIN, MAX, etc.
+- Use built-in functions such as SUM, MIN, MAX, and so on
 
-Click Ask a Question > Custom Query. Choose the database you just set up, and enter the SQL queries noted in the [Retail Analytics](../../realworld-apps/retail-analytics/) section.
+Click **Ask a Question > Custom Query**. Choose the database you just set up, and enter the SQL queries noted in the [Retail Analytics](../../develop/realworld-apps/retail-analytics/) section.
+
