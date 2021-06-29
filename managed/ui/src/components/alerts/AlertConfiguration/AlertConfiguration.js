@@ -21,7 +21,7 @@ export const AlertConfiguration = (props) => {
     updateStatus: ''
   });
   const [listView, setListView] = useState(false);
-  const [alertDestinationListView, setAlertDestinationListView] = useState(true);
+  const [alertDestinationListView, setAlertDestinationListView] = useState(false);
   const { activeTab, defaultTab, routePrefix, customerProfile, apiToken, customer } = props;
 
   const handleProfileUpdate = (status) => {
@@ -70,7 +70,11 @@ export const AlertConfiguration = (props) => {
           }
           unmountOnExit
         >
-          <AlertDestionations data={alertDestionation} />
+          {alertDestinationListView ? (
+            <AlertDestinationConfiguration onAddCancel={setAlertDestinationListView} {...props}/>
+          ) : (
+            <AlertDestionations data={alertDestionation} onAddAlertDestination={setAlertDestinationListView}/>
+          )}
         </Tab>
         <Tab
           eventKey="health-alerting"

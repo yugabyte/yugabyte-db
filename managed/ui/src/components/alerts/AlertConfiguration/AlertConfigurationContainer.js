@@ -13,6 +13,7 @@ import {
   updateProfileFailure,
   updateProfileSuccess
 } from '../../../actions/customers';
+import { closeDialog, openDialog } from '../../../actions/modal';
 import { AlertConfiguration } from './AlertConfiguration';
 
 const mapStateToProps = (state) => {
@@ -20,7 +21,8 @@ const mapStateToProps = (state) => {
     customer: state.customer.currentCustomer,
     users: state.customer.users.data,
     apiToken: state.customer.apiToken,
-    customerProfile: state.customer ? state.customer.profile : null
+    customerProfile: state.customer ? state.customer.profile : null,
+    modal: state.modal
   };
 };
 
@@ -40,6 +42,13 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(updateProfileSuccess(response.payload));
         }
       });
+    },
+
+    closeModal: () => {
+      dispatch(closeDialog());
+    },
+    showAddChannelModal: () => {
+      dispatch(openDialog('alertDestinationForm'));
     }
   };
 };

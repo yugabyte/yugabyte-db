@@ -13,12 +13,12 @@ import { YBPanelItem } from '../../panels';
 /**
  * This is the header for YB Panel Item.
  */
-const header = () => (
+const header = (onAddAlertDestination) => (
   <>
     <h2 className="table-container-title pull-left">Alert Destinations</h2>
     <FlexContainer className="pull-right">
       <FlexShrink>
-        <Button bsClass="alert-config-actions btn btn-orange btn-config">Add Destination</Button>
+        <Button bsClass="alert-config-actions btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>Add Destination</Button>
       </FlexShrink>
     </FlexContainer>
   </>
@@ -26,7 +26,8 @@ const header = () => (
 
 export const AlertDestionations = (props) => {
   const {
-    data: { payload }
+    data: { payload },
+    onAddAlertDestination
   } = props;
 
   // This method will handle all the required actions for the particular row.
@@ -55,7 +56,7 @@ export const AlertDestionations = (props) => {
   // For now, we're dealing with the mock data.
   return (
     <YBPanelItem
-      header={header()}
+      header={header(onAddAlertDestination)}
       body={
         <>
           <BootstrapTable className="backup-list-table middle-aligned-table" data={payload}>
