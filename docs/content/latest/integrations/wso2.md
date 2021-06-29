@@ -6,8 +6,8 @@ aliases:
 menu:
   latest:
     identifier: wso2
-    parent: ecosystem-integrations
-    weight: 571
+    parent: integrations
+    weight: 577
 isTocNested: true
 showAsideToc: true
 ---
@@ -63,9 +63,9 @@ You update the database configuration as follows:
   ```
 
 
-- Set the following properties to `true` to configure cross-origin resource sharing (CORS) for running the sample application from [Quick Start](https://docs.google.com/document/d/1WJgV4Iu_kY06FDA1BiH8tx7IN_tTgyWz-Z2peoLfIWQ/edit#heading=h.cjh8ej37ta3t):
+- Set the following properties to `true` to configure cross-origin resource sharing (CORS) for running the sample application from [Quick Start](https://is.docs.wso2.com/en/latest/get-started/quick-start-guide/):
 
-  ```
+  ```properties
   [cors]
   allow_generic_http_requests = true
   allow_any_origin = true
