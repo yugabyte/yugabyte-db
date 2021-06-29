@@ -1,5 +1,4 @@
 /*
-/*
  * Copyright 2021 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
@@ -9,7 +8,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.controllers;
+package com.yugabyte.yw.controllers.handlers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -71,7 +70,7 @@ public class CloudProviderHandler {
   @Inject private Config config;
   @Inject private CloudQueryHelper queryHelper;
 
-  void delete(Customer customer, Provider provider) {
+  public void delete(Customer customer, Provider provider) {
     if (customer.getUniversesForProvider(provider.uuid).size() > 0) {
       throw new YWServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
     }
@@ -89,7 +88,7 @@ public class CloudProviderHandler {
     provider.delete();
   }
 
-  Provider createProvider(
+  public Provider createProvider(
       Customer customer,
       Common.CloudType providerCode,
       String providerName,
@@ -141,7 +140,7 @@ public class CloudProviderHandler {
     return provider;
   }
 
-  Provider createKubernetes(Customer customer, KubernetesProviderFormData formData)
+  public Provider createKubernetes(Customer customer, KubernetesProviderFormData formData)
       throws IOException {
     Common.CloudType providerCode = formData.code;
     if (!providerCode.equals(kubernetes)) {
@@ -210,18 +209,18 @@ public class CloudProviderHandler {
     return provider;
   }
 
-  boolean updateKubeConfig(Provider provider, Map<String, String> config, boolean edit)
+  public boolean updateKubeConfig(Provider provider, Map<String, String> config, boolean edit)
       throws IOException {
     return updateKubeConfigForRegion(provider, null, config, edit);
   }
 
-  boolean updateKubeConfigForRegion(
+  public boolean updateKubeConfigForRegion(
       Provider provider, Region region, Map<String, String> config, boolean edit)
       throws IOException {
     return updateKubeConfigForZone(provider, region, null, config, edit);
   }
 
-  boolean updateKubeConfigForZone(
+  public boolean updateKubeConfigForZone(
       Provider provider,
       Region region,
       AvailabilityZone zone,
@@ -278,7 +277,7 @@ public class CloudProviderHandler {
     return hasKubeConfig;
   }
 
-  void updateGCPConfig(Provider provider, Map<String, String> config) throws IOException {
+  public void updateGCPConfig(Provider provider, Map<String, String> config) throws IOException {
     // Remove the key to avoid generating a credentials file unnecessarily.
     config.remove("GCE_HOST_PROJECT");
     // If we were not given a config file, then no need to do anything here.
@@ -303,7 +302,7 @@ public class CloudProviderHandler {
     provider.save();
   }
 
-  void createKubernetesInstanceTypes(Customer customer, Provider provider) {
+  public void createKubernetesInstanceTypes(Customer customer, Provider provider) {
     KUBERNETES_INSTANCE_TYPES.forEach(
         (instanceType -> {
           InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
@@ -337,7 +336,7 @@ public class CloudProviderHandler {
     }
   }
 
-  KubernetesProviderFormData suggestedKubernetesConfigs() {
+  public KubernetesProviderFormData suggestedKubernetesConfigs() {
     try {
       Multimap<String, String> regionToAZ = computeKubernetesRegionToZoneInfo();
       if (regionToAZ.isEmpty()) {
@@ -417,7 +416,7 @@ public class CloudProviderHandler {
 
   // extra metadata and returns the secret as JSON string. Returns
   // null if the secret is not present.
-  String getKubernetesPullSecretContent(String secretName) {
+  private String getKubernetesPullSecretContent(String secretName) {
     JsonNode pullSecretJson;
     try {
       pullSecretJson = kubernetesManager.getSecret(null, secretName, null);
@@ -446,7 +445,7 @@ public class CloudProviderHandler {
     return pullSecretJson.toString();
   }
 
-  Provider setupNewDockerProvider(Customer customer) {
+  public Provider setupNewDockerProvider(Customer customer) {
     Provider newProvider = Provider.create(customer.uuid, Common.CloudType.docker, "Docker");
     Map<String, Object> regionMetadata = configHelper.getConfig(DockerRegionMetadata);
     regionMetadata.forEach(
@@ -466,7 +465,7 @@ public class CloudProviderHandler {
     return newProvider;
   }
 
-  UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
+  public UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
     // Set the top-level provider info.
     taskParams.providerUUID = provider.uuid;
     if (taskParams.destVpcId != null && !taskParams.destVpcId.isEmpty()) {
@@ -507,7 +506,8 @@ public class CloudProviderHandler {
     return taskUUID;
   }
 
-  void editProvider(Provider provider, EditProviderRequest editProviderReq) throws IOException {
+  public void editProvider(Provider provider, EditProviderRequest editProviderReq)
+      throws IOException {
     if (Provider.HostedZoneEnabledProviders.contains(provider.code)) {
       String hostedZoneId = editProviderReq.hostedZoneId;
       if (hostedZoneId == null || hostedZoneId.length() == 0) {
@@ -526,7 +526,7 @@ public class CloudProviderHandler {
     }
   }
 
-  void validateAndUpdateHostedZone(Provider provider, String hostedZoneId) {
+  private void validateAndUpdateHostedZone(Provider provider, String hostedZoneId) {
     // TODO: do we have a good abstraction to inspect this AND know that it's an error outside?
     ShellResponse response = dnsManager.listDnsRecord(provider.uuid, hostedZoneId);
     if (response.code != 0) {
