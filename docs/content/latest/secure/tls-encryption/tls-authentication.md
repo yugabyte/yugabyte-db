@@ -25,9 +25,9 @@ showAsideToc: true
 
 TLS can be configured in conjunction with authentication using the following configuration flags related to TLS and authentication:
 
-* `ysql_enable_auth` to enable password (md5) authentication
-* `use_client_to_server_encryption` to enable client-server TLS encryption
-* `ysql_hba_conf_csv` to manually set a host-based authentication (HBA) configuration
+* [`ysql_enable_auth`](../../authentication/password-authentication/) to enable password (md5) authentication
+* [`use_client_to_server_encryption`](../client-to-server/) to enable client-server TLS encryption
+* [`ysql_hba_conf_csv`](../../authentication/host-based-authentication/) to manually set a host-based authentication (HBA) configuration
 
 The default (auto-generated) configuration in the `ysql_hba.conf` file depends on whether auth (`ysql_enable_auth`) and/or TLS (`use_client_to_server_encryption`) are enabled.
 
@@ -35,11 +35,11 @@ The four default cases are shown in the following table.
 
 | | Auth disabled | Auth enabled |
 ---|---|---|
-| TLS disabled | host all all all trust</br>(no ssl, no password) | host all all all md5</br>(no ssl, password required) |
-| TLS enabled | hostssl all all all trust</br>(require ssl, no password) | hostssl all all all md5</br>(require ssl and password) |
+| TLS disabled | `host all all all trust`</br>(no ssl, no password) | `host all all all md5`</br>(no ssl, password required) |
+| TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
 
 {{< note title="Note" >}}
-Previously, when TLS was enabled, the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (effectively md5 + cert) when auth was enabled.
+Before version 2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (effectively md5 + cert) when auth was enabled.
 {{< /note >}}
 
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
@@ -153,7 +153,7 @@ The other modes (that is, `sslmode=require` or `disable`) behave analogously.
 This configuration requires the client to use client-to-server encryption and authenticate with the appropriate certificate to connect.
 
 {{< note title="Note" >}}
-This was the previous default for TLS without authentication; this example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
+Before version 2.5.2, this was the default for TLS without authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
 {{< /note >}}
 
 To create the database, execute the following command:
@@ -192,7 +192,7 @@ Type "help" for help.
 This configuration requires the client to use client-to-server encryption and authenticate with both the appropriate certificate and the password to connect.
 
 {{< note title="Note" >}}
-This was the previous default for TLS with authentication; this example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
+Before version 2.5.2, this was the default for TLS with authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
 
 {{< /note >}}
 
