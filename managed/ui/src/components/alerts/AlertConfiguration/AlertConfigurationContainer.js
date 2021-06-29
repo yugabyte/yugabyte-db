@@ -6,7 +6,13 @@
 // will be finalized and be available.
 
 import { connect } from 'react-redux';
-import { alertConfigs, updateProfile, updateProfileFailure, updateProfileSuccess } from '../../../actions/customers';
+import {
+  alertConfigs,
+  alertDestionations,
+  updateProfile,
+  updateProfileFailure,
+  updateProfileSuccess
+} from '../../../actions/customers';
 import { AlertConfiguration } from './AlertConfiguration';
 
 const mapStateToProps = (state) => {
@@ -23,6 +29,9 @@ const mapDispatchToProps = (dispatch) => {
     alertConfigs: () => {
       return dispatch(alertConfigs());
     },
+    alertDestionations: () => {
+      return dispatch(alertDestionations());
+      },
     updateCustomerDetails: (values) => {
       dispatch(updateProfile(values)).then((response) => {
         if (response.payload.status !== 200) {
