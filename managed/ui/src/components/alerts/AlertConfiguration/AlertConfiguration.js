@@ -8,6 +8,7 @@ import { Tab } from 'react-bootstrap';
 import { isDisabled } from '../../../utils/LayoutUtils';
 import { YBTabsPanel } from '../../panels';
 import { AlertProfileForm } from '../../profile';
+import AlertDestinationConfiguration from './AlertDestinationConfiguration';
 import { AlertsList } from './AlertsList';
 import CreateAlert from './CreateAlert';
 
@@ -16,9 +17,10 @@ export const AlertConfiguration = (props) => {
   const [profileStatus, setProfileStatus] = useState({
     statusUpdated: true,
     updateStatus: ''
-  })
+  });
   const [listView, setListView] = useState(false);
-  const { activeTab, defaultTab, routePrefix,customerProfile, apiToken, customer } = props;
+  const [alertDestinationListView, setAlertDestinationListView] = useState(true);
+  const { activeTab, defaultTab, routePrefix, customerProfile, apiToken, customer } = props;
 
   const handleProfileUpdate = (status) => {
     setProfileStatus({
@@ -44,7 +46,7 @@ export const AlertConfiguration = (props) => {
           eventKey={defaultTab}
           title={
             <span>
-              <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Alert Creation
+              <i className="fa fa-bell-o tab-logo" aria-hidden="true"></i> Alert Creation
             </span>
           }
           unmountOnExit
@@ -54,6 +56,16 @@ export const AlertConfiguration = (props) => {
           ) : (
             <AlertsList data={alertList} onCreateAlert={setListView} />
           )}
+        </Tab>
+        <Tab
+          eventKey="Alert-Destination"
+          title="Alert Destination"
+          mountOnEnter={true}
+          unmountOnExit
+        >
+          {alertDestinationListView ? (
+            <AlertDestinationConfiguration />
+          ) : null}
         </Tab>
         <Tab
           eventKey={'health-alerting'}
