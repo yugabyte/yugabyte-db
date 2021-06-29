@@ -27,7 +27,7 @@ The table below summarizes these different multi-region deployments in YugabyteD
 |-----------------------------|---------|------------------|-----------------------------|-----------------------------
 |<strong>Replication</strong> | Synchronous | Synchronous  | Asynchronous <br/> *(unidirectional and bidirectional)* | Asynchronous <br/> *(unidirectional only)*
 |<strong>Data residency</strong> | All data replicated across regions | Data partitioned across regions. <br/>Partitions replicated inside region. | All data replicated inside region. <br/>Configure per-table cross-region replication. | All data replicated in primary region. <br/>Cluster-wide async replication to read replicas.
-| <strong>Consistency</strong> | Transactional | Transactional | Eventual consistency | Timeline consistency
+| <strong>Consistency</strong> | Transactional | Transactional | Timeline consistency | Timeline consistency
 | <strong>Write latency</strong> | High latency | Low latency | Low latency | Low latency
 | <strong>Read latency</strong> | High latency | Low latency <br/> *(when queried from nearby geography)* | Low latency | Low latency
 | <strong>Schema changes</strong> | Transparently managed | Transparently managed | Manual propagation | Transparently managed
