@@ -129,6 +129,7 @@ const CreateAlert = (props) => {
               />
             </Col>
           </Row>
+          <hr/>
           <Row>
             <Col md={12}>
               <h4>Conditions</h4>
