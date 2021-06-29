@@ -3,8 +3,6 @@ title: Create a multi-zone universe using Yugabyte Platform
 headerTitle: Create a multi-zone universe
 linkTitle: Multi-zone universe
 description: Use Yugabyte Platform to create a YugabyteDB universe that spans multiple availability zones.
-aliases:
-  - /manage/enterprise-edition/create-universe/
 menu:
   latest:
     identifier: create-multi-zone-universe
@@ -14,127 +12,147 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to create a universe in one geographic region across multiple availability zones. We will examine the various nodes created by the Yugabyte Platform, run some workloads against this universe and take a look at the metrics against the running universe.
+  <ul class="nav nav-tabs-alt nav-tabs-yb">
 
-## 1. Create the universe
+<li>
+    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link active">
+      <i class="fas fa-building" aria-hidden="true"></i>
+Generic</a>
+  </li>
 
-If there are no universes created yet, the Dashboard page will look like the following. Click **Create Universe** to create the universe.
+  <li>
+    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+
+</ul>
+
+This section describes how to create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
+
+## Prerequisites
+
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](https://docs.yugabyte.com/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/). 
+
+## Create a universe
+
+If no universes have been created yet, the Yugabyte Platform Dashboard looks similar to the following:
 
 ![Dashboard with No Universes](/images/ee/no-univ-dashboard.png)
 
-Enter your intent
+Click **Create Universe** to create the universe, and then enter your intent.
 
-The **Provider**, **Regions** and **Instance Type** fields were initialized based on the [cloud providers configured](../../configure-yugabyte-platform/set-up-cloud-provider/). As soon as **Provider**, **Regions** and **Nodes** are entered, an intelligent Node Placement Policy kicks in to specify how the nodes should be placed across all the Availability Zones so that maximum availability is guaranteed.
+The **Provider**, **Regions**, and **Instance Type** fields are initialized based on the [configured cloud providers](../../configure-yugabyte-platform/set-up-cloud-provider/). When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
-We are going to enter the following values to create a multi-zone universe on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider:
+To create a multi-zone universe using [Google Cloud provider (GCP)](../../configure-yugabyte-platform/set-up-cloud-provider/gcp), perform the following:
 
-- Enter a universe name (**helloworld1**)
-- Enter the region (**Oregon**)
-- Change instance type (**n1-standard-8**)
-
-All other options as set to the default values (replication factor = 3, number of nodes = 3). Click **Create**.
+- Enter a universe name (**helloworld1**).
+- Enter the region (**Oregon**).
+- Change the instance type (**n1-standard-8**).
+- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3).
+- Click **Create**, as shown in the following illustration.
 
 ![Create Universe on GCP](/images/ee/create-univ-multi-zone.png)
 
-Here's how a Universe in Pending state looks like.
+The following illustration shows a newly-created niverse in Pending state:
 
 ![Dashboard with Pending Universe](/images/ee/pending-univ-dashboard.png)
 
-## 2. Examine the universe
+## Examine the universe
 
-### Universe overview
+The universe view consists of several tabs that provide different information about this universe.
 
-The overview tab has a lot of information at a glance about the universe.
+### The Overview tab
+
+The following illustration shows the **Overview** tab:
 
 ![Detail for a Pending Universe](/images/ee/pending-univ-detail.png)
 
-### Tasks level tracking for a Universe
+### The Tasks tab 
 
-The tasks tab shows the state of tasks currently running, as well as the tasks that have run in the past against this universe.
+The following illustration shows the **Tasks** tab that provides information about the state of tasks currently running on the universe, as well as the tasks that have run in the past against this universe:
 
 ![Tasks for a Pending Universe](/images/ee/pending-univ-tasks.png)
 
-### Nodes underlying a universe
+### The Nodes tab
 
-You can browse to the **Nodes** tab for the universe to see a list of nodes - in the screenshot below the cloud provider instances are still being created.
+The following illustration shows the **Nodes** tab that allows you to see a list of the underlying nodes for the universe:
 
 ![Nodes for a Pending Universe](/images/ee/pending-univ-nodes.png)
 
-### Cloud provider instances for the universe
+Note that in the preceding illustration, the cloud provider instances are still being created.
 
-Browse to the cloud provider's instances page. In this example, since you are using Google Cloud Platform as the cloud provider, browse to `Compute Engine` -> `VM Instances` and search for instances that have `helloworld1` in their name. You should see something as follows.
+You can use this tab to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain **helloworld1** in their name, you should see a list of instances similar to the following illustration:
 
 ![Instances for a Pending Universe](/images/ee/multi-zone-universe-gcp-instances.png)
 
-## 3. Connect to a database node
+## Connect to a database node
 
-Once the universe is ready, the overview tab should look as follows.
+Once the universe is ready, the **Overview** tab should appear similar to the following illustration:
 
 ![Multi-zone universe ready](/images/ee/multi-zone-universe-ready.png)
 
-Browse to the **Nodes** tab to find the nodes. This lists the ip addresses of the nodes once they are created and configured. Click on the `Connect` button as shown below.
+You connect to a database node as follows: 
 
-![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes.png)
+- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured.
 
-This should bring up a dialog showing how to connect to the nodes.
+- Click **Connect**, as shown in the following illustration:
 
-![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes-connect.png)
+  ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes.png)
 
-Copy the first command (highlighted above) and run it from the Yugabyte Platform server. This will connect us to the first node, `yb-dev-helloworld1-n1`.
+- Use the **Access Your Cluster** dialog to connect to the nodes, as shown in the following illustration:
+
+  ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes-connect.png)
+
+For example, to connect to the first node called **yb-dev-helloworld1-n1**, copy the first command displayed in the **Access Your Cluster** dialog, and then run it from the Yugabyte Platform server, as follows:
 
 ```
 centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4
+
 Are you sure you want to continue connecting (yes/no)? yes
 [centos@yb-dev-helloworld1-n1 ~]$
 ```
 
-## 4. Running workloads
+## Run workloads
 
-Yugabyte Platform comes with a pre-packaged set of sample applications. You will run a simple key-value workload against the YCQL API and the YEDIS API.
+Yugabyte Platform includes a number of sample applications. You can run one of the key-value workloads against the YCQL API and the YEDIS API as follows:
 
-### Prerequisites
-
-- **Install Java**
-
-You can do this as shown below.
+- Install Java by executing the following command:
 
 ```sh
 $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 ```
 
-- **Switch to the `yugabyte` user**
+- Switch to the yugabyte user by executing the following command:
 
 ```sh
 $ sudo su - yugabyte
 ```
 
-- **Export the `YCQL_ENDPOINTS` env variable**
+- Export the `YCQL_ENDPOINTS` environment variable, supplying the IP addresses for nodes in the cluster, as follows: 
 
-Export an environment variable telling the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in the Yugabyte Platform console and click **YCQL Endpoints**. A new tab opens with a list of IP addresses.
+  - Navigate to the **Universes > Overview** tab and click **YCQL Endpoints** to open a new tab with a list of IP addresses, as shown in the following illustration:
 
-![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
+    ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
-Export this into a shell variable on the database node `yb-dev-helloworld1-n1` you had connected to. Remember to replace the IP addresses below with those shown by the Yugabyte Platform console.
+  - Click the **Export** icon for **YCQL Services** to trigger export into a shell variable on the database node **yb-dev-helloworld1-n1** to which you are connected. Remember to replace the following IP addresses with those displayed in the Yugabyte Platform console.
 
-```sh
-$ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
-```
+    ```sh
+    $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
+    ```
 
-- **Export the `YEDIS_ENDPOINTS` env variable**
+- Export the `YEDIS_ENDPOINTS` environment variable by repeating the preceding procedure and as per the following illustration and command:
 
-Repeat the same process for the YEDIS endpoints.
+  ![YCQL end points](/images/ee/multi-zone-universe-yedis-endpoints.png)
 
-![YCQL end points](/images/ee/multi-zone-universe-yedis-endpoints.png)
+  ```sh
+  $ export YEDIS_ENDPOINTS="10.138.0.3:6379,10.138.0.4:6379,10.138.0.5:6379"
+  ```
 
-Export an environment variable for the YEDIS endpoints.
+### CassandraKeyValue workload
 
-```sh
-$ export YEDIS_ENDPOINTS="10.138.0.3:6379,10.138.0.4:6379,10.138.0.5:6379"
-```
-
-### Run the CassandraKeyValue workload
-
-To start the workload, run the following command.
+To start the CassandraKeyValue workload, execute the following command:
 
 ```sh
 $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
@@ -147,7 +165,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --nouuid
 ```
 
-The sample app will print some output and settle into reporting some stats in the steady state.
+The sample application produces output similar to the following and reports some statistics in the steady state:
 
 ```
 Created table: [CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));]
@@ -157,19 +175,21 @@ Read: 47419.99 ops/sec (0.67 ms/op), 1053156 total ops | Write: 1303.85 ops/sec 
 Read: 47220.98 ops/sec (0.68 ms/op), 1289285 total ops | Write: 1311.67 ops/sec (1.52 ms/op), 35979 total ops
 ```
 
-Browse to the **Metrics** tab of the universe in the Yugabyte Platform console. You should be able to see the metrics show up. The metrics tab displays a variety of metrics, a few are shown in the screenshot below. Note that these numbers (server side metrics) tally with what the load tester reports (client side metrics).
+If you open the **Metrics** tab of the universe, you should see the metrics graphs, as shown in the following illustration:
 
 ![YCQL Load Metrics](/images/ee/multi-zone-universe-ycql-load-metrics.png)
 
-It is also possible to view the metrics at a per-node level as shown below.
+Note that these server-side metrics tally with the client-side metrics reported by the load tester.
+
+You can also view metrics at a per-node level, as shown in the following illustration:
 
 ![YCQL Load Metrics Per Node](/images/ee/multi-zone-universe-ycql-load-metrics-per-node.png)
 
-Let us stop the load tester and run a yedis workload.
+You should stop the load tester.
 
-### Run the RedisKeyValue workload
+### RedisKeyValue workload
 
-To start the workload, run the following command.
+To start the RedisKeyValue workload, execute the following command.
 
 ```sh
 $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
@@ -182,7 +202,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --nouuid
 ```
 
-The sample application will print some output and settle into reporting some stats in the steady state.
+The sample application produces output similar to the following and reports some statistics in the steady state:
 
 ```
 Read: 50069.15 ops/sec (0.64 ms/op), 657550 total ops  | Write: 1470.87 ops/sec (1.36 ms/op), 18849 total ops
@@ -190,28 +210,30 @@ Read: 50209.09 ops/sec (0.64 ms/op), 908653 total ops  | Write: 1454.87 ops/sec 
 Read: 50016.18 ops/sec (0.64 ms/op), 1158794 total ops | Write: 1463.26 ops/sec (1.37 ms/op), 33443 total ops
 ```
 
-Browse to the **Metrics** tab of the universe in the Yugabyte Platform console. You should be able to see the metrics show up. The metrics tab displays a variety of metrics, a few are shown in the screenshot below. Note that these numbers (server side metrics) tally with what the load tester reports (client side metrics).
+If you open the **Metrics** tab of the universe, you should see the metrics graphs, as shown in the following illustration:
 
 ![YEDIS Load Metrics Per Node](/images/ee/multi-zone-universe-yedis-load-metrics.png)
 
-Stop the sample application.
+Note that these server-side metrics tally with the client-side metrics reported by the load tester.
 
-## 5. Examine the data
+You shoudl stop the sample application.
 
-You can connect to the YCQL service by running the following command.
+## Examine data
 
-```sh
-$ /home/yugabyte/tserver/bin/ycqlsh <ip address of the node>
+You can connect to the YCQL service by executing the following command:
+
+```
+/home/yugabyte/tserver/bin/ycqlsh <ip_address_of_the_node>
 ```
 
-You can view the table schema as well as the data entered as shown below.
+You can view the table schema and the data, as follows:
 
 ```sql
 ycqlsh> DESCRIBE ybdemo_keyspace.cassandrakeyvalue;
 
 CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
-    k text PRIMARY KEY,
-    v blob
+  k text PRIMARY KEY,
+  v blob
 ) WITH default_time_to_live = 0;
 ```
 
@@ -231,13 +253,13 @@ ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 (5 rows)
 ```
 
-You can connect to the YEDIS service by running the following command.
+You can connect to the YEDIS service by executing the following command:
 
-```sh
-$ /home/yugabyte/tserver/bin/redis-cli -h <ip address of the node>
+```
+/home/yugabyte/tserver/bin/redis-cli -h <ip_address_of_the_node>
 ```
 
-You can view the data by running the following commands.
+You can view the data by running the following commands:
 
 ```
 10.138.0.4:6379> GET key:0
