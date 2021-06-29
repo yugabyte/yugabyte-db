@@ -151,7 +151,7 @@ public class Provider extends Model {
     if (this.config == null) {
       return new HashMap<>();
     } else {
-      return this.config;
+      return new HashMap<>(this.config);
     }
   }
 
