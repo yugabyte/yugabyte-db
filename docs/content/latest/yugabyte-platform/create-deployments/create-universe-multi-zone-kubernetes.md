@@ -37,10 +37,7 @@ Before you start creating a universe, ensure that you performed steps described 
 
 ![img](/images/yb-platform/kubernetes-config1.png)
 
-Note the following: 
-
-- Yugabyte Platform version 2.7.1.1 is used in examples throughout this document.
-- The cloud provider example used in this document has a cluster-level admin access.
+Note that the cloud provider example used in this document has a cluster-level admin access.
 
 ## Create a universe
 
