@@ -152,6 +152,10 @@ DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
     "Slows down the send alter table rpc's so that the master may be stopped between "
     "different phases.");
 
+DEFINE_test_flag(
+    int32, slowdown_backfill_job_deletion_ms, 0,
+    "Slows down backfill job deletion so that backfill job can be read by test.");
+
 namespace yb {
 namespace master {
 
@@ -672,6 +676,12 @@ BackfillTable::BackfillTable(
   auto l = indexed_table_->LockForRead();
   schema_version_ = indexed_table_->metadata().state().pb.version();
   leader_term_ = master_->catalog_manager()->leader_ready_term();
+  if (l.data().pb.backfill_jobs_size() > 0) {
+    number_rows_processed_.store(l.data().pb.backfill_jobs(0).num_rows_processed());
+  } else {
+    number_rows_processed_.store(0);
+  }
+
   const auto& pb = indexed_table_->metadata().state().pb;
   if (pb.backfill_jobs_size() > 0 && pb.backfill_jobs(0).has_backfilling_timestamp() &&
       read_time_for_backfill_.FromUint64(pb.backfill_jobs(0).backfilling_timestamp()).ok()) {
@@ -763,12 +773,36 @@ std::string BackfillTable::description() const {
       "Backfill Index Table(s) $0 : $1", requested_index_names_,
       (timestamp_chosen()
            ? (done() ? Format("Backfill $0/$1 tablets done", num_pending, num_tablets)
-                     : Format("Backfilling $0/$1 tablets", num_pending, num_tablets))
+                     : Format(
+                           "Backfilling $0/$1 tablets with $2 rows done", num_pending, num_tablets,
+                           number_rows_processed_.load()))
            : Format("Waiting to GetSafeTime from $0/$1 tablets", num_pending, num_tablets)));
 }
 
 const std::string BackfillTable::GetNamespaceName() const {
   return ns_info_->name();
+}
+
+Status BackfillTable::UpdateRowsProcessedForIndexTable(const int number_rows_processed) {
+  auto l = indexed_table_->LockForWrite();
+
+  if (l.data().pb.backfill_jobs_size() == 0) {
+    // Some other task already marked the backfill job as done.
+    return Status::OK();
+  }
+
+  // This is consistent with logic assuming that we have only one backfill job in queue
+  // We might in the future change this to a for loop to account for multiple backfill jobs
+  number_rows_processed_.fetch_add(number_rows_processed);
+  auto* indexed_table_pb = l.mutable_data()->pb.mutable_backfill_jobs(0);
+  indexed_table_pb->set_num_rows_processed(number_rows_processed_.load());
+  VLOG(2) << "Updated backfill task to having processed " << number_rows_processed
+          << " more rows. Total rows processed is: " << number_rows_processed_;
+
+  RETURN_NOT_OK(
+      master_->catalog_manager()->sys_catalog_->UpdateItem(indexed_table_.get(), leader_term()));
+  l.Commit();
+  return Status::OK();
 }
 
 Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
@@ -987,6 +1021,10 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
     tablet->mutable_metadata()->CommitMutation();
   }
 
+  if (FLAGS_TEST_slowdown_backfill_job_deletion_ms > 0) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_job_deletion_ms));
+  }
+
   {
     auto l = indexed_table_->LockForWrite();
     DCHECK_LE(l.data().pb.backfill_jobs_size(), 1) << "For now we only expect to have up to 1 "
@@ -1130,7 +1168,7 @@ void BackfillTablet::LaunchNextChunkOrDone() {
 
 void BackfillTablet::Done(
     const Status& status, const boost::optional<string>& backfilled_until,
-    const std::unordered_set<TableId>& failed_indexes) {
+    const int number_rows_processed, const std::unordered_set<TableId>& failed_indexes) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status
               << "\nFailed_indexes are " << yb::ToString(failed_indexes);
@@ -1138,7 +1176,7 @@ void BackfillTablet::Done(
   }
 
   if (backfilled_until) {
-    auto s = UpdateBackfilledUntil(*backfilled_until);
+    auto s = UpdateBackfilledUntil(*backfilled_until, number_rows_processed);
     if (!s.ok()) {
       LOG(WARNING) << "Could not persist how far the tablet is done backfilling. " << s.ToString();
       return;
@@ -1148,7 +1186,8 @@ void BackfillTablet::Done(
   LaunchNextChunkOrDone();
 }
 
-Status BackfillTablet::UpdateBackfilledUntil(const string& backfilled_until) {
+Status BackfillTablet::UpdateBackfilledUntil(
+    const string& backfilled_until, const int number_rows_processed) {
   backfilled_until_ = backfilled_until;
   VLOG_WITH_PREFIX(2) << "Done backfilling the tablet " << yb::ToString(tablet_) << " until "
                       << yb::ToString(backfilled_until_);
@@ -1167,7 +1206,7 @@ Status BackfillTablet::UpdateBackfilledUntil(const string& backfilled_until) {
     LOG(INFO) << "Done backfilling the tablet " << yb::ToString(tablet_);
     done_.store(true, std::memory_order_release);
   }
-  return Status::OK();
+  return backfill_table_->UpdateRowsProcessedForIndexTable(number_rows_processed);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -1414,9 +1453,10 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
   }
 
   if (resp_.has_backfilled_until()) {
-    backfill_tablet_->Done(status, resp_.backfilled_until(), failed_indexes);
+    backfill_tablet_->Done(
+        status, resp_.backfilled_until(), resp_.number_rows_processed(), failed_indexes);
   } else {
-    backfill_tablet_->Done(status, boost::none, failed_indexes);
+    backfill_tablet_->Done(status, boost::none, resp_.number_rows_processed(), failed_indexes);
   }
 }
 

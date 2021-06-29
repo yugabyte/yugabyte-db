@@ -212,6 +212,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
+      int* number_of_rows_processed,
       std::string* backfilled_until,
       std::unordered_set<TableId>* failed_indexes);
 

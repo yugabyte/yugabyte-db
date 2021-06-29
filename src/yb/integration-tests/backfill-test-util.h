@@ -51,6 +51,20 @@ Result<master::BackfillJobPB> GetBackfillJobs(
   }
 }
 
+CHECKED_STATUS WaitForBackfillSatisfyCondition(
+    std::shared_ptr<master::MasterServiceProxy> proxy,
+    const client::YBTableName& table_name,
+    const std::function<bool(Result<master::BackfillJobPB>)>& condition,
+    const TableId& table_id = "",
+    MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
+  return WaitFor(
+      [proxy, condition, &table_name, &table_id]() {
+        Result<master::BackfillJobPB> backfill_job = GetBackfillJobs(proxy, table_name, table_id);
+        return condition(backfill_job);
+      },
+      max_wait, "Waiting for backfill to satisfy condition.");
+}
+
 CHECKED_STATUS WaitForBackfillSafeTimeOn(
     std::shared_ptr<master::MasterServiceProxy> proxy,
     const client::YBTableName& table_name,
