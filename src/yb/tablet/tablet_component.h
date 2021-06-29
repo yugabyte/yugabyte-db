@@ -30,10 +30,11 @@ class TabletComponent {
   }
 
  protected:
-  ScopedRWOperationPause PauseReadWriteOperations();
+  Result<Tablet::ScopedRWOperationPauses> StartShutdownRocksDBs(
+      DisableFlushOnShutdown disable_flush_on_shutdown);
 
-  CHECKED_STATUS ShutdownRocksDBs(
-      Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
+  CHECKED_STATUS CompleteShutdownRocksDBs(
+      Destroy destroy, Tablet::ScopedRWOperationPauses* ops_pauses);
 
   CHECKED_STATUS OpenRocksDBs();
 

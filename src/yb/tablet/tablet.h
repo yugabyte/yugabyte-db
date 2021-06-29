@@ -114,6 +114,7 @@ YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
+YB_STRONGLY_TYPED_BOOL(Abortable);
 
 enum class FlushFlags {
   kNone = 0,
@@ -178,7 +179,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Upon completion, the tablet enters the kBootstrapping state.
   CHECKED_STATUS Open();
 
-  CHECKED_STATUS EnableCompactions(ScopedRWOperationPause* operation_pause);
+  CHECKED_STATUS EnableCompactions(ScopedRWOperationPause* non_abortable_ops_pause);
 
   // Performs backfill for the key range beginning from the row immediately after
   // <backfill_from>, until either it reaches the end of the tablet
@@ -661,6 +662,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
  private:
+  struct ScopedRWOperationPauses {
+    ScopedRWOperationPause abortable;
+    ScopedRWOperationPause non_abortable;
+
+    std::array<ScopedRWOperationPause*, 2> AsArray() {
+      return {&abortable, &non_abortable};
+    }
+  };
+
   friend class Iterator;
   friend class TabletPeerTest;
   friend class ScopedReadOperation;
@@ -694,13 +704,32 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const boost::optional<TransactionId>& transaction_id,
       bool is_ysql_catalog_table) const;
 
-  // Pause any new read/write operations and wait for all pending read/write operations to finish.
-  ScopedRWOperationPause PauseReadWriteOperations(Stop stop = Stop::kFalse);
+  // Pause abortable/non-abortable new read/write operations and wait for all
+  // abortable/non-abortable pending read/write operations to finish.
+  // If stop is false, ScopedRWOperation constructor will wait while ScopedRWOperationPause is
+  // alive.
+  // If stop is true, ScopedRWOperation constructor will create an instance with an error (see
+  // ScopedRWOperation::ok()) while ScopedRWOperationPause is alive.
+  ScopedRWOperationPause PauseReadWriteOperations(
+      Abortable abortable, Stop stop = Stop::kFalse);
 
-  void StartShutdownRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown);
+  // Pauses new non-abortable read/write operations and wait for all of those that are pending to
+  // complete.
+  // Starts RocksDB shutdown (that will abort abortable read/write operations).
+  // Pauses new abortable read/write operations and wait for all of those that are pending to
+  // complete.
+  // Returns ScopedRWOperationPauses that are preventing new read/write operations from being
+  // started.
+  Result<ScopedRWOperationPauses> StartShutdownRocksDBs(
+      DisableFlushOnShutdown disable_flush_on_shutdown, Stop stop = Stop::kFalse);
 
-  CHECKED_STATUS ShutdownRocksDBs(
-      Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
+  CHECKED_STATUS CompleteShutdownRocksDBs(
+      Destroy destroy, ScopedRWOperationPauses* ops_pauses);
+
+  ScopedRWOperation CreateAbortableScopedRWOperation(
+      const CoarseTimePoint& deadline = CoarseTimePoint()) const;
+  ScopedRWOperation CreateNonAbortableScopedRWOperation(
+      const CoarseTimePoint& deadline = CoarseTimePoint()) const;
 
   CHECKED_STATUS DoEnableCompactions();
 
@@ -815,13 +844,22 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // restarts and leader changes.
   std::atomic<int64_t> monotonic_counter_{0};
 
-  // Number of pending operations. We use this to make sure we don't shut down RocksDB before all
-  // pending operations are finished. We don't have a strict definition of an "operation" for the
-  // purpose of this counter. We simply wait for this counter to go to zero before shutting down
-  // RocksDB.
+  // Number of pending non-abortable operations. We use this to make sure we don't shut down RocksDB
+  // before all non-abortable pending operations are finished. We don't have a strict definition of
+  // an "operation" for the purpose of this counter. We simply wait for this counter to go to zero
+  // before starting RocksDB shutdown.
+  // Note: as of 2021-06-28 applying of Raft operations could not handle errors that happened due to
+  // RocksDB shutdown.
   //
   // This is marked mutable because read path member functions (which are const) are using this.
-  mutable RWOperationCounter pending_op_counter_;
+  mutable RWOperationCounter pending_non_abortable_op_counter_;
+
+  // Similar to pending_non_abortable_op_counter_ but for operations that could be aborted, i.e.
+  // operations that could handle RocksDB shutdown during their execution, for example manual
+  // compactions.
+  // We wait for this counter to go to zero after starting RocksDB shutdown and before destroying
+  // RocksDB in-memory instance.
+  mutable RWOperationCounter pending_abortable_op_counter_;
 
   // Used by Alter/Schema-change ops to pause new write ops from being submitted.
   RWOperationCounter write_ops_being_submitted_counter_;
