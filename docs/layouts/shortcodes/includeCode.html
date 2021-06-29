@@ -1,0 +1,22 @@
+{{/*
+  Outputs the contents of a file.
+
+  Optional: specify the number of spaces to indent the output.
+
+  The base path is /docs/static.
+
+  {{% includeCode file="code-samples/include.sql" spaces=4 %}}
+
+  Thanks to Ian Maddaus (https://github.com/IanMadd) for the indentation logic.
+*/}}
+
+{{- $includePath := (.Get "file") | printf "static/%s" -}}
+{{- $file := readFile $includePath | chomp -}}
+{{- with .Get "spaces" -}}
+  {{- $spaces := strings.Repeat . " " -}}
+  {{- $file := replaceRE `(?m)^` $spaces $file -}}
+  {{- $spacesRegex := delimit (slice `(?m)^\s{` ( . ) `}`) "" -}}
+  {{- replaceRE $spacesRegex "" $file 1 | safeHTML -}}
+{{- else -}}
+  {{- $file | safeHTML -}}
+{{- end -}}
