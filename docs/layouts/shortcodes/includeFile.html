@@ -9,21 +9,21 @@
 
   Basic call:
 
-    {{% includeFile file="code-samples/include.sql" %}}
+    {{< includeFile file="code-samples/include.sql" >}}
 
   Specify a language (default is "output" otherwise):
 
-    {{% includeFile file="code-samples/include.sql" lang="sql" %}}
+    {{< includeFile file="code-samples/include.sql" lang="sql" >}}
 
   Specify a language and some highlighting options:
 
-    {{% includeFile file="code-samples/include.sql" lang="sql" hl_options="hl_lines=2 5-7" spaces=4 %}}
+    {{< includeFile file="code-samples/include.sql" lang="sql" hl_options="hl_lines=2 5-7" >}}
   
   CAREFUL! hl_lines takes a different form here than when you're specifying it
   on a fenced block: no comma, no quotes: `hl_options="hl_lines=1 7-10"`
 
   https://gohugo.io/content-management/syntax-highlighting/#highlight-shortcode
-  
+
 */}}
 
 {{/*
