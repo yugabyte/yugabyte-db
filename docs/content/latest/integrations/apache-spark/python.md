@@ -6,13 +6,12 @@ description: Build a Python application using Apache Spark and YugabyteDB
 menu:
   latest:
     identifier: apache-spark-3-python
-    parent: ecosystem-integrations
+    parent: integrations
     weight: 572
 
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="{{< relref "./scala.md" >}}" class="nav-link">
       <i class="icon-scala" aria-hidden="true"></i>

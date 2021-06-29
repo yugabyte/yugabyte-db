@@ -6,7 +6,7 @@ description: Build a Java-based application using Apache Spark and YugabyteDB.
 menu:
   latest:
     identifier: apache-spark-2-java
-    parent: ecosystem-integrations
+    parent: integrations
     weight: 572
 showAsideToc: true
 isTocNested: true

@@ -6,7 +6,7 @@ aliases:
 menu:
   latest:
     identifier: presto
-    parent: ecosystem-integrations
+    parent: integrations
     weight: 575
 isTocNested: true
 showAsideToc: true
@@ -14,16 +14,16 @@ showAsideToc: true
 
 [Presto](https://prestosql.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.
 
-This page shows how to set up Presto to query YugabyteDB's YCQL tables.
+This document describes how to set up Presto to query YugabyteDB's YCQL tables.
 
 ## 1. Start local cluster
 
-Follow [Quick start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra compatible API as [documented](../../../quick-start/explore/ycql/) so that you can confirm that you have a Cassandra compatible service running on `localhost:9042`. We assume you have created the keyspace and table, and inserted sample data as described there.
+Follow [Quick start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra-compatible API, as [documented](../../quick-start/explore/ycql/) so that you can confirm that you have a Cassandra-compatible service running on `localhost:9042`. Ensure that you have created the keyspace and table, and inserted sample data as described there.
 
 ## 2. Download and configure Presto
 
 Detailed steps are documented [here](https://prestosql.io/docs/current/installation/deployment.html).
-The following are the minimal setup steps for getting started.
+The following are the minimal setup steps for getting started:
 
 ```sh
 $ wget https://repo1.maven.org/maven2/io/prestosql/presto-server/309/presto-server-309.tar.gz
@@ -63,7 +63,7 @@ node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
 node.data-dir=/Users/<username>/presto-server-309/data
 ```
 
-Press Ctrl-D after you've pasted the file contents.
+Press Ctrl-D after you have pasted the file contents.
 
 ### Create jvm.config file
 
@@ -82,7 +82,7 @@ $ cat > etc/jvm.config
 -XX:+ExitOnOutOfMemoryError
 ```
 
-Press Ctrl-D after you've pasted the file contents.
+Press Ctrl-D after you have pasted the file contents.
 
 ### Create config.properties file
 
@@ -100,7 +100,7 @@ discovery-server.enabled=true
 discovery.uri=http://localhost:8080
 ```
 
-Press Ctrl-D after you've pasted the file contents.
+Press Ctrl-D after you have pasted the file contents.
 
 ### Create log.properties file
 
@@ -112,11 +112,11 @@ $ cat > etc/log.properties
 io.prestosql=INFO
 ```
 
-Press Ctrl-D after you've pasted the file contents.
+Press Ctrl-D after you have pasted the file contents.
 
 ### Configure Cassandra connector to YugabyteDB
 
-Create the cassandra catalog properties file in etc/catalog directory.
+Create the Cassandra catalog properties file in `etc/catalog` directory.
 Detailed instructions are [here](https://prestosql.io/docs/current/connector/cassandra.html).
 
 ```sh
@@ -128,7 +128,7 @@ connector.name=cassandra
 cassandra.contact-points=127.0.0.1
 ```
 
-Press Ctrl-D after you've pasted the file contents.
+Press Ctrl-D after you have pasted the file contents.
 
 ## 3. Download Presto CLI
 
@@ -152,13 +152,13 @@ $ mv presto-cli-309-executable.jar presto && chmod +x presto
 $ cd ~/presto-server-309
 ```
 
-To run in foreground mode.
+To run in foreground mode:
 
 ```sh
 $ ./bin/launcher run
 ```
 
-To run in background mode.
+To run in background mode:
 
 ```sh
 $ ./bin/launcher start
@@ -166,13 +166,13 @@ $ ./bin/launcher start
 
 ## 5. Test Presto queries
 
-Use the presto CLI to run ad-hoc queries.
+Use the presto CLI to run ad-hoc queries:
 
 ```sh
 $ ./bin/presto --server localhost:8080 --catalog cassandra --schema default
 ```
 
-Start using `myapp`.
+Start using `myapp`:
 
 ```sql
 presto:default> use myapp;
@@ -182,7 +182,7 @@ presto:default> use myapp;
 USE
 ```
 
-Show the tables available.
+Show the tables available:
 
 ```sql
 presto:myapp> show tables;
@@ -195,7 +195,7 @@ presto:myapp> show tables;
 (1 row)
 ```
 
-Describe a particular table.
+Describe a particular table:
 
 ```sql
 presto:myapp> describe stock_market;

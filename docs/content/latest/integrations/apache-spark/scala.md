@@ -4,18 +4,16 @@ headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
-  - /latest/develop/ecosystem-integrations/apache-spark/
 menu:
   latest:
     identifier: apache-spark-1-scala
-    parent: ecosystem-integrations
+    parent: integrations
     weight: 572
 showAsideToc: true
 isTocNested: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="{{< relref "./scala.md" >}}" class="nav-link active">
       <i class="icon-scala" aria-hidden="true"></i>
@@ -53,11 +51,11 @@ libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If not, please follow these steps in the [Explore YCQL](../../../api/ycql/quick-start/).
 
-- installed Scala version 2.12 or later and sbt 1.3.8 or later/
+- installed Scala version 2.12 or later and sbt 1.3.8 or later
 
-- installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project as shown below.
+- installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project , as follows:
 
 ```scala
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
@@ -275,7 +273,6 @@ object CassandraSparkWordCount {
       .save
     // */
 
-
     // ----------------------------------------------------------------------
     // Disconnect from Cassandra.
     session.close
@@ -289,20 +286,20 @@ object CassandraSparkWordCount {
 
 ### Build and run the application
 
-To build the JAR file, run the following command.
+To build the JAR file, run the following command:
 
 ```sh
 $ sbt assembly
 ```
 
-To run the program, run the following command.
+To run the program, run the following command:
 
 ```sh
 $ spark-submit --class com.yugabyte.sample.apps.CassandraSparkWordCount \
     target/scala-2.11/CassandraSparkWordCount-assembly-1.0.jar
 ```
 
-You should see a table similar to the following as the output.
+You should see a table similar to the following as the output:
 
 ```output
 +-----+-----+

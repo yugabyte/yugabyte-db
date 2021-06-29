@@ -6,8 +6,8 @@ aliases:
 menu:
   latest:
     identifier: spring
-    parent: ecosystem-integrations
-    weight: 571
+    parent: integrations
+    weight: 578
 isTocNested: true
 showAsideToc: true
 ---

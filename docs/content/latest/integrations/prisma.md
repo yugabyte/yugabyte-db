@@ -5,15 +5,17 @@ description: Prisma
 menu:
   latest:
     identifier: prisma
-    parent: graphql
-    weight: 583
+    parent: integrations
+    weight: 579
 isTocNested: true
 showAsideToc: true
 ---
 
-Explore how you can use Prisma, and its GraphQL support, to interact with YugabyteDB. You will quickly build a GraphQL server and then use the Prisma client to write data to and run queries on a YugabyteDB database. Also, you'll get a taste of Prisma's ORM functionality.
+Explore how you can use Prisma and its GraphQL support to interact with YugabyteDB. You can build a GraphQL server and then use the Prisma client to write data to and run queries on a YugabyteDB database. Also, you can explore the Prisma's ORM functionality.
 
-[Prisma](https://prisma.io) is an [open source](https://github.com/prisma/prisma) suite of database tools that simplify database workflows by easing database access, migrations, and data management. Prisma replaces traditional ORMs and can be used to build GraphQL servers, REST APIs, microservices, and more. For an overview, see [Prisma Basics: Datamodel, Prisma Client & Server](https://www.prisma.io/docs/understand-prisma/prisma-basics-datamodel-client-and-server-fgz4/).
+[Prisma](https://prisma.io) is an [open source](https://github.com/prisma/prisma) suite of database tools that simplify database workflows by easing database access, migrations, and data management. Prisma replaces traditional ORMs and can be used to build GraphQL servers, REST APIs, microservices, and more. 
+
+For more information, see [Prisma Basics: Datamodel, Prisma Client & Server](https://www.prisma.io/docs/understand-prisma/prisma-basics-datamodel-client-and-server-fgz4/).
 
 ## Before you begin
 
@@ -25,11 +27,11 @@ If YugabyteDB is installed, run the following `yb-ctl create` command to start a
 ./bin/yb-ctl create --tserver_flags=ysql_pg_conf="default_transaction_isolation=serializable"
 ```
 
-If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](/latest/quick-start/). After installing YugabyteDB, make sure to follow the step mentioned above.
+If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](../../quick-start/). After installing YugabyteDB, perform the preceding step.
 
 ### Prisma
 
-To use Prisma, `npm` and Docker need to be installed. For details on installing these, see the following:
+To use Prisma, `npm` and Docker need to be installed. For details on installing them, see the following:
 
 - [npm](https://www.npmjs.com/get-npm)
 - [Docker](https://docs.docker.com/)
@@ -44,13 +46,13 @@ For more information, see [Set up Prisma (for a new database)](https://www.prism
 
 ## 1. Set up and connect Prisma with the `prisma-yb` database
 
-To set up a Prisma project, named `prisma-yb`, run the following command.
+To set up a Prisma project, named `prisma-yb`, run the following command:
 
 ```sh
 prisma init prisma-yb
 ```
 
-In order to quickly explore using Prisma with YugabyteDB, you will use the default database and user in the PostgreSQL-compatible YugabyteDB.
+In order to quickly explore using Prisma with YugabyteDB, use the default database and user in the PostgreSQL-compatible YugabyteDB.
 
 When prompted, enter or select the following values:
 
@@ -73,7 +75,7 @@ When finished, the following three files have created in the project directory, 
 
 ## 2. Start the Prisma server
 
-To start the Prisma server (in the Docker container) and launch the connected YugabyteDB database, go to the `prisma-yb` directory and then run the `docker-compose` command:
+To start the Prisma server (in the Docker container) and launch the connected YugabyteDB database, navigate to the `prisma-yb` directory and then run the `docker-compose` command:
 
 ```sh
 cd prisma-yb
@@ -84,7 +86,7 @@ You should now have a `prismagraphql/prisma` container running. You can check th
 
 ## 3. Set up a sample schema
 
-Open `datamodel.prisma` and replace the contents with:
+Open `datamodel.prisma` and replace the contents with the following:
 
 ```
 type Post {
@@ -121,7 +123,7 @@ Use the Prisma client to create the following sample data. Paste the following c
 
 For details on writing data with the Prisma client, see [Writing Data (JavaScript)](https://www.prisma.io/docs/prisma-client/basic-data-access/writing-data-JAVASCRIPT-rsc6/).
 
-1. Create a user Jane with three postings
+1. Create a user Jane with three postings:
 
 ```graphql
 mutation {
@@ -150,7 +152,7 @@ mutation {
 }
 ```
 
-2. Create a user John with two postings.
+2. Create a user John with two postings:
 
 ```graphql
 mutation {
@@ -179,7 +181,7 @@ mutation {
 
 ## 6. Query the data
 
-Now that you have created some sample data, you can run some queries to get a taste of using Prisma to query YugabyteDB. In the following examples, you will use the Prisma client to retrieve data. Paste the following code examples into the left side of a tab, and then click the arrow to process your requests. 
+Now that you have created some sample data, you can run some queries to get a taste of using Prisma to query YugabyteDB. In the following examples, you use the Prisma client to retrieve data. Paste the following code examples into the left side of a tab, and then click the arrow to process your requests. 
 
 For details on using the Prisma client to read data, see [Reading Data (JavaScript)](https://www.prisma.io/docs/prisma-client/basic-data-access/reading-data-JAVASCRIPT-rsc2/).
 
@@ -248,9 +250,9 @@ For details on using the Prisma client to read data, see [Reading Data (JavaScri
 
 ## 7. Try the Prisma ORM (JavaScript)
 
-In this subsection, you can take a quick look at the Prisma ORM functionality.
+The following workflow provides information on Prisma ORM functionality.
 
-Initialize an NPM project.
+Initialize an NPM project:
 
 ```sh
 npm init -y
@@ -259,7 +261,7 @@ npm install --save prisma-client-lib
 
 ### Read and write data
 
-1. Create a file
+1. Create a file:
 
 ```sh
 touch index.js
@@ -294,7 +296,7 @@ async function main() {
 main().catch(e => console.error(e))
 ```
 
-The code above will create a new user `Alice` and a new post for that user. Finally, it will list all users, and then all posts by the new user Alice.
+The preceding code creates a new user `Alice` and a new post for that user. Finally, it lists all users, and then all posts by the new user Alice.
 
 3. Run the file:
 
@@ -306,27 +308,31 @@ node index.js
 
 ## Clean up
 
-Now that you're done with this exploration, you can clean up the pieces for your next adventure.
+Now that you have completed this exploration, you can clean up the pieces as follows:
 
-1. Stop the YugabyteDB cluster
+- Stop the YugabyteDB cluster:
 
-```sh
-./bin/yb-ctl stop
-```
+  ```sh
+  ./bin/yb-ctl stop
+  ```
 
-To completely remove all YugabyteDB data/cluster-state you can instead run:
+- Stop the Prisma container:
+
+  ```shell
+  docker stop <container-id>
+  ```
+
+To completely remove all YugabyteDB data and cluster-state, you can instead run the following command:
 
 ```sh
 ./bin/yb-ctl destroy
-2. Stop The Prisma container
-docker stop <container-id>
 ```
 
-To completely remove all Prisma data/tate you can additionally run:
+To completely remove all Prisma data and state, you can additionally run the following command:
 
 ```sh
 docker rm <container-id>
 ```
 
-Note: you can list running containers by running `docker ps`.
+To list running containers, execute `docker ps`.
 
