@@ -58,7 +58,7 @@ OBJS = src/backend/age.o \
 
 EXTENSION = age
 
-DATA = age--0.4.0.sql
+DATA = age--0.5.0.sql
 
 # sorted in dependency order
 REGRESS = scan \

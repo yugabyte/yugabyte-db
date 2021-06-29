@@ -15,30 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
-Release Notes for AGE 0.4.0 (alpha)
+Release Notes for Apache AGE release v0.5.0
 
-    Added Auto Group By aggregation support for RETURN and WITH clauses.
-
-    Added support for more input types in aggregate functions.
-
-    Added support for DISTINCT in functions.
-
-    Added explicit type cast from AGTYPEOID to TEXTOID.
-
-    Added explicit type casting Agtype to PG's shortint, int, and Bigint
-
-    Added type casting from AGTYPEOID to INT8OID and FLOATOID. For use with user defined (non-AGE) functions within the cypher query.
-
-    Added overloading for INT8OID mathematical operators.
-
-    Added * and optional edge grammar components.
-
-    Changed input types for typecasting functions to “any”.
-
-    Added support for the DELETE clause.
-
-    Added support for Stored Procedures and PL/pgSQL.
-
-    Added a basic agtype parser for the NodeJS driver.
-
-
+    Added Support for Agtype to be used in Hash Joins
+    Added Support for DELETE to be the last clause in a Cypher statement
+    Fix a bug where DELETE, REMOVE, and SET would not update a vertex/edge
+    Added support for SKIP and LIMIT as sub-clauses for the WITH and RETURN statement
+    Added support for CASE statement
+    Added support for PostgreSQL EXPLAIN utility command
+    Add operator overload for agtype to numeric
+    Added ANTLR4 grammar file to be used with the JDBC and NodeJS drivers
+    Added NULL regression tests
+    Added label function
