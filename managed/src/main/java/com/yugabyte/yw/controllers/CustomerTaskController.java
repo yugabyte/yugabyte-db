@@ -24,9 +24,8 @@ import java.util.*;
 
 public class CustomerTaskController extends AuthenticatedController {
 
-  @Inject Commissioner commissioner;
-
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private Commissioner commissioner;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
 

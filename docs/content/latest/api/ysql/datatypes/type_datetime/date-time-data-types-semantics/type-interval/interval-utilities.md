@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 {{< tip title="Download the kit to create all of the code that this section describes." >}}
-The code is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../../#download).
+The code is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../../intro/#download).
 {{< /tip >}}
 
 The code presented on this page was designed to support the pedagogy of the code examples in the other sections in the enclosing section [The _interval_ data type and its variants](../../type-interval/). You can install it all, in the order presented here, at any time. It depends only on built-in SQL functions and operators and, for some of the functions, on code that was created previously in the installation order that this page shows.
@@ -467,7 +467,9 @@ This is the result:
 ### The user-defined "strict equals" interval-interval "==" operator
 
 {{< tip title="Use the 'strict equals' operator, '==', rather than the native '=', to compare 'interval' values." >}}
-Yugabyte staff members have carefully considered the practical value of the native _interval-interval_ overload of the `=` operator that YSQL inherits from PostgreSQL. They believe that the use-cases where the functionality will be useful are rare—and that, rather, a "strict equals" notion, that requires pairwise equality of the individual fields of the [_&#91;mm, dd, ss&#93;_ internal representations](../../interval-representation/) of the _interval_ values that are compared, will generally be more valuable.
+Yugabyte staff members have carefully considered the practical value of the native _interval-interval_ overload of the `=` operator that YSQL inherits from PostgreSQL.
+
+They believe that the use-cases where the functionality will be useful are rare—and that, rather, a "strict equals" notion, that requires pairwise equality of the individual fields of the [_&#91;mm, dd, ss&#93;_ internal representations](../interval-representation/) of the _interval_ values that are compared, will generally be more valuable.
 {{< /tip >}}
 
 See the section [Comparing two interval values for equality](../interval-arithmetic/interval-interval-equality/) for the larger discussion on this topic. 

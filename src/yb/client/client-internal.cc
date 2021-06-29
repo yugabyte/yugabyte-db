@@ -263,6 +263,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
 // Explicit specialization for callers outside this compilation unit.
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTabletServers);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListLiveTabletServers);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListMasters);

@@ -337,7 +337,7 @@ To create a Yugabyte Platform instance, perform the following:
 
   Expect to see a message notifying you whether or not the deployment is successful.
 
-  Note that if you are executing the preceding command as an admin user, then you can set `rabc.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
+  Note that if you are executing the preceding command as an admin user, then you can set `rbac.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
   
 - Optionally, execute the following command as an admin user to create ClusterRoleBinding:
 

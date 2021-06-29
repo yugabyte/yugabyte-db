@@ -3200,8 +3200,8 @@ size_t Tablet::TEST_CountRegularDBRecords() {
   return result;
 }
 
-template <class Functor, class Value>
-Value Tablet::GetRegularDbStat(const Functor& functor, const Value& default_value) const {
+template <class F>
+auto Tablet::GetRegularDbStat(const F& func, const decltype(func())& default_value) const {
   ScopedRWOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
@@ -3210,7 +3210,7 @@ Value Tablet::GetRegularDbStat(const Functor& functor, const Value& default_valu
   if (!scoped_operation.ok() || !regular_db_) {
     return default_value;
   }
-  return functor();
+  return func();
 }
 
 uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
