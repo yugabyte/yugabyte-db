@@ -65,7 +65,7 @@ You update the database configuration as follows:
 
 - Set the following properties to `true` to configure cross-origin resource sharing (CORS) for running the sample application from [Quick Start](https://is.docs.wso2.com/en/latest/get-started/quick-start-guide/):
 
-  ```
+  ```properties
   [cors]
   allow_generic_http_requests = true
   allow_any_origin = true

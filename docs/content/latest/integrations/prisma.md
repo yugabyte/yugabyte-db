@@ -308,23 +308,27 @@ node index.js
 
 ## Clean up
 
-Now that you have completed with this exploration, you can clean up the pieces as follows:
+Now that you have completed this exploration, you can clean up the pieces as follows:
 
-Stop the YugabyteDB cluster:
+- Stop the YugabyteDB cluster:
 
-```sh
-./bin/yb-ctl stop
-```
+  ```sh
+  ./bin/yb-ctl stop
+  ```
 
-To completely remove all YugabyteDB data/cluster-state, you can instead run the following command:
+- Stop the Prisma container:
+
+  ```shell
+  docker stop <container-id>
+  ```
+
+To completely remove all YugabyteDB data and cluster-state, you can instead run the following command:
 
 ```sh
 ./bin/yb-ctl destroy
-2. Stop The Prisma container
-docker stop <container-id>
 ```
 
-To completely remove all Prisma data/state, you can additionally run the following command:
+To completely remove all Prisma data and state, you can additionally run the following command:
 
 ```sh
 docker rm <container-id>
