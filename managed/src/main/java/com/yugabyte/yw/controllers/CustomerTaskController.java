@@ -2,34 +2,24 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.Map;
-import java.util.HashMap;
-
-import io.ebean.Query;
-import io.swagger.annotations.*;
-
-import com.yugabyte.yw.forms.SubTaskFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.CustomerTaskFormData;
-import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
+import io.swagger.annotations.*;
+import io.ebean.Query;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -40,9 +30,8 @@ import java.util.*;
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerTaskController extends AuthenticatedController {
 
-  @Inject Commissioner commissioner;
-
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private Commissioner commissioner;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
 
@@ -153,7 +142,7 @@ public class CustomerTaskController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
-    return ApiResponse.success(taskList);
+    return YWResults.withData(taskList);
   }
 
   @ApiOperation(
@@ -165,7 +154,7 @@ public class CustomerTaskController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList =
         fetchTasks(customerUUID, universe.universeUUID);
-    return ApiResponse.success(taskList);
+    return YWResults.withData(taskList);
   }
 
   @ApiOperation(value = "Status of task", responseContainer = "Map", response = Object.class)
@@ -232,6 +221,6 @@ public class CustomerTaskController extends AuthenticatedController {
             + universe.name);
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
-    return ApiResponse.success(new UniverseResp(universe, newTaskUUID));
+    return YWResults.withData(new UniverseResp(universe, newTaskUUID));
   }
 }

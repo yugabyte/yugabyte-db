@@ -5,22 +5,22 @@ linkTitle: helper functions
 description: Code to create helper functions for substantiating rules 2, 3, and 4 for specifying the UTC offset. [YSQL]
 menu:
   latest:
-    identifier: helpers
+    identifier: helper-functions
     parent: name-res-rules
     weight: 50
 isTocNested: true
 showAsideToc: true
 ---
 
-This page presents two helper functions. They are useful in substantiating these rules that this page's peer page explain: [Rule 2](../rule-2/); [Rule 3](../rule-3/); and [Rule 4](../rule-4/).
+This page presents two helper functions. They are useful in substantiating [Rule 2](../rule-2/), [Rule 3](../rule-3/), and [Rule 4](../rule-4/)—explained in this page's peer pages: 
 
 ## function occurrences(string in text)
 
 This function searches for the input string in each of the relevant scopes—i.e. the columns in the two relevant catalog views:
 
-- _pg_timezone_names.name_ value
-- _pg_timezone_names.abbrev_ value
-- _pg_timezone_abbrevs.abbrev_ value
+- _pg_timezone_names.name_
+- _pg_timezone_names.abbrev_
+- _pg_timezone_abbrevs.abbrev_
 
 It returns a vector of three _booleans_, one for each of the searched columns, where _true_ means "found the string in this column" and _false_ means "failed to find it".
 
@@ -63,7 +63,7 @@ $body$;
 
 ## function legal_scopes_for_syntax_context(string in text)
 
-This function tries uses the input string in each of the three syntax contexts where a string that's intended to specify the UTC offset may be used.
+This function tries the input string in each of the three syntax contexts where a string that's intended to specify the _UTC offset_ may be used.
 
 - As the _set timezone_ argument
 
@@ -71,9 +71,9 @@ This function tries uses the input string in each of the three syntax contexts w
 
 - in specifying a _timestamptz_ value.
 
-See [Three syntax contexts that use the specification of a UTC offset](../../../syntax-contexts-to-spec-offset/), the [table](../../name-res-rules/#syntax-contexts-table) in this page's parent, _"Rules for resolving a string that's intended to identify a UTC offset"_, and the examples that follow it.
+See [Three syntax contexts that use the specification of a _UTC offset_](../../../syntax-contexts-to-spec-offset/), the [table](../../name-res-rules/#syntax-contexts-table) in this page's parent, _"Rules for resolving a string that's intended to identify a UTC offset"_, and the examples that follow it.
 
-The function uses the _occurrences()_ helper function to annotate the report. Create it thus:
+The function uses the[ _occurrences()_](#function-occurrences-string-in-text) helper function to annotate the report. Create it thus:
 
 ```plpgsql
 drop function if exists legal_scopes_for_syntax_context(text) cascade;

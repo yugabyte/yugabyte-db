@@ -2,15 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.YWServiceException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
 import com.yugabyte.yw.forms.YWResults;
@@ -23,7 +14,10 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Api(
     value = "AvailabilityZone",
@@ -31,8 +25,6 @@ import java.util.*;
 public class AvailabilityZoneController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZoneController.class);
-
-  @Inject ValidatingFormFactory formFactory;
 
   /**
    * GET endpoint for listing availability zones
@@ -45,7 +37,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
     List<AvailabilityZone> zoneList =
         AvailabilityZone.find.query().where().eq("region", region).findList();
-    return ApiResponse.success(zoneList);
+    return YWResults.withData(zoneList);
   }
 
   /**
@@ -74,7 +66,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
       availabilityZones.put(az.code, az);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(availabilityZones);
+    return YWResults.withData(availabilityZones);
   }
 
   /**

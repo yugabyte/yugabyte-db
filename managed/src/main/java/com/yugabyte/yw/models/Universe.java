@@ -112,6 +112,12 @@ public class Universe extends Model {
 
   private UniverseDefinitionTaskParams universeDetails;
 
+  @OneToMany(mappedBy = "sourceUniverse", cascade = CascadeType.ALL)
+  public Set<AsyncReplicationRelationship> sourceAsyncReplicationRelationships;
+
+  @OneToMany(mappedBy = "targetUniverse", cascade = CascadeType.ALL)
+  public Set<AsyncReplicationRelationship> targetAsyncReplicationRelationships;
+
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
     universeDetails = details;
   }
@@ -556,6 +562,9 @@ public class Universe extends Model {
     UniverseDefinitionTaskParams details = this.getUniverseDetails();
     if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
       // This means there must be a root CA associated with it.
+      if (details.rootAndClientRootCASame) {
+        return CertificateInfo.get(details.rootCA).certificate;
+      }
       return CertificateInfo.get(details.clientRootCA).certificate;
     }
     return null;

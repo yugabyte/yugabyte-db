@@ -146,18 +146,6 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="security/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
-        <div class="title">Security</div>
-      </div>
-      <div class="body">
-        Learn about strategies for securing YugabyteDB.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="observability/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
@@ -189,6 +177,29 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
       <div class="body">
         Learn about range and hash sharding strategies.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="security/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
+        <div class="title">Security</div>
+      </div>
+      <div class="body">
+        Learn about strategies for securing YugabyteDB.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="backup-restore/point-in-time-recovery-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">Point-in-time recovery</div>
+      </div>
+      <div class="body">
+        Learn about point-in-time recovery.
       </div>
     </a>
   </div>

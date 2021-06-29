@@ -4,11 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.forms.YWResults;
@@ -33,8 +31,7 @@ import static com.yugabyte.yw.models.Users.Role;
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
-
-  @Inject ValidatingFormFactory formFactory;
+  @Inject protected RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject Environment environment;
 
@@ -47,9 +44,9 @@ public class UsersController extends AuthenticatedController {
    */
   @ApiOperation(value = "User detail by UUID", response = Users.class)
   public Result index(UUID customerUUID, UUID userUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-    return ApiResponse.success(user);
+    return YWResults.withData(user);
   }
 
   /**
@@ -59,9 +56,9 @@ public class UsersController extends AuthenticatedController {
    */
   @ApiOperation(value = "List of Users", response = Users.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
-    return ApiResponse.success(users);
+    return YWResults.withData(users);
   }
 
   /**
@@ -80,21 +77,17 @@ public class UsersController extends AuthenticatedController {
   })
   public Result create(UUID customerUUID) {
 
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     Form<UserRegisterFormData> form =
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
-    Result passwordCheckResult =
-        passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (passwordCheckResult != null) {
-      return passwordCheckResult;
-    }
+    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
     Users user =
         Users.create(formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID);
     updateFeatures(user);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
-    return ApiResponse.success(user);
+    return YWResults.withData(user);
   }
 
   /**
@@ -104,7 +97,7 @@ public class UsersController extends AuthenticatedController {
    */
   @ApiOperation(value = "Delete customer", response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID userUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
       throw new YWServiceException(
@@ -136,7 +129,7 @@ public class UsersController extends AuthenticatedController {
    */
   @ApiOperation(value = "Change role of user by UUID", response = YWResults.YWSuccess.class)
   public Result changeRole(UUID customerUUID, UUID userUUID, String role) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
       throw new YWServiceException(
@@ -170,7 +163,7 @@ public class UsersController extends AuthenticatedController {
         paramType = "body")
   })
   public Result changePassword(UUID customerUUID, UUID userUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
       throw new YWServiceException(
@@ -184,11 +177,7 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
-    Result passwordCheckResult =
-        passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (passwordCheckResult != null) {
-      return passwordCheckResult;
-    }
+    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
     if (formData.getEmail().equals(user.email)) {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());

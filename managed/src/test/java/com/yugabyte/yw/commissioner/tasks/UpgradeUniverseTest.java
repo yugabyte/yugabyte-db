@@ -33,12 +33,15 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatcher;
 import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
@@ -62,6 +65,8 @@ import static org.mockito.Mockito.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class UpgradeUniverseTest extends CommissionerBaseTest {
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
+
   private static class CreateRootVolumesMatcher implements ArgumentMatcher<NodeTaskParams> {
     private UUID azUUID;
 

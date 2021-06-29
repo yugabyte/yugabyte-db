@@ -1824,6 +1824,11 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
         continue;
       }
 
+      if (ns.first == kPgSequencesDataNamespaceId) {
+        // Skip the database created for sequences system table.
+        continue;
+      }
+
       // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
       namespace_id_vec.emplace_back(ns.first);
     }
@@ -8828,32 +8833,33 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   *out << "Tables:\n";
   for (const TableInfoMap::value_type& e : ids_copy) {
     TableInfo* t = e.second.get();
-    auto l = t->LockForRead();
-    const TableName& name = l->name();
-    const NamespaceId& namespace_id = l->namespace_id();
-    // Find namespace by its ID.
-    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_copy, namespace_id);
-
-    *out << t->id() << ":\n";
-    *out << "  namespace id: \"" << strings::CHexEscape(namespace_id) << "\"\n";
-
-    if (ns != nullptr) {
-      *out << "  namespace name: \"" << strings::CHexEscape(ns->name()) << "\"\n";
-    }
-
-    *out << "  name: \"" << strings::CHexEscape(name) << "\"\n";
-    // Erase from the map, so later we can check that we don't have
-    // any orphaned tables in the by-name map that aren't in the
-    // by-id map.
-    if (names_copy.erase({namespace_id, name}) != 1) {
-      *out << "  [not present in by-name map]\n";
-    }
-    *out << "  metadata: " << l->pb.ShortDebugString() << "\n";
-
-    *out << "  tablets:\n";
-
     vector<scoped_refptr<TabletInfo>> table_tablets;
-    t->GetAllTablets(&table_tablets);
+    {
+      auto l = t->LockForRead();
+      const TableName& name = l->name();
+      const NamespaceId& namespace_id = l->namespace_id();
+      // Find namespace by its ID.
+      scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_copy, namespace_id);
+
+      *out << t->id() << ":\n";
+      *out << "  namespace id: \"" << strings::CHexEscape(namespace_id) << "\"\n";
+
+      if (ns != nullptr) {
+        *out << "  namespace name: \"" << strings::CHexEscape(ns->name()) << "\"\n";
+      }
+
+      *out << "  name: \"" << strings::CHexEscape(name) << "\"\n";
+      // Erase from the map, so later we can check that we don't have
+      // any orphaned tables in the by-name map that aren't in the
+      // by-id map.
+      if (names_copy.erase({namespace_id, name}) != 1) {
+        *out << "  [not present in by-name map]\n";
+      }
+      *out << "  metadata: " << l->pb.ShortDebugString() << "\n";
+
+      *out << "  tablets:\n";
+      t->GetAllTablets(&table_tablets);
+    }
     for (const scoped_refptr<TabletInfo>& tablet : table_tablets) {
       auto l_tablet = tablet->LockForRead();
       *out << "    " << tablet->tablet_id() << ": "
@@ -9420,7 +9426,8 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
         ns_collect_flags.Reset(CollectFlag::kAddIndexes);
         auto namespace_info = VERIFY_RESULT(FindNamespaceUnlocked(table_id_pb.namespace_()));
         VLOG_WITH_PREFIX_AND_FUNC(1)
-            << "Collecting all tables from: " << namespace_info->ToString();
+            << "Collecting all tables from: " << namespace_info->ToString() << ", specified as: "
+            << table_id_pb.namespace_().ShortDebugString();
         for (const auto& id_and_table : *table_ids_map_) {
           if (id_and_table.second->is_system()) {
             VLOG_WITH_PREFIX_AND_FUNC(4) << "Rejected system table: " << AsString(id_and_table);
@@ -9492,8 +9499,8 @@ void CatalogManager::RebuildYQLSystemPartitions() {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       if (system_partitions_tablet_ != nullptr) {
-        auto s = down_cast<const YQLPartitionsVTable&>(
-            system_partitions_tablet_->QLStorage()).GenerateAndCacheData();
+        auto s = ResultToStatus(down_cast<const YQLPartitionsVTable&>(
+            system_partitions_tablet_->QLStorage()).GenerateAndCacheData());
         if (!s.ok()) {
           LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
         }

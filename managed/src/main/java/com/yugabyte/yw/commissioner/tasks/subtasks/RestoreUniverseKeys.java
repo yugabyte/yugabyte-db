@@ -10,53 +10,47 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager.RestoreKeyResult;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.KmsHistory;
+import com.yugabyte.yw.models.Universe;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClient;
+import org.yb.util.Pair;
+
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager.RestoreKeyResult;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.KmsHistory;
-import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
-import play.api.Play;
-import org.yb.util.Pair;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
-
+@Slf4j
 public class RestoreUniverseKeys extends AbstractTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(RestoreUniverseKeys.class);
-
   // How long to wait for universe key to be set in memory
-  public static final int KEY_IN_MEMORY_TIMEOUT = 500;
-
-  // The YB client.
-  public YBClientService ybService = null;
+  private static final int KEY_IN_MEMORY_TIMEOUT = 500;
 
   // The Encryption At Rest manager
-  public EncryptionAtRestManager keyManager = null;
+  private final EncryptionAtRestManager keyManager;
+
+  @Inject
+  protected RestoreUniverseKeys(
+      BaseTaskDependencies baseTaskDependencies, EncryptionAtRestManager keyManager) {
+    super(baseTaskDependencies);
+    this.keyManager = keyManager;
+  }
 
   @Override
   protected BackupTableParams taskParams() {
     return (BackupTableParams) taskParams;
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
-    keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
   }
 
   // Should we use RPC to get the activeKeyId and then try and see if it matches this key?
@@ -67,7 +61,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
           String.format(
               "Skipping universe %s, No active keyRef found.",
               taskParams().universeUUID.toString());
-      LOG.trace(errMsg);
+      log.trace(errMsg);
       return null;
     }
 
@@ -115,7 +109,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
       // universe key registry which we need to be the case.
       EncryptionAtRestUtil.activateKeyRef(taskParams().universeUUID, kmsConfigUUID, keyRef);
     } catch (Exception e) {
-      LOG.error("Error sending universe key to master: ", e);
+      log.error("Error sending universe key to master: ", e);
     } finally {
       ybService.closeClient(client, hostPorts);
     }
@@ -129,7 +123,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
     YBClient client = null;
     byte[] activeKeyRef = null;
     try {
-      LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
+      log.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
 
       Consumer<JsonNode> restoreToUniverse =
@@ -156,10 +150,10 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
 
       switch (restoreResult) {
         case RESTORE_SKIPPED:
-          LOG.info("Skipping encryption key restore...");
+          log.info("Skipping encryption key restore...");
           break;
         case RESTORE_FAILED:
-          LOG.info(
+          log.info(
               String.format(
                   "Error occurred restoring encryption keys to universe %s",
                   taskParams().universeUUID));
@@ -182,7 +176,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
           }
       }
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage(), e);
+      log.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);
     } finally {
       // Close client

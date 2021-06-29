@@ -786,8 +786,7 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   }
 }
 
-Status TSTabletManager::ApplyTabletSplit(
-    tablet::SplitOperationState* op_state, log::Log* raft_log) {
+Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log::Log* raft_log) {
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_apply_tablet_split_op)) {
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
   }
@@ -796,20 +795,20 @@ Status TSTabletManager::ApplyTabletSplit(
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
-  auto* tablet = CHECK_NOTNULL(op_state->tablet());
+  auto* tablet = CHECK_NOTNULL(operation->tablet());
   const auto tablet_id = tablet->tablet_id();
-  const auto* request = op_state->request();
+  const auto* request = operation->request();
   SCHECK_EQ(
       request->tablet_id(), tablet_id, IllegalState,
       Format(
           "Unexpected SPLIT_OP $0 designated for tablet $1 to be applied to tablet $2",
-          op_state->op_id(), request->tablet_id(), tablet_id));
+          operation->op_id(), request->tablet_id(), tablet_id));
   SCHECK(
       tablet_id != request->new_tablet1_id() && tablet_id != request->new_tablet2_id(),
       IllegalState,
       Format(
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
-          op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
+          operation->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation apply started";
 
@@ -834,7 +833,8 @@ Status TSTabletManager::ApplyTabletSplit(
 
   if (FLAGS_TEST_apply_tablet_split_inject_delay_ms > 0) {
     LOG(INFO) << "TEST: ApplyTabletSplit: injecting delay of "
-              << FLAGS_TEST_apply_tablet_split_inject_delay_ms << " ms for " << AsString(*op_state);
+              << FLAGS_TEST_apply_tablet_split_inject_delay_ms << " ms for "
+              << AsString(*operation);
     std::this_thread::sleep_for(FLAGS_TEST_apply_tablet_split_inject_delay_ms * 1ms);
     LOG(INFO) << "TEST: ApplyTabletSplit: delay finished";
   }
@@ -864,8 +864,8 @@ Status TSTabletManager::ApplyTabletSplit(
 
     // Copy raft group metadata.
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
-        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, op_state->op_id(),
-        op_state->hybrid_time()));
+        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, operation->op_id(),
+        operation->hybrid_time()));
     LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
                           << " tablet: " << new_tablet_id;
 
@@ -885,7 +885,7 @@ Status TSTabletManager::ApplyTabletSplit(
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
   }
 
-  meta.SetSplitDone(op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id());
+  meta.SetSplitDone(operation->op_id(), request->new_tablet1_id(), request->new_tablet2_id());
   RETURN_NOT_OK(meta.Flush());
 
   tablet->SplitDone();
@@ -2312,15 +2312,46 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
   }
 }
 
-Status TSTabletManager::UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info) {
-  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
-  ++snapshot_schedules_version_;
-  snapshot_schedule_allowed_history_cutoff_.clear();
-  for (const auto& schedule : info.schedules()) {
-    auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
-    snapshot_schedule_allowed_history_cutoff_.emplace(
-        schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
-    missing_snapshot_schedules_.erase(schedule_id);
+Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info) {
+  bool restorations_updated;
+  tablet::RestorationCompleteTimeMap restoration_complete_time;
+  {
+    std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    ++snapshot_schedules_version_;
+    snapshot_schedule_allowed_history_cutoff_.clear();
+    for (const auto& schedule : info.schedules()) {
+      auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
+      snapshot_schedule_allowed_history_cutoff_.emplace(
+          schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+      missing_snapshot_schedules_.erase(schedule_id);
+    }
+    HybridTime restorations_update_ht(info.last_restorations_update_ht());
+    restorations_updated = restorations_update_ht != last_restorations_update_ht_;
+    if (restorations_updated) {
+      last_restorations_update_ht_ = restorations_update_ht;
+      for (const auto& entry : info.restorations()) {
+        auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(entry.id()));
+        auto complete_time = HybridTime::FromPB(entry.complete_time_ht());
+        restoration_complete_time.emplace(id, complete_time);
+      }
+    }
+  }
+  if (!restorations_updated) {
+    return Status::OK();
+  }
+  std::vector<tablet::TabletPtr> tablets;
+  {
+    SharedLock<RWMutex> shared_lock(mutex_);
+    tablets.reserve(tablet_map_.size());
+    for (const auto& entry : tablet_map_) {
+      auto tablet = entry.second->shared_tablet();
+      if (tablet) {
+        tablets.push_back(tablet);
+      }
+    }
+  }
+  for (const auto& tablet : tablets) {
+    RETURN_NOT_OK(tablet->CheckRestorations(restoration_complete_time));
   }
   return Status::OK();
 }

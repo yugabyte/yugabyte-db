@@ -7,11 +7,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -44,8 +42,6 @@ import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse
 
 public class TablesController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
-
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject Commissioner commissioner;
 
@@ -319,7 +315,6 @@ public class TablesController extends AuthenticatedController {
       String errMsg = "Invalid Table List, found index or YSQL table.";
       throw new YWServiceException(BAD_REQUEST, errMsg);
     }
-    ObjectNode resultNode = Json.newObject();
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule =
           Schedule.create(
@@ -333,8 +328,10 @@ public class TablesController extends AuthenticatedController {
           "Submitted universe backup to be scheduled {}, schedule uuid = {}.",
           universeUUID,
           scheduleUUID);
+      ObjectNode resultNode = Json.newObject();
       resultNode.put("scheduleUUID", scheduleUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      return YWResults.withRawData(resultNode);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
       LOG.info("Submitted task to universe {}, task uuid = {}.", universe.name, taskUUID);
@@ -346,10 +343,9 @@ public class TablesController extends AuthenticatedController {
           CustomerTask.TaskType.Create,
           universe.name);
       LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.name);
-      resultNode.put("taskUUID", taskUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      return new YWResults.YWTask(taskUUID).asResult();
     }
-    return ApiResponse.success(resultNode);
   }
 
   public Result createBackup(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
@@ -381,7 +377,6 @@ public class TablesController extends AuthenticatedController {
     taskParams.universeUUID = universeUUID;
     taskParams.tableUUID = tableUUID;
 
-    ObjectNode resultNode = Json.newObject();
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule =
           Schedule.create(
@@ -396,8 +391,10 @@ public class TablesController extends AuthenticatedController {
           tableUUID,
           taskParams.getTableName(),
           scheduleUUID);
+      ObjectNode resultNode = Json.newObject();
       resultNode.put("scheduleUUID", scheduleUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      return YWResults.withRawData(resultNode);
     } else {
       Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
@@ -420,10 +417,9 @@ public class TablesController extends AuthenticatedController {
           tableUUID,
           taskParams.getTableNames(),
           taskParams.getTableName());
-      resultNode.put("taskUUID", taskUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      return new YWResults.YWTask(taskUUID, backup.backupUUID).asResult();
     }
-    return ApiResponse.success(resultNode);
   }
 
   /**
@@ -488,10 +484,8 @@ public class TablesController extends AuthenticatedController {
         taskParams.getTableName(),
         taskParams.getTableName());
 
-    ObjectNode resultNode = Json.newObject();
-    resultNode.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-    return ApiResponse.success(resultNode);
+    return new YWResults.YWTask(taskUUID, tableUUID).asResult();
   }
 
   public boolean disableBackupOnTables(List<UUID> tableUuids, Universe universe) {

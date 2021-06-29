@@ -11,20 +11,18 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
 import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.mvc.Result;
 
 import java.io.File;
@@ -37,8 +35,6 @@ public class PlatformInstanceController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceController.class);
 
   @Inject private PlatformReplicationManager replicationManager;
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject CustomerTaskManager taskManager;
 
@@ -77,7 +73,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       config.get().updateLastFailover();
     }
 
-    return ApiResponse.success(instance);
+    return YWResults.withData(instance);
   }
 
   public Result deleteInstance(UUID configUUID, UUID instanceUUID) {
@@ -115,7 +111,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, "No local platform instance for config");
     }
 
-    return ApiResponse.success(localInstance.get());
+    return YWResults.withData(localInstance.get());
   }
 
   public Result promoteInstance(UUID configUUID, UUID instanceUUID, String curLeaderAddr)

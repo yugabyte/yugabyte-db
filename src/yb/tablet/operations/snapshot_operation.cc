@@ -7,6 +7,9 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_round.h"
+
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/snapshot_coordinator.h"
@@ -23,26 +26,23 @@ DEFINE_bool(consistent_restore, false, "Whether to enable consistent restoration
 namespace yb {
 namespace tablet {
 
-using std::bind;
-using std::string;
-using consensus::ReplicateMsg;
-using consensus::SNAPSHOT_OP;
-using consensus::DriverType;
-using strings::Substitute;
-using yb::tserver::TabletServerError;
-using yb::tserver::TabletServerErrorPB;
-using yb::tserver::TabletSnapshotOpRequestPB;
+using tserver::TabletServerError;
+using tserver::TabletServerErrorPB;
+using tserver::TabletSnapshotOpRequestPB;
 
-// ------------------------------------------------------------------------------------------------
-// SnapshotOperationState
-// ------------------------------------------------------------------------------------------------
-
-string SnapshotOperationState::ToString() const {
-  return Format("SnapshotOperationState { hybrid_time: $0 request: $1 }",
-                hybrid_time_even_if_unset(), request());
+template <>
+void RequestTraits<TabletSnapshotOpRequestPB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, TabletSnapshotOpRequestPB* request) {
+  replicate->set_allocated_snapshot_request(request);
 }
 
-Result<std::string> SnapshotOperationState::GetSnapshotDir() const {
+template <>
+TabletSnapshotOpRequestPB* RequestTraits<TabletSnapshotOpRequestPB>::MutableRequest(
+    consensus::ReplicateMsg* replicate) {
+  return replicate->mutable_snapshot_request();
+}
+
+Result<std::string> SnapshotOperation::GetSnapshotDir() const {
   auto& request = *this->request();
   if (!request.snapshot_dir_override().empty()) {
     return request.snapshot_dir_override();
@@ -61,7 +61,7 @@ Result<std::string> SnapshotOperationState::GetSnapshotDir() const {
   return JoinPathSegments(VERIFY_RESULT(tablet()->metadata()->TopSnapshotsDir()), snapshot_id_str);
 }
 
-Status SnapshotOperationState::DoCheckOperationRequirements() {
+Status SnapshotOperation::DoCheckOperationRequirements() {
   if (operation() != TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
     return Status::OK();
   }
@@ -80,7 +80,7 @@ Status SnapshotOperationState::DoCheckOperationRequirements() {
   return Status::OK();
 }
 
-bool SnapshotOperationState::CheckOperationRequirements() {
+bool SnapshotOperation::CheckOperationRequirements() {
   auto status = DoCheckOperationRequirements();
   if (status.ok()) {
     return true;
@@ -95,16 +95,17 @@ bool SnapshotOperationState::CheckOperationRequirements() {
   return false;
 }
 
-Result<SnapshotCoordinator&> GetSnapshotCoordinator(SnapshotOperationState* state) {
-  auto snapshot_coordinator = state->tablet()->snapshot_coordinator();
+Result<SnapshotCoordinator&> GetSnapshotCoordinator(SnapshotOperation* operation) {
+  auto snapshot_coordinator = operation->tablet()->snapshot_coordinator();
   if (!snapshot_coordinator) {
     return STATUS_FORMAT(IllegalState, "Replicated $0 to tablet without snapshot coordinator",
-                         TabletSnapshotOpRequestPB::Operation_Name(state->request()->operation()));
+                         TabletSnapshotOpRequestPB::Operation_Name(
+                             operation->request()->operation()));
   }
   return *snapshot_coordinator;
 }
 
-Status SnapshotOperationState::Apply(int64_t leader_term) {
+Status SnapshotOperation::Apply(int64_t leader_term) {
   TRACE("APPLY SNAPSHOT: Starting");
   auto operation = request()->operation();
   switch (operation) {
@@ -131,26 +132,26 @@ Status SnapshotOperationState::Apply(int64_t leader_term) {
   FATAL_INVALID_ENUM_VALUE(TabletSnapshotOpRequestPB::Operation, operation);
 }
 
-void SnapshotOperationState::AddedAsPending() {
+void SnapshotOperation::AddedAsPending() {
   if (request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
     tablet()->RegisterOperationFilter(this);
   }
 }
 
-void SnapshotOperationState::RemovedFromPending() {
+void SnapshotOperation::RemovedFromPending() {
   if (request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
     tablet()->UnregisterOperationFilter(this);
   }
 }
 
-Status SnapshotOperationState::RejectionStatus(
+Status SnapshotOperation::RejectionStatus(
     OpId rejected_op_id, consensus::OperationType op_type) {
   return STATUS_FORMAT(
       IllegalState, "Operation $0 ($1) is not allowed during restore",
       OperationType_Name(op_type), rejected_op_id);
 }
 
-bool SnapshotOperationState::ShouldAllowOpDuringRestore(consensus::OperationType op_type) {
+bool SnapshotOperation::ShouldAllowOpDuringRestore(consensus::OperationType op_type) {
   switch (op_type) {
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
@@ -168,7 +169,7 @@ bool SnapshotOperationState::ShouldAllowOpDuringRestore(consensus::OperationType
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);
 }
 
-Status SnapshotOperationState::CheckOperationAllowed(
+Status SnapshotOperation::CheckOperationAllowed(
     const OpId& id, consensus::OperationType op_type) const {
   if (id == op_id() || ShouldAllowOpDuringRestore(op_type)) {
     return Status::OK();
@@ -181,28 +182,9 @@ Status SnapshotOperationState::CheckOperationAllowed(
 // SnapshotOperation
 // ------------------------------------------------------------------------------------------------
 
-SnapshotOperation::SnapshotOperation(std::unique_ptr<SnapshotOperationState> state)
-    : Operation(std::move(state), OperationType::kSnapshot) {}
-
-void SnapshotOperationState::UpdateRequestFromConsensusRound() {
-  UseRequest(consensus_round()->replicate_msg()->mutable_snapshot_request());
-}
-
-consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
-  auto result = std::make_shared<ReplicateMsg>();
-  result->set_op_type(SNAPSHOT_OP);
-  auto request = state()->ReleaseRequest();
-  if (request) {
-    result->set_allocated_snapshot_request(request);
-  } else {
-    *result->mutable_snapshot_request() = *state()->request();
-  }
-  return result;
-}
-
 Status SnapshotOperation::Prepare() {
   TRACE("PREPARE SNAPSHOT: Starting");
-  RETURN_NOT_OK(state()->tablet()->snapshots().Prepare(this));
+  RETURN_NOT_OK(tablet()->snapshots().Prepare(this));
 
   TRACE("PREPARE SNAPSHOT: finished");
   return Status::OK();
@@ -214,11 +196,16 @@ Status SnapshotOperation::DoAborted(const Status& status) {
 }
 
 Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
-  return state()->Apply(leader_term);
-}
-
-string SnapshotOperation::ToString() const {
-  return Substitute("SnapshotOperation [state=$0]", state()->ToString());
+  RETURN_NOT_OK(Apply(leader_term));
+  // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
+  // the flushed frontier to have this exact value, although in practice it will, since this is the
+  // latest operation we've ever executed in this Raft group. This way we keep the current value
+  // of history cutoff.
+  docdb::ConsensusFrontier frontier;
+  frontier.set_op_id(op_id());
+  frontier.set_hybrid_time(hybrid_time());
+  return tablet()->ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kUpdate);
 }
 
 }  // namespace tablet
