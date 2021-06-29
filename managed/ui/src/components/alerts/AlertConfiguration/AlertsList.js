@@ -25,11 +25,11 @@ const header = (onCreateAlert) => (
           pullRight
         >
           <MenuItem onClick={() => onCreateAlert(true)}>
-            <i className="fa fa-pencil"></i> Universe Alert
+            <i className="fa fa-globe"></i> Universe Alert
           </MenuItem>
 
           <MenuItem>
-            <i className="fa fa-trash"></i> Platform Alert
+            <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
           </MenuItem>
         </DropdownButton>
       </FlexShrink>
