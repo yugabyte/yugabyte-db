@@ -1369,5 +1369,9 @@ void PgApiImpl::SetTimeout(const int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 
+void PgApiImpl::ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers) {
+  pg_session_->ListTabletServers(tablet_servers, numofservers).ok();
+}
+
 } // namespace pggate
 } // namespace yb

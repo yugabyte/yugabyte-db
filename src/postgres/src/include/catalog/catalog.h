@@ -24,7 +24,7 @@
  * this value. Additionally, the script 'catalog/unused_oids' will help by outputting
  * the blocks of unused OIDs to validate that this value is up to date.
  */
-#define YB_MIN_UNUSED_OID 8019
+#define YB_MIN_UNUSED_OID 8020
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);

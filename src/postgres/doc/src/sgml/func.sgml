@@ -17202,6 +17202,12 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
       </row>
 
       <row>
+       <entry><literal><function>yb_servers()</function></literal></entry>
+       <entry><type>record</type></entry>
+       <entry>Return information about all server endpoints for ysql database connections</entry>
+      </row>
+
+      <row>
        <!-- See also the entry for this in monitoring.sgml -->
        <entry><literal><function>pg_backend_pid()</function></literal></entry>
        <entry><type>int</type></entry>
@@ -17425,13 +17431,19 @@ SET search_path TO <replaceable>schema</replaceable> <optional>, <replaceable>sc
     <primary>inet_server_port</primary>
    </indexterm>
 
+   <indexterm>
+    <primary>yb_servers</primary>
+   </indexterm>
+
    <para>
      <function>inet_client_addr</function> returns the IP address of the
      current client, and <function>inet_client_port</function> returns the
      port number.
      <function>inet_server_addr</function> returns the IP address on which
      the server accepted the current connection, and
-     <function>inet_server_port</function> returns the port number.
+     <function>inet_server_port</function> returns the port number, and
+     <function>yb_servers</function> returns all the available server
+     endpoints for ysql client connections.
      All these functions return NULL if the current connection is via a
      Unix-domain socket.
    </para>

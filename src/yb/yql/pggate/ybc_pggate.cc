@@ -948,6 +948,10 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   pgapi->SetTimeout(timeout_ms);
 }
 
+void YBCGetTabletServerHosts(YBCServerDescriptor **servers, int * count) {
+  pgapi->ListTabletServers(servers, count);
+}
+
 //------------------------------------------------------------------------------------------------
 // Thread-local variables.
 //------------------------------------------------------------------------------------------------

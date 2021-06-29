@@ -112,6 +112,9 @@ using yb::master::ListTablesResponsePB_TableInfo;
 using yb::master::ListTabletServersRequestPB;
 using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
+using yb::master::ListLiveTabletServersRequestPB;
+using yb::master::ListLiveTabletServersResponsePB;
+using yb::master::ListLiveTabletServersResponsePB_Entry;
 using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
 using yb::master::AlterNamespaceRequestPB;
@@ -1480,6 +1483,46 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
         e.instance_id().permanent_uuid(),
         DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host(),
         e.registration().common().placement_uuid());
+    tablet_servers->push_back(std::move(ts));
+  }
+  return Status::OK();
+}
+
+Status YBClient::ListLiveTabletServers(
+    vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers, bool primary_only) {
+  ListLiveTabletServersRequestPB req;
+  if (primary_only) req.set_primary_only(true);
+  ListLiveTabletServersResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListLiveTabletServers);
+
+  for (int i = 0; i < resp.servers_size(); i++) {
+    const ListLiveTabletServersResponsePB_Entry& entry = resp.servers(i);
+    CloudInfoPB cloud_info = entry.registration().common().cloud_info();
+    std::string cloud = "";
+    std::string region = "";
+    std::string zone = "";
+    int broadcast_sz = entry.registration().common().broadcast_addresses().size();
+
+    std::string publicIp = "";
+    if (broadcast_sz > 0) {
+      publicIp = entry.registration().common().broadcast_addresses().Get(0).host();
+    }
+
+    bool isPrimary = !entry.isfromreadreplica();
+    if (cloud_info.has_placement_cloud()) {
+      cloud = cloud_info.placement_cloud();
+      if (cloud_info.has_placement_region()) {
+        region = cloud_info.placement_region();
+      }
+      if (cloud_info.has_placement_zone()) {
+        zone = cloud_info.placement_zone();
+      }
+    }
+
+    auto ts = std::make_unique<YBTabletServerPlacementInfo>(
+        entry.instance_id().permanent_uuid(),
+        DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host(),
+        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary, publicIp);
     tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();

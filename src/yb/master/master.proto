@@ -1371,6 +1371,22 @@ message ListTabletServersResponsePB {
   repeated Entry servers = 2;
 }
 
+message ListLiveTabletServersRequestPB {
+  // If set to true, return only the live tservers which are in the primary/sync cluster.
+  optional bool primary_only = 1 [default = false];
+}
+
+message ListLiveTabletServersResponsePB {
+  optional MasterErrorPB error = 1;
+
+  message Entry {
+    required NodeInstancePB instance_id = 1;
+    optional TSRegistrationPB registration = 2;
+    optional bool isFromReadReplica = 3;
+  }
+  repeated Entry servers = 2;
+}
+
 // GetMasterRegistrationRequest/Response: get the instance id and
 // HTTP/RPC addresses for this Master server.
 message GetMasterRegistrationRequestPB {
@@ -2186,6 +2202,8 @@ service MasterService {
 
   // Administrative/monitoring RPCs
   rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);
+  rpc ListLiveTabletServers(ListLiveTabletServersRequestPB)
+      returns (ListLiveTabletServersResponsePB);
   rpc ListMasters(ListMastersRequestPB) returns (ListMastersResponsePB);
   rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
   rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns
