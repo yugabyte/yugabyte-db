@@ -558,6 +558,10 @@ class YBClient {
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
+  CHECKED_STATUS ListLiveTabletServers(
+      std::vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers,
+      bool primary_only = false);
+
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,

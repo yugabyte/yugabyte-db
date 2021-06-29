@@ -32,8 +32,15 @@ std::string AdminTestBase::GetAdminToolPath() const {
   return GetToolPath(kAdminToolName);
 }
 
-HostPort AdminTestBase::GetMasterAddresses() const {
-  return cluster_->master()->bound_rpc_addr();
+std::string AdminTestBase::GetMasterAddresses() const {
+  std::string result;
+  for (const auto* master : cluster_->master_daemons()) {
+    if (!result.empty()) {
+      result += ",";
+    }
+    result += AsString(master->bound_rpc_addr());
+  }
+  return result;
 }
 
 Result<std::string> AdminTestBase::CallAdminVec(const std::vector<std::string>& args) {

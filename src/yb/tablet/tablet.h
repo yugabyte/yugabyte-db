@@ -99,10 +99,6 @@ class MemTracker;
 class MetricEntity;
 class RowChangeList;
 
-namespace docdb {
-class ConsensusFrontier;
-}
-
 namespace server {
 class Clock;
 }
@@ -661,6 +657,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS RestoreStarted(const TxnSnapshotRestorationId& restoration_id);
   CHECKED_STATUS RestoreFinished(
       const TxnSnapshotRestorationId& restoration_id, HybridTime restoration_hybrid_time);
+  CHECKED_STATUS CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
  private:
   friend class Iterator;
@@ -878,8 +875,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     CleanupIntentFiles();
   }
 
-  template <class Functor, class Value>
-  Value GetRegularDbStat(const Functor& functor, const Value& default_value) const;
+  template <class F>
+  auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
