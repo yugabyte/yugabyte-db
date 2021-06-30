@@ -347,7 +347,6 @@ if [[ $local_build_only == "false" &&
 
   declare -i attempt=0
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
-  rerun_on_the_same_host=false
   while true; do
     (( attempt+=1 ))
     if [[ $attempt -gt $YB_REMOTE_COMPILATION_MAX_ATTEMPTS ]]; then
@@ -355,16 +354,8 @@ if [[ $local_build_only == "false" &&
     fi
 
     get_build_worker_list
-    if "$rerun_on_the_same_host"; then
-      if [[ -z "${build_host:-}" ]]; then
-        fatal "Internal error: build_host is not defined but rerun_on_the_same_host is set to true"
-      fi
-      log "Re-running compilation command on the host '$build_host'"
-    else
-      build_worker_name=${build_workers[ $RANDOM % ${#build_workers[@]} ]}
-      build_host="$build_worker_name$YB_BUILD_WORKER_DOMAIN"
-    fi
-    rerun_on_the_same_host=false  # For the next attempt.
+    build_worker_name=${build_workers[ $RANDOM % ${#build_workers[@]} ]}
+    build_host="$build_worker_name$YB_BUILD_WORKER_DOMAIN"
 
     set +e
     run_remote_cmd "$build_host" "$0" "${compiler_args[@]}" 2>"$stderr_path"
@@ -388,7 +379,9 @@ if [[ $local_build_only == "false" &&
           $exit_code -eq 255 ||
           $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
         ( grep -E "$COMPILATION_FAILURE_STDERR_PATTERNS" "$stderr_path" &&
-          ! grep ": syntax error " "$stderr_path" )
+          ! grep ": syntax error " "$stderr_path" ) ||
+        # Always retry for non-zero exit code and empty or whitespace-only stderr output.
+        ( [[ $exit_code -ne 0 ]] && ! grep -Eq '[^[:space:]]' "$stderr_path" )
     then
       remote_build_flush_stderr_file
       # TODO: distinguish between problems that can be retried on the same host, and problems
@@ -405,24 +398,7 @@ if [[ $local_build_only == "false" &&
       if [[ $sleep_deciseconds -lt 9 ]]; then
         (( sleep_deciseconds+=1 ))
       fi
-      # We set this debugging variable for at most one iteration, so unset it for the next attempt.
-      unset YB_COMMON_BUILD_ENV_DEBUG
 
-      continue
-    fi
-    # Exit code 1 with empty output is a special case because it could indicate an error in our
-    # scripts. However, if YB_COMMON_BUILD_ENV_DEBUG is set to 1, we assume that we already went
-    # through the logic below and got the same output. (That in combination with stderr being empty
-    # is unlikely because stderr will be filled with debug information in that mode.)
-    if [[ $exit_code -eq 1 &&
-          ${YB_COMMON_BUILD_ENV_DEBUG:-0} != "1" ]] &&
-        ! grep -Eq '[^[:space:]]' "$stderr_path"
-    then
-      log "The compilation command run on the host '$build_host' with exit code '$exit_code'" \
-          "did not produce any valid output. Re-running the command on the same host with Bash" \
-          "debug output turned on (YB_COMMON_BUILD_ENV_DEBUG=1)."
-      export YB_COMMON_BUILD_ENV_DEBUG=1
-      rerun_on_the_same_host=true
       continue
     fi
 

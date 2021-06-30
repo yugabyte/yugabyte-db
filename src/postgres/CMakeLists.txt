@@ -48,7 +48,8 @@ set(build_postgres_args
       --ldflags_ex          " ${CMAKE_EXE_LINKER_FLAGS}"
       --openssl_include_dir "${OPENSSL_INCLUDE_DIR}"
       --openssl_lib_dir     "${OPENSSL_LIB_DIR}"
-      --thirdparty_dir      "${YB_THIRDPARTY_DIR}")
+      --thirdparty_dir      "${YB_THIRDPARTY_DIR}"
+      --shared_library_suffix "${YB_SHARED_LIBRARY_SUFFIX}")
 
 if (NOT DEFINED LIBPQ_SHARED_LIB)
   message(FATAL_ERROR "LIBPQ_SHARED_LIB must be defined")

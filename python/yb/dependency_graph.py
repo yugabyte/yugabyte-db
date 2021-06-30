@@ -117,6 +117,13 @@ def is_object_file(path):
     return path.endswith('.o')
 
 
+def is_shared_library(path: str) -> bool:
+    return (
+        ends_with_one_of(path, LIBRARY_FILE_EXTENSIONS) and
+        not os.path.basename(path) in LIBRARY_FILE_EXTENSIONS and
+        not path.startswith('-'))
+
+
 def append_to_list_in_dict(dest, key, new_item):
     if key in dest:
         dest[key].append(new_item)
@@ -752,13 +759,15 @@ class DependencyGraphBuilder:
                 if self.conf.is_ninja and is_object_file(output_path):
                     compilation = True
                 i += 1
+            elif arg == '--shared_library_suffix':
+                # Skip the next argument.
+                i += 1
             elif not arg.startswith('@rpath/'):
                 if is_object_file(arg):
                     node = self.dep_graph.find_or_create_node(
                             os.path.abspath(os.path.join(base_dir, arg)))
                     inputs.append(node.path)
-
-                if ends_with_one_of(arg, LIBRARY_FILE_EXTENSIONS) and not arg.startswith('-'):
+                elif is_shared_library(arg):
                     node = self.dep_graph.find_or_create_node(
                             os.path.abspath(os.path.join(base_dir, arg)),
                             source_str=link_txt_path)
