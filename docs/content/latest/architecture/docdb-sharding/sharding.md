@@ -30,7 +30,7 @@ YugabyteDB currently supports two ways of sharding data - hash (aka consistent h
 
 ## Hash sharding
 
-With (consistent) hash sharding, data is evenly and randomly distributed across shards using a partitioning algorithm. Each row of the table is placed into a shard determined by computing a consistent hash on the partition column values of that row. This is shown in the following figure.
+With (consistent) hash sharding, data is evenly and randomly distributed across shards using a partitioning algorithm. Each row of the table is placed into a shard determined by computing a consistent hash on the partition column values of that row. This is shown in the following illustration:
 
 ![tablet_hash_1](/images/architecture/tablet_hash_1.png)
 
