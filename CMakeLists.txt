@@ -249,12 +249,19 @@ if(NOT INCLUDE_COMPILER_INFO_EARLY)
   include(CompilerInfo)
 endif()
 
-# Generate a Clang compile_commands.json "compilation database" file for use
-# with various development tools, such as Vim's YouCompleteMe plugin.
+# Generate a compile_commands.json "compilation database" file.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
-if ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1" OR
-    "$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
-  set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+if (CMAKE_EXPORT_COMPILE_COMMANDS)
+  message("CMAKE_EXPORT_COMPILE_COMMANDS is already enabled, will export compile_commands.json.")
+elseif ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1")
+  message("The YB_EXPORT_COMPILE_COMMANDS environment variable is set to 1, will export "
+          "compile_commands.json.")
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+elseif ("$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
+  message("YB_RUN_AFFECTED_TESTS_ONLY is set to 1, will export compile_commands.json.")
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+else()
+  message("CMake will not export the compilation database")
 endif()
 
 # -------------------------------------------------------------------------------------------------
@@ -764,8 +771,11 @@ math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
 message("Total tests: ${YB_NUM_TESTS}, "
         "included: ${YB_NUM_INCLUDED_TESTS}, "
         "excluded: ${YB_NUM_EXCLUDED_TESTS}")
-if(NOT ${BUILD_TESTS} AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "0")
-  message(FATAL_ERROR "BUILD_TESTS is not set, but we still added ${YB_NUM_INCLUDED_TESTS} tests")
+if(NOT ${BUILD_TESTS} AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "1")
+  message(
+    FATAL_ERROR
+    "BUILD_TESTS is not set, but we still added ${YB_NUM_INCLUDED_TESTS} tests"
+    " (one test would be OK because we always add create_initial_sys_catalog_snapshot).")
 endif()
 
 math(EXPR YB_NUM_EXCLUDED_EXECUTABLES "${YB_NUM_EXECUTABLES} - ${YB_NUM_INCLUDED_EXECUTABLES}")

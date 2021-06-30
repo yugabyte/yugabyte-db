@@ -200,6 +200,8 @@ Options:
     Specify compiler type, e.g. gcc, clang, or a specific version, e.g. gcc10 or clang12.
   --gcc, --gcc<version> --clang, --clang<version>
     A shorter way to achieve the same thing as --compiler-type.
+  --export-compile-commands
+    Export the C/C++ compilation database. Equivalent to setting YB_EXPORT_COMPILE_COMMANDS to 1.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -337,9 +339,10 @@ set_flags_to_skip_build() {
 create_build_descriptor_file() {
   if [[ -n $build_descriptor_path ]]; then
     # The format of this file is YAML.
+
     cat >"$build_descriptor_path" <<-EOT
 build_type: "$build_type"
-cmake_build_type: "$cmake_build_type"
+cmake_build_type: "${cmake_build_type:-undefined}"
 build_root: "$BUILD_ROOT"
 compiler_type: "$YB_COMPILER_TYPE"
 thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
@@ -367,6 +370,9 @@ capture_sec_timestamp() {
 }
 
 run_cxx_build() {
+  expect_vars_to_be_set make_file
+
+  # shellcheck disable=SC2154
   if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f $make_file ]] ) && \
      ! "$force_no_run_cmake"; then
     if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
@@ -598,6 +604,8 @@ print_saved_log_path() {
 }
 
 set_clean_build() {
+  # We use is_clean_build in common-build-env.sh.
+  # shellcheck disable=SC2034
   is_clean_build=true
   clean_before_build=true
 }
@@ -703,8 +711,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     --clean-thirdparty)
       clean_thirdparty=true
-      is_clean_build=true
-      clean_before_build=true
+      set_clean_build
     ;;
     -f|--force|-y)
       force=true
@@ -910,6 +917,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --build-root)
       ensure_option_has_arg "$@"
+      # predefined_build_root is used in a lot of places.
+      # shellcheck disable=SC2034
       predefined_build_root=$2
       shift
     ;;
@@ -1043,6 +1052,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
+    ;;
+    --export-compile-commands)
+      export YB_EXPORT_COMPILE_COMMANDS=1
     ;;
     *)
 
