@@ -59,7 +59,7 @@ An in-built function called ‘yb_servers’ will be added in Yugabyte. The purp
    </td>
    <td>Number of clients connected (not used now)
    </td>
-   <td>current possible values are 'primary' or 'read replica'
+   <td>current possible values are 'primary' or 'read_replica'
    </td>
    <td>cloud where the server is hosted
    </td>
