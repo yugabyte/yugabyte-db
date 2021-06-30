@@ -14,7 +14,7 @@ showAsideToc: true
 
 [Metabase](https://www.metabase.com/) is a Business Intelligence (BI) tool. 
 
-This document shows how Metabase can be set up to integrate with YugabyteDB's PostgreSQL-compatible API.
+This document shows how to set up Metabase to integrate with YugabyteDB's PostgreSQL-compatible API.
 
 ## 1. Start local cluster
 
@@ -48,7 +48,7 @@ orders.sql  products.sql  reviews.sql  users.sql
 
 ### Connect to YugabyteDB using ysqlsh
 
-You can do this by executing the following:
+Run the following command to connect to YugabyteDB using the YSQL shell:
 
 ```sh
 $ ./bin/ysqlsh

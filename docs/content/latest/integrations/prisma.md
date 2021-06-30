@@ -21,13 +21,13 @@ For more information, see [Prisma Basics: Datamodel, Prisma Client & Server](htt
 
 ### YugabyteDB
 
+If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](../../quick-start/).
+
 If YugabyteDB is installed, run the following `yb-ctl create` command to start a YugabyteDB 1-node cluster, setting the default transaction isolation level to `serializable`:
 
 ```sh
 ./bin/yb-ctl create --tserver_flags=ysql_pg_conf="default_transaction_isolation=serializable"
 ```
-
-If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](../../quick-start/). After installing YugabyteDB, perform the preceding step.
 
 ### Prisma
 
@@ -88,7 +88,7 @@ You should now have a `prismagraphql/prisma` container running. You can check th
 
 Open `datamodel.prisma` and replace the contents with the following:
 
-```
+```graphql
 type Post {
   id: ID! @id
   createdAt: DateTime! @createdAt

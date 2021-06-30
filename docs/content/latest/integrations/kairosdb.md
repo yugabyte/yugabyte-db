@@ -28,7 +28,7 @@ $ tar xvfz kairosdb-1.2.0-0.3beta.tar.gz
 $ cd kairosdb/
 ```
 
-You can follow the [Getting started](http://kairosdb.github.io/docs/build/html/GettingStarted.html) to see how to configure KairosDB in general. For the purpose of integrating with the local YugabyteDB cluster running at `localhost:9042`, simply open `conf/kairosdb.properties` and comment out the default in-memory datastore, as follows:
+You can follow the [Getting started](http://kairosdb.github.io/docs/build/html/GettingStarted.html) to see how to configure KairosDB in general. For the purpose of integrating with the local YugabyteDB cluster running at `localhost:9042`, open `conf/kairosdb.properties` and comment out the default in-memory datastore, as follows:
 
 ```cfg
 #kairosdb.service.datastore=org.kairosdb.datastore.h2.H2Module
@@ -73,7 +73,7 @@ Use HELP for help.
 ycqlsh>
 ```
 
-- Run a cql command to verify it is working:
+- Run the following YCQL commands to verify it is working:
 
 ```sql
 ycqlsh> describe keyspaces;
