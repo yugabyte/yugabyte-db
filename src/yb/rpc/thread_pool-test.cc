@@ -25,6 +25,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
+DECLARE_int32(TEST_strand_done_inject_delay_ms);
+
 using namespace std::literals;
 
 namespace yb {
@@ -256,15 +258,18 @@ TEST_F(ThreadPoolTest, TestOwns) {
   ASSERT_TRUE(pool.Owns(task.thread()));
 }
 
+namespace strand {
+
+constexpr size_t kPoolMaxTasks = 100;
+constexpr size_t kPoolTotalWorkers = 4;
+
 TEST_F(ThreadPoolTest, Strand) {
-  constexpr size_t kTotalTasks = 100;
-  constexpr size_t kTotalWorkers = 4;
-  ThreadPool pool("test", kTotalTasks, kTotalWorkers);
+  ThreadPool pool("test", kPoolMaxTasks, kPoolTotalWorkers);
   Strand strand(&pool);
 
-  CountDownLatch latch(kTotalTasks);
+  CountDownLatch latch(kPoolMaxTasks);
   std::atomic<int> counter(0);
-  for (auto i = 0; i != kTotalTasks; ++i) {
+  for (auto i = 0; i != kPoolMaxTasks; ++i) {
     strand.EnqueueFunctor([&counter, &latch] {
       ASSERT_EQ(++counter, 1);
       std::this_thread::sleep_for(1ms);
@@ -274,12 +279,11 @@ TEST_F(ThreadPoolTest, Strand) {
   }
 
   latch.Wait();
+  strand.Shutdown();
 }
 
 TEST_F(ThreadPoolTest, StrandShutdown) {
-  constexpr size_t kMaxTasks = 100;
-  constexpr size_t kTotalWorkers = 4;
-  ThreadPool pool("test", kMaxTasks, kTotalWorkers);
+  ThreadPool pool("test", kPoolMaxTasks, kPoolTotalWorkers);
   Strand strand(&pool);
 
   CountDownLatch latch1(1);
@@ -304,6 +308,49 @@ TEST_F(ThreadPoolTest, StrandShutdown) {
   latch1.Wait();
   strand.Shutdown();
 }
+
+TEST_F(ThreadPoolTest, NotUsedStrandShutdown) {
+  ThreadPool pool("test", kPoolMaxTasks, kPoolTotalWorkers);
+
+  Strand strand(&pool);
+
+  std::atomic<bool> shutdown_completed{false};
+  std::thread shutdown_thread([strand = &strand, &shutdown_completed]{
+    strand->Shutdown();
+    shutdown_completed = true;
+  });
+
+  ASSERT_OK(LoggedWaitFor(
+      [&shutdown_completed] {
+        return shutdown_completed.load();
+      },
+      5s * kTimeMultiplier, "Waiting for strand shutdown"));
+
+  shutdown_thread.join();
+}
+
+TEST_F(ThreadPoolTest, StrandShutdownAndDestroyRace) {
+  constexpr size_t kNumIters = 10;
+
+  ThreadPool pool("test", kPoolMaxTasks, kPoolTotalWorkers);
+
+  auto task = []{};
+
+  for (auto iter = 0; iter < kNumIters; ++iter) {
+    Strand strand(&pool);
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_strand_done_inject_delay_ms) = 0;
+    strand.EnqueueFunctor(task);
+    // Give enough time for Strand::Done to be finished.
+    std::this_thread::sleep_for(10ms);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_strand_done_inject_delay_ms) = 10;
+    strand.EnqueueFunctor(task);
+
+    strand.Shutdown();
+  }
+}
+
+} // namespace strand
 
 } // namespace rpc
 } // namespace yb
