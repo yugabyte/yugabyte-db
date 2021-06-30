@@ -3,7 +3,7 @@ title: HGET
 linkTitle: HGET
 description: HGET
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2120
 isTocNested: true

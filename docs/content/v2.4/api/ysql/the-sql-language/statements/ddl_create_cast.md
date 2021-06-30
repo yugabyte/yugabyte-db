@@ -4,7 +4,7 @@ headerTitle: CREATE CAST
 linkTitle: CREATE CAST
 description: Use the CREATE CAST statement to create a cast.
 menu:
-  stable:
+  v2.4:
     identifier: ddl_create_cast
     parent: statements
 isTocNested: true

@@ -3,7 +3,7 @@ title: SMEMBERS
 linkTitle: SMEMBERS
 description: SMEMBERS
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2300
 isTocNested: true

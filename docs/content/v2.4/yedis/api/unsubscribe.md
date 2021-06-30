@@ -3,7 +3,7 @@ title: UNSUBSCRIBE
 linkTitle: UNSUBSCRIBE
 description: UNSUBSCRIBE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2553
 isTocNested: true

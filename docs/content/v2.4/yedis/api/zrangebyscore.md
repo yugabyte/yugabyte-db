@@ -3,7 +3,7 @@ title: ZRANGEBYSCORE
 linkTitle: ZRANGEBYSCORE
 description: ZRANGEBYSCORE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2520
 isTocNested: true

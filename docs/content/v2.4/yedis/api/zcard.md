@@ -3,7 +3,7 @@ title: ZCARD
 linkTitle: ZCARD
 description: ZCARD
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2510
 isTocNested: true

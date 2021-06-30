@@ -7,7 +7,7 @@ headcontent: Asynchronously stream data changes from YugabyteDB to external syst
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  stable:
+  v2.4:
     identifier: cdc
     parent: deploy
     weight: 632

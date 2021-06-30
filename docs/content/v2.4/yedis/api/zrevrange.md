@@ -3,7 +3,7 @@ title: ZREVRANGE
 linkTitle: ZREVRANGE
 description: ZREVRANGE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2540
 isTocNested: true

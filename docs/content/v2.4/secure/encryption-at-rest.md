@@ -6,7 +6,7 @@ description: Enable encryption at rest in a YugabyteDB cluster with a user-gener
 headcontent: Enable encryption at rest with a user-generated key
 image: /images/section_icons/secure/prepare-nodes.png
 menu:
-  stable:
+  v2.4:
     identifier: encryption-at-rest
     parent: secure
     weight: 735

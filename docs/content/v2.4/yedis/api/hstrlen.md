@@ -3,7 +3,7 @@ title: HSTRLEN
 linkTitle: HSTRLEN
 description: HSTRLEN
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2190
 isTocNested: true

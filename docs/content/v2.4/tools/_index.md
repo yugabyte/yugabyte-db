@@ -7,7 +7,7 @@ headcontent: Interactive third party clients that you can use with YugabyteDB to
 image: /images/section_icons/troubleshoot/troubleshoot.png
 section: REFERENCE
 menu:
-  stable:
+  v2.4:
     identifier: tools
     weight: 2900
 ---

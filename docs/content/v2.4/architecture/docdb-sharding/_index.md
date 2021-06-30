@@ -6,7 +6,7 @@ description: Learn about sharding strategies, hash and range sharding, colocated
 image: /images/section_icons/architecture/concepts.png
 headcontent: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 menu:
-  stable:
+  v2.4:
     identifier: architecture-docdb-sharding
     parent: architecture
     weight: 1130

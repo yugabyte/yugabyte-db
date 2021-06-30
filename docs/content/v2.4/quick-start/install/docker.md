@@ -4,7 +4,7 @@ headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on Docker in less than five minutes.
 menu:
-  stable:
+  v2.4:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-3-docker

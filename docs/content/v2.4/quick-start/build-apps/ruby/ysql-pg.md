@@ -4,7 +4,7 @@ headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a Ruby application that uses Ruby PostgreSQL driver and YSQL.
 menu:
-  stable:
+  v2.4:
     parent: build-apps
     name: Ruby
     identifier: ruby-1

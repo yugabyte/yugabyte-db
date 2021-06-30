@@ -3,7 +3,7 @@ title: Recover failed tserver/master
 linkTitle: Recover tserver/master
 description: Recover tserver/master
 menu:
-  stable:
+  v2.4:
     parent: troubleshoot-cluster
     weight: 828
 isTocNested: true

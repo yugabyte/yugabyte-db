@@ -3,7 +3,7 @@ title: SREM
 linkTitle: SREM
 description: SREM
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2310
 isTocNested: true

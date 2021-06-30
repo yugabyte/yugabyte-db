@@ -4,7 +4,7 @@ headerTitle: ACID transactions
 linkTitle: 4. ACID transactions
 description: Learn how ACID transactions work in YSQL on YugabyteDB.
 menu:
-  stable:
+  v2.4:
     identifier: acid-transactions-2-ysql
     parent: learn
     weight: 566

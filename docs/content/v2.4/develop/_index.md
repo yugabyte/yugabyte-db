@@ -7,7 +7,7 @@ headcontent: Get started building applications based on YugabyteDB.
 image: /images/section_icons/index/develop.png
 section: YUGABYTEDB CORE
 menu:
-  stable:
+  v2.4:
     identifier: develop
     weight: 600
 

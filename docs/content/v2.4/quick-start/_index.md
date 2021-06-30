@@ -8,7 +8,7 @@ headcontent: The easiest way to test YugabyteDB's APIs and core features is to c
 type: page
 section: YUGABYTEDB CORE
 menu:
-  stable:
+  v2.4:
     identifier: quick-start
     weight: 100
 ---

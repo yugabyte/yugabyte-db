@@ -4,7 +4,7 @@ headerTitle: YCSB
 linkTitle: YCSB
 description: Benchmark YSQL performance with YCSB using the standard JDBC binding.
 menu:
-  stable:
+  v2.4:
     identifier: ycsb-1-ysql
     parent: benchmark
     weight: 5

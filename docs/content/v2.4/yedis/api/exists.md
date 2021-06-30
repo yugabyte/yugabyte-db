@@ -3,7 +3,7 @@ title: EXISTS
 linkTitle: EXISTS
 description: EXISTS
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2060
 isTocNested: true

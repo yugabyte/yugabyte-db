@@ -3,7 +3,7 @@ title: RENAME
 linkTitle: RENAME
 description: RENAME
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2265
 isTocNested: true

@@ -4,7 +4,7 @@ linkTitle: Troubleshooting
 headerTitle: Troubleshooting overview
 description: Troubleshooting overview
 menu:
-  stable:
+  v2.4:
     identifier: troubleshooting-overview
     parent: troubleshoot
     weight: 702

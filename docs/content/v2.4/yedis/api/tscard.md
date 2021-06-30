@@ -3,7 +3,7 @@ title: TSCARD
 linkTitle: TSCARD
 description: TSCARD
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2420
 isTocNested: true

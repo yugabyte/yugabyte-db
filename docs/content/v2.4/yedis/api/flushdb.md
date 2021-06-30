@@ -3,7 +3,7 @@ title: FLUSHDB
 linkTitle: FLUSHDB
 description: FLUSHDB
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2065
 isTocNested: true

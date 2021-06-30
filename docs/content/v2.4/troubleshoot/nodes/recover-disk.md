@@ -4,7 +4,7 @@ linkTitle: Disk failure
 headerTitle: Recover failing disk
 description: Learn how to recover failing disk
 menu:
-  stable:
+  v2.4:
     parent: troubleshoot-nodes
     weight: 849
 isTocNested: true

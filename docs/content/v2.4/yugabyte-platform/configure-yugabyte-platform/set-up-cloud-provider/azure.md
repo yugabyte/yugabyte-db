@@ -4,7 +4,7 @@ headerTitle: Configure the Microsoft Azure cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Microsoft Azure cloud provider.
 menu:
-  stable:
+  v2.4:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20

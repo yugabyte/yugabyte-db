@@ -4,7 +4,7 @@ headerTitle: CREATE TYPE
 linkTitle: CREATE TYPE
 description: Use the CREATE TYPE statement to create a user-defined type in a database.
 menu:
-  stable:
+  v2.4:
     identifier: ddl_create_type
     parent: statements
 isTocNested: true

@@ -3,7 +3,7 @@ title: SELECT
 linkTitle: "SELECT "
 description: SELECT
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2038
 isTocNested: true

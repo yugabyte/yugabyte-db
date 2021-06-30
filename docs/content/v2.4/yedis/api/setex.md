@@ -3,7 +3,7 @@ title: SETEX
 linkTitle: SETEX
 description: SETEX
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2271
 isTocNested: true

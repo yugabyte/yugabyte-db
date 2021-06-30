@@ -3,7 +3,7 @@ title: INCR
 linkTitle: INCR
 description: INCR
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2210
 isTocNested: true

@@ -3,7 +3,7 @@ title: HKEYS
 linkTitle: HKEYS
 description: HKEYS
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2140
 isTocNested: true

@@ -4,7 +4,7 @@ headerTitle: Build a Python application
 linkTitle: Python
 description: Build a sample Python application with psycopg2 that use YSQL.
 menu:
-  stable:
+  v2.4:
     parent: build-apps
     name: Python
     identifier: python-1

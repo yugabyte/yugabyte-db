@@ -4,7 +4,7 @@ headerTitle: Build a Java application
 linkTitle: Java
 description: Build a simple Java e-commerce application that uses Spring Boot and YSQL.
 menu:
-  stable:
+  v2.4:
     parent: build-apps
     name: Java
     identifier: java-2

@@ -3,7 +3,7 @@ title: TTL
 linkTitle: TTL
 description: TTL
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2470
 isTocNested: true

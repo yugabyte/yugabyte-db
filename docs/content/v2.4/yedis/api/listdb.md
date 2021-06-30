@@ -3,7 +3,7 @@ title: LISTDB
 linkTitle: LISTDB
 description: LISTDB
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2036
 isTocNested: true

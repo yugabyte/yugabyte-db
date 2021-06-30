@@ -4,7 +4,7 @@ headerTitle: Fault tolerance
 linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Kubernetes (Minikube).
 menu:
-  stable:
+  v2.4:
     identifier: fault-tolerance-4-kubernetes
     parent: explore
     weight: 215

@@ -3,7 +3,7 @@ title: HLEN
 linkTitle: HLEN
 description: HLEN
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2150
 isTocNested: true

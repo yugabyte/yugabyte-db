@@ -6,7 +6,7 @@ description: Enable Users in YEDIS.
 headcontent: Enable Users in YEDIS.
 image: /images/section_icons/secure/authentication.png
 menu:
-  stable:
+  v2.4:
     name: Enable User Authentication
     identifier: enable-authentication-3-yedis
     parent: enable-authentication

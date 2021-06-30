@@ -5,7 +5,7 @@ linkTitle: Snapshot and restore data
 description: Snapshot and restore data in YugabyteDB for YSQL.
 image: /images/section_icons/manage/enterprise.png
 menu:
-  stable:
+  v2.4:
     identifier: snapshots-1-ysql
     parent: backup-restore
     weight: 705

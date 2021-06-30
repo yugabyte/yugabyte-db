@@ -3,7 +3,7 @@ title: PTTL
 linkTitle: PTTL
 description: PTTL
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2235
 isTocNested: true

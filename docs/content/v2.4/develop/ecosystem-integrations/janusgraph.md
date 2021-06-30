@@ -3,7 +3,7 @@ title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
 menu:
-  stable:
+  v2.4:
     identifier: janusgraph
     parent: ecosystem-integrations
     weight: 573

@@ -7,7 +7,7 @@ image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 section: YUGABYTEDB CORE
 menu:
-  stable:
+  v2.4:
     identifier: manage
     weight: 900
 ---

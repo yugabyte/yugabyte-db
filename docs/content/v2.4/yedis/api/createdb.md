@@ -3,7 +3,7 @@ title: CREATEDB
 linkTitle: CREATEDB
 description: CREATEDB
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2032
 isTocNested: true

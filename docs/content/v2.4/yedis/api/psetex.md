@@ -3,7 +3,7 @@ title: PSETEX
 linkTitle: PSETEX
 description: PSETEX
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2272
 isTocNested: true

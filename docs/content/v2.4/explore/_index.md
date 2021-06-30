@@ -7,7 +7,7 @@ headcontent:
 image: /images/section_icons/index/explore.png
 section: YUGABYTEDB CORE
 menu:
-  stable:
+  v2.4:
     identifier: explore
     weight: 540
 ---

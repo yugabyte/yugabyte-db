@@ -3,7 +3,7 @@ title: PSUBSCRIBE
 linkTitle: PSUBSCRIBE
 description: PSUBSCRIBE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2554
 isTocNested: true

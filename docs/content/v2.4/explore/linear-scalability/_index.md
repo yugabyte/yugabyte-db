@@ -6,7 +6,7 @@ description: Horizontal Scalability in YugabyteDB.
 headcontent: Horizontal Scalability in YugabyteDB.
 image: /images/section_icons/explore/linear_scalability.png
 menu:
-  stable:
+  v2.4:
     identifier: explore-scalability
     parent: explore
     weight: 220

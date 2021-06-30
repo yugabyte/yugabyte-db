@@ -6,7 +6,7 @@ headcontent:
 image: /images/section_icons/deploy/enterprise.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  stable:
+  v2.4:
     identifier: manage-access
     parent: yugabyte-cloud
     weight: 644

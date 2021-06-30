@@ -3,7 +3,7 @@ title: SET
 linkTitle: SET
 description: SET
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2270
 isTocNested: true

@@ -8,7 +8,7 @@ image: /images/section_icons/api/yedis.png
 type: page
 section: MISC
 menu:
-  stable:
+  v2.4:
     identifier: yedis
     weight: 2900
 ---

@@ -5,7 +5,7 @@ linkTitle: Change data capture (CDC)
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  stable:
+  v2.4:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc
     weight: 1160

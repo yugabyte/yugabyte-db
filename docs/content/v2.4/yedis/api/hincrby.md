@@ -3,7 +3,7 @@ title: HINCRBY
 linkTitle: HINCRBY
 description: HINCRBY
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2135
 isTocNested: true

@@ -6,7 +6,7 @@ description: Spring Data YugabyteDB
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
 menu:
-  stable:
+  v2.4:
     identifier: spring-data-yugabytedb
     parent: drivers
     weight: 2943

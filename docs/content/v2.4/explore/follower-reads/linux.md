@@ -4,7 +4,7 @@ headerTitle: Follower reads
 linkTitle: Follower reads
 description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters on Linux.
 menu:
-  stable:
+  v2.4:
     identifier: follower-reads-2-linux
     parent: explore
     weight: 235

@@ -4,7 +4,7 @@ headerTitle: INSERT
 linkTitle: INSERT
 description: Use the INSERT statement to add one or more rows to the specified table.
 menu:
-  stable:
+  v2.4:
     identifier: dml_insert
     parent: statements
 isTocNested: true

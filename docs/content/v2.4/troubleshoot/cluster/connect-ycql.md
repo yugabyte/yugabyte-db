@@ -3,7 +3,7 @@ title: YCQL connection issues
 linkTitle: YCQL connection issues
 description: Cannot connect to YCQL API
 menu:
-  stable:
+  v2.4:
     parent: troubleshoot-cluster
     weight: 822
 isTocNested: true

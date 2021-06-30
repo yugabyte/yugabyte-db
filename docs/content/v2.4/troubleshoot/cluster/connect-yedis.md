@@ -3,7 +3,7 @@ title: YEDIS connection Issues
 linkTitle: YEDIS connection Issues
 description: Cannot connect to YEDIS API
 menu:
-  stable:
+  v2.4:
     parent: troubleshoot-cluster
     weight: 824
 isTocNested: true

@@ -3,7 +3,7 @@ title: STRLEN
 linkTitle: STRLEN
 description: STRLEN
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2320
 isTocNested: true

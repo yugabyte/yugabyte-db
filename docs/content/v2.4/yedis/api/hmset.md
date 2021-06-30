@@ -3,7 +3,7 @@ title: HMSET
 linkTitle: HMSET
 description: HMSET
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2170
 isTocNested: true

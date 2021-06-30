@@ -4,7 +4,7 @@ headerTitle: ycqlsh
 linkTitle: ycqlsh
 description: Use the YCQL shell (ycqlsh) to interact with YugabyteDB.
 menu:
-  stable:
+  v2.4:
     identifier: ycqlsh
     parent: admin
     weight: 2460

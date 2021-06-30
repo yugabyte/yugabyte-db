@@ -3,7 +3,7 @@ title: ZSCORE
 linkTitle: ZSCORE
 description: ZSCORE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2545
 isTocNested: true

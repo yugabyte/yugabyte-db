@@ -5,7 +5,7 @@ headerTitle: Window functions
 description: This section covers the syntax and semantics for all supported window functions in YSQL.
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  v2.4:
     identifier: window-functions
     parent: api-ysql-exprs
 isTocNested: true

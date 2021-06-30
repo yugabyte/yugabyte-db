@@ -3,7 +3,7 @@ title: GET
 linkTitle: GET
 description: GET
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2070
 isTocNested: true

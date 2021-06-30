@@ -3,7 +3,7 @@ title: FLUSHALL
 linkTitle: FLUSHALL
 description: FLUSHALL
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2064
 isTocNested: true

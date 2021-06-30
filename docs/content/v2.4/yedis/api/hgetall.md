@@ -3,7 +3,7 @@ title: HGETALL
 linkTitle: HGETALL
 description: HGETALL
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2130
 isTocNested: true

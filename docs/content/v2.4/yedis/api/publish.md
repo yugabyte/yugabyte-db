@@ -3,7 +3,7 @@ title: PUBLISH
 linkTitle: PUBLISH
 description: PUBLISH
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2551
 isTocNested: true

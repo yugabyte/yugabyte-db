@@ -3,7 +3,7 @@ title: PUBSUB
 linkTitle: PUBSUB
 description: PUBSUB
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2550
 isTocNested: true

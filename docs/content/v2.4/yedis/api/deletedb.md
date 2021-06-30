@@ -3,7 +3,7 @@ title: DELETEDB
 linkTitle: DELETEDB
 description: DELETEDB
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2034
 isTocNested: true

@@ -3,7 +3,7 @@ title: KairosDB
 linkTitle: KairosDB
 description: KairosDB
 menu:
-  stable:
+  v2.4:
     identifier: kairosdb
     parent: ecosystem-integrations
     weight: 574

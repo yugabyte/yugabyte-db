@@ -6,7 +6,7 @@ description: Explore sample applications running on YugabyteDB.
 headcontent: 
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  v2.4:
     identifier: explore-sample-apps
     parent: develop
     weight: 581

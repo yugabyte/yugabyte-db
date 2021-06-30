@@ -3,7 +3,7 @@ title: DEL
 linkTitle: DEL
 description: DEL
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2040
 isTocNested: true

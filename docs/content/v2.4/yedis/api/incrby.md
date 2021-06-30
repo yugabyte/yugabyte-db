@@ -3,7 +3,7 @@ title: INCRBY
 linkTitle: INCRBY
 description: INCRBY
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2215
 isTocNested: true

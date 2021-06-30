@@ -4,7 +4,7 @@ headerTitle: Build an application using Go
 linkTitle: Go
 description: Use Go to build a YugabyteDB application that interacts with YEDIS
 menu:
-  stable:
+  v2.4:
     identifier: client-drivers-yedis-go
     parent: develop-yedis
 isTocNested: true

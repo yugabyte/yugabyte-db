@@ -4,7 +4,7 @@ headerTitle: DROP OPERATOR CLASS
 linkTitle: DROP OPERATOR CLASS
 description: Use the DROP OPERATOR CLASS statement to remove an operator class.
 menu:
-  stable:
+  v2.4:
     identifier: ddl_drop_operator_class
     parent: statements
 isTocNested: true

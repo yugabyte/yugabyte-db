@@ -3,7 +3,7 @@ title: Presto
 linkTitle: Presto
 description: Presto
 menu:
-  stable:
+  v2.4:
     identifier: presto
     parent: ecosystem-integrations
     weight: 575

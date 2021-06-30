@@ -3,7 +3,7 @@ title: TSREM
 linkTitle: TSREM
 description: TSREM
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2450
 isTocNested: true

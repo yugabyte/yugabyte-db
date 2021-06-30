@@ -4,7 +4,7 @@ headerTitle: Synchronous replication (3+ regions) in YSQL
 linkTitle: Sync replication (3+ regions)
 description: Global data distributed using synchronous replication across regions in YSQL.
 menu:
-  stable:
+  v2.4:
     name: Sync replication (3+ regions)
     identifier: explore-multi-region-deployments-sync-replication-1-ysql
     parent: explore-multi-region-deployments

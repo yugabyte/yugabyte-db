@@ -3,7 +3,7 @@ title: PUNSUBSCRIBE
 linkTitle: PUNSUBSCRIBE
 description: PUNSUBSCRIBE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2555
 isTocNested: true

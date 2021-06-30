@@ -3,7 +3,7 @@ title: KEYS
 linkTitle: KEYS
 description: KEYS
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2217
 isTocNested: true

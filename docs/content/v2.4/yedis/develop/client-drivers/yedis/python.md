@@ -4,7 +4,7 @@ headerTitle: Build an application using Python
 linkTitle: Python
 description: Use Python to build a YugabyteDB application that interacts with YEDIS
 menu:
-  stable:
+  v2.4:
     identifier: client-drivers-yedis-python
     parent: develop-yedis
 isTocNested: true

@@ -3,7 +3,7 @@ title: PEXPIRE
 linkTitle: PEXPIRE
 description: PEXPIRE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2233
 isTocNested: true

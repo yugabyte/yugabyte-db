@@ -4,7 +4,7 @@ headerTitle: Asynchronous replication (2+ regions) in YSQL
 linkTitle: Async replication (2+ regions)
 description: Multi-region deployment using asynchronous replication across two or more data centers in YSQL.
 menu:
-  stable:
+  v2.4:
     name: Async Replication (2+ regions)
     identifier: explore-multi-region-deployments-async-replication-1-ysql
     parent: explore-multi-region-deployments

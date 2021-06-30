@@ -4,7 +4,7 @@ linkTitle: Check servers
 headerTitle: Check YugabyteDB servers
 description: How to check if your YugabyteDB servers are running
 menu:
-  stable:
+  v2.4:
     parent: troubleshoot-nodes
     weight: 842
 isTocNested: true

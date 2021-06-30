@@ -3,7 +3,7 @@ title: ZADD
 linkTitle: ZADD
 description: ZADD
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2500
 isTocNested: true

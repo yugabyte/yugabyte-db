@@ -3,7 +3,7 @@ title: ZRANGE
 linkTitle: ZRANGE
 description: ZRANGE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2385
 isTocNested: true

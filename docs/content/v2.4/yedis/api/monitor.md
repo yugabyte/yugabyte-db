@@ -3,7 +3,7 @@ title: MONITOR
 linkTitle: MONITOR
 description: MONITOR
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2218
 isTocNested: true

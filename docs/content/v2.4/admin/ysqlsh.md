@@ -4,7 +4,7 @@ headerTitle: ysqlsh
 linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
 menu:
-  stable:
+  v2.4:
     identifier: ysqlsh
     parent: admin
     weight: 2459

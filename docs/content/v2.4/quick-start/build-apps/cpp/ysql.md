@@ -4,7 +4,7 @@ headerTitle: Build a C++ application
 linkTitle: C++
 description: Build a C++ application that uses the YSQL API.
 menu:
-  stable:
+  v2.4:
     identifier: build-apps-cpp-1-ysql
     parent: build-apps
     weight: 556

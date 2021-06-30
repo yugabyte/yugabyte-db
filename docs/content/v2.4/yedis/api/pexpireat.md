@@ -3,7 +3,7 @@ title: PEXPIREAT
 linkTitle: PEXPIREAT
 description: PEXPIREAT
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2234
 isTocNested: true

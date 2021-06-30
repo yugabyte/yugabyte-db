@@ -5,7 +5,7 @@ linkTitle: 3. Explore distributed SQL APIs
 description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ycql.png
 menu:
-  stable:
+  v2.4:
     parent: quick-start
     name: 3. Explore distributed SQL
     identifier: explore-dsql-2-ycql

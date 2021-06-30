@@ -4,7 +4,7 @@ headerTitle: Build a C application
 linkTitle: C
 description: Build a sample C application with libpq.
 menu:
-  stable:
+  v2.4:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557

@@ -4,7 +4,7 @@ headerTitle: Docker
 linkTitle: Docker
 description: Deploy a YugabyteDB cluster on Docker Swarm.
 menu:
-  stable:
+  v2.4:
     parent: deploy
     name: Docker
     identifier: docker-2-swarm

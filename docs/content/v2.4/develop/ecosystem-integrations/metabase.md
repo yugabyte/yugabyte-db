@@ -3,7 +3,7 @@ title: Metabase
 linkTitle: Metabase
 description: Metabase
 menu:
-  stable:
+  v2.4:
     identifier: metabase
     parent: ecosystem-integrations
     weight: 576

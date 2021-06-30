@@ -3,7 +3,7 @@ title: AUTH
 linkTitle: AUTH
 description: AUTH
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2020
 isTocNested: true

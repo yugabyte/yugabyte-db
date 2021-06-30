@@ -4,7 +4,7 @@ headerTitle: Retail analytics sample application
 linkTitle: Retail Analytics
 description: Run this retail analytics sample application on YugabyteDB and explore YSQL.
 menu:
-  stable:
+  v2.4:
     identifier: retail-analytics
     parent: realworld-apps
     weight: 584

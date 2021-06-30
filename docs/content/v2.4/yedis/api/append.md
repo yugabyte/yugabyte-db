@@ -3,7 +3,7 @@ title: APPEND
 linkTitle: APPEND
 description: APPEND
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2010
 isTocNested: true

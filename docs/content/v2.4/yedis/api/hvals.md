@@ -3,7 +3,7 @@ title: HVALS
 linkTitle: HVALS
 description: HVALS
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2200
 isTocNested: true

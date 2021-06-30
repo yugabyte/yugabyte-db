@@ -5,7 +5,7 @@ linkTitle: Configure
 description: Configuring Yugabyte Platform on Azure
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  stable:
+  v2.4:
     identifier: configure-3-azure
     parent: overview-yp
     weight: 40

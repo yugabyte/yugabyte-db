@@ -3,7 +3,7 @@ title: HDEL
 linkTitle: HDEL
 description: HDEL
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2100
 isTocNested: true

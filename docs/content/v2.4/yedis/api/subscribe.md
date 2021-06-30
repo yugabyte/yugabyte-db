@@ -3,7 +3,7 @@ title: SUBSCRIBE
 linkTitle: SUBSCRIBE
 description: SUBSCRIBE
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2552
 isTocNested: true

@@ -4,7 +4,7 @@ headerTitle: Upgrade a deployment
 linkTitle: Upgrade a deployment
 description: Upgrade a deployment
 menu:
-  stable:
+  v2.4:
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 706

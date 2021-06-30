@@ -3,7 +3,7 @@ title: TSLASTN
 linkTitle: TSLASTN
 description: TSLASTN
 menu:
-  stable:
+  v2.4:
     parent: api-yedis
     weight: 2430
 isTocNested: true

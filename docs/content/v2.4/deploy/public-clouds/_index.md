@@ -6,7 +6,7 @@ description: Deploy YugabyteDB clusters in public clouds, including Amazon Web S
 headcontent: Here are some easy ways to deploy YugabyteDB in the various public clouds.
 image: /images/section_icons/deploy/public-clouds.png
 menu:
-  stable:
+  v2.4:
     identifier: public-clouds
     parent: deploy
     weight: 630
