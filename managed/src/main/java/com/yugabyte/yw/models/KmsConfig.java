@@ -13,6 +13,8 @@ package com.yugabyte.yw.models;
 import io.ebean.*;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.JsonIgnore;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -28,32 +30,41 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import java.util.List;
 import java.util.UUID;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @Entity
+@ApiModel(description = "KMS config.")
 public class KmsConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsConfig.class);
 
   public static final int SCHEMA_VERSION = 2;
 
-  @Id public UUID configUUID;
+  @Id
+  @ApiModelProperty(value = "KMS config uuid", accessMode = READ_ONLY)
+  public UUID configUUID;
 
   @Column(length = 100, nullable = false)
+  @ApiModelProperty(value = "KMS config name", example = "kms config name")
   public String name;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   @Column(length = 100, nullable = false)
+  @ApiModelProperty(value = "KMS key provider")
   public KeyProvider keyProvider;
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @JsonIgnore
+  @ApiModelProperty(value = "auth config")
   public JsonNode authConfig;
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "version")
   public int version;
 
   public static final Finder<UUID, KmsConfig> find =
