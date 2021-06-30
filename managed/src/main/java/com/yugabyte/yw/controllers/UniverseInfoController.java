@@ -72,22 +72,17 @@ public class UniverseInfoController extends AuthenticatedController {
     return YWResults.withRawData(result);
   }
 
-  // TODO: This method take params in post body instead of looking up the params of universe in db
-  //  this needs to be fixed as follows:
-  // 1> There should be a GET method to read universe resources without giving the params in the
-  // body
-  // 2> Map this to HTTP GET request.
-  // 3> In addition /universe_configure should also return resource estimation info back.
   @ApiOperation(
       value = "Api to get the resource estimate for a universe",
+      hidden = true,
       notes =
           "Expects UniverseDefinitionTaskParams in request body and calculates the resource "
               + "estimate for NodeDetailsSet in that.",
       response = UniverseResourceDetails.class)
-  public Result getUniverseResources(UUID customerUUID) {
-    UniverseDefinitionTaskParams taskParams =
-        bindFormDataToTaskParams(request(), UniverseDefinitionTaskParams.class);
-    return YWResults.withData(universeInfoHandler.getUniverseResources(taskParams));
+  public Result getUniverseResources(UUID customerUUID, UUID universeUUID) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    return YWResults.withData(
+        universeInfoHandler.getUniverseResources(universe.getUniverseDetails()));
   }
 
   @ApiOperation(value = "universeCost", response = UniverseResourceDetails.class)
