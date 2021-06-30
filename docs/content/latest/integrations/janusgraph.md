@@ -28,11 +28,11 @@ Connected to local cluster at 127.0.0.1:9042.
 Use HELP for help.
 ```
 
-```shell
+```sql
 ycqlsh> DESCRIBE KEYSPACES;
 ```
 
-```
+```output
 system_schema  system_auth  system
 
 ycqlsh>
