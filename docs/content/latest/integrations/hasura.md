@@ -5,7 +5,7 @@ description: Hasura GraphQL engine
 menu:
   latest:
     identifier: hasura
-    parent: graphql
+    parent: integrations
     weight: 582
 isTocNested: true
 showAsideToc: true

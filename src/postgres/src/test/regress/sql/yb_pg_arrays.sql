@@ -302,44 +302,44 @@ SELECT
     (ARRAY[(1, 1)])
 ) AS f (ids);
 
--- -- operators
--- SELECT a FROM arrtest WHERE b = ARRAY[[[113,142],[1,147]]];
--- SELECT NOT ARRAY[1.1,1.2,1.3] = ARRAY[1.1,1.2,1.3] AS "FALSE";
--- SELECT ARRAY[1,2] || 3 AS "{1,2,3}";
--- SELECT 0 || ARRAY[1,2] AS "{0,1,2}";
--- SELECT ARRAY[1,2] || ARRAY[3,4] AS "{1,2,3,4}";
--- SELECT ARRAY[[['hello','world']]] || ARRAY[[['happy','birthday']]] AS "ARRAY";
--- SELECT ARRAY[[1,2],[3,4]] || ARRAY[5,6] AS "{{1,2},{3,4},{5,6}}";
--- SELECT ARRAY[0,0] || ARRAY[1,1] || ARRAY[2,2] AS "{0,0,1,1,2,2}";
--- SELECT 0 || ARRAY[1,2] || 3 AS "{0,1,2,3}";
--- 
--- SELECT * FROM array_op_test WHERE i @> '{32}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i && '{32}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i @> '{17}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i && '{17}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i @> '{32,17}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i && '{32,17}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i <@ '{38,34,32,89}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i = '{}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i @> '{}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i && '{}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i <@ '{}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i = '{NULL}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i @> '{NULL}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i && '{NULL}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
--- 
--- SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t @> '{AAAAAAAAAA646}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t && '{AAAAAAAAAA646}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t <@ '{AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t = '{}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t @> '{}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t && '{}' ORDER BY seqno;
--- SELECT * FROM array_op_test WHERE t <@ '{}' ORDER BY seqno;
+-- operators
+SELECT a FROM arrtest WHERE b = ARRAY[[[113,142],[1,147]]];
+SELECT NOT ARRAY[1.1,1.2,1.3] = ARRAY[1.1,1.2,1.3] AS "FALSE";
+SELECT ARRAY[1,2] || 3 AS "{1,2,3}";
+SELECT 0 || ARRAY[1,2] AS "{0,1,2}";
+SELECT ARRAY[1,2] || ARRAY[3,4] AS "{1,2,3,4}";
+SELECT ARRAY[[['hello','world']]] || ARRAY[[['happy','birthday']]] AS "ARRAY";
+SELECT ARRAY[[1,2],[3,4]] || ARRAY[5,6] AS "{{1,2},{3,4},{5,6}}";
+SELECT ARRAY[0,0] || ARRAY[1,1] || ARRAY[2,2] AS "{0,0,1,1,2,2}";
+SELECT 0 || ARRAY[1,2] || 3 AS "{0,1,2,3}";
+
+SELECT * FROM array_op_test WHERE i @> '{32}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i && '{32}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i @> '{17}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i && '{17}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i @> '{32,17}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i && '{32,17}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i <@ '{38,34,32,89}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i = '{}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i @> '{}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i && '{}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i <@ '{}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i = '{NULL}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i @> '{NULL}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i && '{NULL}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
+
+SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t @> '{AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t && '{AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t <@ '{AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t = '{}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t @> '{}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t && '{}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t <@ '{}' ORDER BY seqno;
 
 -- array casts
 SELECT ARRAY[1,2,3]::text[]::int[]::float8[] AS "{1,2,3}";
