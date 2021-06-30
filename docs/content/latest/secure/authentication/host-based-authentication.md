@@ -81,7 +81,7 @@ host all yugabyte ::1/128 trust
 /Users/yugabyte/yugabyte-data/node-1/disk-1/pg_data/ysql_hba.conf (END)
 ```
 
-Because `ysql_hba.conf` records are examined sequentially for each connection attempt, the order of the records is significant. Typically, earlier records will have tight connection match parameters and weaker authentication methods, while later records will have looser match parameters and stronger authentication methods. For example, you might want to use trust authentication for local TCP/IP connections, but require a password for remote TCP/IP connections. In this case, a record specifying `trust` authentication for connections from `127.0.0.1` would appear before a record specifying password authentication for a wider range of allowed client IP addresses.
+Because `ysql_hba.conf` records are examined sequentially for each connection attempt, the order of the records is significant. Typically, earlier records have tight connection match parameters and weaker authentication methods, while later records have looser match parameters and stronger authentication methods. For example, you might want to use trust authentication for local TCP/IP connections, but require a password for remote TCP/IP connections. In this case, a record specifying `trust` authentication for connections from `127.0.0.1` would appear before a record specifying password authentication for a wider range of allowed client IP addresses.
 
 ## Record fields
 
@@ -96,8 +96,6 @@ host       database  user  IP-address  netmask  auth-method  [auth-options]
 hostssl    database  user  IP-address  netmask  auth-method  [auth-options]
 hostnossl  database  user  IP-address  netmask  auth-method  [auth-options]
 ```
-
-The fields are described below.
 
 ### local
 

@@ -21,7 +21,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Client authentication in YugabyteDB is managed by the YB-TServer [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) configuration flag, which works similar to the `pg_hba.conf` file in PostgreSQL.
+Client authentication in YugabyteDB is managed by the YB-TServer [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) configuration flag, which works similarly to the `pg_hba.conf` file in PostgreSQL.
 
 The values include records that specify allowed connection types, users, client IP addresses, and the authentication method.
 
@@ -54,3 +54,5 @@ and then view the file. Here is an example of `ysql_hba.conf` file contents.
 host all all 0.0.0.0/0 trust
 host all all ::0/0 trust
 ```
+
+For more information, refer to [Authentication methods](../../authentication/
