@@ -12,25 +12,28 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.api.Play;
 import play.libs.Json;
 
-import java.util.HashSet;
+import javax.inject.Inject;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 public class CloudRegionSetup extends CloudTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CloudRegionSetup.class);
+  @Inject
+  protected CloudRegionSetup(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends CloudTaskParams {
     public String regionCode;
@@ -82,7 +85,7 @@ public class CloudRegionSetup extends CloudTaskBase {
       region.save();
     }
 
-    JsonNode zoneInfo = null;
+    JsonNode zoneInfo;
     switch (Common.CloudType.valueOf(provider.code)) {
       case aws:
         // Setup subnets.
@@ -98,7 +101,7 @@ public class CloudRegionSetup extends CloudTaskBase {
           }
           zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
-        region.zones = new HashSet<>();
+        region.zones = new ArrayList<>();
         zoneSubnets.forEach(
             (zone, subnet) ->
                 region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
@@ -107,7 +110,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         Map<String, String> zoneNets = taskParams().metadata.azToSubnetIds;
         String vnet = taskParams().metadata.vpcId;
         if (vnet == null || vnet.isEmpty()) {
-          vnet = queryHelper.getVnet(region);
+          vnet = queryHelper.getVnetOrFail(region);
         }
         region.setVnetName(vnet);
         region.save();
@@ -120,7 +123,7 @@ public class CloudRegionSetup extends CloudTaskBase {
           }
           zoneNets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
-        region.zones = new HashSet<>();
+        region.zones = new ArrayList<>();
         zoneNets.forEach(
             (zone, subnet) ->
                 region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
@@ -151,11 +154,9 @@ public class CloudRegionSetup extends CloudTaskBase {
           subnetId = subnetworks.get(0);
         }
         final String subnet = subnetId;
-        region.zones = new HashSet<>();
+        region.zones = new ArrayList<>();
         zones.forEach(
-            zone -> {
-              region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
-            });
+            zone -> region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
         break;
       default:
         throw new RuntimeException(

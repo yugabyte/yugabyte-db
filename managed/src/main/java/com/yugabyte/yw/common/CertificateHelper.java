@@ -33,6 +33,7 @@ import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Calendar;
 import java.util.Collections;
@@ -77,6 +78,8 @@ public class CertificateHelper {
   public static final String DEFAULT_CLIENT = "yugabyte";
   public static final String CERT_PATH = "%s/certs/%s/%s";
   public static final String ROOT_CERT = "root.crt";
+  public static final String SERVER_CERT = "server.crt";
+  public static final String SERVER_KEY = "server.key.pem";
   public static final String CLIENT_NODE_SUFFIX = "-client";
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
@@ -292,7 +295,8 @@ public class CertificateHelper {
       Date certStart,
       Date certExpiry,
       CertificateInfo.Type certType,
-      CertificateParams.CustomCertInfo customCertInfo) {
+      CertificateParams.CustomCertInfo customCertInfo,
+      CertificateParams.CustomServerCertData customServerCertData) {
     LOG.debug("uploadRootCA: Label: {}, customerUUID: {}", label, customerUUID.toString());
     try {
       if (certContent == null) {
@@ -300,37 +304,43 @@ public class CertificateHelper {
       }
       UUID rootCA_UUID = UUID.randomUUID();
       String keyPath = null;
-      List<X509Certificate> x509Certificates = getX509CertificateCertObject(certContent);
+      CertificateInfo.CustomServerCertInfo customServerCertInfo = null;
+      List<X509Certificate> x509CACerts = getX509CertificateCertObject(certContent);
       // Verify the uploaded cert is a verified cert chain.
-      verifyCertValidity(x509Certificates);
+      verifyCertValidity(x509CACerts);
       if (certType == CertificateInfo.Type.SelfSigned) {
         // The first entry in the file should be the cert we want to use for generating server
         // certs.
-        if (!verifySignature(x509Certificates.get(0), keyContent)) {
-          // If the first certificate is not the right one, maybe the user has entered the
-          // certificates in the wrong order. Check and update the customer with the right
-          // message.
-          x509Certificates
-              .stream()
-              .forEach(
-                  x509Certificate -> {
-                    if (verifySignature(x509Certificate, keyContent)) {
-                      X500Name x500Name =
-                          new X500Name(x509Certificate.getSubjectX500Principal().getName());
-                      RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
-                      throw new YWServiceException(
-                          BAD_REQUEST,
-                          "Certificate with CN = "
-                              + cn.getFirst().getValue()
-                              + "should be the first entry in the file.");
-                    }
-                  });
-          throw new YWServiceException(BAD_REQUEST, "Certificate and key don't match.");
-        }
+        verifyCertSignatureAndOrder(x509CACerts, keyContent);
         keyPath =
             String.format(
                 "%s/certs/%s/%s/ca.key.pem",
                 storagePath, customerUUID.toString(), rootCA_UUID.toString());
+      }
+      if (certType == CertificateInfo.Type.CustomServerCert) {
+        // Verify the upload Server Cert is a verified cert chain.
+        List<X509Certificate> x509ServerCertificates =
+            getX509CertificateCertObject(customServerCertData.serverCertContent);
+        // Verify that the uploaded server cert was signed by the uploaded CA cert
+        ArrayList combinedArrayList = new ArrayList(x509ServerCertificates);
+        combinedArrayList.addAll(x509CACerts);
+        verifyCertValidity(combinedArrayList);
+        // The first entry in the file should be the cert we want to use for generating server
+        // certs.
+        verifyCertSignatureAndOrder(x509ServerCertificates, customServerCertData.serverKeyContent);
+        String serverCertPath =
+            String.format(
+                "%s/certs/%s/%s/%s",
+                storagePath, customerUUID.toString(), rootCA_UUID.toString(), SERVER_CERT);
+        String serverKeyPath =
+            String.format(
+                "%s/certs/%s/%s/%s",
+                storagePath, customerUUID.toString(), rootCA_UUID.toString(), SERVER_KEY);
+        writeCertFileContentToCertPath(x509ServerCertificates, serverCertPath);
+        writeKeyFileContentToKeyPath(
+            getPrivateKey(customServerCertData.serverKeyContent), serverKeyPath);
+        customServerCertInfo =
+            new CertificateInfo.CustomServerCertInfo(serverCertPath, serverKeyPath);
       }
       String certPath =
           String.format(
@@ -340,22 +350,52 @@ public class CertificateHelper {
       writeCertFileContentToCertPath(getX509CertificateCertObject(certContent), certPath);
 
       CertificateInfo cert;
-      if (certType == CertificateInfo.Type.SelfSigned) {
-        writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
-        cert =
-            CertificateInfo.create(
-                rootCA_UUID,
-                customerUUID,
-                label,
-                certStart,
-                certExpiry,
-                keyPath,
-                certPath,
-                certType);
-      } else {
-        cert =
-            CertificateInfo.create(
-                rootCA_UUID, customerUUID, label, certStart, certExpiry, certPath, customCertInfo);
+      switch (certType) {
+        case SelfSigned:
+          {
+            writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
+            cert =
+                CertificateInfo.create(
+                    rootCA_UUID,
+                    customerUUID,
+                    label,
+                    certStart,
+                    certExpiry,
+                    keyPath,
+                    certPath,
+                    certType);
+            break;
+          }
+        case CustomCertHostPath:
+          {
+            cert =
+                CertificateInfo.create(
+                    rootCA_UUID,
+                    customerUUID,
+                    label,
+                    certStart,
+                    certExpiry,
+                    certPath,
+                    customCertInfo);
+            break;
+          }
+        case CustomServerCert:
+          {
+            cert =
+                CertificateInfo.create(
+                    rootCA_UUID,
+                    customerUUID,
+                    label,
+                    certStart,
+                    certExpiry,
+                    certPath,
+                    customServerCertInfo);
+            break;
+          }
+        default:
+          {
+            throw new YWServiceException(BAD_REQUEST, "certType should be valid.");
+          }
       }
       LOG.info(
           "Uploaded cert label {} (uuid {}) of type {} at paths"
@@ -554,7 +594,25 @@ public class CertificateHelper {
                         + cn.getFirst().getValue()
                         + " has no associated root");
               }
+              verifyCertDateValidity(cert);
             });
+  }
+
+  // Verify that certificate is currently valid and valid for 1 day
+  private static void verifyCertDateValidity(X509Certificate cert) {
+    Calendar cal = Calendar.getInstance();
+    cal.add(Calendar.DATE, 1);
+    Date oneDayAfterToday = cal.getTime();
+    try {
+      cert.checkValidity();
+      cert.checkValidity(oneDayAfterToday);
+    } catch (Exception e) {
+      X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
+      RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Certificate with CN = " + cn.getFirst().getValue() + " has invalid start/end dates.");
+    }
   }
 
   private static boolean verifyCertValidity(
@@ -566,5 +624,31 @@ public class CertificateHelper {
       LOG.error(exp.getMessage());
       return false;
     }
+  }
+
+  private static boolean verifyCertSignatureAndOrder(
+      List<X509Certificate> x509Certificates, String keyContent) {
+    if (!verifySignature(x509Certificates.get(0), keyContent)) {
+      // If the first certificate is not the right one, maybe the user has entered the
+      // certificates in the wrong order. Check and update the customer with the right
+      // message.
+      x509Certificates
+          .stream()
+          .forEach(
+              x509Certificate -> {
+                if (verifySignature(x509Certificate, keyContent)) {
+                  X500Name x500Name =
+                      new X500Name(x509Certificate.getSubjectX500Principal().getName());
+                  RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
+                  throw new YWServiceException(
+                      BAD_REQUEST,
+                      "Certificate with CN = "
+                          + cn.getFirst().getValue()
+                          + "should be the first entry in the file.");
+                }
+              });
+      throw new YWServiceException(BAD_REQUEST, "Certificate and key don't match.");
+    }
+    return true;
   }
 }

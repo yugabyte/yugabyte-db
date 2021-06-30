@@ -17,11 +17,11 @@ YSQL allows you to define primary and foreign keys, as well as check values base
 
 ## Primary Key
 
-A primary key is a means to identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../using-the-unique-index/) applied to the table columns. 
+A primary key is a means to identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns. 
 
 Most commonly, the primary key is added to the table when the table is created, as demonstrated by the following syntax:
 
-```
+```sql
 CREATE TABLE (
   column1 data_type PRIMARY KEY,
   column2 data_type,
@@ -44,7 +44,7 @@ The primary key of the `employees` table is `employee_no`, which uniquely identi
 
 The following syntax the primary key definition for more than one column:
 
-```
+```sql
 CREATE TABLE (
   column1 data_type,
   column2 data_type,
@@ -67,38 +67,38 @@ CREATE TABLE employees (
 
 YSQL assigns a default name in the format `tablename_pkey` to the primary key constraint. In the preceding example, it is `employees_pkey`. If you need a different name, you can specify it using the `CONSTRAINT` clause, as per the following syntax:
 
-```
+```sql
 CONSTRAINT constraint_name PRIMARY KEY(column1, column2, ...);
 ```
 
 In some cases you might decide to define a primary key for an existing table. To do this, you use the `ALTER TABLE` statement, as per the following syntax:
 
-```
+```sql
 ALTER TABLE table_name ADD PRIMARY KEY (column1, column2);
 ```
 
-The `ALTER TABLE` statement also allows you to add an auto-incremented primary key to an existing table by using the [SERIAL type](https://docs.yugabyte.com/latest/explore/ysql-language-features/data-types/#serial-pseudotype), as per the following syntax:
+The `ALTER TABLE` statement also allows you to add an auto-incremented primary key to an existing table by using the [SERIAL type](../../ysql-language-features/data-types/#serial-pseudotype), as per the following syntax:
 
-```
+```sql
 ALTER TABLE table_name ADD COLUMN ID SERIAL PRIMARY KEY;
 ```
 
 You can remove a primary key constraint by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
 
-```
+```sql
 ALTER TABLE table_name DROP CONSTRAINT primary_key_constraint;
 ```
 
 The following example shows how to remove the primary key constraint from the `employees` table:
 
-```
+```sql
 ALTER TABLE employees DROP CONSTRAINT employees_pkey;
 ```
 
-For more information and examples, see the following: 
+For more information and examples, refer to the following: 
 
-- [Primary Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
-- [Table with Primary Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
+- [Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
+- [Table with Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
 - [Primary Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS)
 
 ## Foreign Key
@@ -106,7 +106,7 @@ For more information and examples, see the following:
 A foreign key represents one or more columns in a table referencing the following: 
 
 - A primary key in another table.
-- A [unique index](../indexes-1#using-the-unique-index) or columns restricted with a [unique constraint](#unique-constraint) in another table.
+- A [unique index](../indexes-1#using-a-unique-index) or columns restricted with a [unique constraint](#unique-constraint) in another table.
 
 Tables can have multiple foreign keys.
 
@@ -114,7 +114,7 @@ You use a foreign key constraint to maintain the referential integrity of data b
 
 You define the foreign key constraint using the following syntax:
 
-```
+```sql
 [CONSTRAINT fk_name] 
   FOREIGN KEY(fk_columns) 
     REFERENCES parent_table(parent_key_columns)
@@ -167,7 +167,7 @@ CREATE TABLE contacts(
 
 YSQL enables you to ads a foreign key constraint to an existing table by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
 
-```
+```sql
 ALTER TABLE child_table 
   ADD CONSTRAINT constraint_name 
     FOREIGN KEY (fk_columns) 
@@ -176,14 +176,14 @@ ALTER TABLE child_table
 
 Before altering a table with a foreign key constraint, you need to remove the existing foreign key constraint, as per the following syntax:
 
-```
+```sql
 ALTER TABLE child_table
   DROP CONSTRAINT constraint_fkey;
 ```
 
 The next step is to add a new foreign key constraint, possibly including an action, as demonstrated by the following syntax:
 
-```
+```sql
 ALTER TABLE child_table
   ADD CONSTRAINT constraint_fk
     FOREIGN KEY (fk_columns)
@@ -191,10 +191,10 @@ ALTER TABLE child_table
       [ON DELETE action];
 ```
 
-For more information and examples, see the following: 
+For more information and examples, see the following:
 
-- [Foreign Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key)
-- [Table with Foreign Key](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
+- [Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key)
+- [Table with Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
 - [Foreign Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-FK)
 
 ## CHECK Constraint
@@ -222,7 +222,7 @@ INSERT INTO employees (employee_no, name, department, birth, salary)
 
 The following output shows that the execution of the `INSERT` statement failed because of the `CHECK` constraint on the `salary` column which only accepts values greater than 10:
 
-```
+```output
 ERROR: new row for relation "employees" violates check constraint "employees_salary_check"
 DETAIL: Failing row contains (2001, Hugh Grant, Sales, 1963-05-05, 0).
 ```
@@ -244,13 +244,13 @@ ALTER TABLE employees
   ADD CONSTRAINT name_check CHECK (char_length(name) <= 3);
 ```
 
-For additional examples, see [Table with CHECK constraint](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint).
+For additional examples, see [Table with CHECK constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint).
 
 ## UNIQUE Constraint
 
 The `UNIQUE` constraint allows you to ensure that values stored in columns are unique across rows in a table. During inserting new rows or updating existing ones, the `UNIQUE` constraint checks if the value is already in the table, in which case the change is rejected and an error is displayed.
 
-When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../indexes-1#using-the-unique-index) on these columns.
+When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../indexes-1#using-a-unique-index) on these columns.
 
 The following example creates a table with a `UNIQUE` constraint for the `phone` column:
 
@@ -288,7 +288,7 @@ CREATE TABLE employees (
 );
 ```
 
-For additional examples, see [Table with UNIQUE constraint](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
+For additional examples, see [Table with UNIQUE constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
 
 ## NOT NULL Constraint
 
@@ -298,4 +298,3 @@ For additional information and examples, see the following:
 
 - [Defining NOT NULL Constraint](../../ysql-language-features/data-manipulation/#defining-not-null-constraint)
 - [Not-Null Constraints in PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-constraints.html#id-1.5.4.5.6)
-

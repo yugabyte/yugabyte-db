@@ -8,26 +8,30 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.*;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThrows;
-
+import static org.junit.Assert.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
+@RunWith(MockitoJUnitRunner.class)
 public class CustomerConfigControllerTest extends FakeDBApplication {
   Customer defaultCustomer;
   Users defaultUser;
+
+  @InjectMocks private AlertService alertService;
 
   @Before
   public void setUp() {
@@ -134,21 +138,12 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteValidCustomerConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
-    Alert.create(
-        defaultCustomer.uuid,
-        configUUID,
-        Alert.TargetType.CustomerConfigType,
-        "Error code",
-        "",
-        "");
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
-    assertEquals(
-        0, Alert.getActiveCustomerAlertsByTargetUuid(defaultCustomer.uuid, configUUID).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 

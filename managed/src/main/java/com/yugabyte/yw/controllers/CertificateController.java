@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
 import com.yugabyte.yw.forms.YWResults;
@@ -26,10 +26,7 @@ import java.util.UUID;
 @Api
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
-
-  @Inject play.Configuration appConfig;
-
-  @Inject ValidatingFormFactory formFactory;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(value = "upload", response = UUID.class)
   public Result upload(UUID customerUUID) {
@@ -43,31 +40,56 @@ public class CertificateController extends AuthenticatedController {
     String certContent = formData.get().certContent;
     String keyContent = formData.get().keyContent;
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
-    if (certType == CertificateInfo.Type.SelfSigned) {
-      if (certContent == null || keyContent == null) {
-        throw new YWServiceException(BAD_REQUEST, "Certificate or Keyfile can't be null.");
-      }
-    } else {
-      if (customCertInfo == null) {
-        throw new YWServiceException(BAD_REQUEST, "Custom Cert Info must be provided.");
-      } else if (customCertInfo.nodeCertPath == null
-          || customCertInfo.nodeKeyPath == null
-          || customCertInfo.rootCertPath == null) {
-        throw new YWServiceException(BAD_REQUEST, "Custom Cert Paths can't be empty.");
-      }
+    CertificateParams.CustomServerCertData customServerCertData =
+        formData.get().customServerCertData;
+    switch (certType) {
+      case SelfSigned:
+        {
+          if (certContent == null || keyContent == null) {
+            throw new YWServiceException(BAD_REQUEST, "Certificate or Keyfile can't be null.");
+          }
+          break;
+        }
+      case CustomCertHostPath:
+        {
+          if (customCertInfo == null) {
+            throw new YWServiceException(BAD_REQUEST, "Custom Cert Info must be provided.");
+          } else if (customCertInfo.nodeCertPath == null
+              || customCertInfo.nodeKeyPath == null
+              || customCertInfo.rootCertPath == null) {
+            throw new YWServiceException(BAD_REQUEST, "Custom Cert Paths can't be empty.");
+          }
+          break;
+        }
+      case CustomServerCert:
+        {
+          if (customServerCertData == null) {
+            throw new YWServiceException(BAD_REQUEST, "Custom Server Cert Info must be provided.");
+          } else if (customServerCertData.serverCertContent == null
+              || customServerCertData.serverKeyContent == null) {
+            throw new YWServiceException(
+                BAD_REQUEST, "Custom Server Cert and Key content can't be empty.");
+          }
+          break;
+        }
+      default:
+        {
+          throw new YWServiceException(BAD_REQUEST, "certType should be valid.");
+        }
     }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
     UUID certUUID =
         CertificateHelper.uploadRootCA(
             label,
             customerUUID,
-            appConfig.getString("yb.storage.path"),
+            runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
             certContent,
             keyContent,
             certStart,
             certExpiry,
             certType,
-            customCertInfo);
+            customCertInfo,
+            customServerCertData);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return YWResults.withData(certUUID);
   }
@@ -76,8 +98,8 @@ public class CertificateController extends AuthenticatedController {
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
     Customer.getOrBadRequest(customerUUID);
-    Long certTimeMillis = formData.get().certStart;
-    Long certExpiryMillis = formData.get().certExpiry;
+    long certTimeMillis = formData.get().certStart;
+    long certExpiryMillis = formData.get().certExpiry;
     Date certStart = certTimeMillis != 0L ? new Date(certTimeMillis) : null;
     Date certExpiry = certExpiryMillis != 0L ? new Date(certExpiryMillis) : null;
 

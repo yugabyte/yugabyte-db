@@ -11,6 +11,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.*;
@@ -55,6 +56,9 @@ public abstract class AbstractPlatformController extends Controller {
       "https://github.com/yugabyte/yugabyte-db/blob/master/licenses/"
           + "POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt";
   protected static final String API_KEY_AUTH = "apiKeyAuth";
+
+  @Inject protected ValidatingFormFactory formFactory;
+
   @Inject private AuditService auditService;
 
   protected AuditService auditService() {

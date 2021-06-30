@@ -87,6 +87,7 @@ class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
 class YBTabletServer;
+class YBTabletServerPlacementInfo;
 
 struct YBTableInfo;
 

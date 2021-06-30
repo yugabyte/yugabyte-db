@@ -648,7 +648,8 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated();
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
+         l->namespace_id() != kPgSequencesDataNamespaceId;
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
