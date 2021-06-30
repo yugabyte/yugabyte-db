@@ -6,9 +6,13 @@
 // will be finalized and be available.
 
 import { connect } from 'react-redux';
+import { toast } from 'react-toastify';
 import {
   alertConfigs,
   alertDestionations,
+  createAlertReceiver,
+  createAlertReceiverResponse,
+  getAlertReceivers,
   updateProfile,
   updateProfileFailure,
   updateProfileSuccess
@@ -33,7 +37,7 @@ const mapDispatchToProps = (dispatch) => {
     },
     alertDestionations: () => {
       return dispatch(alertDestionations());
-      },
+    },
     updateCustomerDetails: (values) => {
       dispatch(updateProfile(values)).then((response) => {
         if (response.payload.status !== 200) {
@@ -43,7 +47,27 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-
+    createAlertChannel: (payload) => {
+      return dispatch(createAlertReceiver(payload)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully created the channel');
+        }
+        return dispatch(createAlertReceiverResponse(response.payload));
+      });
+    },
+    getAlertReceivers: () => {
+      return dispatch(getAlertReceivers()).then((response) => {
+        if(response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+          return;
+        }
+        return response.payload.data
+      })
+    },
     closeModal: () => {
       dispatch(closeDialog());
     },

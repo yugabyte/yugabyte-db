@@ -86,7 +86,7 @@ export default class AlertsPolicy extends Component {
             Severity
           </Col>
           <Col lg={2}>Condition</Col>
-          <Col lg={5}>Utilization Duration</Col>
+          <Col lg={5}>Threshold</Col>
         </Row>
         {fields.map((instanceTypeItem, instanceTypeIdx) => (
           <Row key={instanceTypeIdx}>
@@ -121,21 +121,6 @@ export default class AlertsPolicy extends Component {
               <div className="flex-container">
                 <p className="percent-text">%</p>
               </div>
-            </Col>
-            <Col lg={2}>
-              <Field
-                name={`${instanceTypeItem}_THRESHOLD_DURATION`}
-                component={YBInputField}
-                type={'number'}
-                placeholder="Interval"
-              />
-            </Col>
-            <Col lg={3}>
-              <Field
-                name={`${instanceTypeItem}_THRESHOLD_UNIT`}
-                component={YBSelect}
-                options={this.frequencyUnitOptions}
-              />
             </Col>
           </Row>
         ))}

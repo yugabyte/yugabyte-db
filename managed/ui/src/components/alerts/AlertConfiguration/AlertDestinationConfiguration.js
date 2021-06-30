@@ -1,5 +1,5 @@
 import { Field, Formik } from 'formik';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { reduxForm } from 'redux-form';
 import { YBButton, YBMultiSelectWithLabel, YBTextInputWithLabel } from '../../common/forms/fields';
@@ -25,14 +25,19 @@ const styles = {
 };
 
 const AlertDestinationConfiguration = (props) => {
-  /**
-   * Constant value of channel list.
-   */
-  const destinationChannelList = [
-    { value: 'Configured slack channel', label: 'Configured slack channel' },
-    { value: 'Configured email channel', label: 'Configured email channel' },
-    { value: 'Configured pagerDuty channel', label: 'Configured pagerDuty channel' }
-  ];
+  const [destinationChannelList, setDestinationChannelList] = useState([]);
+
+  useEffect(() => {
+    props.getAlertReceivers().then((data) => {
+      data = data.map((receiver) => {
+        return {
+          value: receiver['uuid'],
+          label: receiver['name']
+        };
+      });
+      setDestinationChannelList(data);
+    });
+  }, []);
   /**
    *
    * @param {Formvalues} values
@@ -90,13 +95,13 @@ const AlertDestinationConfiguration = (props) => {
                 </Row>
               </Col>
             </Row>
-            <br/>
-            <br/>
-            <br/>
-            <br/>
-            <br/>
-            <br/>
-            <br/>
+            <br />
+            <br />
+            <br />
+            <br />
+            <br />
+            <br />
+            <br />
             <Row className="form-action-button-container">
               <Col lg={6} lgOffset={6}>
                 <YBButton
@@ -116,6 +121,7 @@ const AlertDestinationConfiguration = (props) => {
         visible={visibleModal === 'alertDestinationForm'}
         onHide={props.closeModal}
         defaultChannel="email"
+        {...props}
       />
     </>
   );

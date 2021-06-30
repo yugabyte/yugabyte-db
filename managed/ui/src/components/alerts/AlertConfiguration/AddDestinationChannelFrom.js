@@ -12,7 +12,29 @@ export const AddDestinationChannelFrom = (props) => {
 
   const handleAddDestination = (values) => {
     const { onHide } = props;
-    console.log('Form Data -', values);
+    let payload = {
+      name: '',
+      params: {}
+    }
+
+    switch(values.ALERT_TARGET_TYPE) {
+      case 'slack':
+        payload['name'] = values.name;
+        payload['params']['targetType'] = 'Slack'
+        payload['params']['webhookUrl'] = values.webhookUrl;
+        payload['params']['channel'] = values.name;
+        break;
+      case 'email':
+        // values.smtpData.smtpPort = parseInt(values.smtpData.smtpPort);
+        payload['name'] = values.name;
+        payload['params']['targetType'] = 'Email';
+        payload['params']['recipients'] = values.emailIds.split(',');
+        payload['params']['smtpData'] = values.smtpData;
+        break;
+      default:
+        break;
+    }
+    props.createAlertChannel(payload);
     onHide();
   };
 

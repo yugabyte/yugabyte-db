@@ -11,6 +11,7 @@ import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import {
   YBButton,
+  YBFormInput,
   YBMultiSelectWithLabel,
   YBRadioButtonGroup,
   YBSelectWithLabel,
@@ -56,10 +57,18 @@ const CreateAlert = (props) => {
    * TODO: Get the list of universe from API
    */
   const alertDestinationList = [
-    { value: 'Configured Email destination 1', label: 'Configured Email destination 1' },
-    { value: 'Configured Slack destination 2', label: 'Configured Slack destination 2' },
-    { value: 'Configured Email destination 2', label: 'Configured Email destination 2' },
-    { value: 'Configured Slack destination 1', label: 'Configured Slack destination 1' }
+    <option key={1} value={'Configured Email destination 1'}>
+      {'Configured Email destination 1'}
+    </option>,
+    <option key={1} value={'Configured Email destination 2'}>
+      {'Configured Email destination 2'}
+    </option>,
+    <option key={1} value={'Configured Slack destination 2'}>
+      {'Configured Slack destination 2'}
+    </option>,
+    <option key={1} value={'Configured Slack destination 1'}>
+      {'Configured Slack destination 1'}
+    </option>
   ];
 
   /**
@@ -129,7 +138,7 @@ const CreateAlert = (props) => {
               />
             </Col>
           </Row>
-          <hr/>
+          <hr />
           <Row>
             <Col md={12}>
               <h4>Conditions</h4>
@@ -141,7 +150,15 @@ const CreateAlert = (props) => {
                   name="ALERT_METRICS_CONDITION"
                   component={YBSelectWithLabel}
                   options={alertMetricsConditionList}
-                  onInputChanged={handleMetricConditionChange}
+                  onInputChanged={() => {}}
+                />
+              </Col>
+              <Col md={6}>
+                <Field
+                  component={YBFormInput}
+                  type="number"
+                  label="Duration"
+                  placeholder="Enter duration in minutes"
                 />
               </Col>
             </Row>
@@ -155,19 +172,11 @@ const CreateAlert = (props) => {
           </Row>
           <Row>
             <Col md={6}>
-              {/* isDisabled={true} */}
               <div className="form-item-custom-label">Destinations</div>
               <Field
                 name="ALERT_DESTINATION_LIST"
-                component={YBMultiSelectWithLabel}
+                component={YBSelectWithLabel}
                 options={alertDestinationList}
-                hideSelectedOptions={false}
-                data-yb-field="regions"
-                isMulti={true}
-                selectValChanged={(val) => {
-                  console.log(val);
-                }}
-                providerSelected={'puppy-food-4s-1'}
               />
             </Col>
           </Row>

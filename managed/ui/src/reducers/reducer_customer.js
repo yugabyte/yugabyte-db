@@ -67,7 +67,10 @@ import {
   GET_CUSTOMER_USERS_SUCCESS,
   GET_CUSTOMER_USERS_FAILURE,
   CREATE_USER,
-  CREATE_USER_RESPONSE
+  CREATE_USER_RESPONSE,
+  CREATE_ALERT_RECEIVER,
+  CREATE_ALERT_RECEIVER_RESPONSE,
+  GET_ALERT_RECEIVERS
 } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -92,6 +95,7 @@ const INITIAL_STATE = {
     alertsList: [],
     updated: null
   },
+  alertReceivers: getInitialState([]),
   hostInfo: null,
   customerCount: {},
   yugawareVersion: getInitialState({}),
@@ -220,6 +224,20 @@ export default function (state = INITIAL_STATE, action) {
           updated: Date.now()
         }
       };
+    case GET_ALERT_RECEIVERS:
+      return setLoadingState(state, 'alertRecivers', []);
+    case CREATE_ALERT_RECEIVER:
+      return setLoadingState(state, 'createAlertReceiver', {});
+    case CREATE_ALERT_RECEIVER_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertReceiver', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'addCertificate', action);
+
     case FETCH_YUGAWARE_VERSION:
       return setLoadingState(state, 'yugawareVersion', {});
     case FETCH_YUGAWARE_VERSION_RESPONSE:

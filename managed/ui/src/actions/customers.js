@@ -52,6 +52,13 @@ export const GET_ALERTS = 'GET_ALERTS';
 export const GET_ALERTS_SUCCESS = 'GET_ALERTS_SUCCESS';
 export const GET_ALERTS_FAILURE = 'GET_ALERTS_FAILURE';
 
+export const CREATE_ALERT_RECEIVER = 'CREATE_ALERT_RECEIVER';
+export const CREATE_ALERT_RECEIVER_RESPONSE = 'CREATE_ALERT_RECEIVER_RESPONSE';
+
+export const GET_ALERT_RECEIVERS = 'GET_ALERT_RECEIVERS';
+export const GET_ALERT_RECEIVERS_SUCCESS = 'GET_ALERT_RECEIVERS_SUCCESS';
+export const GET_ALERT_RECEIVERS_FAILURE = 'GET_ALERT_RECEIVERS_FAILURE';
+
 export const GET_ALERT_CONFIGS = 'GET_ALERT_CONFIGS';
 export const GET_ALERT_DESTIONATIONS = 'GET_ALERT_DESTIONATIONS';
 
@@ -434,6 +441,44 @@ export function getAlerts() {
   return {
     type: GET_ALERTS,
     payload: request
+  };
+}
+export function createAlertReceiver(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_receivers`, payload);
+  return {
+    type: CREATE_ALERT_RECEIVER,
+    payload: request
+  };
+}
+
+export function createAlertReceiverResponse(response) {
+  return {
+    type: CREATE_ALERT_RECEIVER_RESPONSE,
+    payload: response
+  };
+}
+
+export function getAlertReceivers() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_receivers`);
+  return {
+    type: GET_ALERT_RECEIVERS,
+    payload: request
+  };
+}
+
+export function getAlertReceiversSuccess(response) {
+  return {
+    type: GET_ALERT_RECEIVERS_SUCCESS,
+    payload: response
+  };
+}
+
+export function getAlertReceiversFaliure(response) {
+  return {
+    type: GET_ALERT_RECEIVERS_FAILURE,
+    payload: response
   };
 }
 
