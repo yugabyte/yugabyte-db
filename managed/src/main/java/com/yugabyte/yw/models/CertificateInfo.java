@@ -4,14 +4,18 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.YWServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 import play.data.validation.Constraints;
 
 import javax.persistence.Column;
@@ -22,7 +26,12 @@ import javax.persistence.Id;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static play.mvc.Http.Status.*;
 
@@ -34,7 +43,25 @@ public class CertificateInfo extends Model {
     SelfSigned,
 
     @EnumValue("CustomCertHostPath")
-    CustomCertHostPath
+    CustomCertHostPath,
+
+    @EnumValue("CustomServerCert")
+    CustomServerCert
+  }
+
+  public static class CustomServerCertInfo {
+    public String serverCert;
+    public String serverKey;
+
+    public CustomServerCertInfo() {
+      this.serverCert = null;
+      this.serverKey = null;
+    }
+
+    public CustomServerCertInfo(String serverCert, String serverKey) {
+      this.serverCert = serverCert;
+      this.serverKey = serverKey;
+    }
   }
 
   @Constraints.Required
@@ -83,17 +110,33 @@ public class CertificateInfo extends Model {
 
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
-  private CertificateParams.CustomCertInfo customCertInfo;
+  public JsonNode customCertInfo;
 
   public CertificateParams.CustomCertInfo getCustomCertInfo() {
-    return this.customCertInfo;
+    if (this.certType != CertificateInfo.Type.CustomCertHostPath) {
+      return null;
+    }
+    if (this.customCertInfo != null) {
+      return Json.fromJson(this.customCertInfo, CertificateParams.CustomCertInfo.class);
+    }
+    return null;
   }
 
   public void setCustomCertInfo(
       CertificateParams.CustomCertInfo certInfo, UUID certUUID, UUID cudtomerUUID) {
     this.checkEditable(certUUID, customerUUID);
-    this.customCertInfo = certInfo;
+    this.customCertInfo = Json.toJson(certInfo);
     this.save();
+  }
+
+  public CustomServerCertInfo getCustomServerCertInfo() {
+    if (this.certType != CertificateInfo.Type.CustomServerCert) {
+      return null;
+    }
+    if (this.customCertInfo != null) {
+      return Json.fromJson(this.customCertInfo, CustomServerCertInfo.class);
+    }
+    return null;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
@@ -139,7 +182,30 @@ public class CertificateInfo extends Model {
     cert.expiryDate = expiryDate;
     cert.certificate = certificate;
     cert.certType = Type.CustomCertHostPath;
-    cert.customCertInfo = customCertInfo;
+    cert.customCertInfo = Json.toJson(customCertInfo);
+    cert.checksum = Util.getFileChecksum(certificate);
+    cert.save();
+    return cert;
+  }
+
+  public static CertificateInfo create(
+      UUID uuid,
+      UUID customerUUID,
+      String label,
+      Date startDate,
+      Date expiryDate,
+      String certificate,
+      CustomServerCertInfo customServerCertInfo)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo cert = new CertificateInfo();
+    cert.uuid = uuid;
+    cert.customerUUID = customerUUID;
+    cert.label = label;
+    cert.startDate = startDate;
+    cert.expiryDate = expiryDate;
+    cert.certificate = certificate;
+    cert.certType = Type.CustomServerCert;
+    cert.customCertInfo = Json.toJson(customServerCertInfo);
     cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
     return cert;
