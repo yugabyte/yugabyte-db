@@ -336,6 +336,7 @@ public class SessionController extends Controller {
         role = Role.SuperAdmin;
       }
       passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
+      AlertRoute.createDefaultRoute(cust.uuid);
 
       List<AlertDefinitionGroup> alertGroups =
           Arrays.stream(AlertDefinitionTemplate.values())

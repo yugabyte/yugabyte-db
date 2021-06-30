@@ -46,8 +46,6 @@ public class AlertController extends AuthenticatedController {
 
   @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
-  @Inject private AlertDefinitionService alertDefinitionService;
-
   @Inject private AlertService alertService;
 
   /** Lists alerts for given customer. */
@@ -290,8 +288,27 @@ public class AlertController extends AuthenticatedController {
   public Result deleteAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertReceiver receiver = AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID);
-    log.info("Deleting alert receiver {} for customer {}", alertReceiverUUID, customerUUID);
 
+    List<String> blockingRoutes =
+        receiver
+            .getRoutesList()
+            .stream()
+            .filter(route -> route.getReceiversList().size() == 1)
+            .map(AlertRoute::getName)
+            .sorted()
+            .collect(Collectors.toList());
+    if (!blockingRoutes.isEmpty()) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Unable to delete alert receiver: %s. %d alert routes have it as a last receiver."
+                  + " Examples: %s",
+              alertReceiverUUID,
+              blockingRoutes.size(),
+              blockingRoutes.stream().limit(5).collect(Collectors.toList())));
+    }
+
+    log.info("Deleting alert receiver {} for customer {}", alertReceiverUUID, customerUUID);
     if (!receiver.delete()) {
       throw new YWServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete alert receiver: " + alertReceiverUUID);
@@ -322,7 +339,13 @@ public class AlertController extends AuthenticatedController {
     AlertRouteFormData data = formFactory.getFormDataOrBadRequest(AlertRouteFormData.class).get();
     List<AlertReceiver> receivers = AlertReceiver.getOrBadRequest(customerUUID, data.receivers);
     try {
-      AlertRoute route = AlertRoute.create(customerUUID, data.name, receivers);
+      AlertRoute defaultRoute = AlertRoute.getDefaultRoute(customerUUID);
+      AlertRoute route = AlertRoute.create(customerUUID, data.name, receivers, data.defaultRoute);
+      if (data.defaultRoute && (defaultRoute != null)) {
+        defaultRoute.setDefaultRoute(false);
+        defaultRoute.save();
+        log.info("For customer {} switched default route to {}", customerUUID, route.getUuid());
+      }
       auditService().createAuditEntryWithReqBody(ctx());
       return YWResults.withData(route);
     } catch (Exception e) {
@@ -347,12 +370,27 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     AlertRouteFormData data = formFactory.getFormDataOrBadRequest(AlertRouteFormData.class).get();
     AlertRoute route = AlertRoute.getOrBadRequest(customerUUID, alertRouteUUID);
+
+    if (route.isDefaultRoute() && !data.defaultRoute) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Can't set the alert route as non-default. Make another route as default at first.");
+    }
+
     List<AlertReceiver> receivers = AlertReceiver.getOrBadRequest(customerUUID, data.receivers);
     try {
+      AlertRoute defaultRoute = AlertRoute.getDefaultRoute(customerUUID);
       route.setName(data.name);
       route.setReceiversList(receivers);
+      route.setDefaultRoute(data.defaultRoute);
       route.save();
-
+      if (data.defaultRoute
+          && (defaultRoute != null)
+          && !defaultRoute.getUuid().equals(alertRouteUUID)) {
+        defaultRoute.setDefaultRoute(false);
+        defaultRoute.save();
+        log.info("For customer {} switched default route to {}", customerUUID, alertRouteUUID);
+      }
       auditService().createAuditEntryWithReqBody(ctx());
       return YWResults.withData(route);
     } catch (Exception e) {
@@ -364,6 +402,14 @@ public class AlertController extends AuthenticatedController {
   public Result deleteAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertRoute route = AlertRoute.getOrBadRequest(customerUUID, alertRouteUUID);
+    if (route.isDefaultRoute()) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Unable to delete default alert route %s, make another route default at first.",
+              alertRouteUUID));
+    }
+
     log.info("Deleting alert route {} for customer {}", alertRouteUUID, customerUUID);
 
     AlertDefinitionGroupFilter groupFilter =
