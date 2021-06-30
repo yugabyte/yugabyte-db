@@ -39,7 +39,6 @@ bool IsRetryableClientError(const Status& s) {
     case ClientErrorCode::kTablePartitionListIsStale:
     case ClientErrorCode::kExpiredRequestToBeRetried:
     case ClientErrorCode::kTabletNotYetRunning:
-    case ClientErrorCode::kAbortedBatchDueToFailedTabletLookup:
       return true;
   }
   FATAL_INVALID_ENUM_VALUE(ClientErrorCode, ClientError(s).value());

@@ -10,31 +10,33 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionLabel;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
-import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import lombok.extern.slf4j.Slf4j;
 
-import play.api.Play;
-
+import javax.inject.Inject;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
+
+  @Inject
+  public DestroyUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
@@ -102,12 +104,17 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
 
-      AlertManager alertManager = Play.current().injector().instanceOf(AlertManager.class);
-      alertManager.resolveAlerts(params().customerUUID, params().universeUUID, "%");
-      AlertDefinition.delete(
-          params().customerUUID,
-          new AlertDefinitionLabel(
-              KnownAlertLabels.UNIVERSE_UUID, params().universeUUID.toString()));
+      AlertFilter alertFilter =
+          AlertFilter.builder()
+              .customerUuid(params().customerUUID)
+              .label(KnownAlertLabels.TARGET_UUID, params().universeUUID.toString())
+              .build();
+      alertService.markResolved(alertFilter);
+      alertDefinitionService.delete(
+          AlertDefinitionFilter.builder()
+              .customerUuid(params().customerUUID)
+              .label(KnownAlertLabels.TARGET_UUID, params().universeUUID.toString())
+              .build());
 
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
@@ -116,10 +123,10 @@ public class DestroyUniverse extends UniverseTaskBase {
       } catch (Throwable t1) {
         // Ignore the error
       }
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   public SubTaskGroup createRemoveUniverseEntryTask() {
@@ -131,7 +138,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     params.isForceDelete = params().isForceDelete;
 
     // Create the Ansible task to destroy the server.
-    RemoveUniverseEntry task = new RemoveUniverseEntry();
+    RemoveUniverseEntry task = createTask(RemoveUniverseEntry.class);
     task.initialize(params);
     // Add it to the task list.
     subTaskGroup.addTask(task);

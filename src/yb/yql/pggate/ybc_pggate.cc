@@ -70,6 +70,13 @@ YBCStatus ProcessYbctid(
       std::bind(processor, source.table_oid, std::placeholders::_1)));
 }
 
+Slice YbctidAsSlice(uint64_t ybctid) {
+  char* value = NULL;
+  int64_t bytes = 0;
+  pgapi->FindTypeEntity(kPgByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
+  return Slice(value, bytes);
+}
+
 } // anonymous namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -575,8 +582,8 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
-void YBCPgStartOperationsBuffering() {
-  pgapi->StartOperationsBuffering();
+YBCStatus YBCPgStartOperationsBuffering() {
+  return ToYBCStatus(pgapi->StartOperationsBuffering());
 }
 
 YBCStatus YBCPgStopOperationsBuffering() {
@@ -831,12 +838,11 @@ YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor *so
 }
 
 void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid) {
-  char *value;
-  int64_t bytes;
+  pgapi->DeleteForeignKeyReference(table_oid, YbctidAsSlice(ybctid));
+}
 
-  const YBCPgTypeEntity *type_entity = pgapi->FindTypeEntity(kPgByteArrayOid);
-  type_entity->datum_to_yb(ybctid, &value, &bytes);
-  pgapi->DeleteForeignKeyReference(table_oid, Slice(value, bytes));
+void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid) {
+  pgapi->AddForeignKeyReference(table_oid, YbctidAsSlice(ybctid));
 }
 
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor *source, bool* res) {
@@ -940,6 +946,10 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   // The statement timeout is lesser than default_client_timeout, hence the rpcs would
   // need to use a shorter timeout.
   pgapi->SetTimeout(timeout_ms);
+}
+
+void YBCGetTabletServerHosts(YBCServerDescriptor **servers, int * count) {
+  pgapi->ListTabletServers(servers, count);
 }
 
 //------------------------------------------------------------------------------------------------

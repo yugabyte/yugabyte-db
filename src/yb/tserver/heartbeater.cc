@@ -163,7 +163,7 @@ class Heartbeater::Thread {
   HostPort leader_master_hostport_;
 
   // Current RPC proxy to the leader master.
-  gscoped_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<master::MasterServiceProxy> proxy_;
 
   // The most recent response from a heartbeat.
   master::TSHeartbeatResponsePB last_hb_response_;
@@ -502,8 +502,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     }
   }
 
-  RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotSchedules(
-      last_hb_response_.snapshot_schedules()));
+  RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
 
   // Update the live tserver list.
   return server_->PopulateLiveTServers(last_hb_response_);

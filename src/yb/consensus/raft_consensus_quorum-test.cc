@@ -125,7 +125,7 @@ class RaftConsensusQuorumTest : public YBTest {
       opts.wal_paths = { test_path };
       opts.data_paths = { test_path };
       opts.server_type = "tserver_test";
-      gscoped_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
+      std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
       RETURN_NOT_OK(fs_manager->CreateInitialFileSystemLayout());
       RETURN_NOT_OK(fs_manager->Open());
 
@@ -268,11 +268,13 @@ class RaftConsensusQuorumTest : public YBTest {
     CHECK_OK(peers_->GetPeerByIdx(peer_idx, &peer));
 
     // Use a latch in place of a Transaction callback.
-    gscoped_ptr<Synchronizer> sync(new Synchronizer());
-    *round = peer->NewRound(std::move(msg),
-        [sync = sync.get()](const Status& status, int64_t, OpIds*) {
+    auto sync = std::make_unique<Synchronizer>();
+    *round = make_scoped_refptr<ConsensusRound>(peer.get(), std::move(msg));
+    (**round).SetCallback(MakeNonTrackedRoundCallback(
+        round->get(),
+        [sync = sync.get()](const Status& status) {
       sync->StatusCB(status);
-    });
+    }));
     (**round).BindToTerm(peer->LeaderTerm());
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
@@ -563,7 +565,7 @@ class RaftConsensusQuorumTest : public YBTest {
   vector<scoped_refptr<Log> > logs_;
   unique_ptr<ThreadPool> raft_pool_;
   unique_ptr<ThreadPool> log_thread_pool_;
-  gscoped_ptr<TestPeerMapManager> peers_;
+  std::unique_ptr<TestPeerMapManager> peers_;
   std::vector<std::unique_ptr<TestOperationFactory>> operation_factories_;
   scoped_refptr<server::Clock> clock_;
   MetricRegistry metric_registry_;

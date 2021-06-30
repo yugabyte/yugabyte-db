@@ -5,28 +5,24 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import play.libs.Json;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.Users.Role;
 
@@ -79,6 +75,10 @@ public class ModelFactory {
     return Provider.create(customer.uuid, Common.CloudType.gcp, "Google");
   }
 
+  public static Provider azuProvider(Customer customer) {
+    return Provider.create(customer.uuid, Common.CloudType.azu, "Azure");
+  }
+
   public static Provider onpremProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.onprem, "OnPrem");
   }
@@ -89,6 +89,10 @@ public class ModelFactory {
 
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
     return Provider.create(customer.uuid, cloud, cloud.toString());
+  }
+
+  public static Provider newProvider(Customer customer, Common.CloudType cloud, String name) {
+    return Provider.create(customer.uuid, cloud, name);
   }
 
   public static Provider newProvider(
@@ -176,25 +180,26 @@ public class ModelFactory {
   public static CustomerConfig createS3StorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", "
-                + "\"ACCESS_SECRET\": \"A-SECRET\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"S3\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
+                + " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createNfsStorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"NFS\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"/foo/bar\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"NFS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
   public static CustomerConfig createGcsStorageConfig(Customer customer) {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"GCS\", \"type\": \"STORAGE\", \"data\": "
-                + "{\"BACKUP_LOCATION\": \"gs://foo\", \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
+            "{\"configName\": \"TEST\", \"name\": \"GCS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\","
+                + " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
@@ -245,6 +250,66 @@ public class ModelFactory {
     return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
+  public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
+    AlertDefinition alertDefinition =
+        new AlertDefinition()
+            .setCustomerUUID(customer.getUuid())
+            .setName("alertDefinition")
+            .setQuery("query < {{ query_threshold }}")
+            .setQueryThreshold(1)
+            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(universe).get())
+            .generateUUID();
+    alertDefinition.save();
+    return alertDefinition;
+  }
+
+  public static Alert createAlert(Customer customer) {
+    return createAlert(customer, null, null, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(Customer customer, Universe universe) {
+    return createAlert(customer, universe, null, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(Customer customer, Universe universe, KnownAlertCodes code) {
+    return createAlert(customer, universe, null, code);
+  }
+
+  public static Alert createAlert(Customer customer, AlertDefinition definition) {
+    return createAlert(customer, null, definition, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(
+      Customer customer, Universe universe, AlertDefinition definition, KnownAlertCodes code) {
+    Alert alert =
+        new Alert()
+            .setCustomerUUID(customer.getUuid())
+            .setErrCode(code)
+            .setType(KnownAlertTypes.Error)
+            .setMessage("Universe on fire!")
+            .setSendEmail(true)
+            .generateUUID();
+    if (definition != null) {
+      alert.setDefinitionUUID(definition.getUuid());
+      List<AlertLabel> labels =
+          definition
+              .getEffectiveLabels()
+              .stream()
+              .map(l -> new AlertLabel(l.getName(), l.getValue()))
+              .collect(Collectors.toList());
+      alert.setLabels(labels);
+    } else {
+      AlertDefinitionLabelsBuilder labelsBuilder = AlertDefinitionLabelsBuilder.create();
+      if (universe != null) {
+        labelsBuilder.appendTarget(universe);
+      } else {
+        labelsBuilder.appendTarget(customer);
+      }
+      alert.setLabels(labelsBuilder.getAlertLabels());
+    }
+    alert.save();
+    return alert;
+  }
   /*
    * KMS Configuration creation helpers.
    */

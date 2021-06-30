@@ -21,8 +21,15 @@
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/util/string_util.h"
 #include "yb/util/decimal.h"
+#include "yb/util/flag_tags.h"
 
 #include "postgres/src/include/pg_config_manual.h"
+
+DEFINE_test_flag(bool, do_not_add_enum_sort_order, false,
+                 "Do not add enum type sort order when buidling a constant "
+                 "for an enum type value. Used to test database upgrade "
+                 "where we have pre-existing enum type column values that "
+                 "did not have sort order added.");
 
 namespace yb {
 namespace pggate {
@@ -147,19 +154,15 @@ Status PgExpr::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   return Status::OK();
 }
 
-Status PgExpr::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
-  // Expressions that are neither bind_variable nor constant don't need to be updated.
-  // Only values for bind variables and constants need to be updated in the SQL requests.
-  return Status::OK();
-}
-
-Status PgExpr::Eval(PgDml *pg_stmt, QLValuePB *result) {
+Status PgExpr::Eval(PgsqlExpressionPB *expr_pb) {
   // Expressions that are neither bind_variable nor constant don't need to be updated.
   // Only values for bind variables and constants need to be updated in the SQL requests.
   return Status::OK();
 }
 
 Status PgExpr::Eval(QLValuePB *result) {
+  // Expressions that are neither bind_variable nor constant don't need to be updated.
+  // Only values for bind variables and constants need to be updated in the SQL requests.
   return Status::OK();
 }
 
@@ -420,7 +423,13 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
     case YB_YQL_DATA_TYPE_INT64:
       if (!is_null) {
         int64_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
+        if (PREDICT_TRUE(!FLAGS_TEST_do_not_add_enum_sort_order)) {
+          type_entity_->datum_to_yb(datum, &value, nullptr);
+        } else {
+          // pass &value as the third argument to tell datum_to_yb not
+          // to add sort order to datum.
+          type_entity_->datum_to_yb(datum, &value, &value);
+        }
         ql_value_.set_int64_value(value);
       }
       break;
@@ -609,15 +618,10 @@ void PgConstant::UpdateConstant(const void *value, size_t bytes, bool is_null) {
   }
 }
 
-Status PgConstant::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+Status PgConstant::Eval(PgsqlExpressionPB *expr_pb) {
   QLValuePB *result = expr_pb->mutable_value();
   *result = ql_value_;
   return Status::OK();
-}
-
-Status PgConstant::Eval(PgDml *pg_stmt, QLValuePB *result) {
-  CHECK(pg_stmt != nullptr);
-  return Eval(result);
 }
 
 Status PgConstant::Eval(QLValuePB *result) {
@@ -711,7 +715,7 @@ Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   for (const auto& arg : args_) {
     PgsqlExpressionPB *op = tscall->add_operands();
     RETURN_NOT_OK(arg->PrepareForRead(pg_stmt, op));
-    RETURN_NOT_OK(arg->Eval(pg_stmt, op));
+    RETURN_NOT_OK(arg->Eval(op));
   }
   return Status::OK();
 }

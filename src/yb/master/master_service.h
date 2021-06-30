@@ -108,6 +108,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void ListTabletServers(const ListTabletServersRequestPB* req,
                          ListTabletServersResponsePB* resp,
                          rpc::RpcContext rpc) override;
+  void ListLiveTabletServers(const ListLiveTabletServersRequestPB* req,
+                         ListLiveTabletServersResponsePB* resp,
+                         rpc::RpcContext rpc) override;
 
   void CreateNamespace(const CreateNamespaceRequestPB* req,
                        CreateNamespaceResponsePB* resp,
@@ -324,6 +327,8 @@ class MasterServiceImpl : public MasterServiceIf,
 
   void DeleteTablet(
       const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) override;
+
+  void DdlLog(const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext rpc) override;
 
  private:
 };

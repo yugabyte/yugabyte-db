@@ -2,39 +2,33 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-
+import javax.inject.Inject;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(KubernetesTaskBase.class);
+
+  @Inject
+  protected KubernetesTaskBase(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public class KubernetesPlacement {
     PlacementInfo placementInfo;
@@ -536,7 +530,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
     params.rootCA = taskParams().rootCA;
     params.serverType = serverType;
-    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;
   }
@@ -605,7 +599,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
     params.rootCA = taskParams().rootCA;
     params.serverType = serverType;
-    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -636,7 +630,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.universeUUID = taskParams().universeUUID;
     params.podName = podName;
-    KubernetesWaitForPod task = new KubernetesWaitForPod();
+    KubernetesWaitForPod task = createTask(KubernetesWaitForPod.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -665,7 +659,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.universeUUID = taskParams().universeUUID;
     params.podNum = numPods;
-    KubernetesCheckNumPod task = new KubernetesCheckNumPod();
+    KubernetesCheckNumPod task = createTask(KubernetesCheckNumPod.class);
     task.initialize(params);
     return task;
   }

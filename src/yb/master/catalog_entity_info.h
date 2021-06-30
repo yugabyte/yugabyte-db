@@ -47,6 +47,7 @@
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace master {
@@ -58,6 +59,7 @@ struct TabletReplicaDriveInfo {
   uint64 sst_files_size = 0;
   uint64 wal_files_size = 0;
   uint64 uncompressed_sst_file_size = 0;
+  bool may_have_orphaned_post_split_data = true;
 };
 
 // Information on a current replica of a tablet.
@@ -113,9 +115,9 @@ template <class PersistentDataEntryPB>
 class MetadataCowWrapper {
  public:
   // Type declaration for use in the Lock classes.
-  typedef PersistentDataEntryPB cow_state;
-  typedef CowWriteLock<cow_state> WriteLock;
-  typedef CowReadLock<cow_state> ReadLock;
+  typedef PersistentDataEntryPB CowState;
+  typedef CowWriteLock<CowState> WriteLock;
+  typedef CowReadLock<CowState> ReadLock;
 
   // This method should return the id to be written into the sys_catalog id column.
   virtual const std::string& id() const = 0;
@@ -137,6 +139,18 @@ class MetadataCowWrapper {
 
   WriteLock LockForWrite() {
     return WriteLock(mutable_metadata());
+  }
+
+  const auto& old_pb() const {
+    return metadata_.state().pb;
+  }
+
+  const auto& new_pb() const {
+    return metadata_.dirty().pb;
+  }
+
+  static auto type() {
+    return CowState::type();
   }
 
  protected:
@@ -213,6 +227,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
   std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
+  Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
@@ -261,6 +276,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   ~TabletInfo();
   TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
+  CHECKED_STATUS GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
@@ -804,6 +820,30 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
   const std::string config_type_;
 
   DISALLOW_COPY_AND_ASSIGN(SysConfigInfo);
+};
+
+class DdlLogEntry {
+ public:
+  // time - when DDL operation was started.
+  // table_id - modified table id.
+  // table - what table was modified during DDL.
+  // action - string description of DDL.
+  DdlLogEntry(
+      HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
+      const std::string& action);
+
+  static SysRowEntry::Type type() {
+    return SysRowEntry::DDL_LOG_ENTRY;
+  }
+
+  std::string id() const;
+
+  // Used by sys catalog writer. It requires 2 protobuf to check whether entry was actually changed.
+  const DdlLogEntryPB& new_pb() const;
+  const DdlLogEntryPB& old_pb() const;
+
+ protected:
+  DdlLogEntryPB pb_;
 };
 
 // Convenience typedefs.

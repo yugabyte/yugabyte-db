@@ -4,7 +4,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -62,17 +64,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  protected AlertConfigurationWriter mockAlertConfigurationWriter;
 
   @Override
   protected Application provideApplication() {
     kubernetesManager = mock(KubernetesManager.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(KubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }
 
@@ -83,7 +88,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion =
         Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
-    defaultAZ = AvailabilityZone.create(defaultRegion, "az-1", "PlacementAZ 1", "subnet-1");
+    defaultAZ = AvailabilityZone.createOrThrow(defaultRegion, "az-1", "PlacementAZ 1", "subnet-1");
     config.put("KUBECONFIG", "test");
     defaultAZ.updateConfig(config);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
@@ -128,7 +133,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   private KubernetesCommandExecutor createExecutor(
       KubernetesCommandExecutor.CommandType commandType, boolean setNamespace) {
-    KubernetesCommandExecutor kubernetesCommandExecutor = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
@@ -144,7 +150,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   private KubernetesCommandExecutor createExecutor(
       KubernetesCommandExecutor.CommandType commandType, PlacementInfo placementInfo) {
-    KubernetesCommandExecutor kubernetesCommandExecutor = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
@@ -671,6 +678,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: foo\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
     defaultProvider.setConfig(defaultAnnotations);
+    defaultProvider.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -710,6 +718,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
     defaultRegion.setConfig(defaultAnnotations);
+    defaultRegion.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -786,6 +795,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<String, String>();
     defaultAnnotations.put("OVERRIDES", "foo: bar");
     defaultProvider.setConfig(defaultAnnotations);
+    defaultProvider.save();
     defaultAnnotations.put("OVERRIDES", "bar: foo");
     defaultAZ.updateConfig(defaultAnnotations);
 
@@ -1052,9 +1062,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   private void testPodInfoMultiAZBase(boolean setNamespace) {
     Region r1 = Region.create(defaultProvider, "region-1", "region-1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "region-2", "yb-image-1");
-    AvailabilityZone az1 = AvailabilityZone.create(r1, "az-" + 1, "az-" + 1, "subnet-" + 1);
-    AvailabilityZone az2 = AvailabilityZone.create(r1, "az-" + 2, "az-" + 2, "subnet-" + 2);
-    AvailabilityZone az3 = AvailabilityZone.create(r2, "az-" + 3, "az-" + 3, "subnet-" + 3);
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r1, "az-" + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r1, "az-" + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r2, "az-" + 3, "az-" + 3, "subnet-" + 3);
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi);

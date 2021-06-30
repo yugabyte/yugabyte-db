@@ -243,7 +243,7 @@ CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timest
 } // namespace
 
 QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
-                                   const IndexMap& index_map,
+                                   std::reference_wrapper<const IndexMap> index_map,
                                    const Schema* unique_index_key_schema,
                                    const TransactionOperationContextOpt& txn_op_context)
     : schema_(std::move(schema)),
@@ -257,7 +257,8 @@ Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response)
   response_ = response;
   insert_into_unique_index_ = request_.type() == QLWriteRequestPB::QL_STMT_INSERT &&
                               unique_index_key_schema_ != nullptr;
-  require_read_ = RequireRead(request_, *schema_) || insert_into_unique_index_;
+  require_read_ = RequireRead(request_, *schema_) || insert_into_unique_index_
+                  || !index_map_.empty();
   update_indexes_ = !request_.update_index_ids().empty();
 
   // Determine if static / non-static columns are being written.
@@ -335,7 +336,7 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
 
 Status QLWriteOperation::GetDocPaths(
     GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
-  if (mode == GetDocPathsMode::kLock || request_.column_values().empty()) {
+  if (mode == GetDocPathsMode::kLock || request_.column_values().empty() || !index_map_.empty()) {
     if (encoded_hashed_doc_key_) {
       paths->push_back(encoded_hashed_doc_key_);
     }
@@ -535,8 +536,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*pk_doc_key_,
-                    PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+          SubDocKey(*pk_doc_key_, PrimitiveValue::kLivenessColumn),
           requested_read_time.read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -890,8 +890,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       // ensure our write path is fast while complicating the read path a bit.
       auto is_insert = request_.type() == QLWriteRequestPB::QL_STMT_INSERT;
       if (is_insert && encoded_pk_doc_key_) {
-        const DocPath sub_path(encoded_pk_doc_key_.as_slice(),
-                               PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+        const DocPath sub_path(encoded_pk_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn);
         const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
             sub_path, value, data.read_time, data.deadline, request_.query_id()));
@@ -1050,9 +1049,7 @@ Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_w
     }
 
     // Delete the liveness column as well.
-    const DocPath liveness_column(
-        row_path.encoded_doc_key(),
-        PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+    const DocPath liveness_column(row_path.encoded_doc_key(), PrimitiveValue::kLivenessColumn);
     RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
                                                 read_ht,
                                                 deadline,
@@ -1105,13 +1102,31 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
       switch (GetValueState(existing_row, column_id)) {
         case ValueState::kNull: continue;
         case ValueState::kNotNull: return false;
-        case ValueState::kMissing:
-          // In case there exists a row with the same primary key, we definitely need to know if its
-          // columns have value NULL or not. Populate the column before executing this function.
-          RSTATUS_DCHECK(false, InternalError, "CQL proxy should mention all required columns in "
-            "QLWriteRequestPB's column_refs.");
+        case ValueState::kMissing: break;
       }
     }
+
+    #if DCHECK_IS_ON()
+    // If (for all non_pk cols new_row has value NULL/kMissing i.e., the UPDATE statement only sets
+    //     some/all cols to NULL)
+    // then (existing_row should have a value read from docdb for all non_pk
+    //       cols that are kMissing in new_row so that we can decide if the row is deleted or not).
+
+    bool skip_check = false;
+    for (size_t idx = schema_->num_key_columns(); idx < schema_->num_columns(); idx++) {
+        const ColumnId column_id = schema_->column_id(idx);
+        if (GetValueState(new_row, column_id) == ValueState::kNotNull) skip_check = true;
+    }
+
+    if (!skip_check) {
+        for (size_t idx = schema_->num_key_columns(); idx < schema_->num_columns(); idx++) {
+            const ColumnId column_id = schema_->column_id(idx);
+            if (GetValueState(new_row, column_id) == ValueState::kMissing) {
+              DCHECK(GetValueState(existing_row, column_id) != ValueState::kMissing);
+            }
+        }
+    }
+    #endif
 
     return true;
   }
@@ -1148,17 +1163,51 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   for (const TableId& index_id : index_ids) {
     const IndexInfo* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
+    bool index_pred_existing_row = true;
+    bool index_pred_new_row = true;
     bool is_row_deleted = VERIFY_RESULT(IsRowDeleted(existing_row, new_row));
+
+    if (index->where_predicate_spec()) {
+      RETURN_NOT_OK(EvalCondition(
+        index->where_predicate_spec()->where_expr().condition(), existing_row,
+        &index_pred_existing_row));
+    }
+
     if (is_row_deleted) {
+      // If it is a partial index and predicate wasn't satisfied for the existing row
+      // which is being deleted, we need to do nothing.
+      if (index->where_predicate_spec() && !index_pred_existing_row) {
+        VLOG(3) << "Skip index entry delete for index_id=" << index->table_id() <<
+          " since predicate not satisfied";
+        continue;
+      }
       index_key_changed = true;
     } else {
       VERIFY_RESULT(CreateAndSetupIndexInsertRequest(
           this, index->HasWritePermission(), existing_row, new_row, index,
-          &index_requests_, &index_key_changed));
+          &index_requests_, &index_key_changed, &index_pred_new_row, index_pred_existing_row));
     }
 
+    bool index_pred_switched_to_false = false;
+    if (index->where_predicate_spec() &&
+        !existing_row.IsEmpty() && index_pred_existing_row && !index_pred_new_row)
+      index_pred_switched_to_false = true;
+
     // If the index key is changed, delete the current key.
-    if (index_key_changed && index->HasDeletePermission()) {
+    if ((index_key_changed || index_pred_switched_to_false) && index->HasDeletePermission()) {
+      if (!index_pred_switched_to_false) {
+        // 1. In case of a switch of predicate satisfiability to false, we surely have to delete the
+        // row. (Even if there wasn't any index key change).
+        // 2. But in case of an index key change without predicate satisfiability switch, if the
+        // index predicate was already false for the existing row, we have to do nothing.
+        // TODO(Piyush): Ensure EvalCondition returns an error if some column is missing.
+        if (!index_pred_existing_row) {
+          VLOG(3) << "Skip index entry delete of existing row for index_id=" << index->table_id() <<
+            " since predicate not satisfied";
+          return Status::OK();
+        }
+      }
+
       QLWriteRequestPB* const index_request =
           NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
@@ -1192,7 +1241,9 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     const QLTableRow& new_row,
     const IndexInfo* index,
     vector<pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-    bool* has_index_key_changed) {
+    bool* has_index_key_changed,
+    bool* index_pred_new_row,
+    bool index_pred_existing_row) {
   bool index_key_changed = false;
   bool update_this_index = false;
   unordered_map<size_t, QLValuePB> values;
@@ -1219,6 +1270,9 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
             index_key_changed = true;
           }
         } else {
+          // TODO(Piyush): This else is possibly dead code. It can never happen that the new_row
+          // doesn't have some column but the existing one does because we copy the existing one
+          // into the new one before this function call.
           result = existing_row.GetValue(index_column.indexed_column_id);
         }
       }
@@ -1245,6 +1299,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
             index_key_changed = true;
           }
         } else {
+          // TODO(Piyush): This else is possibly dead code.
           RETURN_NOT_OK(expr_executor->EvalExpr(
               index_column.colexpr, existing_row, result.Writer()));
         }
@@ -1268,6 +1323,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     // current value.
     if (index_key_changed) {
       if (!result) {
+        // TODO(Piyush): This if is possibly dead code.
         result = existing_row.GetValue(index_column.indexed_column_id);
       }
     } else if (!FLAGS_ycql_disable_index_updating_optimization &&
@@ -1287,8 +1343,35 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     *has_index_key_changed = index_key_changed;
   }
 
+  bool new_row_satisfies_idx_pred = true;
+  if (index->where_predicate_spec()) {
+    // TODO(Piyush): Ensure EvalCondition returns an error if some column is missing.
+    RETURN_NOT_OK(expr_executor->EvalCondition(
+      index->where_predicate_spec()->where_expr().condition(), new_row,
+      &new_row_satisfies_idx_pred));
+    if (index_pred_new_row) {
+      *index_pred_new_row = new_row_satisfies_idx_pred;
+    }
+
+    if (new_row_satisfies_idx_pred && !index_pred_existing_row) {
+      // In case the row is unchanged but the predicate switches to true (can happen if the
+      // predicate involves no indexed/covering cols).
+      if (!update_this_index)
+        VLOG(3) << "Indexed/covering cols unchanged but predicate switched to true for index_id=" <<
+          index->table_id();
+      update_this_index = true;
+    }
+  }
+
   if (index_has_write_permission &&
       (update_this_index || FLAGS_ycql_disable_index_updating_optimization)) {
+    // If this is a partial index and the index predicate is false for the new row, skip the insert.
+    if (index->where_predicate_spec() && !new_row_satisfies_idx_pred) {
+      VLOG(3) << "Skip index entry write for index_id=" << index->table_id() <<
+        " since predicate not satisfied";
+      return nullptr;
+    }
+
     QLWriteRequestPB* const index_request =
         NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_INSERT, index_requests);
 

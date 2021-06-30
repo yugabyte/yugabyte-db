@@ -23,11 +23,18 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/flag_tags.h"
+#include "yb/util/random_util.h"
+
+using namespace std::literals;
+
+DEFINE_test_flag(int32, tablet_delay_restore_ms, 0, "Delay restore on tablet");
+
 namespace yb {
 namespace tserver {
 
 using rpc::RpcContext;
-using tablet::SnapshotOperationState;
+using tablet::SnapshotOperation;
 using tablet::OperationCompletionCallback;
 using tablet::Tablet;
 
@@ -95,20 +102,23 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     }
   }
 
-  auto tx_state = std::make_unique<SnapshotOperationState>(tablet.peer->tablet(), req);
+  auto operation = std::make_unique<SnapshotOperation>(tablet.peer->tablet(), req);
 
   auto clock = tablet_manager_->server()->Clock();
-  tx_state->set_completion_callback(
+  operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
 
-  if (!tx_state->CheckOperationRequirements()) {
+  if (operation->request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+    AtomicFlagRandomSleepMs(&FLAGS_TEST_tablet_delay_restore_ms);
+  }
+
+  if (!operation->CheckOperationRequirements()) {
     return;
   }
 
   // TODO(txn_snapshot) Avoid duplicate snapshots.
   // Submit the create snapshot op. The RPC will be responded to asynchronously.
-  tablet.peer->Submit(
-      std::make_unique<tablet::SnapshotOperation>(std::move(tx_state)), tablet.leader_term);
+  tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
 
 }  // namespace tserver

@@ -2,27 +2,41 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.SdkClientException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Singleton;
+import com.google.auth.Credentials;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageOptions;
+import com.google.api.gax.paging.Page;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.StorageException;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.UrlValidator;
 import play.libs.Json;
-
 import javax.inject.Inject;
 import javax.validation.ConstraintViolation;
 import javax.validation.Validator;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.AWSCredentials;
 
 import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
 import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
@@ -46,7 +60,13 @@ public class CustomerConfigValidator {
 
   private static final String AWS_HOST_BASE_FIELDNAME = "AWS_HOST_BASE";
 
-  private static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
+  public static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
+
+  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+
+  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+
+  public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
 
@@ -88,6 +108,51 @@ public class CustomerConfigValidator {
     }
 
     protected abstract void doValidate(String value, ObjectNode errorsCollector);
+  }
+
+  public static class ConfigS3PreflightCheckValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigS3PreflightCheckValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data, ObjectNode errorJson) {
+      if (this.name.equals("S3") && data.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
+        String s3UriPath = data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String s3Uri = s3UriPath;
+        // Assuming bucket name will always start with s3:// otherwise that will be invalid
+        if (s3UriPath.length() < 5 || !s3UriPath.startsWith("s3://")) {
+          errorJson.set(fieldName, Json.newArray().add("Invalid s3UriPath format: " + s3UriPath));
+        } else {
+          try {
+            s3UriPath = s3UriPath.substring(5);
+            String[] bucketSplit = s3UriPath.split("/", 2);
+            String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
+            String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
+            AmazonS3Client s3Client =
+                create(
+                    data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
+                    data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
+            ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
+            if (result.getKeyCount() == 0) {
+              errorJson.set(
+                  fieldName, Json.newArray().add("S3 URI path " + s3Uri + " doesn't exist"));
+            }
+          } catch (AmazonS3Exception s3Exception) {
+            String errMessage = s3Exception.getErrorMessage();
+            if (errMessage.contains("Denied") || errMessage.contains("bucket"))
+              errMessage += " " + s3Uri;
+            errorJson.set(fieldName, Json.newArray().add(errMessage));
+          } catch (SdkClientException e) {
+            errorJson.set(fieldName, Json.newArray().add(e.getMessage()));
+          }
+        }
+      }
+    }
   }
 
   public class ConfigObjectValidator<T> extends ConfigValidator {
@@ -173,6 +238,55 @@ public class CustomerConfigValidator {
     }
   }
 
+  public static class ConfigGCSPreflightCheckValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigGCSPreflightCheckValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data, ObjectNode errorJson) {
+      if (this.name.equals(NAME_GCS) && data.get(GCS_CREDENTIALS_JSON_FIELDNAME) != null) {
+        String gsUriPath = data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String gsUri = gsUriPath;
+        // Assuming bucket name will always start with gs:// otherwise that will be invalid
+        if (gsUriPath.length() < 5 || !gsUriPath.startsWith("gs://")) {
+          errorJson.set(fieldName, Json.newArray().add("Invalid gsUriPath format: " + gsUriPath));
+        } else {
+          gsUriPath = gsUriPath.substring(5);
+          String[] bucketSplit = gsUriPath.split("/", 2);
+          String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
+          String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
+          String gcpCredentials = data.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
+          try {
+            Credentials credentials =
+                GoogleCredentials.fromStream(
+                    new ByteArrayInputStream(gcpCredentials.getBytes("UTF-8")));
+            Storage storage =
+                StorageOptions.newBuilder().setCredentials(credentials).build().getService();
+            Page<Blob> blobs =
+                storage.list(
+                    bucketName,
+                    Storage.BlobListOption.prefix(prefix),
+                    Storage.BlobListOption.currentDirectory());
+            if (!blobs.getValues().iterator().hasNext()) {
+              errorJson.set(
+                  fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
+            }
+          } catch (StorageException exp) {
+            errorJson.set(
+                fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
+          } catch (Exception e) {
+            errorJson.set(fieldName, Json.newArray().add("Invalid GCP Credential Json."));
+          }
+        }
+      }
+    }
+  }
+
   private final List<ConfigValidator> validators = new ArrayList<>();
 
   @Inject
@@ -196,6 +310,10 @@ public class CustomerConfigValidator {
     validators.add(
         new ConfigObjectValidator<>(
             PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
+    validators.add(
+        new ConfigS3PreflightCheckValidator(STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME));
+    validators.add(
+        new ConfigGCSPreflightCheckValidator(STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME));
   }
 
   public ObjectNode validateFormData(JsonNode formData) {
@@ -242,5 +360,11 @@ public class CustomerConfigValidator {
                 formData.get("data"),
                 errorJson));
     return errorJson;
+  }
+
+  // TODO: move this out to some common util file.
+  public static AmazonS3Client create(String key, String secret) {
+    AWSCredentials credentials = new BasicAWSCredentials(key, secret);
+    return new AmazonS3Client(credentials);
   }
 }

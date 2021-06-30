@@ -93,12 +93,8 @@ string RollingLog::GetLogFileName(int sequence) const {
   str << "." << hostname;
 
   // 3. User name.
-  string user_name;
-  s = GetLoggedInUser(&user_name);
-  if (!s.ok()) {
-    user_name = "unknown_user";
-  }
-  str << "." << user_name;
+  auto user_name = GetLoggedInUser();
+  str << "." << (user_name.ok() ? *user_name : "unknown_user");
 
   // 4. Log name.
   str << "." << log_name_;

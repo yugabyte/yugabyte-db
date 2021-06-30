@@ -95,12 +95,11 @@ DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0,
 DEFINE_test_flag(double, simulate_lookup_partition_list_mismatch_probability, 0,
                  "Probability for simulating the partition list mismatch error on tablet lookup.");
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
   server, dns_resolve_latency_during_init_proxy,
   "yb.client.MetaCache.InitProxy DNS Resolve",
   yb::MetricUnit::kMicroseconds,
-  "Microseconds spent resolving DNS requests during MetaCache::InitProxy",
-  60000000LU, 2);
+  "Microseconds spent resolving DNS requests during MetaCache::InitProxy");
 
 namespace yb {
 
@@ -1925,14 +1924,14 @@ template <class Lock>
 bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
                                    CoarseTimePoint deadline,
                                    LookupTabletRangeCallback* callback) {
-  LOG(INFO) << "DoLookupAllTablets()";
+  VLOG(3) << "DoLookupAllTablets() for table: " << table->ToString();
   int64_t request_no;
   {
     Lock lock(mutex_);
     if (PREDICT_TRUE(!FLAGS_TEST_force_master_lookup_all_tablets)) {
       auto tablets = FastLookupAllTabletsUnlocked(table);
       if (tablets.has_value()) {
-        LOG(INFO) << "tablets has value";
+        VLOG(4) << "tablets has value";
         (*callback)(*tablets);
         return true;
       }

@@ -273,6 +273,8 @@ class PostgresBuilder(YbBuildToolBase):
                 '-Wno-builtin-requires-header'
             ]
 
+        is_gcc = self.compiler_type.startswith('gcc')
+
         if is_make_step:
             additional_c_cxx_flags += [
                 '-Wall',
@@ -286,7 +288,7 @@ class PostgresBuilder(YbBuildToolBase):
                         '-Wno-error=array-bounds',
                         '-Wno-error=gnu-designator'
                     ]
-                if self.compiler_type == 'gcc':
+                if is_gcc:
                     additional_c_cxx_flags += ['-Wno-error=strict-overflow']
             if self.build_type == 'asan':
                 additional_c_cxx_flags += [
@@ -303,7 +305,7 @@ class PostgresBuilder(YbBuildToolBase):
             for source_path in get_absolute_path_aliases(self.postgres_src_dir)
         ]
 
-        if self.compiler_type == 'gcc':
+        if is_gcc:
             additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in ['CFLAGS', 'CXXFLAGS']:
@@ -504,7 +506,10 @@ class PostgresBuilder(YbBuildToolBase):
                 # to regress test files not needed for build.
                 pathspec.extend([
                     ':(exclude)src/postgres/src/test/regress/*_schedule',
+                    ':(exclude)src/postgres/src/test/regress/data',
                     ':(exclude)src/postgres/src/test/regress/expected',
+                    ':(exclude)src/postgres/src/test/regress/input',
+                    ':(exclude)src/postgres/src/test/regress/output',
                     ':(exclude)src/postgres/src/test/regress/sql',
                 ])
             # Get the most recent commit that touched postgres files.

@@ -216,7 +216,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<master::AnalyzeTableResponsePB> AnalyzeTable(const PgObjectId& table_id);
 
   // Start operation buffering. Buffering must not be in progress.
-  void StartOperationsBuffering();
+  CHECKED_STATUS StartOperationsBuffering();
   // Flush all pending buffered operation and stop further buffering.
   // Buffering must be in progress.
   CHECKED_STATUS StopOperationsBuffering();
@@ -266,6 +266,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     }
     return runner.Flush();
   }
+
+  // Smart driver functions.
+  // -------------
+  CHECKED_STATUS ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -324,6 +328,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<bool> ForeignKeyReferenceExists(
       PgOid table_id, const Slice& ybctid, const YbctidReader& reader);
   void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
+  void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
 
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);

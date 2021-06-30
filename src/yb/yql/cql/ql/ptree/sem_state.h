@@ -21,6 +21,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_SEM_STATE_H_
 #define YB_YQL_CQL_QL_PTREE_SEM_STATE_H_
 
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
@@ -31,8 +32,11 @@ namespace ql {
 class SelectScanInfo;
 class WhereExprState;
 class IfExprState;
+class IdxPredicateState;
 class PTColumnDefinition;
 class PTDmlStmt;
+
+YB_STRONGLY_TYPED_BOOL(NullIsAllowed);
 
 //--------------------------------------------------------------------------------------------------
 // This class represents the state variables for the analyzing process of one tree node. This
@@ -61,7 +65,8 @@ class SemState {
                     const std::shared_ptr<QLType>& expected_ql_type = QLType::Create(UNKNOWN_DATA),
                     InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
-                    const ColumnDesc *lhs_col = nullptr);
+                    const ColumnDesc *lhs_col = nullptr,
+                    NullIsAllowed allow_null = NullIsAllowed::kTrue);
 
   // Destructor: Reset sem_context back to previous_state_.
   virtual ~SemState();
@@ -115,7 +120,14 @@ class SemState {
   void SetExprState(const std::shared_ptr<QLType>& ql_type,
                     InternalType internal_type,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
-                    const ColumnDesc *lhs_col = nullptr);
+                    const ColumnDesc *lhs_col = nullptr,
+                    NullIsAllowed allow_null = NullIsAllowed::kTrue);
+
+  // Update state variable for index predicate clause i.e, where clause.
+  void SetIdxPredicateState(IdxPredicateState *idx_predicate_state) {
+    idx_predicate_state_ = idx_predicate_state;
+  }
+  IdxPredicateState *idx_predicate_state() const { return idx_predicate_state_; }
 
   // Set the current state using previous state's values.
   void CopyPreviousStates();
@@ -128,6 +140,7 @@ class SemState {
 
   // Access function for expression states.
   const std::shared_ptr<QLType>& expected_ql_type() const { return expected_ql_type_; }
+  NullIsAllowed expected_ql_type_accepts_null() const { return allow_null_ql_type_; }
   InternalType expected_internal_type() const { return expected_internal_type_; }
 
   // Return the hash column descriptor on LHS if available.
@@ -152,6 +165,9 @@ class SemState {
 
   bool processing_assignee() const { return processing_assignee_; }
   void set_processing_assignee(bool value) { processing_assignee_ = value; }
+
+  void set_index_select_prefix_length(int val) { index_select_prefix_length_ = val; }
+  int index_select_prefix_length() const { return index_select_prefix_length_; }
 
   void set_selecting_from_index(bool val) { selecting_from_index_ = val; }
   bool selecting_from_index() const { return selecting_from_index_; }
@@ -186,6 +202,8 @@ class SemState {
 
   bool is_uncovered_index_select() const;
 
+  bool is_partial_index_select() const;
+
  private:
   // Context that owns this SemState.
   SemContext *sem_context_;
@@ -199,7 +217,8 @@ class SemState {
 
   // States to process an expression node.
   std::shared_ptr<QLType> expected_ql_type_; // The expected sql type of an expression.
-  InternalType expected_internal_type_;        // The expected internal type of an expression.
+  NullIsAllowed allow_null_ql_type_;         // Does the expected type accept NULL?
+  InternalType expected_internal_type_;      // The expected internal type of an expression.
 
   MCSharedPtr<MCString> bindvar_name_ = nullptr;
 
@@ -223,8 +242,14 @@ class SemState {
   // State variables for orderby expression.
   bool validate_orderby_expr_ = false;
 
+  // State variables for index predicate expression i.e., where clause in case of partial indexes.
+  IdxPredicateState *idx_predicate_state_ = nullptr;
+
   // Predicate for selecting data from an index instead of a user table.
   bool selecting_from_index_ = false;
+
+  // Length of prefix of cols in index table that have a sub-clause in WHERE with =/IN operator.
+  int index_select_prefix_length_ = 0;
 
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;

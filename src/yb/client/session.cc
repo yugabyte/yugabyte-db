@@ -343,6 +343,19 @@ Status YBSession::ApplyAndFlush(YBOperationPtr yb_op) {
   return FlushFuture().get().status;
 }
 
+bool YBSession::IsInProgress(YBOperationPtr yb_op) const {
+  if (batcher_ && batcher_->Has(yb_op)) {
+    return true;
+  }
+  std::lock_guard<simple_spinlock> l(lock_);
+  for (const auto& b : flushed_batchers_) {
+    if (b->Has(yb_op)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Status YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
   auto& batcher = Batcher();
   for (const auto& op : ops) {

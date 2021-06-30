@@ -38,7 +38,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -119,12 +118,12 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     opts.num_masters = num_masters;
     FLAGS_replication_factor = replication_factor;
     opts.cluster_id = "producer";
-    producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(Env::Default(), opts);
+    producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
     RETURN_NOT_OK(producer_cluster()->StartSync());
     RETURN_NOT_OK(producer_cluster()->WaitForTabletServerCount(replication_factor));
 
     opts.cluster_id = "consumer";
-    consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(Env::Default(), opts);
+    consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
     RETURN_NOT_OK(consumer_cluster()->StartSync());
     RETURN_NOT_OK(consumer_cluster()->WaitForTabletServerCount(replication_factor));
 
@@ -333,6 +332,108 @@ TEST_P(TwoDCTest, SetupUniverseReplication) {
   Destroy();
 }
 
+TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 1));
+  rpc::RpcController rpc;
+  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+      &consumer_client()->proxy_cache(),
+      consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+
+  {
+    rpc.Reset();
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    master::SetupUniverseReplicationRequestPB setup_universe_req;
+    master::SetupUniverseReplicationResponsePB setup_universe_resp;
+    ASSERT_OK(master_proxy->SetupUniverseReplication(
+      setup_universe_req, &setup_universe_resp, &rpc));
+    ASSERT_TRUE(setup_universe_resp.has_error());
+    std::string prefix = "Producer universe ID must be provided";
+    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+  }
+
+  {
+    rpc.Reset();
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    master::SetupUniverseReplicationRequestPB setup_universe_req;
+    setup_universe_req.set_producer_id(kUniverseId);
+    master::SetupUniverseReplicationResponsePB setup_universe_resp;
+    ASSERT_OK(master_proxy->SetupUniverseReplication(
+      setup_universe_req, &setup_universe_resp, &rpc));
+    ASSERT_TRUE(setup_universe_resp.has_error());
+    std::string prefix = "Producer master address must be provided";
+    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+  }
+
+  {
+    rpc.Reset();
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    master::SetupUniverseReplicationRequestPB setup_universe_req;
+    setup_universe_req.set_producer_id(kUniverseId);
+    string master_addr = producer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
+    setup_universe_req.add_producer_table_ids("a");
+    setup_universe_req.add_producer_table_ids("b");
+    setup_universe_req.add_producer_bootstrap_ids("c");
+    master::SetupUniverseReplicationResponsePB setup_universe_resp;
+    ASSERT_OK(master_proxy->SetupUniverseReplication(
+      setup_universe_req, &setup_universe_resp, &rpc));
+    ASSERT_TRUE(setup_universe_resp.has_error());
+    std::string prefix = "Number of bootstrap ids must be equal to number of tables";
+    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+  }
+
+  {
+    rpc.Reset();
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    master::SetupUniverseReplicationRequestPB setup_universe_req;
+    master::SetupUniverseReplicationResponsePB setup_universe_resp;
+    setup_universe_req.set_producer_id(kUniverseId);
+    string master_addr = consumer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
+
+    setup_universe_req.add_producer_table_ids("prod_table_id_1");
+    setup_universe_req.add_producer_table_ids("prod_table_id_2");
+    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_1");
+    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_2");
+
+    ASSERT_OK(master_proxy->SetupUniverseReplication(
+      setup_universe_req, &setup_universe_resp, &rpc));
+    ASSERT_TRUE(setup_universe_resp.has_error());
+    std::string prefix = "Duplicate between request master addresses";
+    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+  }
+
+  {
+    rpc.Reset();
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    master::SetupUniverseReplicationRequestPB setup_universe_req;
+    master::SetupUniverseReplicationResponsePB setup_universe_resp;
+    master::SysClusterConfigEntryPB cluster_info;
+    auto cm = consumer_cluster()->leader_mini_master()->master()->catalog_manager();
+    CHECK_OK(cm->GetClusterConfig(&cluster_info));
+    setup_universe_req.set_producer_id(cluster_info.cluster_uuid());
+
+    string master_addr = producer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
+
+    setup_universe_req.add_producer_table_ids("prod_table_id_1");
+    setup_universe_req.add_producer_table_ids("prod_table_id_2");
+    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_1");
+    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_2");
+
+    ASSERT_OK(master_proxy->SetupUniverseReplication(
+      setup_universe_req, &setup_universe_resp, &rpc));
+    ASSERT_TRUE(setup_universe_resp.has_error());
+    std::string prefix = "The request UUID and cluster UUID are identical.";
+    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+  }
+}
+
 TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
@@ -449,7 +550,8 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   rpc.Reset();
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  ASSERT_OK(master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
+  ASSERT_OK(master_proxy->SetupUniverseReplication(
+    setup_universe_req, &setup_universe_resp, &rpc));
   ASSERT_FALSE(setup_universe_resp.has_error());
 
   // 3. Verify everything is setup correctly.
@@ -1510,9 +1612,9 @@ TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
 
-  AssertLoggedWaitFor([&]() {
+  ASSERT_OK(LoggedWaitFor([&]() {
     return GetSuccessfulWriteOps(consumer_cluster()) == expected_num_writes;
-  }, MonoDelta::FromSeconds(60), "Wait for all batches to finish.");
+  }, MonoDelta::FromSeconds(60), "Wait for all batches to finish."));
 
   // Verify that both clusters have the same records.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));

@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -21,10 +22,10 @@ import play.libs.Json;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import java.util.*;
+
+import com.yugabyte.yw.common.Util;
+import static play.mvc.Http.Status.*;
 
 @Entity
 public class CustomerConfig extends Model {
@@ -63,6 +64,9 @@ public class CustomerConfig extends Model {
   }
 
   @Id public UUID configUUID;
+
+  @Column(length = 100, nullable = true)
+  public String configName;
 
   @Column(nullable = false)
   public UUID customerUUID;
@@ -110,12 +114,28 @@ public class CustomerConfig extends Model {
     return false;
   }
 
+  public ArrayNode getUniverseDetails() {
+    Set<Universe> universes = new HashSet<>();
+    if (this.type == ConfigType.STORAGE) {
+      universes = Backup.getAssociatedUniverses(this.configUUID);
+    }
+    return Util.getUniverseDetails(universes);
+  }
+
+  @Deprecated
   @Override
   public boolean delete() {
     if (!this.getInUse()) {
       return super.delete();
     }
     return false;
+  }
+
+  public void deleteOrThrow() {
+    if (!delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
+    }
   }
 
   public static CustomerConfig createWithFormData(UUID customerUUID, JsonNode formData) {

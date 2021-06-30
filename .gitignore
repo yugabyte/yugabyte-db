@@ -44,8 +44,7 @@ venv/
 *.bak
 
 # Core dumps
-core*
-!java/yb-cql/src/test/java/com/datastax/driver/core
+core.*
 
 # CLion directories
 /cmake-build-debug
@@ -103,3 +102,6 @@ rrdiagram*.jar*
 target/
 
 thirdparty/
+
+# We don't use any submodules anymore.
+submodules/

@@ -1316,7 +1316,8 @@ AlterEnum(AlterEnumStmt *stmt, bool isTopLevel)
 		 * theoretically be safe; but fortunately pg_dump only needs the
 		 * simplest case.
 		 */
-		if (HeapTupleHeaderGetXmin(tup->t_data) == GetCurrentTransactionId() &&
+		if (!IsYugaByteEnabled() &&
+			HeapTupleHeaderGetXmin(tup->t_data) == GetCurrentTransactionId() &&
 			!(tup->t_data->t_infomask & HEAP_UPDATED))
 			 /* safe to do inside transaction block */ ;
 		else

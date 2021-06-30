@@ -1,13 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import com.google.inject.Inject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.Configuration;
-import play.libs.Json;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
-import javax.inject.Singleton;
+import com.google.inject.Inject;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -23,8 +19,11 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.Configuration;
+import play.libs.Json;
 
 @Singleton
 public class ReleaseManager {
@@ -64,6 +63,16 @@ public class ReleaseManager {
       rm.notes = new ArrayList<>();
       return rm;
     }
+
+    public String toString() {
+      return getClass().getName()
+          + " state: "
+          + String.valueOf(state)
+          + " filePath: "
+          + String.valueOf(filePath)
+          + " imageTag: "
+          + String.valueOf(imageTag);
+    }
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
@@ -88,6 +97,7 @@ public class ReleaseManager {
                   Collectors.toMap(
                       p -> p.getName(p.getNameCount() - 2).toString(),
                       p -> p.toAbsolutePath().toString()));
+      LOG.debug("Local releases: [ {} ]", releaseMap.toString());
     } catch (IOException e) {
       LOG.error(e.getMessage());
     }
@@ -97,6 +107,7 @@ public class ReleaseManager {
   public Map<String, Object> getReleaseMetadata() {
     Map<String, Object> releases = configHelper.getConfig(CONFIG_TYPE);
     if (releases == null || releases.isEmpty()) {
+      LOG.debug("getReleaseMetadata: No releases found");
       return new HashMap<>();
     }
     releases.forEach(
@@ -119,6 +130,7 @@ public class ReleaseManager {
     if (currentReleases.containsKey(version)) {
       throw new RuntimeException("Release already exists: " + version);
     }
+    LOG.info("Adding release version {} with metadata {}", version, metadata.toString());
     currentReleases.put(version, metadata);
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
@@ -130,7 +142,10 @@ public class ReleaseManager {
       Map<String, String> localReleases = getLocalReleases(ybReleasesPath);
       Map<String, Object> currentReleases = getReleaseMetadata();
       localReleases.keySet().removeAll(currentReleases.keySet());
+      LOG.debug("Current releases: [ {} ]", currentReleases.keySet().toString());
+      LOG.debug("Local releases: [ {} ]", localReleases.keySet());
       if (!localReleases.isEmpty()) {
+        LOG.info("Importing local releases: [ {} ]", localReleases.keySet().toString());
         localReleases.forEach(
             (version, releaseFile) ->
                 currentReleases.put(version, ReleaseMetadata.fromLegacy(version, releaseFile)));

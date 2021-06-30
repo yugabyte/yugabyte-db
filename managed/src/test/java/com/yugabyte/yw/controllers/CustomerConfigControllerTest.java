@@ -7,24 +7,31 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.*;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
+@RunWith(MockitoJUnitRunner.class)
 public class CustomerConfigControllerTest extends FakeDBApplication {
   Customer defaultCustomer;
   Users defaultUser;
+
+  @InjectMocks private AlertService alertService;
 
   @Before
   public void setUp() {
@@ -37,8 +44,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "POST", url, defaultUser.createAuthToken(), bodyJson);
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "POST", url, defaultUser.createAuthToken(), bodyJson));
 
     JsonNode node = Json.parse(contentAsString(result));
     assertErrorNodeValue(node, "data", "This field is required");
@@ -57,8 +66,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("type", "foo");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "POST", url, defaultUser.createAuthToken(), bodyJson);
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "POST", url, defaultUser.createAuthToken(), bodyJson));
 
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
@@ -74,8 +85,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("type", "STORAGE");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "POST", url, defaultUser.createAuthToken(), bodyJson);
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "POST", url, defaultUser.createAuthToken(), bodyJson));
 
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
@@ -105,10 +118,11 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testListCustomeWithData() {
     ModelFactory.createS3StorageConfig(defaultCustomer);
+    ModelFactory.createS3StorageConfig(defaultCustomer);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
-    assertEquals(1, node.size());
+    assertEquals(2, node.size());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -124,21 +138,12 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteValidCustomerConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
-    Alert.create(
-        defaultCustomer.uuid,
-        configUUID,
-        Alert.TargetType.CustomerConfigType,
-        "Error code",
-        "",
-        "");
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
-    assertEquals(
-        0, Alert.getActiveCustomerAlertsByTargetUuid(defaultCustomer.uuid, configUUID).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -148,8 +153,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
-    assertBadRequest(result, "Invalid configUUID: " + configUUID);
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+    assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -160,12 +167,17 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertInternalServerError(result, "Customer Configuration could not be deleted.");
     backup.delete();
     Schedule schedule =
         ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
-    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    result =
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertInternalServerError(result, "Customer Configuration could not be deleted.");
     schedule.delete();
     result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
@@ -184,6 +196,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("name", "test1");
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "test");
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
@@ -200,25 +213,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
   }
 
-  @Test
-  public void testEditInvalidCustomerConfig() {
-    ObjectNode bodyJson = Json.newObject();
-    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
-    bodyJson.put("name", "test1");
-    bodyJson.set("data", data);
-    bodyJson.put("type", "STORAGE");
-    Customer customer = ModelFactory.testCustomer("nc", "New Customer");
-    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
-    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
-    Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "PUT", url, defaultUser.createAuthToken(), bodyJson);
-    assertBadRequest(result, "Invalid configUUID: " + configUUID);
-    assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
-  }
-
   public void testValidPasswordPolicy() {
-    Result result = testPasswordPolicy(8, 1, 1, 1, 1);
+    Result result = assertYWSE(() -> testPasswordPolicy(8, 1, 1, 1, 1));
     assertOk(result);
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -226,10 +222,31 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testNegativePasswordPolicy() {
-    Result result = testPasswordPolicy(8, -1, 1, 1, 1);
+    Result result = assertYWSE(() -> testPasswordPolicy(8, -1, 1, 1, 1));
     assertBadRequest(
         result, "{\"password policy\":[\"Minimal number of uppercase letters should be > 0\"]}");
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditInvalidCustomerConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "test");
+    Customer customer = ModelFactory.testCustomer("nc", "New Customer");
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result =
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
+    assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
+    assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -243,6 +260,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("name", "test1");
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "test2");
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =

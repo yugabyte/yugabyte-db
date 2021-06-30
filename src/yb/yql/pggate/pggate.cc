@@ -937,8 +937,8 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
   return STATUS_FORMAT(Corruption, "Not all attributes ($0) were resolved", remain_attr);
 }
 
-void PgApiImpl::StartOperationsBuffering() {
-  pg_session_->StartOperationsBuffering();
+Status PgApiImpl::StartOperationsBuffering() {
+  return pg_session_->StartOperationsBuffering();
 }
 
 Status PgApiImpl::StopOperationsBuffering() {
@@ -1361,8 +1361,16 @@ void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   pg_session_->DeleteForeignKeyReference(table_id, ybctid);
 }
 
+void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  pg_session_->AddForeignKeyReference(table_id, ybctid);
+}
+
 void PgApiImpl::SetTimeout(const int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
+}
+
+void PgApiImpl::ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers) {
+  pg_session_->ListTabletServers(tablet_servers, numofservers).ok();
 }
 
 } // namespace pggate

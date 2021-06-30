@@ -212,10 +212,7 @@ export default class ClusterFields extends Component {
           data: { universeDetails }
         }
       }
-    } = this.props;
-
-    // This prop will help us to get the list of KMS configs.
-    this.props.getKMSConfigs();
+    } = this.props;    
 
     // Set default software version in case of create
     if (
@@ -825,7 +822,7 @@ export default class ClusterFields extends Component {
     // keep the async cluster to use the same value as primary.
     if (clusterType === 'primary') {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
-      updateFormField('async.NodeToNodeEncrypt', event.target.checked);
+      updateFormField('async.enableNodeToNodeEncrypt', event.target.checked);
       this.setState({ enableNodeToNodeEncrypt: event.target.checked });
     }
   }
@@ -836,16 +833,26 @@ export default class ClusterFields extends Component {
     // keep the async cluster to use the same value as primary.
     if (clusterType === 'primary') {
       updateFormField('primary.enableClientToNodeEncrypt', event.target.checked);
-      updateFormField('async.ClientToNodeEncrypt', event.target.checked);
+      updateFormField('async.enableClientToNodeEncrypt', event.target.checked);
       this.setState({ enableClientToNodeEncrypt: event.target.checked });
     }
   }
 
   toggleEnableEncryptionAtRest(event) {
-    const { updateFormField, clusterType } = this.props;
+    const { updateFormField, clusterType, getKMSConfigs, cloud } = this.props;
+    const toggleValue = event.target.checked;
     if (clusterType === 'primary') {
-      updateFormField('primary.enableEncryptionAtRest', event.target.checked);
-      this.setState({ enableEncryptionAtRest: event.target.checked });
+      updateFormField('primary.enableEncryptionAtRest', toggleValue);
+      this.setState({ enableEncryptionAtRest: toggleValue });
+      /* 
+       * Check if toggle is set to true and fetch list of KMS configs if
+       * the PromiseState is not success. Note that if returned data is
+       * an empty array, it is considered EMPTY and not SUCCESS, so if
+       * field is toggled a subsequent time, we will fetch again.
+       */
+      if (toggleValue && !getPromiseState(cloud.authConfig).isSuccess()) {
+        getKMSConfigs();
+      }
     }
   }
 
@@ -918,7 +925,6 @@ export default class ClusterFields extends Component {
       formValues,
       clusterType
     } = this.props;
-
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
     const verifyIntentConditions = function () {
@@ -946,7 +952,7 @@ export default class ClusterFields extends Component {
         ) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
-          this.props.submitConfigureUniverse(universeTaskParams);
+          this.props.submitConfigureUniverse(universeTaskParams, currentUniverse.data.universeUUID);
         }
       } else {
         // Create flow

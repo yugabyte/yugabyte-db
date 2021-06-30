@@ -10,38 +10,35 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.helpers.TableDetails;
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.Session;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TableDetails;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.Common.TableType;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
-
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.Universe;
-
-import play.api.Play;
-
+import javax.inject.Inject;
 import java.net.InetSocketAddress;
 import java.util.List;
 
+@Slf4j
 public class CreateTable extends AbstractTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CreateTable.class);
-
-  // The YB client to use.
-  public YBClientService ybService;
 
   // To use for the Cassandra client
   private Cluster cassandraCluster;
   private Session cassandraSession;
+
+  @Inject
+  protected CreateTable(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Parameters for create table task.
   public static class Params extends UniverseTaskParams {
@@ -62,10 +59,10 @@ public class CreateTable extends AbstractTaskBase {
     if (cassandraCluster == null) {
       List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().universeUUID);
       cassandraCluster = Cluster.builder().addContactPointsWithPorts(addresses).build();
-      LOG.info("Connected to cluster: " + cassandraCluster.getClusterName());
+      log.info("Connected to cluster: " + cassandraCluster.getClusterName());
     }
     if (cassandraSession == null) {
-      LOG.info("Creating a session...");
+      log.info("Creating a session...");
       cassandraSession = cassandraCluster.connect();
     }
     return cassandraSession;
@@ -80,7 +77,7 @@ public class CreateTable extends AbstractTaskBase {
     session.execute(tableDetails.getCQLCreateKeyspaceString());
     session.execute(tableDetails.getCQLUseKeyspaceString());
     session.execute(tableDetails.getCQLCreateTableString());
-    LOG.info(
+    log.info(
         "Created table '{}.{}' of type {}.",
         tableDetails.keyspace,
         taskParams().tableName,
@@ -91,7 +88,7 @@ public class CreateTable extends AbstractTaskBase {
     // Get the master addresses.
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    LOG.info(
+    log.info(
         "Running {}: universe = {}, masterAddress = {}",
         getName(),
         taskParams().universeUUID,
@@ -110,16 +107,10 @@ public class CreateTable extends AbstractTaskBase {
         taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
       }
       YBTable table = client.createRedisTable(taskParams().tableName);
-      LOG.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
+      log.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 
   @Override
@@ -142,7 +133,7 @@ public class CreateTable extends AbstractTaskBase {
       }
     } catch (Exception e) {
       String msg = "Error " + e.getMessage() + " while creating table " + taskParams().tableName;
-      LOG.error(msg, e);
+      log.error(msg, e);
       throw new RuntimeException(msg);
     }
   }

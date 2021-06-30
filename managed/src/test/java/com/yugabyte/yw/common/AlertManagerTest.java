@@ -2,217 +2,208 @@
 
 package com.yugabyte.yw.common;
 
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doThrow;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
-
-import javax.mail.MessagingException;
-
+import com.yugabyte.yw.common.alerts.*;
+import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
 
-import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
+import javax.mail.MessagingException;
+import java.util.Collections;
+import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertManagerTest extends FakeDBApplication {
 
-  private static final String TEST_STATE = "test state";
-
-  private static final String ALERT_TEST_MESSAGE = "Test message";
+  private static final String ALERT_ROUTE_NAME = "Test AlertRoute";
 
   private Customer defaultCustomer;
 
+  @Mock private AlertReceiverEmail emailReceiver;
+
+  @Mock private AlertReceiverManager receiversManager;
+
   @Mock private EmailHelper emailHelper;
 
+  @Spy private AlertService alertService;
+
   @InjectMocks private AlertManager am;
+
+  private AlertDefinition definition;
+
+  private Universe universe;
+
+  private AlertNotificationReport report = new AlertNotificationReport();
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    when(receiversManager.get(AlertReceiver.TargetType.Email.name())).thenReturn(emailReceiver);
+
+    universe = ModelFactory.createUniverse();
+    definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
+
+    // Configuring default SMTP configuration.
+    SmtpData smtpData = new SmtpData();
+    when(emailHelper.getDestinations(defaultCustomer.uuid))
+        .thenReturn(Collections.singletonList("to@to.com"));
+    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(smtpData);
   }
 
   @Test
-  public void testSendEmail_DoesntFail_UniverseRemoved() throws MessagingException {
-    doTestSendEmail(
-        UUID.randomUUID(),
-        String.format(
-            "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
-            defaultCustomer.name, TEST_STATE, ALERT_TEST_MESSAGE));
+  public void testSendEmail() {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
+    alert.setDefinitionUUID(definition.getUuid());
+    alert.save();
+
+    am.sendNotification(alert, report);
+
+    try {
+      verify(emailReceiver, times(1)).sendNotification(eq(defaultCustomer), eq(alert), any());
+    } catch (YWNotificationException e) {
+      fail("Unexpected exception caught.");
+    }
   }
 
   @Test
-  public void testSendEmail_UniverseExists() throws MessagingException {
-    Universe u = ModelFactory.createUniverse();
-    doTestSendEmail(
-        u.universeUUID,
-        String.format(
-            "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
-            u.name, TEST_STATE, ALERT_TEST_MESSAGE));
-  }
+  public void testResolveAlerts() {
+    Alert alert = ModelFactory.createAlert(defaultCustomer);
 
-  private void doTestSendEmail(UUID universeUUID, String expectedContent)
-      throws MessagingException {
-    Alert alert =
-        Alert.create(
-            defaultCustomer.uuid,
-            universeUUID,
-            Alert.TargetType.UniverseType,
-            "errorCode",
-            "Warning",
-            ALERT_TEST_MESSAGE);
-    alert.sendEmail = true;
+    assertEquals(Alert.State.CREATED, alert.getState());
+    assertEquals(Alert.State.ACTIVE, alert.getTargetState());
 
-    SmtpData smtpData = configureSmtp();
-    am.sendEmail(alert, TEST_STATE);
+    am.transitionAlert(alert, report);
 
-    verify(emailHelper, times(1))
-        .sendEmail(
-            eq(defaultCustomer),
-            anyString(),
-            anyString(),
-            eq(smtpData),
-            eq(Collections.singletonMap("text/plain; charset=\"us-ascii\"", expectedContent)));
-  }
+    alert = alertService.get(alert.getUuid());
 
-  @Test
-  public void testResolveAlerts_ExactErrorCode() {
-    UUID universeUuid = UUID.randomUUID();
-    Alert.create(
-        defaultCustomer.uuid,
-        universeUuid,
-        Alert.TargetType.UniverseType,
-        "errorCode",
-        "Warning",
-        ALERT_TEST_MESSAGE);
-    Alert.create(
-        defaultCustomer.uuid,
-        universeUuid,
-        Alert.TargetType.UniverseType,
-        "errorCode2",
-        "Warning",
-        ALERT_TEST_MESSAGE);
+    assertEquals(Alert.State.ACTIVE, alert.getState());
+    assertEquals(Alert.State.ACTIVE, alert.getTargetState());
 
-    assertEquals(Alert.State.CREATED, Alert.list(defaultCustomer.uuid, "errorCode").get(0).state);
-    am.resolveAlerts(defaultCustomer.uuid, universeUuid, "errorCode");
-    assertEquals(Alert.State.RESOLVED, Alert.list(defaultCustomer.uuid, "errorCode").get(0).state);
-    // Check that another alert was not updated by the first call.
-    assertEquals(Alert.State.CREATED, Alert.list(defaultCustomer.uuid, "errorCode2").get(0).state);
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .errorCode(KnownAlertCodes.CUSTOMER_ALERT)
+            .build();
+    alertService.markResolved(alertFilter);
 
-    am.resolveAlerts(defaultCustomer.uuid, universeUuid, "errorCode2");
-    assertEquals(Alert.State.RESOLVED, Alert.list(defaultCustomer.uuid, "errorCode2").get(0).state);
-  }
+    alert = alertService.get(alert.getUuid());
 
-  @Test
-  public void testResolveAlerts_AllErrorCodes() {
-    UUID universeUuid = UUID.randomUUID();
-    Alert.create(
-        defaultCustomer.uuid,
-        universeUuid,
-        Alert.TargetType.UniverseType,
-        "errorCode",
-        "Warning",
-        ALERT_TEST_MESSAGE);
-    Alert.create(
-        defaultCustomer.uuid,
-        universeUuid,
-        Alert.TargetType.UniverseType,
-        "errorCode2",
-        "Warning",
-        ALERT_TEST_MESSAGE);
+    assertEquals(Alert.State.ACTIVE, alert.getState());
+    assertEquals(Alert.State.RESOLVED, alert.getTargetState());
 
-    List<Alert> alerts = Alert.list(defaultCustomer.uuid);
-    assertEquals(Alert.State.CREATED, alerts.get(0).state);
-    assertEquals(Alert.State.CREATED, alerts.get(1).state);
+    am.transitionAlert(alert, report);
 
-    am.resolveAlerts(defaultCustomer.uuid, universeUuid, "%");
+    alert = alertService.get(alert.getUuid());
 
-    alerts = Alert.list(defaultCustomer.uuid);
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
-    assertEquals(Alert.State.RESOLVED, alerts.get(1).state);
+    assertEquals(Alert.State.RESOLVED, alert.getState());
+    assertEquals(Alert.State.RESOLVED, alert.getTargetState());
   }
 
   @Test
   public void testSendEmail_OwnAlertsReseted() {
-    SmtpData smtpData = configureSmtp();
-    Alert.create(
-        defaultCustomer.uuid,
-        smtpData.configUUID,
-        Alert.TargetType.CustomerConfigType,
-        AlertManager.ALERT_MANAGER_ERROR_CODE,
-        "Warning",
-        ALERT_TEST_MESSAGE);
+    Alert amAlert =
+        ModelFactory.createAlert(
+            defaultCustomer, null, null, KnownAlertCodes.ALERT_MANAGER_FAILURE);
+    amAlert.setLabel(
+        KnownAlertLabels.TARGET_UUID, AlertManager.DEFAULT_ALERT_RECEIVER_UUID.toString());
+    amAlert.setSendEmail(false);
+    alertService.save(amAlert);
 
-    Alert alert =
-        Alert.create(
-            defaultCustomer.uuid,
-            UUID.randomUUID(),
-            Alert.TargetType.UniverseType,
-            "errorCode",
-            "Warning",
-            ALERT_TEST_MESSAGE);
-    alert.sendEmail = true;
+    Alert alert = ModelFactory.createAlert(defaultCustomer);
 
-    List<Alert> alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
+            .build();
+    List<Alert> alerts = alertService.list(alertFilter);
     assertEquals(1, alerts.size());
-    assertEquals(Alert.State.CREATED, alerts.get(0).state);
+    assertEquals(Alert.State.ACTIVE, alerts.get(0).getTargetState());
 
-    am.sendEmail(alert, TEST_STATE);
+    am.sendNotification(alert, report);
 
-    alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
+    alerts = alertService.list(alertFilter);
     assertEquals(1, alerts.size());
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
+    assertEquals(Alert.State.RESOLVED, alerts.get(0).getTargetState());
   }
 
   @Test
-  public void testSendEmail_OwnAlertGenerated() throws MessagingException {
-    SmtpData smtpData = configureSmtp();
-    Alert alert =
-        Alert.create(
-            defaultCustomer.uuid,
-            UUID.randomUUID(),
-            Alert.TargetType.UniverseType,
-            "errorCode",
-            "Warning",
-            ALERT_TEST_MESSAGE);
-    alert.sendEmail = true;
+  public void testSendEmail_OwnAlertGenerated() throws YWNotificationException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer);
 
-    List<Alert> alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
+            .label(
+                KnownAlertLabels.TARGET_UUID, AlertManager.DEFAULT_ALERT_RECEIVER_UUID.toString())
+            .build();
+    List<Alert> alerts = alertService.list(alertFilter);
     assertEquals(0, alerts.size());
 
-    // EmailHelper.sendEmail should fail.
-    doThrow(new MessagingException("test"))
-        .when(emailHelper)
-        .sendEmail(eq(defaultCustomer), anyString(), anyString(), eq(smtpData), any());
+    doThrow(new YWNotificationException("test"))
+        .when(emailReceiver)
+        .sendNotification(eq(defaultCustomer), eq(alert), any());
+    am.sendNotification(alert, report);
 
-    am.sendEmail(alert, TEST_STATE);
-
-    alerts = Alert.list(defaultCustomer.uuid, AlertManager.ALERT_MANAGER_ERROR_CODE);
+    alerts = alertService.list(alertFilter);
     assertEquals(1, alerts.size());
-    assertEquals(Alert.State.CREATED, alerts.get(0).state);
+    assertEquals(Alert.State.ACTIVE, alerts.get(0).getTargetState());
   }
 
-  private SmtpData configureSmtp() {
-    SmtpData smtpData = new SmtpData();
-    smtpData.configUUID = UUID.randomUUID();
-    when(emailHelper.getDestinations(defaultCustomer.uuid))
-        .thenReturn(Collections.singletonList("to@to.com"));
-    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(smtpData);
-    return smtpData;
+  @Test
+  public void testSendNotification_AlertWoDefinition_SendEmailOldManner()
+      throws YWNotificationException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
+
+    am.sendNotification(alert, report);
+
+    verify(emailReceiver, times(1)).sendNotification(eq(defaultCustomer), eq(alert), any());
+  }
+
+  @Test
+  public void testSendNotification_NoRoutes() throws MessagingException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    am.sendNotification(alert, report);
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+  }
+
+  // TODO: To update the test after AlertDefinitionGroup is introduced.
+  // @Test
+  public void testSendNotification_TwoEmailRoutes()
+      throws MessagingException, YWNotificationException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    AlertReceiver receiver1 = createEmailReceiver();
+    AlertRoute.create(defaultCustomer.uuid, ALERT_ROUTE_NAME, Collections.singletonList(receiver1));
+
+    AlertReceiver receiver2 = createEmailReceiver();
+    AlertRoute.create(defaultCustomer.uuid, ALERT_ROUTE_NAME, Collections.singletonList(receiver2));
+
+    am.sendNotification(alert, report);
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    verify(emailReceiver, times(2)).sendNotification(any(), any(), any());
+  }
+
+  private AlertReceiver createEmailReceiver() {
+    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
+    params.continueSend = true;
+    params.recipients = Collections.singletonList("test@test.com");
+    params.smtpData = EmailFixtures.createSmtpData();
+
+    return AlertReceiver.create(defaultCustomer.uuid, "Test AlertReceiver", params);
   }
 }

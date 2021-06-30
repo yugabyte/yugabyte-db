@@ -43,7 +43,6 @@
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/transaction.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -128,6 +127,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
   CHECKED_STATUS Add(std::shared_ptr<YBOperation> yb_op);
+
+  bool Has(std::shared_ptr<YBOperation> yb_op) const;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending
@@ -280,6 +281,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Errors are reported into this error collector.
   ErrorCollector error_collector_;
+
+  std::map<PartitionKey, Status> first_lookup_error_by_key_ GUARDED_BY(mutex_);
 
   // Set to true if there was at least one error from this Batcher.
   std::atomic<bool> had_errors_{false};

@@ -59,10 +59,6 @@
 #include "yb/util/random_util.h"
 #include "yb/util/shared_lock.h"
 
-DEFINE_int64(tablet_split_size_threshold_bytes, 0,
-             "Threshold on tablet size after which tablet should be split. Automated splitting is "
-             "disabled if this value is set to 0");
-
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
              "requests for tablet locations.");
@@ -259,10 +255,6 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                  << s.ToUserMessage();
   }
 
-  if (FLAGS_tablet_split_size_threshold_bytes > 0) {
-    resp->set_tablet_split_size_threshold_bytes(FLAGS_tablet_split_size_threshold_bytes);
-  }
-
   rpc.RespondSuccess();
 }
 
@@ -404,6 +396,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (AreLeadersOnPreferredOnly)
     (SplitTablet)
     (DeleteTablet)
+    (DdlLog)
 )
 
 
@@ -475,6 +468,29 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
     entry->set_alive(desc->IsLive());
     desc->GetMetrics(entry->mutable_metrics());
+  }
+  rpc.RespondSuccess();
+}
+
+void MasterServiceImpl::ListLiveTabletServers(const ListLiveTabletServersRequestPB* req,
+                                              ListLiveTabletServersResponsePB* resp,
+                                              RpcContext rpc) {
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+    return;
+  }
+  string placement_uuid = server_->catalog_manager()->placement_uuid();
+
+  vector<std::shared_ptr<TSDescriptor> > descs;
+  server_->ts_manager()->GetAllLiveDescriptors(&descs);
+
+  for (const std::shared_ptr<TSDescriptor>& desc : descs) {
+    ListLiveTabletServersResponsePB::Entry* entry = resp->add_servers();
+    auto ts_info = *desc->GetTSInformationPB();
+    *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
+    *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
+    bool isPrimary = server_->ts_manager()->IsTsInCluster(desc, placement_uuid);
+    entry->set_isfromreadreplica(!isPrimary);
   }
   rpc.RespondSuccess();
 }

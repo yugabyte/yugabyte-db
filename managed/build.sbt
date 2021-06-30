@@ -9,7 +9,7 @@ import scala.sys.process.Process
 // ------------------------------------------------------------------------------------------------
 
 // This is used to decide whether to clean/build the py2 or py3 venvs.
-lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"))
+lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"), true)
 
 // Use this to enable debug logging in this script.
 lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
@@ -22,9 +22,12 @@ def normalizeEnvVarValue(value: String): String = {
   if (value == null) null else value.trim()
 }
 
-def strToBool(s: String): Boolean = {
-  val normalizedStr = normalizeEnvVarValue(s)
-  normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
+def strToBool(s: String, default: Boolean = false): Boolean = {
+  if (s == null) default
+  else {
+    val normalizedStr = normalizeEnvVarValue(s)
+    normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
+  }
 }
 
 def ybLog(s: String): Unit = {
@@ -87,7 +90,8 @@ def clean_venv(baseDirectory: File): Int = {
 
 def build_venv(baseDirectory: File): Int = {
   ybLog("Building virtual env...")
-  Process("./bin/install_python_requirements.sh", baseDirectory / "devops")!
+  Process("./bin/install_python_requirements.sh", baseDirectory / "devops").!
+  Process("./bin/install_ansible_requirements.sh --force", baseDirectory / "devops").!
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -103,6 +107,8 @@ lazy val runPlatformTask = taskKey[Unit]("Run Yugabyte Platform helper task")
 lazy val runPlatform = inputKey[Unit]("Run Yugabyte Platform with UI")
 
 lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
+
+lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 // ------------------------------------------------------------------------------------------------
 // Main build.sbt script
@@ -142,6 +148,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.931",
   "com.cronutils" % "cron-utils" % "9.0.1",
   "io.prometheus" % "simpleclient" % "0.8.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.8.0",
@@ -163,7 +170,9 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
-  "commons-codec" % "commons-codec" % "1.15"
+  "commons-codec" % "commons-codec" % "1.15",
+  "com.google.cloud" % "google-cloud-storage" % "1.115.0",
+  "org.projectlombok" % "lombok" % "1.18.20"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -210,6 +219,18 @@ lazy val ybClientSnapshotResolver = {
   }
 }
 
+lazy val ybPublicSnapshotResolverDescription =
+    "Public snapshot resolver for yb-client jar"
+
+lazy val ybPublicSnapshotResolver = {
+  if (mavenLocal) {
+    Seq()
+  } else {
+    val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
+    Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
+  }
+}
+
 // Custom remote maven repository to retrieve library dependencies from.
 lazy val ybMvnCacheUrlEnvVarName = "YB_MVN_CACHE_URL"
 lazy val ybMvnCacheUrl = getEnvVar(ybMvnCacheUrlEnvVarName)
@@ -236,13 +257,15 @@ externalResolvers := {
   validateResolver(mavenCacheServerResolver, mavenCacheServerResolverDescription) ++
   validateResolver(ybLocalResolver, ybLocalResolverDescription) ++
   validateResolver(externalResolvers.value, "Default resolver") ++
-  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
+  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription) ++
+  validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
 (Compile / compilePlatform) := {
   (Compile / compile).value
   build_venv(baseDirectory.value)
   build_ui(baseDirectory.value)
+  versionGenerate.value
 }
 
 cleanPlatform := {
@@ -250,6 +273,17 @@ cleanPlatform := {
   clean_venv(baseDirectory.value)
   clean_ui(baseDirectory.value)
 }
+
+versionGenerate := {
+  val buildType = sys.env.get("BUILD_TYPE").getOrElse("release")
+  val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
+    (Compile / resourceDirectory).value / "version_metadata.json").!
+  ybLog("version_metadata.json Generated")
+  Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
+  status
+}
+
+packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
@@ -269,9 +303,21 @@ runPlatform := {
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
 
+libraryDependencies ++= Seq(
+  // We wont use swagger-ui jar since we want to change some of the assets:
+  //  "org.webjars" % "swagger-ui" % "3.43.0",
+  "io.swagger" %% "swagger-play2" % "1.6.1",
+  "io.swagger" %% "swagger-scala-module" % "1.0.5",
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.8"
+)
+// https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
+//libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
+
+
 dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
@@ -285,7 +331,6 @@ topLevelDirectory := None
 // Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
 lazy val autoReload = getBoolEnvVar("AUTO_RELOAD")
 playMonitoredFiles := { if (autoReload) (playMonitoredFiles.value: @sbtUnchecked) else Seq() }
-
 
 consoleSetting := {
   object PlayConsoleInteractionModeNew extends PlayInteractionMode {
@@ -328,3 +373,22 @@ consoleSetting := {
 }
 
 playInteractionMode := consoleSetting.value
+
+val swaggerGen: TaskKey[Unit] = taskKey[Unit](
+  "generate swagger.json"
+)
+
+// in settings
+swaggerGen := Def.taskDyn {
+  // Consider generating this only in managedResources
+  val file = (resourceDirectory in Compile).value / "swagger.json"
+  Def.task {
+    (runMain in Test)
+      .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file")
+      .value
+    // TODO: Generate client libraries
+  }
+}.value
+
+// TODO: Should we trigger swagger gen on compile??
+// swaggerGen := swaggerGen.triggeredBy(compile in Compile).value

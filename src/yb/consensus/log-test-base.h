@@ -46,7 +46,6 @@
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
@@ -353,8 +352,8 @@ class LogTestBase : public YBTest {
 
  protected:
   const Schema schema_;
-  gscoped_ptr<FsManager> fs_manager_;
-  gscoped_ptr<MetricRegistry> metric_registry_;
+  std::unique_ptr<FsManager> fs_manager_;
+  std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<ThreadPool> log_thread_pool_;

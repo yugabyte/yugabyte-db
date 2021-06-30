@@ -120,7 +120,6 @@ Status NewFileReader(const ImmutableCFOptions& ioptions, const EnvOptions& env_o
     file->Hint(RandomAccessFile::RANDOM);
   }
 
-  StopWatch sw(ioptions.env, ioptions.statistics, TABLE_OPEN_IO_MICROS);
   file_reader->reset(new RandomAccessFileReader(
       std::move(file),
       ioptions.env,

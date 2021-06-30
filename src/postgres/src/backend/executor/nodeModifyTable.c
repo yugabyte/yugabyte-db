@@ -2748,9 +2748,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 */
 	if (node->onConflictAction == ONCONFLICT_UPDATE)
 	{
+		OnConflictSetState *onconfl = makeNode(OnConflictSetState);
 		ExprContext *econtext;
 		TupleDesc	relationDesc;
-		TupleDesc	tupDesc;
 
 		/* insert may only have one plan, inheritance is not expanded */
 		Assert(nplans == 1);
@@ -2777,7 +2777,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		mtstate->mt_excludedtlist = node->exclRelTlist;
 
 		/* create state for DO UPDATE SET operation */
-		resultRelInfo->ri_onConflict = makeNode(OnConflictSetState);
+		resultRelInfo->ri_onConflict = onconfl;
 
 		/*
 		 * Create the tuple slot for the UPDATE SET projection.
@@ -2788,19 +2788,27 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * the tupdesc in the parent's state: it can be reused by partitions
 		 * with an identical descriptor to the parent.
 		 */
-		tupDesc = ExecTypeFromTL((List *) node->onConflictSet,
-								 relationDesc->tdhasoid);
 		mtstate->mt_conflproj =
 			ExecInitExtraTupleSlot(mtstate->ps.state,
 								   mtstate->mt_partition_tuple_routing ?
-								   NULL : tupDesc);
-		resultRelInfo->ri_onConflict->oc_ProjTupdesc = tupDesc;
+								   NULL : relationDesc);
+		onconfl->oc_ProjTupdesc = relationDesc;
+
+		/*
+		 * The onConflictSet tlist should already have been adjusted to emit
+		 * the table's exact column list.  It could also contain resjunk
+		 * columns, which should be evaluated but not included in the
+		 * projection result.
+		 */
+		ExecCheckPlanOutput(resultRelInfo->ri_RelationDesc,
+							node->onConflictSet);
 
 		/* build UPDATE SET projection state */
-		resultRelInfo->ri_onConflict->oc_ProjInfo =
-			ExecBuildProjectionInfo(node->onConflictSet, econtext,
-									mtstate->mt_conflproj, &mtstate->ps,
-									relationDesc);
+		onconfl->oc_ProjInfo =
+			ExecBuildProjectionInfoExt(node->onConflictSet, econtext,
+									   mtstate->mt_conflproj, false,
+									   &mtstate->ps,
+									   relationDesc);
 
 		/* initialize state to evaluate the WHERE clause, if any */
 		if (node->onConflictWhere)
@@ -2809,7 +2817,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 			qualexpr = ExecInitQual((List *) node->onConflictWhere,
 									&mtstate->ps);
-			resultRelInfo->ri_onConflict->oc_WhereClause = qualexpr;
+			onconfl->oc_WhereClause = qualexpr;
 		}
 	}
 

@@ -11,10 +11,11 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -22,41 +23,30 @@ import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import play.Application;
-import play.Environment;
-import play.api.Play;
-import play.libs.Json;
+import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.Yaml;
+import play.libs.Json;
 
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 
+@Slf4j
 public class KubernetesCommandExecutor extends UniverseTaskBase {
+
   public enum CommandType {
     CREATE_NAMESPACE,
     APPLY_SECRET,
@@ -98,26 +88,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
-  @Inject KubernetesManager kubernetesManager;
+  private final KubernetesManager kubernetesManager;
 
-  @Inject Application application;
-
-  @Inject private play.Environment environment;
+  @Inject
+  protected KubernetesCommandExecutor(
+      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
+    super(baseTaskDependencies);
+    this.kubernetesManager = kubernetesManager;
+  }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
 
   // Added constant to compute CPU burst limit
   static final double burstVal = 1.2;
-
-  static final String defaultStorageClass = "standard";
-
-  @Override
-  public void initialize(ITaskParams params) {
-    this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
-    this.application = Play.current().injector().instanceOf(Application.class);
-    this.environment = Play.current().injector().instanceOf(Environment.class);
-    super.initialize(params);
-  }
 
   public static class Params extends UniverseTaskParams {
     public UUID providerUUID;
@@ -174,6 +157,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         String pullSecret = this.getPullSecret();
         if (pullSecret != null) {
           response = kubernetesManager.applySecret(config, taskParams().namespace, pullSecret);
+        } else {
+          log.debug("Pull secret is missing, skipping the pull secret creation.");
         }
         break;
       case HELM_INSTALL:
@@ -446,7 +431,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null) {
-      LOG.error(
+      log.error(
           "Unable to fetch InstanceType for {}, {}",
           userIntent.providerType,
           userIntent.instanceType);
@@ -748,7 +733,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       yaml.dump(overrides, bw);
       return tempFile.toAbsolutePath().toString();
     } catch (IOException e) {
-      LOG.error(e.getMessage());
+      log.error(e.getMessage());
       throw new RuntimeException("Error writing Helm Override file!");
     }
   }

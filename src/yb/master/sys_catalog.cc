@@ -107,12 +107,11 @@ DEFINE_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
   server, dns_resolve_latency_during_sys_catalog_setup,
   "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
-  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
-  60000000LU, 2);
+  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig");
 METRIC_DEFINE_counter(
   server, sys_catalog_peer_write_count,
   "yb.master.SysCatalogTable Count of Writes",
@@ -641,13 +640,14 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   }
 
   auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &writer->req(), resp.get());
-  operation_state->set_completion_callback(
+  auto operation = std::make_unique<tablet::WriteOperation>(
+      writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
+      tablet_peer()->tablet(), resp.get());
+  *operation->AllocateRequest() = writer->req();
+  operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
-  tablet_peer()->WriteAsync(
-      std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
+  tablet_peer()->WriteAsync(std::move(operation));
   peer_write_count->Increment();
 
   {
@@ -906,6 +906,21 @@ Status SysCatalogTable::ReadPgClassInfo(
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
     projection.CopyWithoutColumnIds(), boost::none /* transaction_id */,
     {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(oid_col_id);
+    cond.set_op(QL_OP_GREATER_THAN_EQUAL);
+    // All rows in pg_class table with oid less than kPgFirstNormalObjectId correspond to system
+    // catalog tables. They can be skipped, as tablespace information is relevant only for user
+    // created tables.
+    cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
+    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
 
   QLTableRow row;
   // Pg_class table contains a row for every database object (tables/indexes/
@@ -916,21 +931,14 @@ Status SysCatalogTable::ReadPgClassInfo(
   while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&row));
 
-    // First process the oid of the object corresponding to the current row.
+    // Process the oid of this table/index.
     const auto& oid_col = row.GetValue(oid_col_id);
     if (!oid_col) {
       return STATUS(Corruption, "Could not read oid column from pg_class");
     }
-
     const uint32_t oid = oid_col->uint32_value();
-    if (oid < kPgFirstNormalObjectId) {
-      // This is some system level object. We are interested only in user created
-      // tables and indexes whose oids are always higher than kPgFirstNormalObjectId.
-      // Skip this row and move onto the next row in pg_class table.
-      continue;
-    }
 
-    // Now look at the relkind of the database object.
+    // Skip rows that pertain to relation types that do not have use for tablespaces.
     const auto& relkind_col = row.GetValue(relkind_col_id);
     if (!relkind_col) {
       return STATUS(Corruption, "Could not read relkind column from pg_class for oid " +
@@ -947,7 +955,7 @@ Status SysCatalogTable::ReadPgClassInfo(
       continue;
     }
 
-    // Now process the tablespace oid for this database object.
+    // Process the tablespace oid for this table/index.
     const auto& tablespace_oid_col = row.GetValue(tablespace_col_id);
     if (!tablespace_oid_col) {
       return STATUS(Corruption, "Could not read tablespace column from pg_class");
@@ -1142,6 +1150,19 @@ Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
 
 const Schema& SysCatalogTable::schema() {
   return schema_;
+}
+
+Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries) {
+  auto tablet = tablet_peer()->shared_tablet();
+  if (!tablet) {
+    return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
+  }
+
+  return EnumerateSysCatalog(tablet.get(), schema_, SysRowEntry::DDL_LOG_ENTRY,
+                             [entries](const Slice& id, const Slice& data) -> Status {
+    *entries->Add() = VERIFY_RESULT(pb_util::ParseFromSlice<DdlLogEntryPB>(data));
+    return Status::OK();
+  });
 }
 
 } // namespace master

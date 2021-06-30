@@ -26,9 +26,6 @@
 namespace yb {
 
 class BufferAllocator;
-
-namespace enterprise {
-
 struct EncryptionParams;
 typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
 
@@ -77,7 +74,6 @@ class BlockAccessCipherStream {
   mutable simple_spinlock mutex_;
 };
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_CIPHER_STREAM_H

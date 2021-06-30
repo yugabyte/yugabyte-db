@@ -1219,6 +1219,46 @@ Status ExternalMiniCluster::WaitForInitDb() {
   }
 }
 
+Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx) {
+  std::shared_ptr<master::MasterServiceProxy> proxy = master_proxy();
+  std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+  master::ListTabletServersRequestPB req;
+  master::ListTabletServersResponsePB resp;
+  controller->Reset();
+
+  RETURN_NOT_OK(proxy->ListTabletServers(req, &resp, controller.get()));
+
+  bool is_stale = false, is_ts_found = false;
+  for (int i = 0; i < resp.servers_size(); i++) {
+    if (!resp.servers(i).has_instance_id()) {
+      return STATUS_SUBSTITUTE(
+        Uninitialized,
+        "ListTabletServers RPC returned a TS with uninitialized instance id."
+      );
+    }
+
+    if (!resp.servers(i).instance_id().has_permanent_uuid()) {
+      return STATUS_SUBSTITUTE(
+        Uninitialized,
+        "ListTabletServers RPC returned a TS with uninitialized UUIDs."
+      );
+    }
+
+    if (resp.servers(i).instance_id().permanent_uuid() == tablet_server(ts_idx)->uuid()) {
+      is_ts_found = true;
+      is_stale = !resp.servers(i).alive();
+    }
+  }
+
+  if (!is_ts_found) {
+    return STATUS_SUBSTITUTE(
+        NotFound,
+        "Given TS not found in ListTabletServers RPC."
+    );
+  }
+  return is_stale;
+}
+
 string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
   if (opts_.use_even_ips) {
     return Substitute("127.0.0.$0", (index + 1) * 2);
@@ -1961,7 +2001,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 
   AddExtraFlagsFromEnvVar("YB_EXTRA_DAEMON_FLAGS", &argv);
 
-  gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
+  std::unique_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
   p->ShareParentStderr(false);
   auto default_output_prefix = Substitute("[$0]", daemon_id_);
@@ -2399,7 +2439,9 @@ ExternalTabletServer::ExternalTabletServer(
 ExternalTabletServer::~ExternalTabletServer() {
 }
 
-Status ExternalTabletServer::Start(bool start_cql_proxy, bool set_proxy_addrs) {
+Status ExternalTabletServer::Start(
+    bool start_cql_proxy, bool set_proxy_addrs,
+    std::vector<std::pair<string, string>> extra_flags) {
   start_cql_proxy_ = start_cql_proxy;
   Flags flags;
   flags.Add("fs_data_dirs", data_dir_);
@@ -2423,6 +2465,10 @@ Status ExternalTabletServer::Start(bool start_cql_proxy, bool set_proxy_addrs) {
   // where several unit tests tend to run in parallel.
   flags.Add("tablet_server_svc_num_threads", "64");
   flags.Add("ts_consensus_svc_num_threads", "20");
+
+  for (const auto& flag_value : extra_flags) {
+    flags.Add(flag_value.first, flag_value.second);
+  }
 
   RETURN_NOT_OK(StartProcess(flags.value()));
 
@@ -2459,7 +2505,8 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   return Status::OK();
 }
 
-Status ExternalTabletServer::Restart(bool start_cql_proxy) {
+Status ExternalTabletServer::Restart(
+    bool start_cql_proxy, std::vector<std::pair<string, string>> flags) {
   LOG_WITH_PREFIX(INFO) << "Restart: start_cql_proxy=" << start_cql_proxy;
   if (!IsProcessAlive()) {
     // Make sure this function could be safely called if the process has already crashed.
@@ -2469,7 +2516,7 @@ Status ExternalTabletServer::Restart(bool start_cql_proxy) {
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
-  return Start(start_cql_proxy);
+  return Start(start_cql_proxy, true /* set_proxy_addrs */, flags);
 }
 
 Status RestartAllMasters(ExternalMiniCluster* cluster) {

@@ -5,16 +5,14 @@ package com.yugabyte.yw.models;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.yugabyte.yw.common.FakeDBApplication;
-
 import java.util.Map;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.*;
@@ -33,7 +31,7 @@ public class ProviderTest extends FakeDBApplication {
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
-    assertTrue(provider.isActive());
+    assertTrue(provider.active);
   }
 
   @Test
@@ -71,7 +69,7 @@ public class ProviderTest extends FakeDBApplication {
             "Amazon",
             ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
-    assertValue(provider.getMaskedConfig(), "AWS_ACCESS_KEY_ID", "Ba********ar");
+    assertEquals("Ba********ar", provider.getMaskedConfig().get("AWS_ACCESS_KEY_ID"));
     assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_KEY_ID"));
   }
 
@@ -84,7 +82,7 @@ public class ProviderTest extends FakeDBApplication {
             "Amazon",
             ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
-    assertValue(provider.getMaskedConfig(), "AWS_ACCESS_ID", "BarBarBarBar");
+    assertEquals("BarBarBarBar", provider.getMaskedConfig().get("AWS_ACCESS_ID"));
     assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_ID"));
   }
 
@@ -102,13 +100,13 @@ public class ProviderTest extends FakeDBApplication {
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
-    assertTrue(provider.isActive());
+    assertTrue(provider.active);
 
-    provider.setActiveFlag(false);
+    provider.active = false;
     provider.save();
 
     Provider fetch = Provider.find.byId(provider.uuid);
-    assertFalse(fetch.isActive());
+    assertFalse(fetch.active);
   }
 
   @Test
@@ -120,7 +118,7 @@ public class ProviderTest extends FakeDBApplication {
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
     assertEquals(fetch.name, provider.name);
-    assertTrue(fetch.isActive());
+    assertTrue(fetch.active);
     assertEquals(fetch.customerUUID, defaultCustomer.uuid);
   }
 
@@ -131,7 +129,7 @@ public class ProviderTest extends FakeDBApplication {
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
     assertEquals(fetch.name, provider.name);
-    assertTrue(fetch.isActive());
+    assertTrue(fetch.active);
     assertEquals(fetch.customerUUID, defaultCustomer.uuid);
   }
 
@@ -151,7 +149,7 @@ public class ProviderTest extends FakeDBApplication {
   public void testCascadeDelete() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
     Region region = Region.create(provider, "region-1", "region 1", "ybImage");
-    AvailabilityZone.create(region, "zone-1", "zone 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "zone-1", "zone 1", "subnet-1");
     provider.delete();
     assertEquals(0, Region.find.all().size());
     assertEquals(0, AvailabilityZone.find.all().size());
@@ -193,7 +191,7 @@ public class ProviderTest extends FakeDBApplication {
     String subnetId = "subnet-1";
     String regionCode = "region-1";
     Region region = Region.create(provider, regionCode, "test region", "default-image");
-    AvailabilityZone az = AvailabilityZone.create(region, "az-1", "A Zone", subnetId);
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "A Zone", subnetId);
     CloudBootstrap.Params params = provider.getCloudParams();
     assertNotNull(params);
     Map<String, CloudBootstrap.Params.PerRegionMetadata> metadata = params.perRegionMetadata;

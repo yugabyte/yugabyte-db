@@ -352,7 +352,7 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor* data, uint64_t *yb
 
 
 // Buffer write operations.
-void YBCPgStartOperationsBuffering();
+YBCStatus YBCPgStartOperationsBuffering();
 YBCStatus YBCPgStopOperationsBuffering();
 YBCStatus YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
@@ -466,6 +466,7 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
 // Referential Integrity Check Caching.
 void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
+void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor* descr);
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor* descr, bool* res);
 YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr);
@@ -520,6 +521,8 @@ void YBCPgSetThreadLocalErrMsg(const void* new_msg);
 const void* YBCPgGetThreadLocalErrMsg();
 
 void YBCPgResetCatalogReadTime();
+
+void YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
 
 #ifdef __cplusplus
 }  // extern "C"

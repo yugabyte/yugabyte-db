@@ -5,8 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.AlertManager;
-import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -23,67 +22,56 @@ public class CustomerConfigController extends AuthenticatedController {
 
   @Inject private CustomerConfigValidator configValidator;
 
-  @Inject private AlertManager alertManager;
-
   public Result create(UUID customerUUID) {
     ObjectNode formData = (ObjectNode) request().body().asJson();
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
+      throw new YWServiceException(BAD_REQUEST, errorJson);
     }
 
     errorJson = configValidator.validateDataContent(formData);
     if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
+      throw new YWServiceException(BAD_REQUEST, errorJson);
     }
 
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
     auditService().createAuditEntry(ctx(), request(), formData);
-    return ApiResponse.success(customerConfig);
+    return YWResults.withData(customerConfig);
   }
 
   public Result delete(UUID customerUUID, UUID configUUID) {
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
-    if (customerConfig == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
-    }
-    if (!customerConfig.delete()) {
-      return ApiResponse.error(
-          INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
-    }
-    alertManager.resolveAlerts(customerUUID, configUUID, "%");
+    CustomerConfig customerConfig = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
+    customerConfig.deleteOrThrow();
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.withMessage("configUUID deleted");
   }
 
   public Result list(UUID customerUUID) {
-    return ApiResponse.success(CustomerConfig.getAll(customerUUID));
+    return YWResults.withData(CustomerConfig.getAll(customerUUID));
   }
 
   public Result edit(UUID customerUUID, UUID configUUID) {
     JsonNode formData = request().body().asJson();
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
+      throw new YWServiceException(BAD_REQUEST, errorJson);
     }
 
     errorJson = configValidator.validateDataContent(formData);
     if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
+      throw new YWServiceException(BAD_REQUEST, errorJson);
     }
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
-    if (customerConfig == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
-    }
-    CustomerConfig config = CustomerConfig.get(configUUID);
+    CustomerConfig config = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     JsonNode data = Json.toJson(formData.get("data"));
     if (data != null && data.get("BACKUP_LOCATION") != null) {
       ((ObjectNode) data).put("BACKUP_LOCATION", config.data.get("BACKUP_LOCATION"));
     }
     JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
     config.data = Json.toJson(updatedData);
+    config.configName = formData.get("configName").textValue();
+    config.name = formData.get("name").textValue();
     config.update();
     auditService().createAuditEntry(ctx(), request());
-    return ApiResponse.success(config);
+    return YWResults.withData(config);
   }
 }

@@ -163,11 +163,11 @@ class LeaderElectionTest : public YBTest {
 
   RaftConfigPB config_;
   ProxyMap proxies_;
-  gscoped_ptr<PeerProxyFactory> proxy_factory_;
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<PeerProxyFactory> proxy_factory_;
+  std::unique_ptr<ThreadPool> pool_;
 
   CountDownLatch latch_;
-  gscoped_ptr<ElectionResult> result_;
+  std::unique_ptr<ElectionResult> result_;
 };
 
 void LeaderElectionTest::ElectionCallback(const ElectionResult& result) {

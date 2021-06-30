@@ -36,6 +36,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_error.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -517,14 +518,15 @@ Status ReplicaState::CancelPendingOperations() {
                           << " pending operations because of shutdown.";
     auto abort_status = STATUS(Aborted, "Operation aborted");
     int i = 0;
-    for (const auto& round : pending_operations_) {
+    for (size_t idx = pending_operations_.size(); idx > 0; ) {
+      --idx;
       // We cancel only operations whose applies have not yet been triggered.
       constexpr auto kLogAbortedOperationsNum = 10;
       if (++i <= kLogAbortedOperationsNum) {
         LOG_WITH_PREFIX(INFO) << "Aborting operation because of shutdown: "
-                              << round->replicate_msg()->ShortDebugString();
+                              << pending_operations_[idx]->replicate_msg()->ShortDebugString();
       }
-      NotifyReplicationFinishedUnlocked(round, abort_status, OpId::kUnknownTerm,
+      NotifyReplicationFinishedUnlocked(pending_operations_[idx], abort_status, OpId::kUnknownTerm,
                                         nullptr /* applied_op_ids */);
     }
   }
@@ -619,7 +621,9 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
     }
   }
 
-  RETURN_NOT_OK(context_->CheckOperationAllowed(round->id(), op_type));
+  if (mode == OperationMode::kLeader) {
+    RETURN_NOT_OK(context_->CheckOperationAllowed(round->id(), op_type));
+  }
 
   // Mark pending configuration.
   if (PREDICT_FALSE(op_type == CHANGE_CONFIG_OP)) {

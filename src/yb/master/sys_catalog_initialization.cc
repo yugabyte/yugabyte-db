@@ -61,7 +61,7 @@ TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 using yb::CountDownLatch;
 using yb::tserver::TabletSnapshotOpRequestPB;
 using yb::tserver::TabletSnapshotOpResponsePB;
-using yb::tablet::SnapshotOperationState;
+using yb::tablet::SnapshotOperation;
 using yb::pb_util::ReadPBContainerFromPath;
 
 namespace yb {
@@ -130,16 +130,14 @@ Status RestoreInitialSysCatalogSnapshot(
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotRocksDbSubDir));
 
   TabletSnapshotOpResponsePB tablet_snapshot_resp;
-  auto tx_state = std::make_unique<SnapshotOperationState>(
+  auto operation = std::make_unique<SnapshotOperation>(
       sys_catalog_tablet_peer->tablet(), &tablet_snapshot_req);
 
   CountDownLatch latch(1);
-  tx_state->set_completion_callback(
+  operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(&latch, &tablet_snapshot_resp));
 
-  sys_catalog_tablet_peer->Submit(
-      std::make_unique<tablet::SnapshotOperation>(std::move(tx_state)),
-      term);
+  sys_catalog_tablet_peer->Submit(std::move(operation), term);
 
   // Now restore tablet metadata.
   tserver::ExportedTabletMetadataChanges tablet_metadata_changes;

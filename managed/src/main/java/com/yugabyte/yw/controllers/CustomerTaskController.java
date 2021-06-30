@@ -2,40 +2,17 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.Map;
-import java.util.HashMap;
-
-import io.ebean.Ebean;
-import io.ebean.Query;
-import io.ebean.RawSql;
-import io.ebean.RawSqlBuilder;
-
-import com.yugabyte.yw.forms.SubTaskFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.CustomerTaskFormData;
-import com.yugabyte.yw.forms.SubTaskFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Query;
 import org.slf4j.Logger;
@@ -47,9 +24,8 @@ import java.util.*;
 
 public class CustomerTaskController extends AuthenticatedController {
 
-  @Inject Commissioner commissioner;
-
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private Commissioner commissioner;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
 
@@ -79,6 +55,29 @@ public class CustomerTaskController extends AuthenticatedController {
     return subTasks;
   }
 
+  private CustomerTaskFormData buildCustomerTaskFromData(
+      CustomerTask task, ObjectNode taskProgress) {
+    try {
+      CustomerTaskFormData taskData = new CustomerTaskFormData();
+      taskData.percentComplete = taskProgress.get("percent").asInt();
+      taskData.status = taskProgress.get("status").asText();
+      taskData.id = task.getTaskUUID();
+      taskData.title = task.getFriendlyDescription();
+      taskData.createTime = task.getCreateTime();
+      taskData.completionTime = task.getCompletionTime();
+      taskData.target = task.getTarget().name();
+      taskData.type = task.getType().getFriendlyName();
+      taskData.targetUUID = task.getTargetUUID();
+      return taskData;
+    } catch (RuntimeException e) {
+      LOG.error(
+          "Error fetching Task Progress for "
+              + task.getTaskUUID()
+              + ", TaskInfo with that taskUUID not found");
+      return null;
+    }
+  }
+
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
     List<CustomerTask> customerTaskList;
 
@@ -104,12 +103,11 @@ public class CustomerTaskController extends AuthenticatedController {
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
     for (CustomerTask task : customerTaskList) {
-      try {
-        CustomerTaskFormData taskData = new CustomerTaskFormData();
-
-        JsonNode taskProgress = commissioner.getStatus(task.getTaskUUID());
-        // If the task progress API returns error, we will log it and not add that task
-        // to the task list for UI rendering.
+      Optional<ObjectNode> optTaskProgress = commissioner.mayGetStatus(task.getTaskUUID());
+      // If the task progress API returns error, we will log it and not add that task
+      // to the task list for UI rendering.
+      if (optTaskProgress.isPresent()) {
+        ObjectNode taskProgress = optTaskProgress.get();
         if (taskProgress.has("error")) {
           LOG.error(
               "Error fetching Task Progress for "
@@ -117,97 +115,45 @@ public class CustomerTaskController extends AuthenticatedController {
                   + ", Error: "
                   + taskProgress.get("error"));
         } else {
-          taskData.percentComplete = taskProgress.get("percent").asInt();
-          taskData.status = taskProgress.get("status").asText();
-          taskData.id = task.getTaskUUID();
-          taskData.title = task.getFriendlyDescription();
-          taskData.createTime = task.getCreateTime();
-          taskData.completionTime = task.getCompletionTime();
-          taskData.target = task.getTarget().name();
-          taskData.type = task.getType().getFriendlyName();
-          taskData.targetUUID = task.getTargetUUID();
-
-          List<CustomerTaskFormData> taskList =
-              taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
-          taskList.add(taskData);
-          taskListMap.put(task.getTargetUUID(), taskList);
+          CustomerTaskFormData taskData = buildCustomerTaskFromData(task, taskProgress);
+          if (taskData != null) {
+            List<CustomerTaskFormData> taskList =
+                taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
+            taskList.add(taskData);
+            taskListMap.putIfAbsent(task.getTargetUUID(), taskList);
+          }
         }
-      } catch (RuntimeException e) {
-        LOG.error(
-            "Error fetching Task Progress for "
-                + task.getTaskUUID()
-                + ", TaskInfo with that taskUUID not found");
       }
     }
     return taskListMap;
   }
 
   public Result list(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-
-    if (customer == null) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("error", "Invalid Customer UUID: " + customerUUID);
-      return badRequest(responseJson);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
     Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
-    return ApiResponse.success(taskList);
+    return YWResults.withData(taskList);
   }
 
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList =
         fetchTasks(customerUUID, universe.universeUUID);
-    return ApiResponse.success(taskList);
+    return YWResults.withData(taskList);
   }
 
   public Result status(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
 
-    CustomerTask customerTask =
-        CustomerTask.find
-            .query()
-            .where()
-            .eq("customer_uuid", customer.uuid)
-            .eq("task_uuid", taskUUID)
-            .findOne();
-
-    if (customerTask == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
-    }
-
-    try {
-      ObjectNode responseJson = commissioner.getStatus(taskUUID);
-      return ok(responseJson);
-    } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, e.getMessage());
-    }
+    ObjectNode responseJson = commissioner.getStatusOrBadRequest(taskUUID);
+    return ok(responseJson);
   }
 
   public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-
-    CustomerTask customerTask =
-        CustomerTask.find
-            .query()
-            .where()
-            .eq("customer_uuid", customer.uuid)
-            .eq("task_uuid", taskUUID)
-            .findOne();
-    if (customerTask == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
 
     List<SubTaskFormData> failedSubTasks = fetchFailedSubTasks(taskUUID);
     ObjectNode responseJson = Json.newObject();
@@ -216,22 +162,11 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   public Result retryTask(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    CustomerTask.getOrBadRequest(customer.uuid, taskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
 
-    CustomerTask customerTask = CustomerTask.get(customer.uuid, taskUUID);
-
-    if (customerTask == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
-    }
-
-    TaskInfo taskInfo = TaskInfo.get(taskUUID);
-
-    if (taskInfo == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
-    } else if (taskInfo.getTaskType() != TaskType.CreateUniverse) {
+    if (taskInfo.getTaskType() != TaskType.CreateUniverse) {
       String errMsg =
           String.format(
               "Invalid task type: %s. Only 'Create Universe' task retries are supported.",
@@ -269,6 +204,6 @@ public class CustomerTaskController extends AuthenticatedController {
             + universe.name);
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
-    return ApiResponse.success(new UniverseResp(universe, newTaskUUID));
+    return YWResults.withData(new UniverseResp(universe, newTaskUUID));
   }
 }

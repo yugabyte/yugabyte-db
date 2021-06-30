@@ -326,6 +326,14 @@ message IndexInfoPB {
   // When backfill fails with error, the first message that it failed with.
   optional string backfill_error_message = 31;
   optional bool is_backfill_deferred = 32 [ default = false ]; // Should backfill be deferred.
+
+  message WherePredicateSpecPB {
+    repeated uint32 column_ids = 1; // Columns referenced in the where_expr
+    optional QLExpressionPB where_expr = 2;
+  }
+
+  // Where clause for partial index.
+  optional WherePredicateSpecPB where_predicate_spec = 33;
 }
 
 message HostPortPB {

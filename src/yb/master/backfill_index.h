@@ -132,6 +132,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const TableId& indexed_table_id() const { return indexed_table_->id(); }
 
+  Status UpdateRowsProcessedForIndexTable(const int number_rows_processed);
+
  private:
   void LaunchComputeSafeTimeForRead();
   void LaunchBackfill();
@@ -171,8 +173,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
   int64_t leader_term_;
+  std::atomic<uint64> number_rows_processed_;
 
-  std::string requested_index_names_;
   std::atomic_bool done_{false};
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
@@ -181,6 +183,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   mutable simple_spinlock mutex_;
   HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMin};
   const std::unordered_set<TableId> requested_index_ids_;
+  const std::string requested_index_names_;
+
   const scoped_refptr<NamespaceInfo> ns_info_;
 };
 
@@ -236,6 +240,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   void Done(
       const Status& status,
       const boost::optional<string>& backfilled_until,
+      const int number_rows_processed,
       const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return backfill_table_->master(); }
@@ -267,7 +272,8 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   const std::string GetNamespaceName() const { return backfill_table_->GetNamespaceName(); }
 
  private:
-  CHECKED_STATUS UpdateBackfilledUntil(const string& backfilled_until);
+  CHECKED_STATUS UpdateBackfilledUntil(
+      const string& backfilled_until, const int number_rows_processed);
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
@@ -289,7 +295,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
       HybridTime min_cutoff)
       : RetryingTSRpcTask(
             backfill_table->master(), backfill_table->threadpool(),
-            gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get()),
+            std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get()),
         backfill_table_(backfill_table),
         tablet_(tablet),
         min_cutoff_(min_cutoff) {
@@ -331,17 +337,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
 class BackfillChunk : public RetryingTSRpcTask {
  public:
   BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
-                const std::string& start_key)
-      : RetryingTSRpcTask(backfill_tablet->master(),
-                          backfill_tablet->threadpool(),
-                          gscoped_ptr<TSPicker>(new PickLeaderReplica(
-                              backfill_tablet->tablet())),
-                          backfill_tablet->tablet()->table().get()),
-        indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
-        backfill_tablet_(backfill_tablet),
-        start_key_(start_key) {
-    deadline_ = MonoTime::Max(); // Never time out.
-  }
+                const std::string& start_key);
 
   void Launch();
 
@@ -350,8 +346,8 @@ class BackfillChunk : public RetryingTSRpcTask {
   std::string type_name() const override { return "Backfill Index Table"; }
 
   std::string description() const override {
-    return yb::Format("Backfilling index_ids $0 for tablet $1 from key '$2'",
-                      indexes_being_backfilled_, tablet_id(),
+    return yb::Format("Backfilling indexes $0 for tablet $1 from key '$2'",
+                      requested_index_names_, tablet_id(),
                       b2a_hex(start_key_));
   }
 
@@ -381,6 +377,7 @@ class BackfillChunk : public RetryingTSRpcTask {
   tserver::BackfillIndexResponsePB resp_;
   std::shared_ptr<BackfillTablet> backfill_tablet_;
   std::string start_key_;
+  const std::string requested_index_names_;
 };
 
 }  // namespace master
