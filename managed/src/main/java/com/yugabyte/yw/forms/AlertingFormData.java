@@ -37,9 +37,8 @@ public class AlertingFormData {
     @Constraints.MinLength(5)
     @ApiModelProperty(
         value = "Alert email id",
-        example = "test@gmail.com",
-        allowableValues = "range[5, -infinity]",
-        dataType = "java.lang.String")
+        example = "test@gmail.com"
+       )
     public String alertingEmail;
 
     @ApiModelProperty(value = "Is alert has sent to YB")

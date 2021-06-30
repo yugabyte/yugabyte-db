@@ -33,9 +33,7 @@ public class AvailabilityZone extends Model {
   @Column(length = 25, nullable = false)
   @ApiModelProperty(
       value = "AZ code",
-      example = "AWS",
-      allowableValues = "range[-infinity, 25]",
-      dataType = "java.lang.String")
+      example = "AWS")
   public String code;
 
   @Column(length = 100, nullable = false)
@@ -43,9 +41,7 @@ public class AvailabilityZone extends Model {
   @ApiModelProperty(
       value = "AZ name",
       example = "south-east-1",
-      required = true,
-      allowableValues = "range[-infinity, 100]",
-      dataType = "java.lang.String")
+      required = true)
   public String name;
 
   @Constraints.Required
@@ -70,9 +66,7 @@ public class AvailabilityZone extends Model {
   @Column(length = 50)
   @ApiModelProperty(
       value = "AZ Subnet",
-      example = "subnet id",
-      allowableValues = "range[-infinity, 50]",
-      dataType = "java.lang.String")
+      example = "subnet id")
   public String subnet;
 
   @DbJson

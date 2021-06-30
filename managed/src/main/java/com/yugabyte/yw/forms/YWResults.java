@@ -88,7 +88,7 @@ public class YWResults {
   public static class YWSuccess extends OkResult {
 
     @ApiModelProperty(
-        value = "Is API succeeded",
+        value = "Has API success",
         accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final boolean success;
 

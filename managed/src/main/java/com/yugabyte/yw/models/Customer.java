@@ -63,9 +63,7 @@ public class Customer extends Model {
   @ApiModelProperty(
       value = "Customer code",
       example = "admin",
-      required = true,
-      allowableValues = "range[-infinity, 15]",
-      dataType = "java.lang.String")
+      required = true)
   public String code;
 
   @Column(length = 256, nullable = false)
@@ -74,9 +72,7 @@ public class Customer extends Model {
   @ApiModelProperty(
       value = "Name of customer",
       example = "sridhar",
-      required = true,
-      allowableValues = "range[3, 356]",
-      dataType = "java.lang.String")
+      required = true)
   public String name;
 
   @Column(nullable = false)

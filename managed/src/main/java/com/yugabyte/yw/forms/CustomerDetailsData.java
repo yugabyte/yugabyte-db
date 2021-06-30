@@ -21,17 +21,13 @@ public class CustomerDetailsData {
   @ApiModelProperty(
       value = "Customer code",
       example = "admin",
-      required = true,
-      allowableValues = "range[-infinity, 15]",
-      dataType = "java.lang.String")
+      required = true)
   public String code;
 
   @ApiModelProperty(
       value = "Name of customer",
       example = "sridhar",
-      required = true,
-      allowableValues = "range[3, 356]",
-      dataType = "java.lang.String")
+      required = true)
   public String name;
 
   @ApiModelProperty(
