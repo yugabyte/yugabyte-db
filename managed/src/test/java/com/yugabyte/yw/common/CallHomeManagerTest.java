@@ -69,7 +69,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     provider.put("name", defaultProvider.name);
     ArrayNode regions = Json.newArray();
     for (Region r : defaultProvider.regions) {
-      regions.add(r.details);
+      regions.add(Json.toJson(r.details));
     }
     provider.set("regions", regions);
     providers.add(provider);
