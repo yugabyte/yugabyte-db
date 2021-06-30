@@ -31,7 +31,7 @@ preflight_provision_check() {
     PORT=443
 
     for i in 1 2 3; do
-      timeout 3 bash -c "cat < /dev/null > /dev/tcp/$HOST/$PORT" --preserve-status && break
+      timeout 3 bash -c "cat < /dev/null > /dev/tcp/${HOST}/${PORT}" --preserve-status && break
     done
     update_result_json_with_rc "Internet Connection" "$?"
   fi
