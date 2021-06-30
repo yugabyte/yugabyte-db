@@ -31,6 +31,11 @@ const Status& StrandAbortedStatus() {
 
 Strand::Strand(ThreadPool* thread_pool) : thread_pool_(*thread_pool) {}
 
+Strand::~Strand() {
+  LOG_IF(DFATAL, running_) << Format(
+      "Strand $0 has not been fully shut down.", static_cast<void*>(this));
+}
+
 void Strand::Enqueue(StrandTask* task) {
   if (closing_.load(std::memory_order_acquire)) {
     task->Done(STATUS(Aborted, "Strand closing"));

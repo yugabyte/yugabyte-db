@@ -2254,6 +2254,7 @@ Status Tablet::BackfillIndexes(
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
+    int* number_of_rows_processed,
     std::string* backfilled_until,
     std::unordered_set<TableId>* failed_indexes) {
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
@@ -2328,7 +2329,6 @@ Status Tablet::BackfillIndexes(
   }
   const yb::CoarseDuration kMargin = grace_margin_ms * 1ms;
   constexpr auto kProgressInterval = 1000;
-  int num_rows_processed = 0;
   CoarseTimePoint last_flushed_at;
 
   if (!backfill_from.empty()) {
@@ -2338,6 +2338,7 @@ Status Tablet::BackfillIndexes(
   }
 
   string resume_backfill_from;
+  *number_of_rows_processed = 0;
   while (VERIFY_RESULT(iter->HasNext())) {
     if (index_requests.empty()) {
       *backfilled_until = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
@@ -2345,7 +2346,7 @@ Status Tablet::BackfillIndexes(
 
     if (CoarseMonoClock::Now() + kMargin > deadline ||
         (FLAGS_TEST_backfill_paging_size > 0 &&
-         num_rows_processed == FLAGS_TEST_backfill_paging_size)) {
+         *number_of_rows_processed == FLAGS_TEST_backfill_paging_size)) {
       resume_backfill_from = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
       break;
     }
@@ -2354,12 +2355,12 @@ Status Tablet::BackfillIndexes(
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
     RETURN_NOT_OK(UpdateIndexInBatches(
         row, indexes, read_time, &index_requests, &last_flushed_at, failed_indexes));
-    if (++num_rows_processed % kProgressInterval == 0) {
-      VLOG(1) << "Processed " << num_rows_processed << " rows";
+    if (++(*number_of_rows_processed) % kProgressInterval == 0) {
+      VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
     }
   }
 
-  VLOG(1) << "Processed " << num_rows_processed << " rows";
+  VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
   RETURN_NOT_OK(FlushIndexBatchIfRequired(
       &index_requests, /* forced */ true, read_time, &last_flushed_at, failed_indexes));
   *backfilled_until = resume_backfill_from;
@@ -3200,8 +3201,8 @@ size_t Tablet::TEST_CountRegularDBRecords() {
   return result;
 }
 
-template <class Functor, class Value>
-Value Tablet::GetRegularDbStat(const Functor& functor, const Value& default_value) const {
+template <class F>
+auto Tablet::GetRegularDbStat(const F& func, const decltype(func())& default_value) const {
   ScopedRWOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
@@ -3210,9 +3211,8 @@ Value Tablet::GetRegularDbStat(const Functor& functor, const Value& default_valu
   if (!scoped_operation.ok() || !regular_db_) {
     return default_value;
   }
-  return functor();
+  return func();
 }
-
 
 uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
   return GetRegularDbStat([this] {
@@ -3577,6 +3577,26 @@ Status Tablet::RestoreFinished(
   }
   RETURN_NOT_OK(metadata_->Flush());
 
+  SyncRestoringOperationFilter();
+
+  return Status::OK();
+}
+
+Status Tablet::CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time) {
+  auto restoration_hybrid_time = metadata_->CheckCompleteRestorations(restoration_complete_time);
+  if (restoration_hybrid_time != HybridTime::kMin
+      && transaction_participant_
+      && FLAGS_consistent_restore) {
+    transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
+  }
+
+  // We cannot do it in a single shot, because should update transaction participant before
+  // removing active transactions.
+  if (!metadata_->CleanupRestorations(restoration_complete_time)) {
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(metadata_->Flush());
   SyncRestoringOperationFilter();
 
   return Status::OK();

@@ -18,7 +18,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
@@ -38,8 +37,6 @@ import java.util.UUID;
 
 @Slf4j
 public class AlertController extends AuthenticatedController {
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject private AlertDefinitionService alertDefinitionService;
 
@@ -121,23 +118,23 @@ public class AlertController extends AuthenticatedController {
 
     AlertDefinition definition = alertDefinitionService.getOrBadRequest(alertDefinitionUUID);
 
-    Form<AlertDefinitionFormData> formData =
-        formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class);
-
-    AlertDefinitionFormData data = formData.get();
-
-    AlertDefinition updatedDefinition;
+    AlertDefinitionFormData data =
+        formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class).get();
 
     // For now only templates related to universe are supported.
     Universe universe = Universe.getOrBadRequest(definition.getUniverseUUID());
     definition.setQuery(data.template.buildTemplate(universe.getUniverseDetails().nodePrefix));
-
     definition.setQueryThreshold(data.value);
     definition.setActive(data.active);
-    updatedDefinition = alertDefinitionService.update(definition);
+    AlertDefinition updatedDefinition = alertDefinitionService.update(definition);
     return ok(Json.toJson(updatedDefinition));
   }
 
+  /**
+   * This function is needed to properly deserialize dynamic type of the params field.
+   *
+   * @return
+   */
   private AlertReceiverFormData getFormData() {
     try {
       ObjectMapper mapper = new ObjectMapper();
@@ -152,8 +149,9 @@ public class AlertController extends AuthenticatedController {
 
     AlertReceiverFormData data = getFormData();
     AlertReceiver receiver = new AlertReceiver();
-    receiver.setCustomerUuid(customerUUID);
+    receiver.setCustomerUUID(customerUUID);
     receiver.setUuid(UUID.randomUUID());
+    receiver.setName(data.name);
     receiver.setParams(data.params);
 
     try {
@@ -178,16 +176,17 @@ public class AlertController extends AuthenticatedController {
     AlertReceiver receiver = AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID);
 
     AlertReceiverFormData data = getFormData();
+    receiver.setName(data.name);
     receiver.setParams(data.params);
 
     try {
       AlertUtils.validate(receiver);
-      receiver.save();
     } catch (YWValidateException e) {
       throw new YWServiceException(
           BAD_REQUEST, "Unable to update alert receiver: " + e.getMessage());
     }
 
+    receiver.save();
     auditService().createAuditEntryWithReqBody(ctx());
     return ok(Json.toJson(receiver));
   }
@@ -195,11 +194,11 @@ public class AlertController extends AuthenticatedController {
   public Result deleteAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertReceiver receiver = AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID);
-    log.info("Deleting alert receiver {} for customer {}", receiver.getUuid(), customerUUID);
+    log.info("Deleting alert receiver {} for customer {}", alertReceiverUUID, customerUUID);
 
     if (!receiver.delete()) {
       throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to delete alert receiver: " + receiver.getUuid());
+          INTERNAL_SERVER_ERROR, "Unable to delete alert receiver: " + alertReceiverUUID);
     }
 
     auditService().createAuditEntry(ctx(), request());
@@ -214,33 +213,46 @@ public class AlertController extends AuthenticatedController {
   public Result createAlertRoute(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertRouteFormData data = formFactory.getFormDataOrBadRequest(AlertRouteFormData.class).get();
+    List<AlertReceiver> receivers = AlertReceiver.getOrBadRequest(customerUUID, data.receivers);
     try {
-      AlertRoute route = AlertRoute.create(customerUUID, data.definitionUUID, data.receiverUUID);
+      AlertRoute route = AlertRoute.create(customerUUID, data.name, receivers);
       auditService().createAuditEntryWithReqBody(ctx());
       return ok(Json.toJson(route));
     } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, "Unable to create alert route.");
+      throw new YWServiceException(BAD_REQUEST, "Unable to create alert route: " + e.getMessage());
     }
   }
 
   public Result getAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
     Customer.getOrBadRequest(customerUUID);
-    AlertRoute route = AlertRoute.getOrBadRequest(alertRouteUUID);
-    AlertDefinition definition = alertDefinitionService.getOrBadRequest(route.getDefinitionUUID());
-    if ((definition == null) || !customerUUID.equals(definition.getCustomerUUID())) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Route UUID: " + route.getUuid());
+    return ok(Json.toJson(AlertRoute.getOrBadRequest(customerUUID, alertRouteUUID)));
+  }
+
+  public Result updateAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    AlertRouteFormData data = formFactory.getFormDataOrBadRequest(AlertRouteFormData.class).get();
+    AlertRoute route = AlertRoute.getOrBadRequest(customerUUID, alertRouteUUID);
+    List<AlertReceiver> receivers = AlertReceiver.getOrBadRequest(customerUUID, data.receivers);
+    try {
+      route.setName(data.name);
+      route.setReceiversList(receivers);
+      route.save();
+
+      auditService().createAuditEntryWithReqBody(ctx());
+      return ok(Json.toJson(route));
+    } catch (Exception e) {
+      throw new YWServiceException(BAD_REQUEST, "Unable to update alert route: " + e.getMessage());
     }
-    return ok(Json.toJson(route));
   }
 
   public Result deleteAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
     Customer.getOrBadRequest(customerUUID);
-    AlertRoute route = AlertRoute.getOrBadRequest(alertRouteUUID);
-    log.info("Deleting alert route {} for customer {}", route.getUuid(), customerUUID);
+    AlertRoute route = AlertRoute.getOrBadRequest(customerUUID, alertRouteUUID);
+    log.info("Deleting alert route {} for customer {}", alertRouteUUID, customerUUID);
 
     if (!route.delete()) {
       throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to delete alert route: " + route.getUuid());
+          INTERNAL_SERVER_ERROR, "Unable to delete alert route: " + alertRouteUUID);
     }
 
     auditService().createAuditEntry(ctx(), request());

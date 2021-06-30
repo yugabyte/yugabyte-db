@@ -7,10 +7,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.RegionFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -20,19 +20,16 @@ import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @Api(value = "Region", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RegionController extends AuthenticatedController {
-  @Inject FormFactory formFactory;
-
   @Inject ConfigHelper configHelper;
 
   @Inject NetworkManager networkManager;
@@ -53,15 +50,10 @@ public class RegionController extends AuthenticatedController {
           message = "If there was a server or database issue when listing the regions",
           response = YWResults.YWError.class))
   public Result list(UUID customerUUID, UUID providerUUID) {
-    List<Region> regionList = null;
+    List<Region> regionList;
 
-    try {
-      int minAZCountNeeded = 1;
-      regionList = Region.fetchValidRegions(customerUUID, providerUUID, minAZCountNeeded);
-    } catch (Exception e) {
-      LOG.error(e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to list regions");
-    }
+    int minAZCountNeeded = 1;
+    regionList = Region.fetchValidRegions(customerUUID, providerUUID, minAZCountNeeded);
     return YWResults.withData(regionList);
   }
 
@@ -100,88 +92,63 @@ public class RegionController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.RegionFormData",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID) {
-    Form<RegionFormData> formData = formFactory.form(RegionFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    Form<RegionFormData> formData = formFactory.getFormDataOrBadRequest(RegionFormData.class);
     RegionFormData form = formData.get();
     String regionCode = form.code;
 
-    Provider provider = Provider.get(customerUUID, providerUUID);
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID:" + providerUUID);
-    }
-
     if (Region.getByCode(provider, regionCode) != null) {
-      return ApiResponse.error(BAD_REQUEST, "Region code already exists: " + regionCode);
+      throw new YWServiceException(BAD_REQUEST, "Region code already exists: " + regionCode);
     }
 
-    try {
-      Map<String, Object> regionMetadata =
-          configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
+    Map<String, Object> regionMetadata =
+        configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
 
-      Region region;
-      // If we have region metadata we create the region with that metadata or else we assume
-      // some metadata is passed in (esp for onprem case).
-      if (regionMetadata.containsKey(regionCode)) {
-        JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
-        region = Region.createWithMetadata(provider, regionCode, metaData);
+    Region region;
+    // If we have region metadata we create the region with that metadata or else we assume
+    // some metadata is passed in (esp for onprem case).
+    if (regionMetadata.containsKey(regionCode)) {
+      JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
+      region = Region.createWithMetadata(provider, regionCode, metaData);
 
-        if (provider.code.equals("gcp")) {
-          JsonNode zoneInfo =
-              cloudQueryHelper.getZones(
-                  region.uuid, provider.getConfig().get("CUSTOM_GCE_NETWORK"));
-          if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
-            region.delete();
-            String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, errMsg);
-          }
-          // TODO(bogdan): change this and add test...
-          List<String> zones = Json.fromJson(zoneInfo.get(regionCode).get("zones"), List.class);
-          List<String> subnetworks =
-              Json.fromJson(zoneInfo.get(regionCode).get("subnetworks"), List.class);
-          if (subnetworks.size() != 1) {
-            region.delete();
-            throw new RuntimeException(
-                "Region Bootstrap failed. Invalid number of subnets for region " + regionCode);
-          }
-          String subnet = subnetworks.get(0);
-          region.zones = new HashSet<>();
-          zones.forEach(
-              zone -> {
-                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
-              });
-        } else {
-          // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
-          // TODO(bogdan): is this even used???
-          /*
-          JsonNode vpcInfo = networkManager.bootstrap(
-              region.uuid, null, form.hostVpcId, form.destVpcId, form.hostVpcRegion);
-          */
-          JsonNode vpcInfo = networkManager.bootstrap(region.uuid, null, null /* customPayload */);
-          if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
-            region.delete();
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
-          }
-          Map<String, String> zoneSubnets =
-              Json.fromJson(vpcInfo.get(regionCode).get("zones"), Map.class);
-          region.zones = new HashSet<>();
-          zoneSubnets.forEach(
-              (zone, subnet) -> {
-                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
-              });
+      if (provider.code.equals("gcp")) {
+        JsonNode zoneInfo = getZoneInfoOrFail(provider, region);
+        // TODO(bogdan): change this and add test...
+        List<String> zones = Json.fromJson(zoneInfo.get(regionCode).get("zones"), List.class);
+        List<String> subnetworks =
+            Json.fromJson(zoneInfo.get(regionCode).get("subnetworks"), List.class);
+        if (subnetworks.size() != 1) {
+          region.delete(); // don't really need this anymore due to @Transactional
+          throw new YWServiceException(
+              INTERNAL_SERVER_ERROR,
+              "Region Bootstrap failed. Invalid number of subnets for region " + regionCode);
         }
+        String subnet = subnetworks.get(0);
+        region.zones = new ArrayList<>();
+        zones.forEach(
+            zone -> region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
       } else {
-        region =
-            Region.create(
-                provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
+        // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
+        // TODO(bogdan): is this even used???
+        /*
+        JsonNode vpcInfo = networkManager.bootstrap(
+            region.uuid, null, form.hostVpcId, form.destVpcId, form.hostVpcRegion);
+        */
+        JsonNode vpcInfo = getVpcInfoOrFail(region);
+        Map<String, String> zoneSubnets =
+            Json.fromJson(vpcInfo.get(regionCode).get("zones"), Map.class);
+        region.zones = new ArrayList<>();
+        zoneSubnets.forEach(
+            (zone, subnet) ->
+                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
       }
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return YWResults.withData(region);
-    } catch (Exception e) {
-      LOG.error(e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create region: " + regionCode);
+    } else {
+      region =
+          Region.create(
+              provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
     }
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return YWResults.withData(region);
   }
 
   /**
@@ -194,21 +161,34 @@ public class RegionController extends AuthenticatedController {
    */
   @ApiOperation(value = "delete", response = Object.class)
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    Region region = Region.get(customerUUID, providerUUID, regionUUID);
-
-    if (region == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider/Region UUID:" + regionUUID);
-    }
-
-    try {
-      region.disableRegionAndZones();
-    } catch (Exception e) {
-      return ApiResponse.error(
-          INTERNAL_SERVER_ERROR, "Unable to delete Region UUID: " + regionUUID);
-    }
-
-    ObjectNode responseJson = Json.newObject();
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    region.disableRegionAndZones();
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
+  }
+
+  // TODO: Use @Transactionally on controller method to get rid of region.delete()
+  // TODO: Move this to CloudQueryHelper after getting rid of region.delete()
+  private JsonNode getZoneInfoOrFail(Provider provider, Region region) {
+    JsonNode zoneInfo =
+        cloudQueryHelper.getZones(region.uuid, provider.getConfig().get("CUSTOM_GCE_NETWORK"));
+    if (zoneInfo.has("error") || !zoneInfo.has(region.code)) {
+      region.delete();
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Region Bootstrap failed. Unable to fetch zones for " + region.code);
+    }
+    return zoneInfo;
+  }
+
+  // TODO: Use @Transactionally on controller method to get rid of region.delete()
+  // TODO: Move this to NetworkManager after getting rid of region.delete()
+  private JsonNode getVpcInfoOrFail(Region region) {
+    JsonNode vpcInfo = networkManager.bootstrap(region.uuid, null, null /* customPayload */);
+    if (vpcInfo.has("error") || !vpcInfo.has(region.code)) {
+      region.delete();
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
+    }
+    return vpcInfo;
   }
 }

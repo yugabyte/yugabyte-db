@@ -1463,6 +1463,16 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_tablets_for_split) = false;
   }
+
+ protected:
+  CHECKED_STATUS FlushAllTabletReplicas(const TabletId& tablet_id) {
+    for (const auto& active_peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
+      if (active_peer->tablet_id() == tablet_id) {
+        RETURN_NOT_OK(active_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+      }
+    }
+    return Status::OK();
+  }
 };
 
 TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplitting) {
@@ -1490,9 +1500,11 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplitting) {
       break;
     }
     ASSERT_EQ(peers.size(), 1);
-    auto active_tablet_leader = peers.at(0)->shared_tablet();
-    ASSERT_OK(active_tablet_leader->Flush(tablet::FlushMode::kSync));
-    auto current_size = active_tablet_leader->GetCurrentVersionSstFilesSize();
+    const auto leader_peer = peers.at(0);
+    // Flush all replicas of this shard to ensure that even if the leader changed we will be in a
+    // state where yb-master should initiate a split.
+    ASSERT_OK(FlushAllTabletReplicas(leader_peer->tablet_id()));
+    auto current_size = leader_peer->shared_tablet()->GetCurrentVersionSstFilesSize();
     if (current_size > FLAGS_tablet_split_low_phase_size_threshold_bytes) {
       ASSERT_NO_FATALS(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
       break;
@@ -1512,7 +1524,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplitting) {
 }
 
 TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMovesToNextPhase) {
-  constexpr int kNumRowsPerBatch = 5000;
+  constexpr int kNumRowsPerBatch = 1000;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 50_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 100_KB;
@@ -1520,27 +1532,34 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMovesToNextPhase) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
 
-  auto this_phase_tablet_lower_limit = FLAGS_tablet_split_low_phase_shard_count_per_node
+  const auto this_phase_tablet_lower_limit = FLAGS_tablet_split_low_phase_shard_count_per_node
       * cluster_->num_tablet_servers();
-  auto this_phase_tablet_upper_limit = FLAGS_tablet_split_high_phase_shard_count_per_node
+  const auto this_phase_tablet_upper_limit = FLAGS_tablet_split_high_phase_shard_count_per_node
       * cluster_->num_tablet_servers();
 
-  int num_tablets = this_phase_tablet_lower_limit;
+  auto num_tablets = this_phase_tablet_lower_limit;
   SetNumTablets(num_tablets);
   CreateTable();
 
-  int key = 1;
+  auto key = 1;
   while (num_tablets < this_phase_tablet_upper_limit) {
     ASSERT_OK(WriteRows(kNumRowsPerBatch, key));
     key += kNumRowsPerBatch;
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
     num_tablets = peers.size();
     for (const auto& peer : peers) {
-      ASSERT_OK(peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+      // Flush other replicas of this shard to ensure that even if the leader changed we will be in
+      // a state where yb-master should initiate a split.
+      ASSERT_OK(FlushAllTabletReplicas(peer->tablet_id()));
       auto size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
       if (size > FLAGS_tablet_split_high_phase_size_threshold_bytes) {
-        ASSERT_NO_FATALS(WaitForTabletSplitCompletion(num_tablets + 1));
         num_tablets++;
+        LOG(INFO) << "Waiting for tablet number " << num_tablets
+            << " with id " << peer->tablet_id()
+            << " and size " << size
+            << " bytes and leader status " << peer->consensus()->GetLeaderStatus()
+            << " to split.";
+        ASSERT_NO_FATALS(WaitForTabletSplitCompletion(num_tablets));
       }
     }
   }

@@ -80,6 +80,7 @@ METRIC_DECLARE_histogram(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt);
 METRIC_DECLARE_histogram(handler_latency_yb_cqlserver_SQLProcessor_UseStmt);
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
+DECLARE_int32(TEST_slowdown_backfill_job_deletion_ms);
 
 namespace yb {
 
@@ -200,6 +201,7 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
   std::vector<std::string> ExtraMasterFlags() override {
     return {
         "--TEST_slowdown_backfill_alter_table_rpcs_ms=200",
+        "--TEST_slowdown_backfill_job_deletion_ms=1000",
         "--disable_index_backfill=false",
         "--enable_load_balancing=false",
         "--index_backfill_rpc_max_delay_ms=1000",
@@ -1033,6 +1035,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIndexDeferred, CppCassandraDriverTes
   // and go to INDEX_PERM_READ_WRITE_AND_DELETE.
   auto s = session_.ExecuteQuery("create index test_table_index_by_v_2 on test_table(v);");
   const YBTableName index_table_name2(YQL_DATABASE_CQL, "test", "test_table_index_by_v_2");
+
   perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
   ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
@@ -1199,6 +1202,21 @@ void TestBackfillIndexTable(
   auto s = create_index_future.Wait();
   WARN_NOT_OK(s, "Create index failed.");
 
+  const int kLowerBound = kExpectedCount - kBatchSize * num_failures;
+  const int kUpperBound = kExpectedCount + kBatchSize * num_failures;
+
+  // Verified implicitly here that that the backfill job has met the expected total number of
+  // records
+  ASSERT_OK(WaitForBackfillSatisfyCondition(
+      test->cluster_.get()->master_proxy(), table_name,
+      [kLowerBound](Result<master::BackfillJobPB> backfill_job) {
+        if (backfill_job) {
+          const int number_rows_processed = backfill_job->num_rows_processed();
+          return number_rows_processed >= kLowerBound;
+        }
+        return false;
+      }));
+
   IndexPermissions perm = ASSERT_RESULT(test->client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
   ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
@@ -1206,10 +1224,10 @@ void TestBackfillIndexTable(
   auto main_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "key_value"));
   auto index_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "index_by_value"));
 
-  EXPECT_GE(main_table_size, kExpectedCount - kBatchSize * num_failures);
-  EXPECT_LE(main_table_size, kExpectedCount + kBatchSize * num_failures);
-  EXPECT_GE(index_table_size, kExpectedCount - kBatchSize * num_failures);
-  EXPECT_LE(index_table_size, kExpectedCount + kBatchSize * num_failures);
+  EXPECT_GE(main_table_size, kLowerBound);
+  EXPECT_LE(main_table_size, kUpperBound);
+  EXPECT_GE(index_table_size, kLowerBound);
+  EXPECT_LE(index_table_size, kUpperBound);
   if (!user_enforced || num_failures == 0) {
     EXPECT_EQ(main_table_size, index_table_size);
   }

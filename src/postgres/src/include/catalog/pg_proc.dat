@@ -4062,6 +4062,12 @@
 { oid => '2199', descr => 'server\'s port number for this connection',
   proname => 'inet_server_port', proisstrict => 'f', provolatile => 's',
   prorettype => 'int4', proargtypes => '', prosrc => 'inet_server_port' },
+{ oid => '8019', descr => 'list available servers for clients to connect',
+  proname => 'yb_servers', provolatile => 'v', prorettype => 'record',
+  proargtypes => '', proallargtypes => '{text,int8,int8,text,text,text,text,text}',
+  proargmodes => '{o,o,o,o,o,o,o,o}',proparallel => 's',
+  proargnames => '{host,port,num_connections,node_type,cloud,region,zone,public_ip}',
+  prosrc => 'yb_servers' },
 
 { oid => '2627',
   proname => 'inetnot', prorettype => 'inet', proargtypes => 'inet',

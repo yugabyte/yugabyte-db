@@ -15812,7 +15812,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				else
 					appendPQExpBufferStr(q, ",\n    ");
 
-				appendPQExpBuffer(q, "PRIMARY KEY(");
+				appendPQExpBuffer(q, "CONSTRAINT %s PRIMARY KEY(",
+								  fmtId(index->dobj.name));
 
 				bool doing_hash = false;
 				for (int n = 0; n < index->indnattrs; n++)
