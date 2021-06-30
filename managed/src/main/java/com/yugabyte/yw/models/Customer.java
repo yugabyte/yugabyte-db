@@ -60,19 +60,13 @@ public class Customer extends Model {
 
   @Column(length = 15, nullable = false)
   @Constraints.Required
-  @ApiModelProperty(
-      value = "Customer code",
-      example = "admin",
-      required = true)
+  @ApiModelProperty(value = "Customer code", example = "admin", required = true)
   public String code;
 
   @Column(length = 256, nullable = false)
   @Constraints.Required
   @Constraints.MinLength(3)
-  @ApiModelProperty(
-      value = "Name of customer",
-      example = "sridhar",
-      required = true)
+  @ApiModelProperty(value = "Name of customer", example = "sridhar", required = true)
   public String name;
 
   @Column(nullable = false)

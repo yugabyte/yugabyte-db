@@ -134,10 +134,7 @@ public class CustomerTaskController extends AuthenticatedController {
     return taskListMap;
   }
 
-  @ApiOperation(
-      value = "List task",
-      response = CustomerTaskFormData.class,
-      responseContainer = "Map")
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -145,10 +142,7 @@ public class CustomerTaskController extends AuthenticatedController {
     return YWResults.withData(taskList);
   }
 
-  @ApiOperation(
-      value = "Universe task",
-      response = CustomerTaskFormData.class,
-      responseContainer = "Map")
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
     Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);

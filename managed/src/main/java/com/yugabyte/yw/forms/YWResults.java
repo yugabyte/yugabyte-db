@@ -87,9 +87,7 @@ public class YWResults {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class YWSuccess extends OkResult {
 
-    @ApiModelProperty(
-        value = "Has API success",
-        accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+    @ApiModelProperty(value = "Has API success", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final boolean success;
 
     @ApiModelProperty(

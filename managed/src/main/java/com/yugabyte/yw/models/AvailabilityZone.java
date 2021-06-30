@@ -31,17 +31,12 @@ public class AvailabilityZone extends Model {
   public UUID uuid;
 
   @Column(length = 25, nullable = false)
-  @ApiModelProperty(
-      value = "AZ code",
-      example = "AWS")
+  @ApiModelProperty(value = "AZ code", example = "AWS")
   public String code;
 
   @Column(length = 100, nullable = false)
   @Constraints.Required
-  @ApiModelProperty(
-      value = "AZ name",
-      example = "south-east-1",
-      required = true)
+  @ApiModelProperty(value = "AZ name", example = "south-east-1", required = true)
   public String name;
 
   @Constraints.Required
@@ -64,9 +59,7 @@ public class AvailabilityZone extends Model {
   }
 
   @Column(length = 50)
-  @ApiModelProperty(
-      value = "AZ Subnet",
-      example = "subnet id")
+  @ApiModelProperty(value = "AZ Subnet", example = "subnet id")
   public String subnet;
 
   @DbJson

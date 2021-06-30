@@ -18,16 +18,10 @@ public class CustomerDetailsData {
   @ApiModelProperty(value = "User uuid", accessMode = READ_ONLY)
   public String uuid;
 
-  @ApiModelProperty(
-      value = "Customer code",
-      example = "admin",
-      required = true)
+  @ApiModelProperty(value = "Customer code", example = "admin", required = true)
   public String code;
 
-  @ApiModelProperty(
-      value = "Name of customer",
-      example = "sridhar",
-      required = true)
+  @ApiModelProperty(value = "Name of customer", example = "sridhar", required = true)
   public String name;
 
   @ApiModelProperty(

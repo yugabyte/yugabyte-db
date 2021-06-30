@@ -246,7 +246,10 @@ public class CustomerController extends AuthenticatedController {
     return ok(customer.getFeatures());
   }
 
-  @ApiOperation(value = "Add metrics of customer by UUID", response = HashMap.class)
+  @ApiOperation(
+      value = "Add metrics of customer by UUID",
+      response = Object.class,
+      responseContainer = "Map")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Metrics",
