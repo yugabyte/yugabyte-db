@@ -43,7 +43,7 @@ The types of row locks currently supported are:
 
 The following example uses the `FOR UPDATE` row lock. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked. 
 
-To try out this scenario, first create an example table with sample data as shown below.
+To try out this scenario, first create an example table with sample data, as follows:
 
 ```sql
 yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);
@@ -52,7 +52,7 @@ yugabyte=# INSERT INTO t VALUES ('k1', 'v1');
 
 Next, connect to the cluster using two independent `ysqlsh` instances. You can connect both session `ysqlsh` instances to the same server, or to different servers.
 
-Begin a transaction in the first session, and perform a `SELECT FOR UPDATE` on the row in the table `t`. This will lock the row for an update as a part of a transaction that has a very high priority.
+Begin a transaction in the first session, and perform a `SELECT FOR UPDATE` on the row in the table `t`. This locks the row for an update as a part of a transaction that has a very high priority.
 
 ```sql
 yugabyte=# BEGIN;

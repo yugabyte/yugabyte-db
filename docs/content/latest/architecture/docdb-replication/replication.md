@@ -75,7 +75,7 @@ As a part of the Raft replication, each tablet-peer first elects a tablet-leader
 
 ### Tolerating a zone outage
 
-As soon as a zone outage occurs, YugabyteDB assumes that all nodes in that zone become unavailable simultaneously. This results one-third of the tablets (which have their tablet-leaders in the zone that just failed) not being able to serve any requests. The other two-thirds of the tablets are not affected. The tablet-peers in the zone that failed are shown below.
+As soon as a zone outage occurs, YugabyteDB assumes that all nodes in that zone become unavailable simultaneously. This results one-third of the tablets (which have their tablet-leaders in the zone that just failed) not being able to serve any requests. The other two-thirds of the tablets are not affected. The following illustration shows the tablet-peers in the zone that failed:
 
 <img src="/images/architecture/replication/tablet-leaders-vs-followers-zone-outage.png" style="max-width:750px;"/>
 
