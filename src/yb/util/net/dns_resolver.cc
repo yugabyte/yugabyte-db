@@ -73,6 +73,8 @@ Result<IpAddress> PickResolvedAddress(
   if (addresses.empty()) {
     return STATUS_FORMAT(NetworkError, "No endpoints resolved for: $0", host);
   }
+  std::sort(addresses.begin(), addresses.end());
+  addresses.erase(std::unique(addresses.begin(), addresses.end()), addresses.end());
   if (addresses.size() > 1) {
     LOG(WARNING) << "Peer address '" << host << "' "
                  << "resolves to " << yb::ToString(addresses) << " different addresses. Using "
