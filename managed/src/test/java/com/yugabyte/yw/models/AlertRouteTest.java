@@ -4,7 +4,6 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -28,11 +27,7 @@ public class AlertRouteTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    receiver =
-        AlertReceiver.create(
-            defaultCustomer.getUuid(),
-            "Test AlertReceiver",
-            AlertUtils.createParamsInstance(AlertReceiver.TargetType.Slack));
+    receiver = ModelFactory.createEmailReceiver(defaultCustomer, "Test AlertReceiver");
   }
 
   @Test
@@ -52,7 +47,9 @@ public class AlertRouteTest extends FakeDBApplication {
     for (int i = 0; i < 10; i++) {
       routes.add(
           AlertRoute.create(
-              defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver)));
+              defaultCustomer.getUuid(),
+              ALERT_ROUTE_NAME + " " + i,
+              Collections.singletonList(receiver)));
     }
 
     List<AlertRoute> routes2 = AlertRoute.listByCustomer(defaultCustomer.uuid);
@@ -66,6 +63,51 @@ public class AlertRouteTest extends FakeDBApplication {
   public void testCreateWithUnsavedReceiverFails() {
     AlertReceiver receiver = new AlertReceiver();
     receiver.setUuid(UUID.randomUUID());
+    try {
+      AlertRoute.create(
+          defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
+      fail("Missed expected exception.");
+    } catch (Exception e) {
+    }
+  }
+
+  @Test
+  public void testCreateWithoutReceiversFails() {
+    try {
+      AlertRoute.create(defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.emptyList());
+      fail("Missed expected exception.");
+    } catch (Exception e) {
+    }
+
+    try {
+      AlertRoute.create(defaultCustomer.getUuid(), ALERT_ROUTE_NAME, null);
+      fail("Missed expected exception.");
+    } catch (Exception e) {
+    }
+  }
+
+  @Test
+  public void testCreateNonDefaultRoute() {
+    AlertRoute.create(
+        defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
+    assertNull(AlertRoute.getDefaultRoute(defaultCustomer.uuid));
+  }
+
+  @Test
+  public void testCreateDefaultRoute() {
+    AlertRoute firstDefault =
+        AlertRoute.create(
+            defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver), true);
+    assertEquals(firstDefault, AlertRoute.getDefaultRoute(defaultCustomer.uuid));
+  }
+
+  @Test
+  public void testNameUniquenessCheck() {
+    Customer secondCustomer = ModelFactory.testCustomer();
+    AlertRoute.create(
+        defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
+    AlertRoute.create(
+        secondCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
     try {
       AlertRoute.create(
           defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));

@@ -202,6 +202,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
     assertAuditEntry(0, c1.uuid);
+    assertNotNull(AlertRoute.getDefaultRoute(c1.uuid));
   }
 
   @Test

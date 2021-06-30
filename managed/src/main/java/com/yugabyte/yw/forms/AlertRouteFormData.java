@@ -10,5 +10,7 @@ import play.data.validation.Constraints;
 public class AlertRouteFormData {
   @Constraints.Required() public String name;
 
+  @Constraints.Required() public Boolean defaultRoute;
+
   @Constraints.Required() public List<UUID> receivers;
 }

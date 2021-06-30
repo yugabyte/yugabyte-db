@@ -16,11 +16,13 @@ import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.KnownAlertTypes;
+
 import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.*;
+import org.apache.commons.collections.CollectionUtils;
 
 @Singleton
 @Slf4j
@@ -42,8 +44,6 @@ public class AlertManager {
     this.alertDefinitionGroupService = alertDefinitionGroupService;
     this.receiversManager = receiversManager;
   }
-
-  public static final UUID DEFAULT_ALERT_RECEIVER_UUID = new UUID(0, 0);
 
   /**
    * A method to run a state transition for a given alert
@@ -115,9 +115,36 @@ public class AlertManager {
       if (!alert.isSendEmail()) {
         return;
       }
-      // Creating default receiver with email only, w/o saving it to DB.
-      log.debug("For alert {} no routes/receivers found, using default email.", alert.getUuid());
-      receivers.add(getDefaultReceiver(alert.getCustomerUUID()));
+
+      // Getting receivers from the default route.
+      AlertRoute defaultRoute = AlertRoute.getDefaultRoute(alert.getCustomerUUID());
+      if (defaultRoute == null) {
+        log.warn(
+            "Unable to notify about alert {}, there is no default route specified.",
+            alert.getUuid());
+        createOrUpdateAlertForCustomer(
+            customer,
+            "Unable to notify about alert(s), there is no default route specified.",
+            KnownAlertTypes.Error);
+        return;
+      }
+      resolveAlert(customer, customer.getUuid());
+
+      List<AlertReceiver> defaultReceivers = defaultRoute.getReceiversList();
+      if ((defaultReceivers.size() == 1)
+          && ("Email".equals(AlertUtils.getJsonTypeName(defaultReceivers.get(0).getParams())))
+          && ((AlertReceiverEmailParams) defaultReceivers.get(0).getParams()).defaultRecipients
+          && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
+        createOrUpdateAlertForCustomer(
+            customer,
+            "Unable to notify about alert(s) using default route, "
+                + "there are no recipients configured in the customer's profile.",
+            KnownAlertTypes.Warning);
+        return;
+      }
+
+      log.debug("For alert {} no routes/receivers found, using default route.", alert.getUuid());
+      receivers.addAll(defaultReceivers);
     }
 
     for (AlertReceiver receiver : receivers) {
@@ -128,6 +155,8 @@ public class AlertManager {
           log.warn("Receiver {} skipped: {}", receiver.getUuid(), e.getMessage(), e);
         }
         report.failReceiver(receiver.getUuid());
+        createOrUpdateAlertForReceiver(
+            customer, receiver, "Misconfigured alert receiver: " + e, KnownAlertTypes.Error);
         continue;
       }
 
@@ -136,17 +165,14 @@ public class AlertManager {
             receiversManager.get(AlertUtils.getJsonTypeName(receiver.getParams()));
         handler.sendNotification(customer, alert, receiver);
         atLeastOneSucceeded = true;
-        resolveAlert(customer, receiver);
-
-        if (!receiver.getParams().continueSend) {
-          break;
-        }
+        resolveAlert(customer, receiver.getUuid());
       } catch (Exception e) {
         if (report.failuresByReceiver(receiver.getUuid()) == 0) {
           log.error(e.getMessage());
         }
         report.failReceiver(receiver.getUuid());
-        createOrUpdateAlert(customer, receiver, "Error sending notification: " + e);
+        createOrUpdateAlertForReceiver(
+            customer, receiver, "Error sending notification: " + e, KnownAlertTypes.Error);
       }
     }
     if (!atLeastOneSucceeded) {
@@ -154,23 +180,37 @@ public class AlertManager {
     }
   }
 
-  private AlertReceiver getDefaultReceiver(UUID customerUUID) {
-    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
-    params.recipients = emailHelper.getDestinations(customerUUID);
-    params.smtpData = emailHelper.getSmtpData(customerUUID);
-
-    AlertReceiver defaultReceiver = new AlertReceiver();
-    defaultReceiver.setUuid(DEFAULT_ALERT_RECEIVER_UUID);
-    defaultReceiver.setCustomerUUID(customerUUID);
-    defaultReceiver.setParams(params);
-    return defaultReceiver;
+  private void createOrUpdateAlertForReceiver(
+      Customer c, AlertReceiver receiver, String details, KnownAlertTypes errorType) {
+    createOrUpdateAlert(
+        c,
+        receiver.getUuid(),
+        details,
+        AlertDefinitionLabelsBuilder.create().appendTarget(receiver).getAlertLabels(),
+        errorType);
   }
 
-  private void createOrUpdateAlert(Customer c, AlertReceiver receiver, String details) {
+  private void createOrUpdateAlertForCustomer(
+      Customer c, String details, KnownAlertTypes errorType) {
+    createOrUpdateAlert(
+        c,
+        c.getUuid(),
+        details,
+        AlertDefinitionLabelsBuilder.create().appendTarget(c).getAlertLabels(),
+        errorType);
+  }
+
+  private void createOrUpdateAlert(
+      Customer c,
+      UUID targetUUID,
+      String details,
+      List<AlertLabel> labels,
+      KnownAlertTypes errorType) {
     AlertFilter filter =
         AlertFilter.builder()
             .customerUuid(c.getUuid())
             .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
+            .label(KnownAlertLabels.TARGET_UUID, targetUUID.toString())
             .build();
     Alert alert =
         alertService
@@ -181,28 +221,18 @@ public class AlertManager {
                 new Alert()
                     .setCustomerUUID(c.getUuid())
                     .setErrCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-                    .setType(KnownAlertTypes.Error));
-    alert
-        .setMessage(details)
-        .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(receiver).getAlertLabels());
+                    .setType(errorType));
+    alert.setMessage(details).setLabels(labels);
     alertService.save(alert);
-    if (!receiver.getUuid().equals(DEFAULT_ALERT_RECEIVER_UUID)) {
-      // Resolve default in case it's active
-      resolveAlert(c, getDefaultReceiver(c.getUuid()));
-    }
   }
 
-  private void resolveAlert(Customer c, AlertReceiver receiver) {
+  private void resolveAlert(Customer c, UUID targetUUID) {
     AlertFilter filter =
         AlertFilter.builder()
             .customerUuid(c.getUuid())
             .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-            .label(KnownAlertLabels.TARGET_UUID, receiver.getUuid().toString())
+            .label(KnownAlertLabels.TARGET_UUID, targetUUID.toString())
             .build();
     alertService.markResolved(filter);
-    if (!receiver.getUuid().equals(DEFAULT_ALERT_RECEIVER_UUID)) {
-      // Resolve default in case it's active
-      resolveAlert(c, getDefaultReceiver(c.getUuid()));
-    }
   }
 }

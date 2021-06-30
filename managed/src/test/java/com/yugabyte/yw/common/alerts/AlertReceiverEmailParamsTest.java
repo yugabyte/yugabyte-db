@@ -23,17 +23,23 @@ public class AlertReceiverEmailParamsTest {
   @Test
   // @formatter:off
   @Parameters({
-    "null, false, Email parameters: destinations are empty.",
-    "test@test, false, Email parameters: destinations contain invalid email address test@test",
-    "test@test.com; test2@test2.com, false, Email parameters: SMTP configuration is incorrect.",
-    "test1@test1.com; test2@test2.com; test@test, false, "
+    "null, false, true, "
+        + "Email parameters: only one of defaultRecipients and recipients[] should be set.",
+    "test@test, false, true, "
         + "Email parameters: destinations contain invalid email address test@test",
-    "test@test.com, false, Email parameters: SMTP configuration is incorrect.",
-    "test@test.com, true, null",
+    "test@test.com; test2@test2.com, false, true, null",
+    "test1@test1.com; test2@test2.com; test@test, false, true, "
+        + "Email parameters: destinations contain invalid email address test@test",
+    "test@test.com, true, true, "
+        + "Email parameters: only one of defaultSmtpSettings and smtpData should be set.",
+    "test@test.com, true, false, null",
   })
   // @formatter:on
   public void testValidate(
-      @Nullable String destinations, boolean setSmtpData, @Nullable String expectedError)
+      @Nullable String destinations,
+      boolean setSmtpData,
+      boolean useDefaultSmtp,
+      @Nullable String expectedError)
       throws YWValidateException {
     AlertReceiverEmailParams params = new AlertReceiverEmailParams();
     params.recipients =
@@ -42,6 +48,7 @@ public class AlertReceiverEmailParamsTest {
                 EmailHelper.splitEmails(destinations, EmailHelper.DEFAULT_EMAIL_SEPARATORS))
             : Collections.emptyList();
     params.smtpData = setSmtpData ? new SmtpData() : null;
+    params.defaultSmtpSettings = useDefaultSmtp;
     if (expectedError != null) {
       YWValidateException ex =
           assertThrows(

@@ -36,7 +36,6 @@ public class AlertUtilsTest extends FakeDBApplication {
 
   private AlertReceiver createEmailReceiver() {
     AlertReceiverEmailParams params = new AlertReceiverEmailParams();
-    params.continueSend = true;
     params.recipients = Arrays.asList("test@test.com", "me@google.com");
     params.textTemplate = TEXT_TEMPLATE;
     params.titleTemplate = TITLE_TEMPLATE;
@@ -65,7 +64,6 @@ public class AlertUtilsTest extends FakeDBApplication {
   @Test
   public void testFromDB_Slack() {
     AlertReceiverSlackParams params = new AlertReceiverSlackParams();
-    params.continueSend = true;
     params.textTemplate = TEXT_TEMPLATE;
     params.titleTemplate = TITLE_TEMPLATE;
 
