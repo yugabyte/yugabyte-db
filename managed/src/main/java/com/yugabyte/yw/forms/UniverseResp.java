@@ -37,7 +37,7 @@ public class UniverseResp {
     return new UniverseResp(universe, taskUUID, resourceDetails);
   }
 
-  public final String universeUUID;
+  public final UUID universeUUID;
   public final String name;
   public final String creationDate;
   public final int version;
@@ -59,7 +59,7 @@ public class UniverseResp {
   }
 
   public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resources) {
-    universeUUID = entity.universeUUID.toString();
+    universeUUID = entity.universeUUID;
     name = entity.name;
     creationDate = entity.creationDate.toString();
     version = entity.version;

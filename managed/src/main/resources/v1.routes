@@ -147,23 +147,50 @@ GET     /customers/:cUUID/providers/:pUUID/access_keys                         c
 POST    /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
 
-# Universe, table, etc management API
-POST    /customers/:cUUID/universes                                            com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
-POST    /customers/:cUUID/universe_configure                                   com.yugabyte.yw.controllers.UniverseController.configure(cUUID: java.util.UUID)
-PUT     /customers/:cUUID/universes/:uniUUID                                   com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+# ----------------------------- START OLD API -------------------------------------------
+# UI_ONLY: This is info request that relies on universe data being posted hence DEPRECATED
+POST    /customers/:cUUID/universe_resources                                   com.yugabyte.yw.controllers.UniverseUiOnlyController.getUniverseResourcesOld(cUUID: java.util.UUID)
+# Deprecated: Instead use list with name query param. TODO: This is easy to get rid in UI
+GET     /customers/:cUUID/universes/find                                       com.yugabyte.yw.controllers.UniverseUiOnlyController.find(cUUID: java.util.UUID, name: String)
+
+# Universe CRUD operations UI_ONLY. See alternate new API below
+POST    /customers/:cUUID/universes                                            com.yugabyte.yw.controllers.UniverseUiOnlyController.create(cUUID: java.util.UUID)
+POST    /customers/:cUUID/universe_configure                                   com.yugabyte.yw.controllers.UniverseUiOnlyController.configure(cUUID: java.util.UUID)
+PUT     /customers/:cUUID/universes/:uniUUID                                   com.yugabyte.yw.controllers.UniverseUiOnlyController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+# TODO: migrate to new API
+POST    /customers/:cUUID/universes/:uniUUID/upgrade                           com.yugabyte.yw.controllers.UniverseUiOnlyController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+# TODO: migrate to new API
+POST    /customers/:cUUID/universes/:uniUUID/disk_update                       com.yugabyte.yw.controllers.UniverseUiOnlyController.updateDiskSize(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
+# Cluster under universe UI_ONLY
+POST    /customers/:cUUID/universes/:uniUUID/cluster                           com.yugabyte.yw.controllers.UniverseUiOnlyController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+DELETE  /customers/:cUUID/universes/:uniUUID/cluster/:clustUUID                com.yugabyte.yw.controllers.UniverseUiOnlyController.clusterDelete(cUUID: java.util.UUID, uniUUID: java.util.UUID, clustUUID: java.util.UUID, isForceDelete: Boolean ?= false)
+# ----------------------------- END OLD API -------------------------------------------
+
+# ----------------------------- START NEW API -------------------------------------------
+# universe create is now one-shot-configure-and-create-all-clusters for a universe
+POST    /customers/:cUUID/universes/clusters                                   com.yugabyte.yw.controllers.UniverseClustersController.createAllClusters(cUUID: java.util.UUID)
+
+# Universe update now split into two cluster updates
+PUT     /customers/:cUUID/universes/:uniUUID/clusters/primary                  com.yugabyte.yw.controllers.UniverseClustersController.updatePrimaryCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+PUT     /customers/:cUUID/universes/:uniUUID/clusters/read_only                 com.yugabyte.yw.controllers.UniverseClustersController.updateReadOnlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
+# Add and remove read_only cluster on existing universe
+POST    /customers/:cUUID/universes/:uniUUID/clusters/read_only                 com.yugabyte.yw.controllers.UniverseClustersController.createReadOnlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+DELETE  /customers/:cUUID/universes/:uniUUID/clusters/read_only/:clustUUID      com.yugabyte.yw.controllers.UniverseClustersController.deleteReadonlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID, clustUUID: java.util.UUID, isForceDelete: Boolean ?= false)
+# ----------------------------- END NEW API -------------------------------------------
+
+# Universe Read and Delete operations stays same as old and moved to become part of the new API
 GET     /customers/:cUUID/universes                                            com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID, name: String ?= null)
-GET     /customers/:cUUID/universes/find                                       com.yugabyte.yw.controllers.UniverseController.find(cUUID: java.util.UUID, name: String)
 GET     /customers/:cUUID/universes/:uniUUID                                   com.yugabyte.yw.controllers.UniverseController.index(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 DELETE  /customers/:cUUID/universes/:uniUUID                                   com.yugabyte.yw.controllers.UniverseController.destroy(cUUID: java.util.UUID, uniUUID: java.util.UUID, isForceDelete:Boolean ?= false, isDeleteBackups:Boolean ?= false)
-POST    /customers/:cUUID/universes/:uniUUID/upgrade                           com.yugabyte.yw.controllers.UniverseController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-POST    /customers/:cUUID/universes/:uniUUID/disk_update                       com.yugabyte.yw.controllers.UniverseController.updateDiskSize(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe Info like status, cost, query stats, health, resource usage
-POST    /customers/:cUUID/universe_resources                                   com.yugabyte.yw.controllers.UniverseInfoController.getUniverseResources(cUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseInfoController.universeStatus(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseInfoController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseInfoController.universeListCost(cUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/cost                              com.yugabyte.yw.controllers.UniverseInfoController.universeCost(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/universe_resources                com.yugabyte.yw.controllers.UniverseInfoController.getUniverseResources(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/leader                            com.yugabyte.yw.controllers.UniverseInfoController.getMasterLeaderIP(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/live_queries                      com.yugabyte.yw.controllers.UniverseInfoController.getLiveQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseInfoController.getSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -173,7 +200,7 @@ GET     /customers/:cUUID/universes/:uniUUID/:nodeName/download_logs           c
 # Import a universe
 POST    /customers/:cUUID/universes/import                                     com.yugabyte.yw.controllers.ImportController.importUniverse(cUUID: java.util.UUID)
 
-# Universe - info about master node
+# Universe - info about Yugabyte DB master node
 GET     /customers/:cUUID/universes/:uniUUID/masters                           com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/yqlservers                        com.yugabyte.yw.controllers.MetaMasterController.getYQLServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/ysqlservers                       com.yugabyte.yw.controllers.MetaMasterController.getYSQLServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -194,10 +221,6 @@ PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state               c
 POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     com.yugabyte.yw.controllers.UniverseActionsController.configureAlerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseActionsController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/toggle_tls                        com.yugabyte.yw.controllers.UniverseActionsController.toggleTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-
-# Cluster under universe
-POST    /customers/:cUUID/universes/:uniUUID/cluster                           com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-DELETE  /customers/:cUUID/universes/:uniUUID/cluster/:clustUUID                com.yugabyte.yw.controllers.UniverseController.clusterDelete(cUUID: java.util.UUID, uniUUID: java.util.UUID, clustUUID: java.util.UUID, isForceDelete: Boolean ?= false)
 
 # Table Management API
 GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID)
