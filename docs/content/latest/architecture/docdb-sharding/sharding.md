@@ -18,7 +18,7 @@ showAsideToc: true
 
 Sharding is the process of breaking up large tables into smaller chunks called shards that are spread across multiple servers. A shard is essentially a horizontal data partition that contains a subset of the total data set, and hence is responsible for serving a portion of the overall workload. The idea is to distribute data that can’t fit on a single node onto a cluster of database nodes. Sharding is also referred to as horizontal partitioning. The distinction between horizontal and vertical comes from the traditional tabular view of a database. A database can be split vertically — storing different table columns in a separate database, or horizontally — storing rows of the same table in multiple database nodes.
 
-User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. This is shown in the figure below.
+User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. This is shown in the following illustration:
 
 ![Sharding a table into tablets](/images/architecture/partitioning-table-into-tablets.png)
 
@@ -30,7 +30,7 @@ YugabyteDB currently supports two ways of sharding data - hash (aka consistent h
 
 ## Hash sharding
 
-With (consistent) hash sharding, data is evenly and randomly distributed across shards using a partitioning algorithm. Each row of the table is placed into a shard determined by computing a consistent hash on the partition column values of that row. This is shown in the figure below.
+With (consistent) hash sharding, data is evenly and randomly distributed across shards using a partitioning algorithm. Each row of the table is placed into a shard determined by computing a consistent hash on the partition column values of that row. This is shown in the following figure.
 
 ![tablet_hash_1](/images/architecture/tablet_hash_1.png)
 
@@ -85,7 +85,7 @@ Performing range queries could be inefficient. Examples of range queries are fin
 
 ## Range sharding
 
-Range sharding involves splitting the rows of a table into contiguous ranges that respect the sort order of the table based on the primary key column values. The tables that are range sharded usually start out with a single shard. As data is inserted into the table, it is dynamically split into multiple shards because it is not always possible to know the distribution of keys in the table ahead of time. The basic idea behind range sharding is shown in the figure below.
+Range sharding involves splitting the rows of a table into contiguous ranges that respect the sort order of the table based on the primary key column values. The tables that are range sharded usually start out with a single shard. As data is inserted into the table, it is dynamically split into multiple shards because it is not always possible to know the distribution of keys in the table ahead of time. The basic idea behind range sharding is shown in the following illustration:
 
 ![tablet_range_1](/images/architecture/tablet_range_1.png)
 
