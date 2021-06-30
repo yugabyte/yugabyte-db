@@ -47,7 +47,7 @@ The system view `pg_hba_file_rules` can be helpful for pre-testing changes to th
 
 {{< note title="Tip" >}}
 
-To connect to a particular database, a user must not only pass the `--ysql_hba_conf_csv` checks, but must have the `CONNECT` privilege for the database. If you want to restrict which users can connect to which databases, it's usually easier to control this by granting or revoking `CONNECT` privilege than to put the rules in `--ysql_hba_conf_csv` entries.
+To connect to a particular database, a user must not only pass the `--ysql_hba_conf_csv` checks, but must have the `CONNECT` privilege for the database. To restrict which users can connect to which databases, granting or revoking the `CONNECT` privilege is typically easier than putting the rules in `--ysql_hba_conf_csv` entries. Refer to the [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/) and [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/) YSQL statements.
 
 {{< /note >}}
 
@@ -88,6 +88,7 @@ Because `ysql_hba.conf` records are examined sequentially for each connection at
 Each record specified in the `--ysql_hba_conf_csv` flag must match one of the following record formats available for local, CIDR addresses, or IP addresses:
 
 ```output
+local      database  user  auth-method [auth-options]
 host       database  user  address  auth-method  [auth-options]
 hostssl    database  user  address  auth-method  [auth-options]
 hostnossl  database  user  address  auth-method  [auth-options]
@@ -98,9 +99,13 @@ hostnossl  database  user  IP-address  netmask  auth-method  [auth-options]
 
 The fields are described below.
 
+### local
+
+This record matches connection attempts made via the unix socket.
+
 ### host
 
-This record matches connection attempts made using TCP/IP. `host` records match either SSL or non-SSL connection attempts.
+This record matches connection attempts made using TCP/IP, including localhost. `host` records match either SSL or non-SSL connection attempts.
 
 ### hostssl
 
@@ -120,6 +125,8 @@ Specifies which database names this record matches. Valid values include:
 - `replication`: the record matches if a physical replication connection is requested (note that replication connections do not specify any particular database). Otherwise, this is the name of a specific PostgreSQL database.
 
 Multiple database names can be supplied by separating them with commas. A separate file containing database names can be specified by preceding the file name with `@`.
+
+Files included by `@` constructs are read as lists of names, which can be separated by either whitespace or commas. Comments are introduced by `#`, just as in the `--ysql_hba_conf_csv` flag, and nested `@` constructs are allowed. Unless the file name following `@` is an absolute path, it is taken to be relative to the directory containing the referencing file.
 
 ### user
 
@@ -223,8 +230,6 @@ After the [auth-method](#auth-method) field, you can add fields in the form `nam
 
 In addition to the method-specific options listed below, there is one method-independent authentication option `clientcert`, which can be specified in any `hostssl` record. When set to 1, this option requires the client to present a valid (trusted) SSL certificate, in addition to the other requirements of the authentication method.
 
-Files included by `@` constructs are read as lists of names, which can be separated by either whitespace or commas. Comments are introduced by `#`, just as in the `--ysql_hba_conf_csv` flag, and nested `@` constructs are allowed. Unless the file name following `@` is an absolute path, it is taken to be relative to the directory containing the referencing file.
-
 ### Examples
 
 #### Single host entry
@@ -233,4 +238,20 @@ The following record allows a single host with the IP address `192.168.1.10` to 
 
 ```sh
 host all 192.168.1.10 255.255.255.255 trust
+```
+
+#### local entry
+
+The following record allows local connections to any database as user `yugabyte` without a password (`trust`).
+
+```sh
+local all yugabyte trust
+```
+
+#### hostssl entry
+
+The following record allows SSL connections to any database as any user from any address using `md5` password authentication.
+
+```sh
+hostssl all all all md5
 ```
