@@ -492,6 +492,9 @@ insert into test values(6,6,6,6,6,6,'Ff',6,88);
 -- Creating indices with included columns
 create index idx_col3 on test(col3) include (col4,col5,col6);
 create index idx_col5 on test(col5) include (col6,col7);
+-- Ordering is disallowed for included columns
+create index on test(col5) include (col6 hash, col7);
+ERROR:  including column does not support ASC/DESC/HASH options
 -- Performing a few updates and checking if subsequent commands exhibit expected behavior
 update test set col3=11, col4=11 where pk=1;
 select * from test;
