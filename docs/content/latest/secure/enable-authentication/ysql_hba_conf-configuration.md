@@ -55,4 +55,4 @@ host all all 0.0.0.0/0 trust
 host all all ::0/0 trust
 ```
 
-For more information, refer to [Authentication methods](../../authentication/
+For more information, refer to [Authentication methods](../../authentication/).
