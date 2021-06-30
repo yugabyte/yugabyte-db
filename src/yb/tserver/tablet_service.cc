@@ -2506,7 +2506,7 @@ void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* r
   Status s = scope->StartElection(consensus::LeaderElectionData {
     .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
     .pending_commit = req->has_committed_index(),
-    .must_be_committed_opid = req->committed_index(),
+    .must_be_committed_opid = OpId::FromPB(req->committed_index()),
     .originator_uuid = req->has_originator_uuid() ? req->originator_uuid() : std::string(),
     .suppress_vote_request = consensus::TEST_SuppressVoteRequest(req->suppress_vote_request()),
     .initial_election = req->initial_election() });

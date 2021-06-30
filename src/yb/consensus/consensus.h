@@ -124,7 +124,7 @@ struct LeaderElectionData {
   //    If this is specified, we would wait until this entry is committed. If not specified
   //    (i.e. if this has the default OpId value) it is taken from the last call to StartElection
   //    with pending_commit = true.
-  OpIdPB must_be_committed_opid = OpIdPB::default_instance();
+  OpId must_be_committed_opid;
 
   // originator_uuid - if election is initiated by an old leader as part of a stepdown procedure,
   //    this would contain the uuid of the old leader.
