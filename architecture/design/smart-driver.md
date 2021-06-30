@@ -38,9 +38,9 @@ An in-built function called ‘yb_servers’ will be added in Yugabyte. The purp
    </td>
    <td><strong>port</strong>
    </td>
-   <td><strong>connections</strong>
+   <td><strong>num_connections</strong>
    </td>
-   <td><strong>primary</strong>
+   <td><strong>node_type</strong>
    </td>
    <td><strong>cloud</strong>
    </td>
@@ -48,7 +48,7 @@ An in-built function called ‘yb_servers’ will be added in Yugabyte. The purp
    </td>
    <td><strong>zone</strong>
    </td>
-   <td><strong>publicIp</strong>
+   <td><strong>public_ip</strong>
    </td>
 
   </tr>
@@ -59,7 +59,7 @@ An in-built function called ‘yb_servers’ will be added in Yugabyte. The purp
    </td>
    <td>Number of clients connected (not used now)
    </td>
-   <td>is a primary server or read replica server
+   <td>current possible values are 'primary' or 'read replica'
    </td>
    <td>cloud where the server is hosted
    </td>
@@ -67,7 +67,7 @@ An in-built function called ‘yb_servers’ will be added in Yugabyte. The purp
    </td>
    <td>zone where the server is hosted
    </td>
-   <td>publicIp of the server, may be different from the internal ip
+   <td>public_ip of the server, may be different from the internal ip
    </td>
   </tr>
 </table>
