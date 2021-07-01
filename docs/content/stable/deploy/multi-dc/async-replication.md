@@ -3,7 +3,6 @@ title: Deploy to two universes with asynchronous replication
 headerTitle: Asynchronous Replication
 linkTitle: Asynchronous Replication
 description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
-- /latest/deploy/multi-dc/2dc-deployment
 menu:
   stable:
     parent: multi-dc
