@@ -189,7 +189,6 @@ Result<bool> GetPgIndexStatus(
   const auto idx_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
 
   auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
-                                                           boost::none /* transaction_id */,
                                                            {} /* read_hybrid_time */,
                                                            pg_index_id));
 
