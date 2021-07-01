@@ -82,10 +82,6 @@
   to = "/latest/explore/observability/"
   force = true
 
-[[redirects]]
-  from="/stable/quick-start/install/"
-  to="/stable/quick-start/install/macos/"
-
 # Docs prior to v1.3 are not online
 
 [[redirects]]
