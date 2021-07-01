@@ -10,6 +10,10 @@ export const AddDestinationChannelFrom = (props) => {
   const [channelType, setChannelType] = useState(defaultChannel);
   const [customSMTP, setCustomSMTP] = useState(true);
 
+  /**
+   * Create the payload based on channel type and add the channel.
+   * @param {FormValues} values 
+   */
   const handleAddDestination = (values) => {
     const { onHide } = props;
     let payload = {
@@ -21,7 +25,7 @@ export const AddDestinationChannelFrom = (props) => {
       case 'slack':
         payload['name'] = values.name;
         payload['params']['targetType'] = 'Slack'
-        payload['params']['webhookUrl'] = values.webhookUrl;
+        payload['params']['webhookUrl'] = values.webhookURL;
         payload['params']['channel'] = values.name;
         break;
       case 'email':
@@ -34,7 +38,18 @@ export const AddDestinationChannelFrom = (props) => {
       default:
         break;
     }
-    props.createAlertChannel(payload);
+    props.createAlertChannel(payload).then(() => {
+      props.getAlertReceivers().then((receivers) => {
+        receivers = receivers.map((receiver) => {
+          return {
+            value: receiver['uuid'],
+            label: receiver['name']
+          };
+        });
+        props.updateDestinationChannel(receivers);
+      });
+      
+    });
     onHide();
   };
 

@@ -86,7 +86,7 @@ const CreateAlert = (props) => {
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
   const handleOnSubmit = (values) => {
-    // console.log(values)
+    console.log(values)
   };
   return (
     <Formik initialValues={{ ALERT_TARGET_TYPE: 'allCluster' }}>

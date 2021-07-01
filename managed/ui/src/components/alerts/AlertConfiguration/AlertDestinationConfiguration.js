@@ -1,7 +1,7 @@
-import { Field, Formik } from 'formik';
+import { Formik } from 'formik';
 import React, { useEffect, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
-import { reduxForm } from 'redux-form';
+import { Field, reduxForm } from 'redux-form';
 import { YBButton, YBMultiSelectWithLabel, YBTextInputWithLabel } from '../../common/forms/fields';
 import { AddDestinationChannelFrom } from './AddDestinationChannelFrom';
 
@@ -28,14 +28,14 @@ const AlertDestinationConfiguration = (props) => {
   const [destinationChannelList, setDestinationChannelList] = useState([]);
 
   useEffect(() => {
-    props.getAlertReceivers().then((data) => {
-      data = data.map((receiver) => {
+    props.getAlertReceivers().then((receivers) => {
+      receivers = receivers.map((receiver) => {
         return {
           value: receiver['uuid'],
           label: receiver['name']
         };
       });
-      setDestinationChannelList(data);
+      setDestinationChannelList(receivers);
     });
   }, []);
   /**
@@ -44,17 +44,18 @@ const AlertDestinationConfiguration = (props) => {
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
   const handleOnSubmit = (values) => {
-    // console.log(values)
+    console.log('values',values)
   };
 
   const {
     modal: { visibleModal },
-    onAddCancel
+    onAddCancel,
+    handleSubmit
   } = props;
   return (
     <>
       <Formik initialValues={null}>
-        <form name="alertDestinationForm" onSubmit={props.handleSubmit(handleOnSubmit)}>
+        <form name="alertDestinationForm" onSubmit={handleSubmit(handleOnSubmit)}>
           <Row className="config-section-header">
             <Row>
               <Col md={6}>
@@ -121,6 +122,7 @@ const AlertDestinationConfiguration = (props) => {
         visible={visibleModal === 'alertDestinationForm'}
         onHide={props.closeModal}
         defaultChannel="email"
+        updateDestinationChannel={setDestinationChannelList}
         {...props}
       />
     </>
