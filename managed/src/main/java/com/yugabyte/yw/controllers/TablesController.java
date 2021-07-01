@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -22,9 +21,6 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-import lombok.Builder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common.TableType;
@@ -119,14 +115,15 @@ public class TablesController extends AuthenticatedController {
     }
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddresses, certificate);
-    GetTableSchemaResponse schemaResponse;
+    GetTableSchemaResponse schemaResponse = null;
     try {
       schemaResponse = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
     } catch (Exception e) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     if (schemaResponse == null) {
-      throw new YWServiceException(BAD_REQUEST, "No table for UUID: " + tableUUID);
+      String errMsg = "No table for UUID: " + tableUUID;
+      throw new YWServiceException(BAD_REQUEST, errMsg);
     }
     ybService.closeClient(client, masterAddresses);
     DeleteTableFromUniverse.Params taskParams = new DeleteTableFromUniverse.Params();
@@ -177,27 +174,12 @@ public class TablesController extends AuthenticatedController {
     }
     result.put("primitives", primitives);
     result.put("collections", collections);
-    return YWResults.withRawData(result);
+    return ok(result);
   }
 
-  @ApiModel("TableInfo")
-  @Builder
-  static class TableInfoResp {
-    // TODO annotate properties
-    public final UUID tableUUID;
-    public final String keySpace;
-    public final TableType tableType;
-    public final String tableName;
-    public final RelationType relationType;
-    public final double sizeBytes;
-
-    @ApiModelProperty(value = "UI_ONLY", hidden = true)
-    public final boolean isIndexTable;
-  }
-
-  public Result listTables(UUID customerUUID, UUID universeUUID) {
+  public Result universeList(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
@@ -208,50 +190,47 @@ public class TablesController extends AuthenticatedController {
       return ok(errMsg);
     }
 
-    Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
-
-    String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
-    List<TableInfo> tableInfoList = response.getTableInfoList();
-    List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
-    for (TableInfo table : tableInfoList) {
-      String tableKeySpace = table.getNamespace().getName();
-      if (table.getRelationType() != RelationType.SYSTEM_TABLE_RELATION) {
-        String id = table.getId().toStringUtf8();
-        TableInfoResp.TableInfoRespBuilder builder =
-            TableInfoResp.builder()
-                .tableUUID(getUUIDRepresentation(id))
-                .keySpace(tableKeySpace)
-                .tableType(table.getTableType())
-                .tableName(table.getName())
-                .relationType(table.getRelationType())
-                .isIndexTable(table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
-        Double tableSize = tableSizes.get(id);
-        if (tableSize != null) {
-          builder.sizeBytes(tableSize);
-        }
-        tableInfoRespList.add(builder.build());
-      }
-    }
-    return YWResults.withData(tableInfoRespList);
-  }
-
-  // Query prometheus for table sizes.
-  private Map<String, Double> getTableSizesOrEmpty(Universe universe) {
+    // Query prometheus for table sizes.
+    HashMap<String, Double> tableSizes = new HashMap<>();
     try {
-      return queryTableSizes(universe.getUniverseDetails().nodePrefix);
-    } catch (RuntimeException e) {
+      tableSizes = queryTableSizes(universe.getUniverseDetails().nodePrefix);
+    } catch (Exception e) {
       LOG.error(
           "Error querying for table sizes for universe {} from prometheus",
           universe.getUniverseDetails().nodePrefix,
           e);
     }
-    return Collections.emptyMap();
+
+    String certificate = universe.getCertificateNodetoNode();
+    ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
+    List<TableInfo> tableInfoList = response.getTableInfoList();
+    ArrayNode resultNode = Json.newArray();
+    for (TableInfo table : tableInfoList) {
+      String tableKeySpace = table.getNamespace().getName();
+      if (!tableKeySpace.toLowerCase().equals("system")
+          && !tableKeySpace.toLowerCase().equals("system_schema")
+          && !tableKeySpace.toLowerCase().equals("system_auth")
+          && !tableKeySpace.toLowerCase().equals("system_platform")) {
+        ObjectNode node = Json.newObject();
+        node.put("keySpace", tableKeySpace);
+        node.put("tableType", table.getTableType().toString());
+        node.put("tableName", table.getName());
+        String tableUUID = table.getId().toStringUtf8();
+        node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
+        node.put("isIndexTable", table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
+        Double tableSize = tableSizes.get(tableUUID);
+        if (tableSize != null) {
+          node.put("sizeBytes", tableSize);
+        }
+        resultNode.add(node);
+      }
+    }
+    return ok(resultNode);
   }
 
   private ListTablesResponse listTablesOrBadRequest(String masterAddresses, String certificate) {
     YBClient client = null;
-    ListTablesResponse response;
+    ListTablesResponse response = null;
     try {
       client = ybService.getClient(masterAddresses, certificate);
       response = client.getTablesList();
@@ -276,7 +255,7 @@ public class TablesController extends AuthenticatedController {
    */
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClient client = null;
@@ -291,7 +270,7 @@ public class TablesController extends AuthenticatedController {
       GetTableSchemaResponse response =
           client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
 
-      return YWResults.withData(createFromResponse(universe, tableUUID, response));
+      return ok(Json.toJson(createFromResponse(universe, tableUUID, response)));
     } catch (IllegalArgumentException e) {
       LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
       throw new YWServiceException(BAD_REQUEST, e.getMessage());
@@ -314,25 +293,28 @@ public class TablesController extends AuthenticatedController {
 
     MultiTableBackup.Params taskParams = formData.get();
     if (taskParams.storageConfigUUID == null) {
-      throw new YWServiceException(
-          BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
+      String errMsg = "Missing StorageConfig UUID: " + taskParams.storageConfigUUID;
+      throw new YWServiceException(BAD_REQUEST, errMsg);
     }
     CustomerConfig storageConfig =
         CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
-      throw new YWServiceException(
-          BAD_REQUEST,
+      String errMsg =
           String.format(
               "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
-              universeUUID.toString()));
+              universeUUID.toString());
+      LOG.error(errMsg);
+      throw new YWServiceException(BAD_REQUEST, errMsg);
     }
 
     taskParams.universeUUID = universeUUID;
     taskParams.customerUUID = customerUUID;
 
-    validateTables(taskParams.tableUUIDList, universe);
-
+    if (disableBackupOnTables(taskParams.tableUUIDList, universe)) {
+      String errMsg = "Invalid Table List, found index or YSQL table.";
+      throw new YWServiceException(BAD_REQUEST, errMsg);
+    }
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule =
           Schedule.create(
@@ -346,8 +328,10 @@ public class TablesController extends AuthenticatedController {
           "Submitted universe backup to be scheduled {}, schedule uuid = {}.",
           universeUUID,
           scheduleUUID);
+      ObjectNode resultNode = Json.newObject();
+      resultNode.put("scheduleUUID", scheduleUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return YWResults.withData(schedule);
+      return YWResults.withRawData(resultNode);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
       LOG.info("Submitted task to universe {}, task uuid = {}.", universe.name, taskUUID);
@@ -370,7 +354,10 @@ public class TablesController extends AuthenticatedController {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    validateTables(Collections.singletonList(tableUUID), universe);
+    if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
+      String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
+      throw new YWServiceException(BAD_REQUEST, errMsg);
+    }
 
     Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
 
@@ -379,11 +366,12 @@ public class TablesController extends AuthenticatedController {
         CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
-      throw new YWServiceException(
-          BAD_REQUEST,
+      String errMsg =
           String.format(
               "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
-              universeUUID.toString()));
+              universeUUID.toString());
+      LOG.error(errMsg);
+      throw new YWServiceException(BAD_REQUEST, errMsg);
     }
 
     taskParams.universeUUID = universeUUID;
@@ -403,8 +391,10 @@ public class TablesController extends AuthenticatedController {
           tableUUID,
           taskParams.getTableName(),
           scheduleUUID);
+      ObjectNode resultNode = Json.newObject();
+      resultNode.put("scheduleUUID", scheduleUUID.toString());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return YWResults.withData(schedule);
+      return YWResults.withRawData(resultNode);
     } else {
       Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
@@ -444,25 +434,32 @@ public class TablesController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    validateTables(Collections.singletonList(tableUUID), universe);
+    if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
+      String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
+      throw new YWServiceException(BAD_REQUEST, errMsg);
+    }
 
     // TODO: undo hardcode to AWS (required right now due to using EMR).
     Common.CloudType cloudType =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     if (cloudType != aws) {
-      throw new YWServiceException(BAD_REQUEST, "Bulk Import is currently only supported for AWS.");
+      String errMsg = "Bulk Import is currently only supported for AWS.";
+      LOG.error(errMsg);
+      throw new YWServiceException(BAD_REQUEST, errMsg);
     }
 
-    Provider.getOrBadRequest(
-        customerUUID,
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider =
+        Provider.getOrBadRequest(
+            customerUUID,
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
 
     // Get form data and validate it.
     Form<BulkImportParams> formData = formFactory.getFormDataOrBadRequest(BulkImportParams.class);
     BulkImportParams taskParams = formData.get();
     if (taskParams.s3Bucket == null || !taskParams.s3Bucket.startsWith("s3://")) {
-      throw new YWServiceException(
-          BAD_REQUEST, "Invalid S3 Bucket provided: " + taskParams.s3Bucket);
+      String errMsg = "Invalid S3 Bucket provided: " + taskParams.s3Bucket;
+      LOG.error(errMsg);
+      throw new YWServiceException(BAD_REQUEST, errMsg);
     }
     taskParams.universeUUID = universeUUID;
 
@@ -491,51 +488,44 @@ public class TablesController extends AuthenticatedController {
     return new YWResults.YWTask(taskUUID, tableUUID).asResult();
   }
 
-  @VisibleForTesting
-  void validateTables(List<UUID> tableUuids, Universe universe) {
+  public boolean disableBackupOnTables(List<UUID> tableUuids, Universe universe) {
     if (tableUuids.isEmpty()) {
-      return;
+      return false;
     }
 
-    List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
-    // Match if the table is an index or ysql table.
-    for (TableInfo tableInfo : tableInfoList) {
-      if (tableUuids.contains(
-          getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", "")))) {
-        if (tableInfo.hasRelationType()
-            && tableInfo.getRelationType() == RelationType.INDEX_TABLE_RELATION) {
-          throw new YWServiceException(
-              BAD_REQUEST, "Cannot backup index table " + tableInfo.getName());
-        } else if (tableInfo.hasTableType()
-            && tableInfo.getTableType() == TableType.PGSQL_TABLE_TYPE) {
-          throw new YWServiceException(
-              BAD_REQUEST, "Cannot backup ysql table " + tableInfo.getName());
-        }
-      }
-    }
-  }
-
-  private List<TableInfo> getTableInfosOrEmpty(Universe universe) {
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
-      LOG.warn("Masters are not currently queryable.");
-      return Collections.emptyList();
+      String errMsg = "Masters are not currently queryable.";
+      LOG.warn(errMsg);
+      return false;
     }
-
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
+
     try {
-      String certificate = universe.getCertificateNodetoNode();
       client = ybService.getClient(masterAddresses, certificate);
-      return client.getTablesList().getTableInfoList();
+      ListTablesResponse response = client.getTablesList();
+      List<TableInfo> tableInfoList = response.getTableInfoList();
+      // Match if the table is an index or ysql table.
+      return tableInfoList
+          .stream()
+          .anyMatch(
+              tableInfo ->
+                  tableUuids.contains(
+                          getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", "")))
+                      && ((tableInfo.hasRelationType()
+                              && tableInfo.getRelationType() == RelationType.INDEX_TABLE_RELATION)
+                          || (tableInfo.hasTableType()
+                              && tableInfo.getTableType() == TableType.PGSQL_TABLE_TYPE)));
     } catch (Exception e) {
       LOG.warn(e.toString());
-      return Collections.emptyList();
+      return false;
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
   }
 
-  private Map<String, Double> queryTableSizes(String nodePrefix) {
+  private HashMap<String, Double> queryTableSizes(String nodePrefix) {
     // Execute query and check for errors.
     ArrayList<MetricQueryResponse.Entry> values =
         metricQueryHelper.queryDirect(
@@ -543,7 +533,7 @@ public class TablesController extends AuthenticatedController {
                 + nodePrefix
                 + "\"})");
 
-    HashMap<String, Double> result = new HashMap<>();
+    HashMap<String, Double> result = new HashMap<String, Double>();
     for (final MetricQueryResponse.Entry entry : values) {
       String tableID = entry.labels.get("table_id");
       if (tableID == null
