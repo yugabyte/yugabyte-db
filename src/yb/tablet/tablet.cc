@@ -906,12 +906,16 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
                 "Unregister split anchor");
   }
 
-  if (completed_split_operation_filter_) {
-    UnregisterOperationFilter(completed_split_operation_filter_.get());
-  }
+  {
+    std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
 
-  if (restoring_operation_filter_) {
-    UnregisterOperationFilter(restoring_operation_filter_.get());
+    if (completed_split_operation_filter_) {
+      UnregisterOperationFilterUnlocked(completed_split_operation_filter_.get());
+    }
+
+    if (restoring_operation_filter_) {
+      UnregisterOperationFilterUnlocked(restoring_operation_filter_.get());
+    }
   }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
@@ -3544,21 +3548,24 @@ Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
 }
 
 void Tablet::SplitDone() {
-  if (completed_split_operation_filter_) {
-    LOG_WITH_PREFIX(DFATAL) << "Already have split operation filter";
-    return;
-  }
-
-  completed_split_operation_filter_ = MakeFunctorOperationFilter(
-      [this](const OpId& op_id, consensus::OperationType op_type) -> Status {
-    if (SplitOperation::ShouldAllowOpAfterSplitTablet(op_type)) {
-      return Status::OK();
+  {
+    std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+    if (completed_split_operation_filter_) {
+      LOG_WITH_PREFIX(DFATAL) << "Already have split operation filter";
+      return;
     }
 
-    auto children = metadata_->split_child_tablet_ids();
-    return SplitOperation::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
-  });
-  operation_filters_.push_back(*completed_split_operation_filter_);
+    completed_split_operation_filter_ = MakeFunctorOperationFilter(
+        [this](const OpId& op_id, consensus::OperationType op_type) -> Status {
+          if (SplitOperation::ShouldAllowOpAfterSplitTablet(op_type)) {
+            return Status::OK();
+          }
+
+          auto children = metadata_->split_child_tablet_ids();
+          return SplitOperation::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
+        });
+    operation_filters_.push_back(*completed_split_operation_filter_);
+  }
 
   completed_split_log_anchor_ = std::make_unique<log::LogAnchor>();
 
@@ -3567,6 +3574,8 @@ void Tablet::SplitDone() {
 }
 
 void Tablet::SyncRestoringOperationFilter() {
+  std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+
   if (metadata_->has_active_restoration()) {
     if (restoring_operation_filter_) {
       return;
@@ -3585,7 +3594,7 @@ void Tablet::SyncRestoringOperationFilter() {
       return;
     }
 
-    UnregisterOperationFilter(restoring_operation_filter_.get());
+    UnregisterOperationFilterUnlocked(restoring_operation_filter_.get());
     restoring_operation_filter_ = nullptr;
   }
 }
@@ -3636,6 +3645,7 @@ Status Tablet::CheckRestorations(const RestorationCompleteTimeMap& restoration_c
 }
 
 Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
+  std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
   for (const auto& filter : operation_filters_) {
     RETURN_NOT_OK(filter.CheckOperationAllowed(op_id, op_type));
   }
@@ -3644,10 +3654,16 @@ Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType
 }
 
 void Tablet::RegisterOperationFilter(OperationFilter* filter) {
+  std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
   operation_filters_.push_back(*filter);
 }
 
 void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
+  std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+  UnregisterOperationFilterUnlocked(filter);
+}
+
+void Tablet::UnregisterOperationFilterUnlocked(OperationFilter* filter) {
   operation_filters_.erase(operation_filters_.iterator_to(*filter));
 }
 
