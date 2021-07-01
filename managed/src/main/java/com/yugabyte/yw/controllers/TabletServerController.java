@@ -3,25 +3,62 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.ListTabletServersResponse;
+import org.yb.client.YBClient;
+import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.UUID;
 
 public class TabletServerController extends AuthenticatedController {
-  private static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
-  private final ApiHelper apiHelper;
+  public static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
+  @Inject ApiHelper apiHelper;
+  private final YBClientService ybService;
 
   @Inject
-  public TabletServerController(ApiHelper apiHelper) {
-    this.apiHelper = apiHelper;
+  public TabletServerController(YBClientService service) {
+    this.ybService = service;
+  }
+
+  /**
+   * This API would query for all the tabletServers using YB Client and return a JSON with tablet
+   * server UUIDs
+   *
+   * @return Result tablet server uuids
+   */
+  public Result list() {
+    ObjectNode result = Json.newObject();
+    YBClient client = null;
+
+    try {
+      client = ybService.getClient(null);
+      ListTabletServersResponse response = client.listTabletServers();
+      result.put("count", response.getTabletServersCount());
+      ArrayNode tabletServers = result.putArray("servers");
+      response
+          .getTabletServersList()
+          .forEach(
+              tabletServer -> {
+                tabletServers.add(tabletServer.getHost());
+              });
+    } catch (Exception e) {
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Error: " + e.getMessage());
+    } finally {
+      ybService.closeClient(client, null);
+    }
+
+    return ok(result);
   }
 
   /**
