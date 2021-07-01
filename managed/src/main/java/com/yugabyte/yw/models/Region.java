@@ -3,7 +3,6 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Query;
 import io.ebean.*;
@@ -32,8 +31,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
         "Region within a given provider. Typically this will map to a "
             + "single cloud provider region")
 public class Region extends Model {
-  public static final String SECURITY_GROUP_KEY = "sg_id";
-  private static final String VNET_KEY = "vnet";
 
   @Id
   @ApiModelProperty(value = "Region uuid", accessMode = READ_ONLY)
@@ -90,44 +87,50 @@ public class Region extends Model {
     this.active = active;
   }
 
+  static class RegionDetails {
+    public String sg_id; // Security group ID.
+    public String vnet; // Vnet key.
+  }
+
   @DbJson
   @Column(columnDefinition = "TEXT")
-  @JsonIgnore
-  public JsonNode details;
+  public RegionDetails details;
 
   public void setSecurityGroupId(String securityGroupId) {
     if (details == null) {
-      details = Json.newObject();
+      details = new RegionDetails();
     }
-    ((ObjectNode) details).put(SECURITY_GROUP_KEY, securityGroupId);
+    details.sg_id = securityGroupId;
+    save();
   }
 
   public String getSecurityGroupId() {
     if (details != null) {
-      JsonNode sgNode = details.get(SECURITY_GROUP_KEY);
-      return sgNode == null || sgNode.isNull() ? null : sgNode.asText();
+      String sgNode = details.sg_id;
+      return sgNode == null || sgNode.isEmpty() ? null : sgNode;
     }
     return null;
   }
 
   public void setVnetName(String vnetName) {
     if (details == null) {
-      details = Json.newObject();
+      details = new RegionDetails();
     }
-    ((ObjectNode) details).put(VNET_KEY, vnetName);
+    details.vnet = vnetName;
+    save();
   }
 
   public String getVnetName() {
     if (details != null) {
-      JsonNode vnetNode = details.get(VNET_KEY);
-      return vnetNode == null || vnetNode.isNull() ? null : vnetNode.asText();
+      String vnetNode = details.vnet;
+      return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
     }
     return null;
   }
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public JsonNode config;
+  private Map<String, String> config;
 
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
@@ -135,7 +138,8 @@ public class Region extends Model {
     for (String key : configMap.keySet()) {
       currConfig.put(key, configMap.get(key));
     }
-    this.config = Json.toJson(currConfig);
+    this.config = currConfig;
+    this.save();
   }
 
   @JsonProperty("config")
@@ -148,7 +152,7 @@ public class Region extends Model {
     if (this.config == null) {
       return new HashMap<>();
     } else {
-      return Json.fromJson(this.config, Map.class);
+      return this.config;
     }
   }
 

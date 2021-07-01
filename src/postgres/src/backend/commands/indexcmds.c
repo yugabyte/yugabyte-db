@@ -1659,7 +1659,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (attribute->ordering != SORTBY_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("including column does not support ASC/DESC options")));
+						 errmsg("including column does not support ASC/DESC/HASH options")));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
@@ -1816,7 +1816,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (attribute->ordering != SORTBY_DEFAULT)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("access method \"%s\" does not support ASC/DESC options",
+							 errmsg("access method \"%s\" does not support ASC/DESC/HASH options",
 									accessMethodName)));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
 					ereport(ERROR,
