@@ -404,7 +404,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions(/* operation_pause */ nullptr);
+  return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
 }
 
 const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
@@ -486,6 +486,7 @@ void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   // Only mark the peer as SHUTDOWN when all other components have shut down.
   {
     std::lock_guard<simple_spinlock> lock(lock_);
+    strand_.reset();
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
     consensus_.reset();
