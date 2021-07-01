@@ -40,7 +40,7 @@ YugabyteDB supports multi-row transactions with two isolation levels: `Serializa
 
 {{< tip title="YSQL vs PostgreSQL isolation levels" >}}
 
-Refer to the [table of isolation levels](https://docs.yugabyte.com/latest/explore/transactions/isolation-levels/) to learn how YSQL's isolation levels map to the levels defined by PostgreSQL.
+Refer to the [table of isolation levels](/latest/explore/transactions/isolation-levels/) to learn how YSQL's isolation levels map to the levels defined by PostgreSQL.
 
 {{< /tip >}}
 
