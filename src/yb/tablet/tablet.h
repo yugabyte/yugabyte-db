@@ -650,10 +650,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
   CHECKED_STATUS VerifyDataIntegrity();
 
-  CHECKED_STATUS CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type);
+  CHECKED_STATUS CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type)
+      EXCLUDES(operation_filters_mutex_);
 
-  void RegisterOperationFilter(OperationFilter* filter);
-  void UnregisterOperationFilter(OperationFilter* filter);
+  void RegisterOperationFilter(OperationFilter* filter) EXCLUDES(operation_filters_mutex_);
+  void UnregisterOperationFilter(OperationFilter* filter) EXCLUDES(operation_filters_mutex_);
 
   void SplitDone();
   CHECKED_STATUS RestoreStarted(const TxnSnapshotRestorationId& restoration_id);
@@ -758,7 +759,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS OpenDbAndCheckIntegrity(const std::string& db_dir);
 
   // Add or remove restoring operation filter if necessary.
-  void SyncRestoringOperationFilter();
+  void SyncRestoringOperationFilter() EXCLUDES(operation_filters_mutex_);
+  void UnregisterOperationFilterUnlocked(OperationFilter* filter)
+    REQUIRES(operation_filters_mutex_);
 
   const Schema key_schema_;
 
@@ -952,12 +955,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<ThreadPoolToken> data_integrity_token_;
 
-  boost::intrusive::list<OperationFilter> operation_filters_;
+  simple_spinlock operation_filters_mutex_;
 
-  std::unique_ptr<OperationFilter> completed_split_operation_filter_;
+  boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);
+
+  std::unique_ptr<OperationFilter> completed_split_operation_filter_
+      GUARDED_BY(operation_filters_mutex_);
   std::unique_ptr<log::LogAnchor> completed_split_log_anchor_;
 
-  std::unique_ptr<OperationFilter> restoring_operation_filter_;
+  std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
