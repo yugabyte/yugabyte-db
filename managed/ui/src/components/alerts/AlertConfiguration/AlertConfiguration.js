@@ -2,6 +2,8 @@
 //
 // Author: Nishant Sharma(nishant.sharma@hashedin.com)
 //
+// This file will hold all the alert configuration tabs along
+// with their respective components.
 
 import React, { useEffect, useState } from 'react';
 import { Tab } from 'react-bootstrap';
@@ -45,6 +47,8 @@ export const AlertConfiguration = (props) => {
         id="alert-config-tab-panel"
         routePrefix={routePrefix}
       >
+        
+        {/* Alert Creation Tab */}
         <Tab
           eventKey={defaultTab}
           title={
@@ -60,6 +64,8 @@ export const AlertConfiguration = (props) => {
             <AlertsList data={alertList} onCreateAlert={setListView} />
           )}
         </Tab>
+
+        {/* Alert Destination Tab */}
         <Tab
           eventKey={'health-alerting'}
           eventKey="alertDestinations"
@@ -76,9 +82,15 @@ export const AlertConfiguration = (props) => {
             <AlertDestionations data={alertDestionation} onAddAlertDestination={setAlertDestinationListView}/>
           )}
         </Tab>
+
+        {/* Helath Check Tab */}
         <Tab
           eventKey="health-alerting"
-          title="Health & Alerting"
+          title={
+            <span>
+              <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Health Check
+            </span>
+          }
           key="health-alerting-tab"
           mountOnEnter={true}
           unmountOnExit

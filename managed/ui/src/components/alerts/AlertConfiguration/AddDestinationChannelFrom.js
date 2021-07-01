@@ -6,7 +6,6 @@ import { YBFormInput, YBRadioButtonGroup, YBToggle } from '../../common/forms/fi
 
 export const AddDestinationChannelFrom = (props) => {
   const { visible, onHide, defaultChannel } = props;
-
   const [channelType, setChannelType] = useState(defaultChannel);
   const [customSMTP, setCustomSMTP] = useState(true);
 

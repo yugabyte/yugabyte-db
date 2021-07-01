@@ -1,5 +1,5 @@
-import { Formik } from 'formik';
 import React, { useEffect, useState } from 'react';
+import { Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
 import { Field, reduxForm } from 'redux-form';
 import { YBButton, YBMultiSelectWithLabel, YBTextInputWithLabel } from '../../common/forms/fields';
@@ -38,6 +38,7 @@ const AlertDestinationConfiguration = (props) => {
       setDestinationChannelList(receivers);
     });
   }, []);
+
   /**
    *
    * @param {Formvalues} values
@@ -48,10 +49,12 @@ const AlertDestinationConfiguration = (props) => {
   };
 
   const {
+    handleSubmit,
     modal: { visibleModal },
     onAddCancel,
     handleSubmit
   } = props;
+
   return (
     <>
       <Formik initialValues={null}>
