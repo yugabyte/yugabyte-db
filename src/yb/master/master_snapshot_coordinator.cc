@@ -381,7 +381,7 @@ class MasterSnapshotCoordinator::Impl {
         postponed_restores_.push_back(restoration);
       }
     }
-    RETURN_NOT_OK_PREPEND(context_.RestoreSysCatalog(restoration.get()),
+    RETURN_NOT_OK_PREPEND(context_.RestoreSysCatalog(restoration.get(), state.tablet()),
                           "Restore sys catalog failed");
     return Status::OK();
   }

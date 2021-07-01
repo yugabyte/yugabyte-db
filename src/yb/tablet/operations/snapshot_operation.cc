@@ -7,6 +7,9 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
+
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/snapshot_coordinator.h"
@@ -175,7 +178,16 @@ Status SnapshotOperation::DoAborted(const Status& status) {
 Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   auto status = state()->Apply(leader_term);
   state()->Finish();
-  return status;
+  RETURN_NOT_OK(status);
+  // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
+  // the flushed frontier to have this exact value, although in practice it will, since this is the
+  // latest operation we've ever executed in this Raft group. This way we keep the current value
+  // of history cutoff.
+  docdb::ConsensusFrontier frontier;
+  frontier.set_op_id(state()->op_id());
+  frontier.set_hybrid_time(state()->hybrid_time());
+  return state()->tablet()->ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kUpdate);
 }
 
 string SnapshotOperation::ToString() const {

@@ -97,14 +97,6 @@ class MemTracker;
 class MetricEntity;
 class RowChangeList;
 
-namespace docdb {
-class ConsensusFrontier;
-}
-
-namespace log {
-class LogAnchorRegistry;
-}
-
 namespace server {
 class Clock;
 }
