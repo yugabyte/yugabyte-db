@@ -98,7 +98,7 @@ Status IterateToStringList(
 
 // Dump all of the rows of the tablet into the given vector.
 Status DumpTablet(const Tablet& tablet, const Schema& projection, std::vector<std::string>* out) {
-  auto iter = tablet.NewRowIterator(projection, boost::none);
+  auto iter = tablet.NewRowIterator(projection);
   RETURN_NOT_OK(iter);
   std::vector<string> rows;
   RETURN_NOT_OK(IterateToStringList(iter->get(), &rows));

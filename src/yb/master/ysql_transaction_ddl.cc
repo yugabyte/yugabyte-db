@@ -140,8 +140,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
                 pg_database_schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), boost::none /* transaction_id */,
-      {} /* read_hybrid_time */, pg_table_id));
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
   auto e_oid_val = VERIFY_RESULT(entry_oid);
   {
     auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());

@@ -675,7 +675,7 @@ Status TabletSplitITestBase<MiniClusterType>::CheckPostSplitTabletReplicasData(
     const auto shared_tablet = peer->shared_tablet();
     const SchemaPtr schema = shared_tablet->metadata()->schema();
     auto client_schema = schema->CopyWithoutColumnIds();
-    auto iter = VERIFY_RESULT(shared_tablet->NewRowIterator(client_schema, boost::none));
+    auto iter = VERIFY_RESULT(shared_tablet->NewRowIterator(client_schema));
     QLTableRow row;
     std::unordered_set<size_t> tablet_keys;
     while (VERIFY_RESULT(iter->HasNext())) {

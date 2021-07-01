@@ -78,11 +78,11 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     superclass::SetUp();
 
     // Warm up code cache with all the projections we'll be using.
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none));
+    ASSERT_OK(tablet()->NewRowIterator(client_schema_));
     const SchemaPtr schema = tablet()->schema();
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
-    ASSERT_OK(tablet()->NewRowIterator(valcol_projection_, boost::none));
+    ASSERT_OK(tablet()->NewRowIterator(valcol_projection_));
 
     ts_collector_.StartDumperThread();
   }
@@ -124,7 +124,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     QLTableRow value_map;
 
     while (running_insert_count_.count() > 0) {
-      auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+      auto iter = tablet()->NewRowIterator(client_schema_);
       CHECK_OK(iter);
 
       while (ASSERT_RESULT((**iter).HasNext()) && running_insert_count_.count() > 0) {
@@ -165,7 +165,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     int max_iters = kNumInsertThreads * max_rows / 10;
 
     while (running_insert_count_.count() > 0) {
-      auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+      auto iter = tablet()->NewRowIterator(client_schema_);
       ASSERT_OK(iter);
 
       for (int i = 0; i < max_iters && ASSERT_RESULT((**iter).HasNext()); i++) {
@@ -191,7 +191,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     uint64_t sum = 0;
 
-    auto iter = tablet()->NewRowIterator(valcol_projection_, boost::none);
+    auto iter = tablet()->NewRowIterator(valcol_projection_);
     CHECK_OK(iter);
 
     QLTableRow row;

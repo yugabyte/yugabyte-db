@@ -128,7 +128,7 @@ TEST_F(TestTabletSchema, TestRead) {
 
   InsertRows(0, kNumRows);
 
-  auto iter = tablet()->NewRowIterator(projection, boost::none);
+  auto iter = tablet()->NewRowIterator(projection);
   ASSERT_TRUE(!iter.ok() && iter.status().IsInvalidArgument());
   ASSERT_STR_CONTAINS(iter.status().message().ToBuffer(),
                       "Some columns are not present in the current schema: c2, c3");
