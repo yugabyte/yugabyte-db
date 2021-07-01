@@ -4,7 +4,7 @@ headerTitle: The time data type
 linkTitle: time data type
 description: The semantics of the time data type. [YSQL]
 menu:
-  latest:
+  stable:
     identifier: type-time
     parent: date-time-data-types-semantics
     weight: 20

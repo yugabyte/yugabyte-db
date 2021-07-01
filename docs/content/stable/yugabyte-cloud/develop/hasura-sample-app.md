@@ -4,7 +4,7 @@ headerTitle: Running Hasura Applications
 linkTitle: Hasura Applications
 description: Run applications in Hasura Cloud and Yugabyte Cloud.
 menu:
-  latest:
+  stable:
     identifier: hasura-application
     parent: yugabyte-cloud
     weight: 710

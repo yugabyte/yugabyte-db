@@ -4,9 +4,8 @@ headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable Yugabyte Platform's high-availability features
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-aliases:
 menu:
-  latest:
+  stable:
     identifier: platform-high-availability
     parent: manage-deployments
     weight: 41

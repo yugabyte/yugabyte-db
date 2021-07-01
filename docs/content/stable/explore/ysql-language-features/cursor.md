@@ -5,7 +5,7 @@ description: Using Cursors in YSQL
 headcontent: Cursors in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  stable:
     identifier: explore-ysql-language-features-cursor
     parent: explore-ysql-language-features
     weight: 300

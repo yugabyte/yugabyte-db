@@ -4,11 +4,9 @@ headerTitle: TRUNCATE
 linkTitle: TRUNCATE
 description:  Use the TRUNCATE statement to clear all rows in a table.
 menu:
-  latest:
+  stable:
     identifier: ddl_truncate
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_truncate/
 isTocNested: true
 showAsideToc: true
 ---

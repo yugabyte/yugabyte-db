@@ -4,7 +4,7 @@ headerTitle: Build a Go application
 linkTitle: Go
 description: Build an Go application that uses GORM and YSQL.
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: Go
     identifier: go-2

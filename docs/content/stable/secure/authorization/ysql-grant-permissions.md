@@ -4,7 +4,7 @@ headerTitle: Grant privileges
 linkTitle: Grant privileges
 description: Grant YSQL privileges in YugabyteDB
 menu:
-  latest:
+  stable:
     name: Grant Privileges
     identifier: ysql-grant-permissions
     parent: authorization

@@ -4,10 +4,9 @@ headerTitle: Pre-bundled extensions
 linkTitle: Extensions
 description: Pre-bundled extensions for YugabyteDB
 headcontent: Pre-bundled extensions for YugabyteDB
-aliases:
 image: /images/section_icons/explore/monitoring.png
 menu:
-  latest:
+  stable:
     identifier: explore-extensions
     parent: explore
     weight: 620

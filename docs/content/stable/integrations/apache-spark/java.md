@@ -4,7 +4,7 @@ headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build a Java-based application using Apache Spark and YugabyteDB.
 menu:
-  latest:
+  stable:
     identifier: apache-spark-2-java
     parent: integrations
     weight: 572

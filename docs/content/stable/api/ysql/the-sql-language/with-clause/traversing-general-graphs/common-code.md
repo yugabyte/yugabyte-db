@@ -4,7 +4,7 @@ headerTitle: Common code for traversing all kinds of graph
 linkTitle: common code
 description: This section presents common helper code for traversing all kinds of graph
 menu:
-  latest:
+  stable:
     identifier: common-code
     parent: traversing-general-graphs
     weight: 20

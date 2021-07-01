@@ -3,11 +3,8 @@ title: Date and time in YSQL
 headerTitle: Date and time
 linkTitle: 7. Date and time
 description: Learn how to work with date and time in YSQL.
-aliases:
-  - /latest/explore/date-and-time/
-  - /latest/develop/learn/date-and-time/
 menu:
-  latest:
+  stable:
     parent: learn
     name: 7. Date and time
     identifier: date-and-time-1-ysql

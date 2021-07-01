@@ -3,11 +3,8 @@ title: Install YugabyteDB on macOS
 headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on macOS in less than five minutes.
-aliases:
-  - /quick-start/install/
-  - /latest/quick-start/install/
 menu:
-  latest:
+  stable:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-1-macos

@@ -5,10 +5,8 @@ linkTitle: Multi-cluster
 description: Deploy YugabyteDB on multiple geo-distributed Kubernetes clusters.
 headcontent: Deploy YugabyteDB natively on multiple Kubernetes clusters.
 image: /images/section_icons/deploy/kubernetes.png
-aliases:
-  - /latest/deploy/kubernetes/multi-cluster
 menu:
-  latest:
+  stable:
     identifier: deploy-kubernetes-mc
     parent: deploy-kubernetes
     weight: 623

@@ -5,11 +5,9 @@ linkTitle: CREATE EXTENSION
 summary: Load an extension into a database
 description: Use the CREATE EXTENSION statement to load an extension into a database.
 menu:
-  latest:
+  stable:
     identifier: ddl_create_extension
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_extension/
 isTocNested: true
 showAsideToc: true
 ---

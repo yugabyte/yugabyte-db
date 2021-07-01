@@ -5,7 +5,7 @@ description: Using indexes
 headcontent: Indexes
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  stable:
     identifier: indexes-constraints-indexes-1
     parent: explore-indexes-constraints
     weight: 300

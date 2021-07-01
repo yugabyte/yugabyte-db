@@ -4,10 +4,8 @@ headerTitle: Select Cloud Provider
 linkTitle: Configure
 description: Configuring Yugabyte Platform on On-Premises
 image: /images/section_icons/deploy/enterprise.png
-aliases:
-  - /latest/yugabyte-platform/overview/configure/
 menu:
-  latest:
+  stable:
     identifier: configure-1-aws
     parent: overview-yp
     weight: 40

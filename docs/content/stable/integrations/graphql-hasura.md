@@ -2,9 +2,8 @@
 title: Building Applications with Hasura
 linkTitle: Hasura
 description: Building Applications with Hasura
-aliases:
 menu:
-  latest:
+  stable:
     identifier: graphql-hasura
     parent: integrations
     weight: 580

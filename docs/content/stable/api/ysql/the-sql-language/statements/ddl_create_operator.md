@@ -4,11 +4,9 @@ headerTitle: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
 description: Use the CREATE OPERATOR statement to create an operator.
 menu:
-  latest:
+  stable:
     identifier: ddl_create_operator
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_operator/
 isTocNested: true
 showAsideToc: true
 ---

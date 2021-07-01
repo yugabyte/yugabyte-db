@@ -4,7 +4,7 @@ headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build a Python application using Apache Spark and YugabyteDB
 menu:
-  latest:
+  stable:
     identifier: apache-spark-3-python
     parent: integrations
     weight: 572

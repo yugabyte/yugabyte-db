@@ -4,7 +4,7 @@ headerTitle: Understanding and discovering the upper and lower limits for interv
 linkTitle: interval value limits
 description: Explains how the Upper and lower limits for interval values must be understood and specified in terms of the three fields of the internal representation. [YSQL]
 menu:
-  latest:
+  stable:
     identifier: interval-limits
     parent: type-interval
     weight: 20

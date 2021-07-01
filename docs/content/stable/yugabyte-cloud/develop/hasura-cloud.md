@@ -4,7 +4,7 @@ headerTitle: Connect Hasura Cloud to Yugabyte Cloud
 linkTitle: Hasura Cloud
 description: Connect Hasura Cloud to Yugabyte Cloud.
 menu:
-  latest:
+  stable:
     identifier: hasura-cloud
     parent: yugabyte-cloud
     weight: 700

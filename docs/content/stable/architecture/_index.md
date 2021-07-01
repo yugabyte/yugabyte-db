@@ -7,7 +7,7 @@ image: /images/section_icons/index/architecture.png
 headcontent: YugabyteDB architecture including the query, transactions, sharding, replication, and storage layers.
 section: REFERENCE
 menu:
-  latest:
+  stable:
     identifier: architecture
     weight: 1050
 ---

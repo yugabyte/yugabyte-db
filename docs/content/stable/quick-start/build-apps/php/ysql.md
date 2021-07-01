@@ -3,12 +3,8 @@ title: Build a PHP application that uses YSQL
 headerTitle: Build a PHP application
 linkTitle: PHP
 description: Build a PHP application that uses YSQL to perform basic database operations.
-aliases:
-  - /develop/client-drivers/php/
-  - /latest/develop/client-drivers/php/
-  - /latest/quick-start/build-apps/php/
 menu:
-  latest:
+  stable:
     identifier: build-apps-php-1-ysql
     parent: build-apps
     weight: 555

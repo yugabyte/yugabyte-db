@@ -3,12 +3,9 @@ title: SET
 linkTitle: SET
 description: SET
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2270
-aliases:
-  - /latest/api/redis/set
-  - /latest/api/yedis/set
 isTocNested: true
 showAsideToc: true
 ---

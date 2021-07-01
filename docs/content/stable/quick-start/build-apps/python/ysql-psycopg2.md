@@ -3,13 +3,8 @@ title: Build a Python application that uses YSQL and psycopg2
 headerTitle: Build a Python application
 linkTitle: Python
 description: Build a sample Python application with psycopg2 that use YSQL.
-aliases:
-  - /develop/client-drivers/python/
-  - /latest/develop/client-drivers/python/
-  - /latest/develop/build-apps/python/
-  - /latest/quick-start/build-apps/python/
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: Python
     identifier: python-1

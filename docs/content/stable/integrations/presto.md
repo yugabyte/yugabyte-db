@@ -2,9 +2,8 @@
 title: Presto
 linkTitle: Presto
 description: Presto
-aliases:
 menu:
-  latest:
+  stable:
     identifier: presto
     parent: integrations
     weight: 575

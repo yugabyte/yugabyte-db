@@ -4,7 +4,7 @@ headerTitle: Migrate a PostgreSQL application
 linkTitle: Migrate a PostgreSQL application
 description: How to migrate an application written for PostgreSQL to YugabyteDB.
 menu:
-  latest:
+  stable:
     identifier: migrate-postgresql-app
     parent: migrate-from-postgresql
     weight: 740

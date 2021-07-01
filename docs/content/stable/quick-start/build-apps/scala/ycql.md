@@ -4,13 +4,11 @@ headerTitle: Build a Scala application
 linkTitle: Scala
 description: Build a Scala application with the Yugabyte Java Driver for YCQL and sbt dependency.
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: Scala
     identifier: scala-1
     weight: 558
-aliases:
-  - /latest/quick-start/build-apps/scala/
 type: page
 isTocNested: true
 showAsideToc: true

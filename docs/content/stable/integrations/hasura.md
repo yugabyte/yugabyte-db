@@ -3,7 +3,7 @@ title: Hasura
 linkTitle: Hasura
 description: Hasura GraphQL engine
 menu:
-  latest:
+  stable:
     identifier: hasura
     parent: integrations
     weight: 582

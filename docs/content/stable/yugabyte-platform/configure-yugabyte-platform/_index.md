@@ -6,7 +6,7 @@ description: Configure Yugabyte Platform.
 image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure Yugabyte Platform.
 menu:
-  latest:
+  stable:
     identifier: configure-yugabyte-platform
     parent: yugabyte-platform
     weight: 642

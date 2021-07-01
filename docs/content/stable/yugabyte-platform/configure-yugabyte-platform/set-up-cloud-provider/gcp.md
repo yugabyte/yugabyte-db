@@ -3,10 +3,8 @@ title: Configure the Google Cloud Platform (GCP) cloud provider
 headerTitle: Configure the Google Cloud Platform (GCP) cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Google Cloud Platform (GCP) cloud provider.
-aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/gcp
 menu:
-  latest:
+  stable:
     identifier: set-up-cloud-provider-2-gcp
     parent: configure-yugabyte-platform
     weight: 20

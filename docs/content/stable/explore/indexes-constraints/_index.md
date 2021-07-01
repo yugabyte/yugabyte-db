@@ -4,10 +4,9 @@ headerTitle: Indexes and Constraints
 linkTitle: Indexes and Constraints
 description: Indexes and constraints in YSQL
 headcontent: Indexes and constraints in YSQL
-aliases:
 image: /images/section_icons/explore/monitoring.png
 menu:
-  latest:
+  stable:
     identifier: explore-indexes-constraints
     parent: explore
     weight: 245

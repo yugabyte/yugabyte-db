@@ -2,11 +2,8 @@
 title: Recover failed tserver/master
 linkTitle: Recover tserver/master
 description: Recover tserver/master
-aliases:
-  - /troubleshoot/cluster/recover-server/
-  - /latest/troubleshoot/cluster/recover-server/
 menu:
-  latest:
+  stable:
     parent: troubleshoot-cluster
     weight: 828
 isTocNested: true

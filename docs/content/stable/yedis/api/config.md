@@ -3,12 +3,9 @@ title: CONFIG
 linkTitle: CONFIG
 description: CONFIG
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2030
-aliases:
-  - /latest/api/redis/config
-  - /latest/api/yedis/config
 isTocNested: true
 showAsideToc: true
 ---

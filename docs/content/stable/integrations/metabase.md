@@ -2,9 +2,8 @@
 title: Metabase
 linkTitle: Metabase
 description: Metabase
-aliases:
 menu:
-  latest:
+  stable:
     identifier: metabase
     parent: integrations
     weight: 576

@@ -2,9 +2,8 @@
 title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
-aliases:
 menu:
-  latest:
+  stable:
     identifier: apache-kafka
     parent: integrations
     weight: 571

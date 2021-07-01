@@ -4,12 +4,9 @@ headerTitle: Built-in function call
 linkTitle: Function call
 description: Use a function call expression to apply the specified function to to given arguments between parentheses and return the result of the computation.
 menu:
-  latest:
+  stable:
     parent: api-cassandra
     weight: 1350
-aliases:
-  - /latest/api/cassandra/expr_fcall
-  - /latest/api/ycql/expr_fcall
 isTocNested: true
 showAsideToc: true
 ---

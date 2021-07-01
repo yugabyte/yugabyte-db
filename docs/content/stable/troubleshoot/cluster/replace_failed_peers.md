@@ -3,7 +3,7 @@ title: Manual remote bootstrap when a majority of peers fail
 linkTitle: Manual remote bootstrap when a majority of peers fail
 description: Manual remote bootstrap when a majority of peers fail
 menu:
-  latest:
+  stable:
     parent: troubleshoot-cluster
     weight: 835
 isTocNested: true

@@ -3,12 +3,9 @@ title: SREM
 linkTitle: SREM
 description: SREM
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2310
-aliases:
-  - /latest/api/redis/srem
-  - /latest/api/yedis/srem
 isTocNested: true
 showAsideToc: true
 ---

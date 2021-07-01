@@ -2,9 +2,8 @@
 title: KairosDB
 linkTitle: KairosDB
 description: KairosDB
-aliases:
 menu:
-  latest:
+  stable:
     identifier: kairosdb
     parent: integrations
     weight: 574

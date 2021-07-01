@@ -3,12 +3,9 @@ title: APPEND
 linkTitle: APPEND
 description: APPEND
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2010
-aliases:
-  - /latest/api/redis/append
-  - /latest/api/yedis/append
 isTocNested: true
 showAsideToc: true
 ---

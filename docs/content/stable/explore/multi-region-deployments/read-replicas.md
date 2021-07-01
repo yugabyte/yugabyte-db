@@ -4,7 +4,7 @@ headerTitle: Read replicas in YCQL
 linkTitle: Read replicas in YCQL
 description: Read replicas in YCQL
 menu:
-  latest:
+  stable:
     name: Read replicas in YCQL
     identifier: explore-multi-region-deployments-read-replicas
     parent: explore-multi-region-deployments

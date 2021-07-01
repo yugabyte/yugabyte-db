@@ -3,12 +3,9 @@ title: HMSET
 linkTitle: HMSET
 description: HMSET
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2170
-aliases:
-  - /latest/api/redis/hmset
-  - /latest/api/yedis/hmset
 isTocNested: true
 showAsideToc: true
 ---

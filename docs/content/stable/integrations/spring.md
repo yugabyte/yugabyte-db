@@ -2,9 +2,8 @@
 title: Spring Support for YugabyteDB
 linkTitle: Spring Framework
 description: Spring Support for YugabyteDB
-aliases:
 menu:
-  latest:
+  stable:
     identifier: spring
     parent: integrations
     weight: 578

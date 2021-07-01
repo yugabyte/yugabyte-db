@@ -4,11 +4,9 @@ headerTitle: CREATE PROCEDURE
 linkTitle: CREATE PROCEDURE
 description: Use the CREATE PROCEDURE statement to create a procedure in a database.
 menu:
-  latest:
+  stable:
     identifier: ddl_create_procedure
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_procedure/
 isTocNested: true
 showAsideToc: true
 ---

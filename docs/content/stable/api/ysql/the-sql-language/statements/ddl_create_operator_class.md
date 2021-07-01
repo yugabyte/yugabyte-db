@@ -4,11 +4,9 @@ headerTitle: CREATE OPERATOR CLASS
 linkTitle: CREATE OPERATOR CLASS
 description: Use the CREATE OPERATOR CLASS statement to create an operator class.
 menu:
-  latest:
+  stable:
     identifier: ddl_create_operator_class
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_operator_class/
 isTocNested: true
 showAsideToc: true
 ---

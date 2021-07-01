@@ -4,11 +4,9 @@ headerTitle: CREATE FUNCTION
 linkTitle: CREATE FUNCTION
 description: Use the CREATE FUNCTION statement to create a function in a database.
 menu:
-  latest:
+  stable:
     identifier: ddl_create_function
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_function/
 isTocNested: true
 showAsideToc: true
 ---

@@ -5,12 +5,10 @@ headerTitle: Signature and purpose of each aggregate function
 description: This section summarizes the signature and purpose of each of the YSQL aggregate functions and links to their individual accounts.
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  stable:
     identifier: aggregate-function-syntax-semantics
     parent: aggregate-functions
     weight: 90
-aliases:
-  - /latest/api/ysql/exprs/aggregate_functions
 isTocNested: true
 showAsideToc: true
 ---

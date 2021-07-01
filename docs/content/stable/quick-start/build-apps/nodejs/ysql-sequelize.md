@@ -4,7 +4,7 @@ headerTitle: Build a NodeJS application
 linkTitle: NodeJS
 description: Build a NodeJS application that uses Sequelize ORM and YSQL.
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: NodeJS
     identifier: nodejs-2

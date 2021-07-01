@@ -2,9 +2,8 @@
 title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
-aliases:
 menu:
-  latest:
+  stable:
     identifier: janusgraph
     parent: integrations
     weight: 573

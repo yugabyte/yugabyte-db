@@ -5,12 +5,10 @@ linkTitle: The SQL language
 description: The YugabyteDB SQL language—DDL; DML; DCL; TCL; session and system control; performance control
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  stable:
     identifier: the-sql-language
     parent: api-ysql
     weight: 10
-aliases:
-  - /latest/api/ysql/with-clause/
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,10 +4,8 @@ headerTitle: Snapshot and restore data for YCQL
 linkTitle: Snapshot and restore data
 description: Snapshot and restore data in YugabyteDB for YCQL.
 image: /images/section_icons/manage/enterprise.png
-aliases:
-  - manage/backup-restore/manage-snapshots
 menu:
-  latest:
+  stable:
     identifier: snapshots-2-ycql
     parent: backup-restore
     weight: 705

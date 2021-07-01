@@ -4,11 +4,9 @@ headerTitle: DROP CAST
 linkTitle: DROP CAST
 description: Use the DROP CAST statement to remove a cast.
 menu:
-  latest:
+  stable:
     identifier: ddl_drop_cast
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_drop_cast/
 isTocNested: true
 showAsideToc: true
 ---

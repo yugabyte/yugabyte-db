@@ -3,10 +3,8 @@ title: Install YugabyteDB on Linux
 headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on Linux (CentOS or Ubuntu) in less than five minutes.
-aliases:
-  - /quick-start/install/
 menu:
-  latest:
+  stable:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-2-linux

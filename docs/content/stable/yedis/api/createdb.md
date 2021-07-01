@@ -3,12 +3,9 @@ title: CREATEDB
 linkTitle: CREATEDB
 description: CREATEDB
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2032
-aliases:
-  - /latest/api/redis/createdb
-  - /latest/api/yedis/createdb
 isTocNested: true
 showAsideToc: true
 ---

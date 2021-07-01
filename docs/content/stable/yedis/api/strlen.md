@@ -3,12 +3,9 @@ title: STRLEN
 linkTitle: STRLEN
 description: STRLEN
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2320
-aliases:
-  - /latest/api/redis/strlen
-  - /latest/api/yedis/strlen
 isTocNested: true
 showAsideToc: true
 ---

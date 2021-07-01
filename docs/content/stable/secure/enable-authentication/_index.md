@@ -6,7 +6,7 @@ description: Enable Authentication.
 headcontent: Enable Authentication.
 image: /images/section_icons/secure/authentication.png
 menu:
-  latest:
+  stable:
     name: Enable Authentication
     identifier: enable-authentication
     parent: secure
