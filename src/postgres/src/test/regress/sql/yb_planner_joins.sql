@@ -14,6 +14,8 @@ CREATE TABLE t3(h int, r int, v1 int, v2 int, v3 int, primary key(h ASC, r ASC))
 CREATE INDEX t3_v1_v2_idx on t3(v1 ASC, v2 ASC);
 CREATE UNIQUE INDEX t3_v3_uniq_idx on t3(v3 ASC);
 
+CREATE TABLE t4(h int, r int, v1 int, v2 int, primary key(h ASC, r ASC));
+
 -- Should make use of eq transitivity and use pkey on both tables.
 EXPLAIN SELECT *
 FROM t1
@@ -79,3 +81,13 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE t1.h = 1 and t1.r = 2 and t3.v2 IN (3,4,5)
 ORDER BY t3.v3 DESC;
+
+-- Should use merge join for FULL, primary key on t3 and sort t1
+EXPLAIN SELECT *
+FROM t1
+     FULL JOIN t3 on t1.h = t3.h;
+
+-- Should use merge join for FULL, primary key on both t3 and t4 and materialize the inner
+EXPLAIN SELECT *
+FROM t4
+     FULL JOIN t3 on t4.h = t3.h;

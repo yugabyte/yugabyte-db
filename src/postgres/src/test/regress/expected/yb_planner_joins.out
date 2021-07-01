@@ -10,6 +10,7 @@ CREATE UNIQUE INDEX t2_v3_uniq_idx on t2(v3 HASH);
 CREATE TABLE t3(h int, r int, v1 int, v2 int, v3 int, primary key(h ASC, r ASC));
 CREATE INDEX t3_v1_v2_idx on t3(v1 ASC, v2 ASC);
 CREATE UNIQUE INDEX t3_v3_uniq_idx on t3(v3 ASC);
+CREATE TABLE t4(h int, r int, v1 int, v2 int, primary key(h ASC, r ASC));
 -- Should make use of eq transitivity and use pkey on both tables.
 EXPLAIN SELECT *
 FROM t1
@@ -177,3 +178,30 @@ ORDER BY t3.v3 DESC;
          ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..5.24 rows=10 width=20)
                Index Cond: ((v1 = t1.v1) AND (v2 = ANY ('{3,4,5}'::integer[])))
 (10 rows)
+
+-- Should use merge join for FULL, primary key on t3 and sort t1
+EXPLAIN SELECT *
+FROM t1
+     FULL JOIN t3 on t1.h = t3.h;
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Merge Full Join  (cost=149.83..341.33 rows=5000 width=40)
+   Merge Cond: (t3.h = t1.h)
+   ->  Index Scan using t3_pkey on t3  (cost=0.00..114.00 rows=1000 width=20)
+   ->  Sort  (cost=149.83..152.33 rows=1000 width=20)
+         Sort Key: t1.h
+         ->  Seq Scan on t1  (cost=0.00..100.00 rows=1000 width=20)
+(6 rows)
+
+-- Should use merge join for FULL, primary key on both t3 and t4 and materialize the inner
+EXPLAIN SELECT *
+FROM t4
+     FULL JOIN t3 on t4.h = t3.h;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Merge Full Join  (cost=0.00..305.50 rows=5000 width=36)
+   Merge Cond: (t4.h = t3.h)
+   ->  Index Scan using t4_pkey on t4  (cost=0.00..114.00 rows=1000 width=16)
+   ->  Materialize  (cost=0.00..116.50 rows=1000 width=20)
+         ->  Index Scan using t3_pkey on t3  (cost=0.00..114.00 rows=1000 width=20)
+(5 rows)

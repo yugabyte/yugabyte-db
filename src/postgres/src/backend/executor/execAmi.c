@@ -413,6 +413,15 @@ ExecSupportsMarkRestore(Path *pathnode)
 	{
 		case T_IndexScan:
 		case T_IndexOnlyScan:
+
+			/*
+			 * Yugabyte index scan do not support mark/restore, that would force
+			 * a Materialize plan node on top of the scan.
+			 * TODO Consider to support mark/restore. Though Materialize remote
+			 * index scan may be more efficient solution anyway.
+			 */
+			return false;
+
 		case T_Material:
 		case T_Sort:
 			return true;
