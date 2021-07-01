@@ -767,7 +767,6 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
       VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
   const Schema& schema = ysql_catalog_table_info->schema;
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
-                                                   boost::none /* transaction_id */,
                                                    {} /* read_hybrid_time */,
                                                    ysql_catalog_table_id));
   QLTableRow source_row;
@@ -816,7 +815,6 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
       VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
   const Schema& schema = pg_tablespace_info->schema;
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
-                                                   boost::none /* transaction_id */,
                                                    {} /* read_hybrid_time */,
                                                    kPgTablespaceTableId));
   QLTableRow source_row;
@@ -904,8 +902,7 @@ Status SysCatalogTable::ReadPgClassInfo(
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-    projection.CopyWithoutColumnIds(), boost::none /* transaction_id */,
-    {} /* read_hybrid_time */, pg_table_id));
+    projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
   {
     auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
@@ -1095,7 +1092,7 @@ Status SysCatalogTable::CopyPgsqlTables(
         VERIFY_RESULT(meta->GetTableInfo(target_table_id));
     const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
     std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
-        tablet->NewRowIterator(source_projection, boost::none, {}, source_table_id));
+        tablet->NewRowIterator(source_projection, {}, source_table_id));
     QLTableRow source_row;
 
     while (VERIFY_RESULT(iter->HasNext())) {

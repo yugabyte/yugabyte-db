@@ -2713,7 +2713,7 @@ namespace {
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
   const shared_ptr<Schema> schema = tablet->metadata()->schema();
   auto client_schema = schema->CopyWithoutColumnIds();
-  auto iter = tablet->NewRowIterator(client_schema, boost::none, {}, "", deadline);
+  auto iter = tablet->NewRowIterator(client_schema, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
   QLTableRow value_map;
