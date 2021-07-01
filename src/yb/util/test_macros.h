@@ -175,6 +175,14 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
   } \
   } while (0)
 
+#define ASSERT_STR_NOT_CONTAINS(str, substr) do { \
+  std::string _s = (str); \
+  if (_s.find((substr)) != std::string::npos) { \
+    FAIL() << "Expected not to find substring '" << (substr) \
+    << "'. Got: '" << _s << "'"; \
+  } \
+  } while (0)
+
 #define ASSERT_FILE_EXISTS(env, path) do { \
   std::string _s = (path); \
   ASSERT_TRUE(env->FileExists(_s)) \
