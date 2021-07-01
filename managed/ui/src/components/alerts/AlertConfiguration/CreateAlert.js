@@ -28,7 +28,6 @@ const required = (value) => (value ? undefined : 'This field is required.');
 const CreateAlert = (props) => {
   const { onCreateCancel, handleSubmit } = props;
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
-  const universes = useSelector((state) => {});
 
   /**
    * Constant option for metrics condition
@@ -154,11 +153,12 @@ const CreateAlert = (props) => {
                 />
               </Col>
               <Col md={6}>
+              <div className="form-item-custom-label">Duration</div>
                 <Field
-                  component={YBFormInput}
-                  type="number"
-                  label="Duration"
-                  placeholder="Enter duration in minutes"
+                  name="ALERT_METRICS_DURATION"
+                  component={YBTextInputWithLabel}
+                  validate={required}
+                  placeHolder="Enter duration in minutes"
                 />
               </Col>
             </Row>
@@ -180,7 +180,7 @@ const CreateAlert = (props) => {
               />
             </Col>
           </Row>
-          <Row className="form-action-button-container">
+          <Row className="alert-action-button-container">
             <Col lg={6} lgOffset={6}>
               <YBButton
                 btnText="Cancel"

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
-import { Field, reduxForm } from 'redux-form';
+import { change, Field, reduxForm } from 'redux-form';
 import { YBButton, YBMultiSelectWithLabel, YBTextInputWithLabel } from '../../common/forms/fields';
 import { AddDestinationChannelFrom } from './AddDestinationChannelFrom';
 
@@ -25,6 +25,7 @@ const styles = {
 };
 
 const AlertDestinationConfiguration = (props) => {
+
   const [destinationChannelList, setDestinationChannelList] = useState([]);
 
   useEffect(() => {
@@ -45,14 +46,20 @@ const AlertDestinationConfiguration = (props) => {
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
   const handleOnSubmit = (values) => {
-    console.log('values',values)
+    let payload = {
+      name: '',
+      receivers: []
+    }
+    payload.name = values['ALERT_DESTINATION_NAME'];
+    values['DESTINATION_CHANNEL_LIST'].forEach(channel => payload.receivers.push(channel.value));
+    props.createAlertDestination(payload).then(() => props.onAddCancel())
+
   };
 
   const {
     handleSubmit,
     modal: { visibleModal },
-    onAddCancel,
-    handleSubmit
+    onAddCancel
   } = props;
 
   return (
@@ -106,7 +113,7 @@ const AlertDestinationConfiguration = (props) => {
             <br />
             <br />
             <br />
-            <Row className="form-action-button-container">
+            <Row className="alert-action-button-container">
               <Col lg={6} lgOffset={6}>
                 <YBButton
                   btnText="Cancel"

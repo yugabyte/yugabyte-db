@@ -10,6 +10,8 @@ import { toast } from 'react-toastify';
 import {
   alertConfigs,
   alertDestionations,
+  createAlertDestination,
+  createAlertDestinationResponse,
   createAlertReceiver,
   createAlertReceiverResponse,
   getAlertReceivers,
@@ -66,6 +68,17 @@ const mapDispatchToProps = (dispatch) => {
           return;
         }
         return response.payload.data
+      })
+    },
+    createAlertDestination: (payload) => {
+      return dispatch(createAlertDestination(payload)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully added the destination');
+        }
+        return dispatch(createAlertDestinationResponse(response.payload));
       })
     },
     closeModal: () => {

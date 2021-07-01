@@ -4,7 +4,7 @@ import axios from 'axios';
 import { IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO } from '../config';
 import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
-import alertListMockData from '../components/alerts/AlertConfiguration/AlertListMockdata.json';
+import alertListMockData from '../components/alerts/AlertConfiguration/AlertListMockData.json';
 import alertDestionationsMockdata from '../components/alerts/AlertConfiguration/AlertDestinationMockData.json'
 
 // Get current user(me) from token in localStorage
@@ -54,6 +54,9 @@ export const GET_ALERTS_FAILURE = 'GET_ALERTS_FAILURE';
 
 export const CREATE_ALERT_RECEIVER = 'CREATE_ALERT_RECEIVER';
 export const CREATE_ALERT_RECEIVER_RESPONSE = 'CREATE_ALERT_RECEIVER_RESPONSE';
+
+export const CREATE_ALERT_DESTINATION = 'CREATE_ALERT_DESTINATION';
+export const CREATE_ALERT_DESTINATION_RESPONSE = 'CREATE_ALERT_DESTINATION_RESPONSE';
 
 export const GET_ALERT_RECEIVERS = 'GET_ALERT_RECEIVERS';
 export const GET_ALERT_RECEIVERS_SUCCESS = 'GET_ALERT_RECEIVERS_SUCCESS';
@@ -455,6 +458,22 @@ export function createAlertReceiver(payload) {
 export function createAlertReceiverResponse(response) {
   return {
     type: CREATE_ALERT_RECEIVER_RESPONSE,
+    payload: response
+  };
+}
+
+export function createAlertDestination(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_routes`, payload);
+  return {
+    type:   CREATE_ALERT_DESTINATION,
+    payload: request
+  };
+}
+
+export function createAlertDestinationResponse(response) {
+  return {
+    type: CREATE_ALERT_DESTINATION_RESPONSE,
     payload: response
   };
 }
