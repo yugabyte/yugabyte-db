@@ -26,7 +26,7 @@ import AlertsPolicy from './AlertsPolicy';
 const required = (value) => (value ? undefined : 'This field is required.');
 
 const CreateAlert = (props) => {
-  const { onCreateCancel } = props;
+  const { onCreateCancel, handleSubmit } = props;
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
   const universes = useSelector((state) => {});
 
@@ -77,7 +77,7 @@ const CreateAlert = (props) => {
    * TODO: Change the state to disable/enable the universe multi-select list.
    */
   const handleMetricConditionChange = (event) => {
-    const value = event.target.value;
+    const value = event.target?.value;
     value === 'allCluster' ? setIsAllUniversesDisabled(true) : setIsAllUniversesDisabled(false);
   };
   /**
@@ -90,7 +90,7 @@ const CreateAlert = (props) => {
   };
   return (
     <Formik initialValues={{ ALERT_TARGET_TYPE: 'allCluster' }}>
-      <form name="alertConfigForm" onSubmit={props.handleSubmit(handleOnSubmit)}>
+      <form name="alertConfigForm" onSubmit={handleSubmit(handleOnSubmit)}>
         <Row className="config-section-header">
           <Row>
             <Col md={6}>

@@ -4,7 +4,7 @@ import axios from 'axios';
 import { IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO } from '../config';
 import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
-import alertListMockdata from '../components/alerts/AlertConfiguration/AlertListMockData.json'
+import alertListMockData from '../components/alerts/AlertConfiguration/AlertListMockdata.json';
 import alertDestionationsMockdata from '../components/alerts/AlertConfiguration/AlertDestinationMockData.json'
 
 // Get current user(me) from token in localStorage
@@ -485,14 +485,16 @@ export function getAlertReceiversFaliure(response) {
 export function alertConfigs() {
   return {
     type: GET_ALERT_CONFIGS,
-    payload: alertListMockdata
+    payload: alertListMockData
   }
 }
 
 export function alertDestionations() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_routes`);
   return {
     type: GET_ALERT_DESTIONATIONS,
-    payload: alertDestionationsMockdata
+    payload: request // alertDestionationsMockdata
   }
 }
 

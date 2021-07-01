@@ -1,7 +1,7 @@
-import { Field, Formik } from 'formik';
 import React, { useEffect, useState } from 'react';
+import { Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
-import { reduxForm } from 'redux-form';
+import { Field, reduxForm } from 'redux-form';
 import { YBButton, YBMultiSelectWithLabel, YBTextInputWithLabel } from '../../common/forms/fields';
 import { AddDestinationChannelFrom } from './AddDestinationChannelFrom';
 
@@ -38,23 +38,26 @@ const AlertDestinationConfiguration = (props) => {
       setDestinationChannelList(data);
     });
   }, []);
+
   /**
    *
    * @param {Formvalues} values
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
   const handleOnSubmit = (values) => {
-    // console.log(values)
+    console.log(values, '*** values');
   };
 
   const {
+    handleSubmit,
     modal: { visibleModal },
     onAddCancel
   } = props;
+
   return (
     <>
       <Formik initialValues={null}>
-        <form name="alertDestinationForm" onSubmit={props.handleSubmit(handleOnSubmit)}>
+        <form name="alertDestinationForm" onSubmit={handleSubmit(handleOnSubmit)}>
           <Row className="config-section-header">
             <Row>
               <Col md={6}>
