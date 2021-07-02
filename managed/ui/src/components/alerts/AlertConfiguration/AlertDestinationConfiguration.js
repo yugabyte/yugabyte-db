@@ -60,10 +60,10 @@ const AlertDestinationConfiguration = (props) => {
 
   const {
     handleSubmit,
-    modal: { visibleModal },
     onAddCancel,
     setInitialValues,
-    initialValues
+    initialValues,
+    modal: { showModal, visibleModal },
   } = props;
 
   return (
@@ -135,7 +135,7 @@ const AlertDestinationConfiguration = (props) => {
         </form>
       </Formik>
       <AddDestinationChannelFrom
-        visible={visibleModal === 'alertDestinationForm'}
+        visible={showModal && visibleModal === 'alertDestinationForm'}
         onHide={props.closeModal}
         defaultChannel="email"
         updateDestinationChannel={setDestinationChannelList}
