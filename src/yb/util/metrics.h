@@ -592,6 +592,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
                      const MetricJsonOptions& opts) const;
 
   CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+                     const std::vector<std::string>& requested_metrics,
                      const MetricPrometheusOptions& opts) const;
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
@@ -855,7 +856,24 @@ class MetricRegistry {
                      const std::vector<std::string>& requested_metrics,
                      const MetricJsonOptions& opts) const;
 
+  // Writes metrics in this registry to 'writer'.
+  //
+  // See the MetricPrometheusOptions struct definition above for options changing the
+  // output of this function.
   CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+                     const MetricPrometheusOptions& opts) const;
+  // Writes metrics in this registry to 'writer'.
+  //
+  // 'requested_metrics' is a set of substrings to match metric names against,
+  // where '*' matches all metrics.
+  //
+  // The string matching can either match an entity ID or a metric name.
+  // If it matches an entity ID, then all metrics for that entity will be printed.
+  //
+  // See the MetricPrometheusOptions struct definition above for options changing the
+  // output of this function.
+  CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+                     const std::vector<std::string>& requested_metrics,
                      const MetricPrometheusOptions& opts) const;
 
   // For each registered entity, retires orphaned metrics. If an entity has no more
