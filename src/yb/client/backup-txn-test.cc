@@ -205,6 +205,41 @@ TEST_F(BackupTxnTest, PointInTimeRestore) {
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }
 
+// This test writes a lot of update to the same key.
+// Then takes snapshot and restores it to time before the write.
+// So we test how filtering iterator works in case where a lot of record should be skipped.
+TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
+  constexpr int kNumWrites = RegularBuildVsSanitizers(100000, 100);
+  constexpr int kKey = 123;
+
+  std::vector<std::future<Status>> futures;
+  auto session = CreateSession();
+  ASSERT_OK(WriteRow(session, kKey, 0));
+  auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  for (size_t r = 1; r <= kNumWrites; ++r) {
+    ASSERT_OK(WriteRow(session, kKey, r, WriteOpType::INSERT, client::Flush::kFalse));
+    futures.push_back(session->FlushFuture());
+  }
+
+  int good = 0;
+  for (auto& future : futures) {
+    if (future.get().ok()) {
+      ++good;
+    }
+  }
+
+  LOG(INFO) << "Total good: " << good;
+
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+
+  ASSERT_OK(RestoreSnapshot(snapshot_id, hybrid_time));
+
+  auto value = ASSERT_RESULT(SelectRow(session, kKey));
+  ASSERT_EQ(value, 0);
+}
+
+
 TEST_F(BackupTxnTest, Persistence) {
   LOG(INFO) << "Write data";
 
