@@ -2,21 +2,18 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
-import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 
 import javax.inject.Inject;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class CreateAlertDefinitions extends UniverseTaskBase {
@@ -41,29 +38,22 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
       log.info("Running {}", getName());
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Customer customer = Customer.get(universe.customerId);
-      String nodePrefix = universe.getUniverseDetails().nodePrefix;
 
-      Config customerConfig = runtimeConfigFactory.forCustomer(customer);
-      CustomerConfig alertConfig = CustomerConfig.getAlertConfig(customer.getUuid());
-      AlertingData data =
-          alertConfig == null ? null : Json.fromJson(alertConfig.getData(), AlertingData.class);
+      AlertDefinitionGroupFilter filter =
+          AlertDefinitionGroupFilter.builder()
+              .customerUuid(customer.getUuid())
+              .targetType(AlertDefinitionGroup.TargetType.UNIVERSE)
+              .build();
 
-      for (AlertDefinitionTemplate template : AlertDefinitionTemplate.values()) {
-        AlertDefinition alertDefinition =
-            new AlertDefinition()
-                .setActive(
-                    template != AlertDefinitionTemplate.CLOCK_SKEW
-                        ? template.isCreateForNewUniverse()
-                        : (data == null) || data.enableClockSkew)
-                .setCustomerUUID(customer.getUuid())
-                .setName(template.getName())
-                .setQuery(template.buildTemplate(nodePrefix))
-                .setQueryThreshold(
-                    customerConfig.getDouble(template.getDefaultThresholdParamName()))
-                .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(universe).get());
-        alertDefinitionService.create(alertDefinition);
-      }
+      List<AlertDefinitionGroup> groups =
+          alertDefinitionGroupService
+              .list(filter)
+              .stream()
+              .filter(group -> group.getTarget().isAll())
+              .collect(Collectors.toList());
 
+      // Just need to save - service will create definition itself.
+      alertDefinitionGroupService.save(groups);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());

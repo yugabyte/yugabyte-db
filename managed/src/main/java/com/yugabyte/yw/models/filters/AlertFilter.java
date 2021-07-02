@@ -13,23 +13,23 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import lombok.Builder;
-import lombok.NonNull;
-import lombok.Value;
+import lombok.*;
 
 import java.util.*;
 
-@Value
+@Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AlertFilter {
-  Set<UUID> uuids;
-  Set<UUID> excludeUuids;
-  UUID customerUuid;
-  String errorCode;
-  Set<Alert.State> states;
-  Set<Alert.State> targetStates;
-  Set<UUID> definitionUuids;
-  AlertLabel label;
+  private Set<UUID> uuids;
+  private Set<UUID> excludeUuids;
+  private UUID customerUuid;
+  private String errorCode;
+  private Set<Alert.State> states;
+  private Set<Alert.State> targetStates;
+  private Set<UUID> definitionUuids;
+  private AlertLabel label;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -65,14 +65,11 @@ public class AlertFilter {
   public static class AlertFilterBuilder {
     Set<UUID> uuids = new HashSet<>();
     Set<UUID> excludeUuids = new HashSet<>();
-    UUID customerUuid;
-    String errorCode;
     Set<Alert.State> states = EnumSet.noneOf(Alert.State.class);
     Set<Alert.State> targetStates = EnumSet.noneOf(Alert.State.class);
-    AlertLabel label;
     Set<UUID> definitionUuids = new HashSet<>();
 
-    public AlertFilterBuilder uuids(@NonNull UUID uuid) {
+    public AlertFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
       return this;
     }
@@ -82,7 +79,7 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder excludeUuids(@NonNull UUID uuid) {
+    public AlertFilterBuilder excludeUuid(@NonNull UUID uuid) {
       this.excludeUuids.add(uuid);
       return this;
     }
@@ -97,7 +94,7 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder states(@NonNull Alert.State... state) {
+    public AlertFilterBuilder state(@NonNull Alert.State... state) {
       states.addAll(Arrays.asList(state));
       return this;
     }
@@ -107,7 +104,7 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder targetStates(@NonNull Alert.State... state) {
+    public AlertFilterBuilder targetState(@NonNull Alert.State... state) {
       targetStates.addAll(Arrays.asList(state));
       return this;
     }
@@ -142,7 +139,7 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder definitionUuids(@NonNull UUID uuid) {
+    public AlertFilterBuilder definitionUuid(@NonNull UUID uuid) {
       this.definitionUuids.add(uuid);
       return this;
     }

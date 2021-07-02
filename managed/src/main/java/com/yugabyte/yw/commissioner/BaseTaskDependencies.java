@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.TableManager;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -35,6 +36,7 @@ public class BaseTaskDependencies {
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final AlertService alertService;
   private final AlertDefinitionService alertDefinitionService;
+  private final AlertDefinitionGroupService alertDefinitionGroupService;
   private final YBClientService ybService;
   private final TableManager tableManager;
 }

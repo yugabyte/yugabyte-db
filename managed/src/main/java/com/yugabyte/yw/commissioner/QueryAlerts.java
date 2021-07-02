@@ -16,17 +16,16 @@ import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -63,6 +62,8 @@ public class QueryAlerts {
 
   private final AlertDefinitionService alertDefinitionService;
 
+  private final AlertDefinitionGroupService alertDefinitionGroupService;
+
   private final AlertManager alertManager;
 
   @Inject
@@ -72,12 +73,14 @@ public class QueryAlerts {
       AlertService alertService,
       MetricQueryHelper queryHelper,
       AlertDefinitionService alertDefinitionService,
+      AlertDefinitionGroupService alertDefinitionGroupService,
       AlertManager alertManager) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.queryHelper = queryHelper;
     this.alertService = alertService;
     this.alertDefinitionService = alertDefinitionService;
+    this.alertDefinitionGroupService = alertDefinitionGroupService;
     this.alertManager = alertManager;
     this.initialize();
   }
@@ -123,8 +126,20 @@ public class QueryAlerts {
           "Found {} alerts without definition uuid",
           alerts.size() - alertsWithDefinitionUuids.size());
     }
+    List<AlertData> deduplicatedAlerts =
+        new ArrayList<>(
+            alertsWithDefinitionUuids
+                .stream()
+                .collect(
+                    Collectors.toMap(
+                        this::getDefinitionUuid,
+                        Function.identity(),
+                        (a, b) ->
+                            getSeverity(a).getPriority() > getSeverity(b).getPriority() ? a : b,
+                        LinkedHashMap::new))
+                .values());
     List<UUID> activeAlertUuids = new ArrayList<>();
-    for (List<AlertData> batch : Lists.partition(alertsWithDefinitionUuids, ALERTS_BATCH)) {
+    for (List<AlertData> batch : Lists.partition(deduplicatedAlerts, ALERTS_BATCH)) {
       Set<UUID> definitionUuids =
           batch
               .stream()
@@ -135,7 +150,7 @@ public class QueryAlerts {
       AlertFilter alertFilter =
           AlertFilter.builder()
               .definitionUuids(definitionUuids)
-              .targetStates(Alert.State.ACTIVE)
+              .targetState(Alert.State.ACTIVE)
               .build();
       Map<UUID, Alert> existingAlertsByDefinitionUuid =
           alertService
@@ -151,12 +166,30 @@ public class QueryAlerts {
               .stream()
               .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()));
 
+      Set<UUID> groupUuids =
+          existingDefinitionsByUuid
+              .values()
+              .stream()
+              .map(AlertDefinition::getGroupUUID)
+              .collect(Collectors.toSet());
+      AlertDefinitionGroupFilter groupFilter =
+          AlertDefinitionGroupFilter.builder().uuids(groupUuids).build();
+      Map<UUID, AlertDefinitionGroup> existingGroupsByUuid =
+          alertDefinitionGroupService
+              .list(groupFilter)
+              .stream()
+              .collect(Collectors.toMap(AlertDefinitionGroup::getUuid, Function.identity()));
+
       List<Alert> toSave =
           batch
               .stream()
               .map(
                   data ->
-                      processAlert(data, existingAlertsByDefinitionUuid, existingDefinitionsByUuid))
+                      processAlert(
+                          data,
+                          existingAlertsByDefinitionUuid,
+                          existingDefinitionsByUuid,
+                          existingGroupsByUuid))
               .filter(Objects::nonNull)
               .collect(Collectors.toList());
 
@@ -183,14 +216,14 @@ public class QueryAlerts {
     AlertNotificationReport report = new AlertNotificationReport();
     AlertFilter toSendRaisedFilter =
         AlertFilter.builder()
-            .states(Alert.State.CREATED)
-            .targetStates(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .state(Alert.State.CREATED)
+            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
             .build();
     List<Alert> toSendRaisedAlerts = alertService.list(toSendRaisedFilter);
     toSendRaisedAlerts.forEach(alert -> alertManager.transitionAlert(alert, report));
 
     AlertFilter toSendResolvedFilter =
-        AlertFilter.builder().states(Alert.State.ACTIVE).targetStates(Alert.State.RESOLVED).build();
+        AlertFilter.builder().state(Alert.State.ACTIVE).targetState(Alert.State.RESOLVED).build();
     List<Alert> toSendResolvedAlerts = alertService.list(toSendResolvedFilter);
     toSendResolvedAlerts.forEach(alert -> alertManager.transitionAlert(alert, report));
     if (!report.isEmpty()) {
@@ -205,10 +238,20 @@ public class QueryAlerts {
     return alertData.getLabels().get(KnownAlertLabels.DEFINITION_UUID.labelName());
   }
 
+  private AlertDefinitionGroup.Severity getSeverity(AlertData alertData) {
+    if (Collections.isEmpty(alertData.getLabels())) {
+      return AlertDefinitionGroup.Severity.SEVERE;
+    }
+    return Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.SEVERITY.labelName()))
+        .map(AlertDefinitionGroup.Severity::valueOf)
+        .orElse(AlertDefinitionGroup.Severity.SEVERE);
+  }
+
   private Alert processAlert(
       AlertData alertData,
       Map<UUID, Alert> existingAlertsByDefinitionUuid,
-      Map<UUID, AlertDefinition> definitionsByUuid) {
+      Map<UUID, AlertDefinition> definitionsByUuid,
+      Map<UUID, AlertDefinitionGroup> groupsByUuid) {
     String definitionUuidStr = getDefinitionUuid(alertData);
     if (definitionUuidStr == null) {
       // Should be filtered earlier
@@ -221,8 +264,13 @@ public class QueryAlerts {
     }
     UUID definitionUuid = UUID.fromString(definitionUuidStr);
     AlertDefinition definition = definitionsByUuid.get(definitionUuid);
-    if (definition == null || !definition.isActive()) {
-      log.debug("Definition is missing or inactive for alert {}", alertData);
+    if (definition == null) {
+      log.debug("Definition is missing for alert {}", alertData);
+      return null;
+    }
+    AlertDefinitionGroup group = groupsByUuid.get(definition.getGroupUUID());
+    if (group == null || !group.isActive()) {
+      log.debug("Definition group is missing or inactive for alert {}", alertData);
       return null;
     }
     Alert alert = existingAlertsByDefinitionUuid.get(definitionUuid);

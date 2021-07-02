@@ -11,15 +11,20 @@ package com.yugabyte.yw.common.alerts;
 
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
 import com.yugabyte.yw.models.AlertDefinition;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
+import com.yugabyte.yw.models.AlertDefinitionLabel;
+import lombok.RequiredArgsConstructor;
 
+import java.text.DecimalFormat;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AlertRuleTemplateSubstitutor.class);
-
+  private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
+  private static final String QUERY_CONDITION_PLACEHOLDER = "{{ query_condition }}";
+  private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
   private static final String DEFINITION_NAME = "definition_name";
   private static final String DEFINITION_EXPR = "definition_expr";
   private static final String DURATION = "duration";
@@ -27,28 +32,68 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
   private static final String SUMMARY_TEMPLATE = "summary_template";
   private static final String LABEL_PREFIX = "          ";
 
-  public AlertRuleTemplateSubstitutor(AlertDefinition definition) {
+  public AlertRuleTemplateSubstitutor(
+      AlertDefinitionGroup group,
+      AlertDefinition definition,
+      AlertDefinitionGroup.Severity severity) {
     super(
         key -> {
           switch (key) {
             case DEFINITION_NAME:
-              return definition.getName();
+              return group.getName();
             case DEFINITION_EXPR:
-              return definition.getQueryWithThreshold();
+              return getQueryWithThreshold(
+                  definition.getQuery(), group.getThresholds().get(severity));
             case DURATION:
-              return definition.getQueryDurationSec() + "s";
+              return group.getDurationSec() + "s";
             case LABELS:
               return definition
-                  .getEffectiveLabels()
+                  .getEffectiveLabels(group, severity)
                   .stream()
                   .map(label -> LABEL_PREFIX + label.getName() + ": " + label.getValue())
                   .collect(Collectors.joining("\n"));
             case SUMMARY_TEMPLATE:
-              return definition.getMessageTemplate();
+              AlertDefinitionGroupLabelProvider labelProvider =
+                  new AlertDefinitionGroupLabelProvider(group, definition, severity);
+              AlertTemplateSubstitutor<AlertDefinitionGroupLabelProvider> substitutor =
+                  new AlertTemplateSubstitutor<>(labelProvider);
+              return substitutor.replace(
+                  "{{ $labels.definition_name }} Alert for {{ $labels.target_name }} is firing");
             default:
               throw new IllegalArgumentException(
                   "Unexpected placeholder " + key + " in rule template file");
           }
         });
+  }
+
+  public static String getQueryWithThreshold(
+      String query, AlertDefinitionGroupThreshold threshold) {
+    return query
+        .replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
+        .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
+  }
+
+  @RequiredArgsConstructor
+  private static class AlertDefinitionGroupLabelProvider implements AlertLabelsProvider {
+
+    private final AlertDefinitionGroup alertDefinitionGroup;
+    private final AlertDefinition alertDefinition;
+    private final AlertDefinitionGroup.Severity severity;
+
+    @Override
+    public String getLabelValue(String name) {
+      return alertDefinition
+          .getEffectiveLabels(alertDefinitionGroup, severity)
+          .stream()
+          .filter(label -> name.equals(label.getName()))
+          .map(AlertDefinitionLabel::getValue)
+          .findFirst()
+          .orElse(null);
+    }
+
+    @Override
+    public UUID getUuid() {
+      return alertDefinition.getUuid();
+    }
   }
 }

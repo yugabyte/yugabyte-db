@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.yugabyte.yw.common.ModelFactory.createAlertDefinitionGroup;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertTrue;
@@ -33,20 +34,25 @@ public class AlertTest extends FakeDBApplication {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private Customer cust1;
+  private Universe universe;
+  private AlertDefinitionGroup group;
+  private AlertDefinition definition;
 
   @InjectMocks private AlertService alertService;
 
   @Before
   public void setUp() {
     cust1 = ModelFactory.testCustomer("Customer 1");
+    universe = ModelFactory.createUniverse(cust1.getCustomerId());
+    group = createAlertDefinitionGroup(cust1, universe);
+    definition = createDefinition();
   }
 
   @Test
   public void testAddAndQueryByUuid() {
-    AlertDefinition definition = createDefinition();
-    Alert alert = createAlert(definition);
+    Alert alert = createAlert();
 
-    alert = alertService.create(alert);
+    alert = alertService.save(alert);
 
     Alert queriedAlert = alertService.get(alert.getUuid());
 
@@ -55,9 +61,8 @@ public class AlertTest extends FakeDBApplication {
 
   @Test
   public void testQueryByLotUuids() {
-    AlertDefinition definition = createDefinition();
     List<Alert> alerts =
-        Stream.generate(() -> createAlert(definition))
+        Stream.generate(() -> createAlert())
             .limit(CommonUtils.DB_MAX_IN_CLAUSE_ITEMS + 1)
             .collect(Collectors.toList());
 
@@ -82,11 +87,10 @@ public class AlertTest extends FakeDBApplication {
 
   @Test
   public void testUpdateAndQueryByLabel() {
-    AlertDefinition definition = createDefinition();
-    Alert alert = createAlert(definition);
+    Alert alert = createAlert();
 
     alert.setMessage("New Message");
-    alert = alertService.create(alert);
+    alert = alertService.save(alert);
 
     AlertLabel oldLabel1 =
         new AlertLabel(
@@ -109,9 +113,8 @@ public class AlertTest extends FakeDBApplication {
 
   @Test
   public void testDelete() {
-    AlertDefinition definition = createDefinition();
-    Alert alert = createAlert(definition);
-    alert = alertService.create(alert);
+    Alert alert = createAlert();
+    alert = alertService.save(alert);
     alert.delete();
 
     Alert queriedAlert = alertService.get(alert.getUuid());
@@ -160,10 +163,10 @@ public class AlertTest extends FakeDBApplication {
     AlertFilter filter = AlertFilter.builder().customerUuid(cust1.getUuid()).build();
     queryAndAssertByFilter(filter, definition);
 
-    filter = AlertFilter.builder().states(Alert.State.CREATED).build();
+    filter = AlertFilter.builder().state(Alert.State.CREATED).build();
     queryAndAssertByFilter(filter, definition);
 
-    filter = AlertFilter.builder().targetStates(Alert.State.ACTIVE).build();
+    filter = AlertFilter.builder().targetState(Alert.State.ACTIVE).build();
     queryAndAssertByFilter(filter, definition);
 
     filter =
@@ -177,10 +180,10 @@ public class AlertTest extends FakeDBApplication {
     filter = AlertFilter.builder().errorCode(KnownAlertCodes.CUSTOMER_ALERT).build();
     queryAndAssertByFilter(filter, definition);
 
-    filter = AlertFilter.builder().definitionUuids(definition.getUuid()).build();
+    filter = AlertFilter.builder().definitionUuid(definition.getUuid()).build();
     queryAndAssertByFilter(filter, definition);
 
-    filter = AlertFilter.builder().excludeUuids(alert2.getUuid()).build();
+    filter = AlertFilter.builder().excludeUuid(alert2.getUuid()).build();
     queryAndAssertByFilter(filter, definition);
   }
 
@@ -192,14 +195,13 @@ public class AlertTest extends FakeDBApplication {
   }
 
   public AlertDefinition createDefinition() {
-    Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
-    return ModelFactory.createAlertDefinition(cust1, universe);
+    return ModelFactory.createAlertDefinition(cust1, universe, group);
   }
 
-  private static Alert createAlert(AlertDefinition definition) {
+  private Alert createAlert() {
     List<AlertLabel> labels =
         definition
-            .getEffectiveLabels()
+            .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());
@@ -214,37 +216,81 @@ public class AlertTest extends FakeDBApplication {
   }
 
   private void assertTestAlert(Alert alert, AlertDefinition definition) {
-    AlertLabel label =
+    AlertLabel customerUuidLabel =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.CUSTOMER_UUID.labelName(),
+            definition.getCustomerUUID().toString());
+    AlertLabel universeUuidLabel =
         new AlertLabel(
             alert,
             KnownAlertLabels.UNIVERSE_UUID.labelName(),
             definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
-    AlertLabel label2 =
+    AlertLabel universeNameLabel =
         new AlertLabel(
             alert,
             KnownAlertLabels.UNIVERSE_NAME.labelName(),
             definition.getLabelValue(KnownAlertLabels.UNIVERSE_NAME));
-    AlertLabel label3 =
+    AlertLabel targetUuidLabel =
         new AlertLabel(
             alert,
             KnownAlertLabels.TARGET_UUID.labelName(),
             definition.getLabelValue(KnownAlertLabels.TARGET_UUID));
-    AlertLabel label4 =
+    AlertLabel targetNameLabel =
         new AlertLabel(
             alert,
             KnownAlertLabels.TARGET_NAME.labelName(),
             definition.getLabelValue(KnownAlertLabels.TARGET_NAME));
-    AlertLabel label5 =
+    AlertLabel targetTypeLabel =
         new AlertLabel(
             alert,
             KnownAlertLabels.TARGET_TYPE.labelName(),
             definition.getLabelValue(KnownAlertLabels.TARGET_TYPE));
+    AlertLabel alertTypeLabel =
+        new AlertLabel(
+            alert, KnownAlertLabels.ALERT_TYPE.labelName(), KnownAlertTypes.Error.name());
+    AlertLabel errorCodeLabel =
+        new AlertLabel(
+            alert, KnownAlertLabels.ERROR_CODE.labelName(), KnownAlertCodes.CUSTOMER_ALERT.name());
+    AlertLabel groupUuidLabel =
+        new AlertLabel(
+            alert, KnownAlertLabels.GROUP_UUID.labelName(), definition.getGroupUUID().toString());
+    AlertLabel severityLabel =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.SEVERITY.labelName(),
+            AlertDefinitionGroup.Severity.SEVERE.name());
+    AlertLabel definitionUuidLabel =
+        new AlertLabel(
+            alert, KnownAlertLabels.DEFINITION_UUID.labelName(), definition.getUuid().toString());
+    AlertLabel definitionActiveLabel =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.DEFINITION_ACTIVE.labelName(),
+            String.valueOf(group.isActive()));
+    AlertLabel definitionNameLabel =
+        new AlertLabel(alert, KnownAlertLabels.DEFINITION_NAME.labelName(), group.getName());
     assertThat(alert.getCustomerUUID(), is(cust1.uuid));
     assertThat(alert.getErrCode(), is(KnownAlertCodes.CUSTOMER_ALERT.name()));
     assertThat(alert.getType(), is(KnownAlertTypes.Error.name()));
     assertThat(alert.getMessage(), is("Universe on fire!"));
     assertThat(alert.getDefinitionUUID(), equalTo(definition.getUuid()));
     assertTrue(alert.isSendEmail());
-    assertThat(alert.getLabels(), hasItems(label, label2, label3, label4, label5));
+    assertThat(
+        alert.getLabels(),
+        containsInAnyOrder(
+            customerUuidLabel,
+            universeUuidLabel,
+            universeNameLabel,
+            targetUuidLabel,
+            targetNameLabel,
+            targetTypeLabel,
+            alertTypeLabel,
+            errorCodeLabel,
+            groupUuidLabel,
+            severityLabel,
+            definitionUuidLabel,
+            definitionNameLabel,
+            definitionActiveLabel));
   }
 }

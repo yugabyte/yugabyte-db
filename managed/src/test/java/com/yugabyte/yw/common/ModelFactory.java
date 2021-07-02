@@ -4,6 +4,8 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -22,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.Users.Role;
@@ -250,13 +253,47 @@ public class ModelFactory {
     return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
+  public static AlertDefinitionGroup createAlertDefinitionGroup(
+      Customer customer, Universe universe, Consumer<AlertDefinitionGroup> modifier) {
+    AlertDefinitionGroup group =
+        new AlertDefinitionGroup()
+            .setName("alertDefinitionGroup")
+            .setDescription("alertDefinitionGroup description")
+            .setCustomerUUID(customer.getUuid())
+            .setTargetType(AlertDefinitionGroup.TargetType.UNIVERSE)
+            .setTarget(
+                new AlertDefinitionGroupTarget()
+                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+            .setTemplate(AlertDefinitionTemplate.MEMORY_CONSUMPTION)
+            .setThresholds(
+                ImmutableMap.of(
+                    AlertDefinitionGroup.Severity.SEVERE,
+                    new AlertDefinitionGroupThreshold()
+                        .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
+                        .setThreshold(1)))
+            .generateUUID();
+    modifier.accept(group);
+    group.save();
+    return group;
+  }
+
+  public static AlertDefinitionGroup createAlertDefinitionGroup(
+      Customer customer, Universe universe) {
+    return createAlertDefinitionGroup(customer, universe, c -> {});
+  }
+
   public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
+    AlertDefinitionGroup group = createAlertDefinitionGroup(customer, universe);
+    return createAlertDefinition(customer, universe, group);
+  }
+
+  public static AlertDefinition createAlertDefinition(
+      Customer customer, Universe universe, AlertDefinitionGroup group) {
     AlertDefinition alertDefinition =
         new AlertDefinition()
+            .setGroupUUID(group.getUuid())
             .setCustomerUUID(customer.getUuid())
-            .setName("alertDefinition")
-            .setQuery("query < {{ query_threshold }}")
-            .setQueryThreshold(1)
+            .setQuery("query {{ query_condition }} {{ query_threshold }}")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(universe).get())
             .generateUUID();
     alertDefinition.save();
@@ -269,10 +306,6 @@ public class ModelFactory {
 
   public static Alert createAlert(Customer customer, Universe universe) {
     return createAlert(customer, universe, null, KnownAlertCodes.CUSTOMER_ALERT);
-  }
-
-  public static Alert createAlert(Customer customer, Universe universe, KnownAlertCodes code) {
-    return createAlert(customer, universe, null, code);
   }
 
   public static Alert createAlert(Customer customer, AlertDefinition definition) {
@@ -290,10 +323,12 @@ public class ModelFactory {
             .setSendEmail(true)
             .generateUUID();
     if (definition != null) {
+      AlertDefinitionGroup group =
+          AlertDefinitionGroup.db().find(AlertDefinitionGroup.class, definition.getGroupUUID());
       alert.setDefinitionUUID(definition.getUuid());
       List<AlertLabel> labels =
           definition
-              .getEffectiveLabels()
+              .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
               .stream()
               .map(l -> new AlertLabel(l.getName(), l.getValue()))
               .collect(Collectors.toList());

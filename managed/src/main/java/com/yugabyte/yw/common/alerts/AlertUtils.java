@@ -22,7 +22,8 @@ public class AlertUtils {
 
   @VisibleForTesting
   static final String DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE =
-      "{{ $labels.definition_name }} for {{ $labels.universe_name }} is {{ $labels.alert_state }}.";
+      "{{ $labels.definition_name }} Alert for {{ $labels.target_name }} "
+          + "is {{ $labels.alert_state }}.";
 
   /**
    * Returns the alert notification title according to the template stored in the alert receiver or
