@@ -17,7 +17,7 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.6 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.6 stable release series.
 
-## v2.6.0.0 - June 30, 2021
+## v2.6.0.0 - July 2, 2021
 
 ### Downloads
 
@@ -37,7 +37,7 @@ Included here are the release notes for all releases in the v2.6 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.6.0.0-b65
+docker pull yugabytedb/yugabyte:2.6.0.0-b67
 ```
 
 ### New features
@@ -68,16 +68,13 @@ This feature allows you to restore the state of a cluster back to a previous poi
 * [[8773](https://github.com/yugabyte/yugabyte-db/issues/8773)] PITR: Add DDL log
 * [[9046](https://github.com/yugabyte/yugabyte-db/issues/9046)] PITR: Fix crash when using multiple masters
 
-##### Other new core database features
-
-
 #### Yugabyte Platform
 
-* [[7474](https://github.com/yugabyte/yugabyte-db/issues/7474)] [[7725](https://github.com/yugabyte/yugabyte-db/issues/7725)] Platform now supports creating multi-instance cloud providers. Cloud provider components to allow adding more than one config for the same provider.
-* [[7278](https://github.com/yugabyte/yugabyte-db/issues/7278)] [[7446](https://github.com/yugabyte/yugabyte-db/issues/7446)] Added improved search usability for Live and Slow queries by adding autocomplete suggestions, better filtering and navigation.
-* [[7799](https://github.com/yugabyte/yugabyte-db/issues/7799)] Added support for AWS GP3 volumes during universe creation from the Platform. The disk size and IOPS configuration for GP3 drives are configurable, whereas throughput is not configurable and is set to default value of 125MiB/sec.
-* [[7421](https://github.com/yugabyte/yugabyte-db/issues/7421)] In order to enhance security, encryption is enabled by default for both client to node and node to node cases.
 * [[7215](https://github.com/yugabyte/yugabyte-db/issues/7215)] Added an ability to select multiple backups for deletion rather than deleting individual backups.
+* [[7278](https://github.com/yugabyte/yugabyte-db/issues/7278)] [[7446](https://github.com/yugabyte/yugabyte-db/issues/7446)] Added improved search usability for Live and Slow queries by adding autocomplete suggestions, better filtering and navigation.
+* [[7421](https://github.com/yugabyte/yugabyte-db/issues/7421)] In order to enhance security, encryption is enabled by default for both client to node and node to node cases.
+* [[7474](https://github.com/yugabyte/yugabyte-db/issues/7474)] [[7725](https://github.com/yugabyte/yugabyte-db/issues/7725)] Platform now supports creating multi-instance cloud providers. Cloud provider components to allow adding more than one config for the same provider.
+* [[7799](https://github.com/yugabyte/yugabyte-db/issues/7799)] Added support for AWS GP3 volumes during universe creation from the Platform. The disk size and IOPS configuration for GP3 drives are configurable, whereas throughput is not configurable and is set to default value of 125MiB/sec.
 
 ### Improvements
 
@@ -134,13 +131,17 @@ This feature allows you to restore the state of a cluster back to a previous poi
 * [[8037](https://github.com/yugabyte/yugabyte-db/issues/8037)] [DocDB] Refactor memory management for tablets into a separate class
 * [[8052](https://github.com/yugabyte/yugabyte-db/issues/8052)] Add ability to configure cipher list
 * [[8073](https://github.com/yugabyte/yugabyte-db/issues/8073)] Drop rocksdb memstore arena from 128kb to 64kb
-* [[8330](https://github.com/yugabyte/yugabyte-db/issues/8330)] [YCQL] Provide capability to skip writing null JSONB attribute in UPDATE stmt
+* [[8330](https://github.com/yugabyte/yugabyte-db/issues/8330)] [YCQL] Provide capability to skip writing null JSONB attribute in UPDATE statement
 * [DocDB] Added a max_depth param to the mem-trackers view (#7903)
 * Default fail_on_out_of_range_clock_skew=false
 
 #### Yugabyte Platform
 
+* [[5296](https://github.com/yugabyte/yugabyte-db/issues/5296)] Allow editing cloud provider in case of provider is not in use
+* [[5733](https://github.com/yugabyte/yugabyte-db/issues/5733)] Disabled "stop process" and "remove node" for a single node universe
+* [[5946](https://github.com/yugabyte/yugabyte-db/issues/5946)] Clock sync is now checked while creating or expanding the universe. Clock sync is added to health checks now.
 * [[6913](https://github.com/yugabyte/yugabyte-db/issues/6913)] [[6914](https://github.com/yugabyte/yugabyte-db/issues/6914)] Add ability to reset slow query data and hide slow queries.
+* [[6924](https://github.com/yugabyte/yugabyte-db/issues/6924)] When a node is removed/released from a universe, hide the "Show Live Queries" button.
 * [[7171](https://github.com/yugabyte/yugabyte-db/issues/7171)] Added a validation that the on-prem instance type name cannot be the same for different customers on the same platform.
 * [[7193](https://github.com/yugabyte/yugabyte-db/issues/7193)] Fixed issues with Run sample apps to have the deterministic payload and unify behaviour of YCQL and YSQL app.
 * [[7223](https://github.com/yugabyte/yugabyte-db/issues/7223)] [[7224](https://github.com/yugabyte/yugabyte-db/issues/7224)] Added a new “Show Universes” action in the Actions menu. This provides a way for users to see all the associated universes that are using a particular KMS config. We are now also showing the list of universes as a modal dialog box associated with the certificate.
@@ -157,13 +158,10 @@ This feature allows you to restore the state of a cluster back to a previous poi
 * [[7918](https://github.com/yugabyte/yugabyte-db/issues/7918)] Add us-west2 GCP metadata to Platform
 * [[7950](https://github.com/yugabyte/yugabyte-db/issues/7950)] Navigating to a universe with KMS enabled will show this error due if something has been misconfigured
 * [[8038](https://github.com/yugabyte/yugabyte-db/issues/8038)] Default metrics button now points to the Prometheus metrics endpoint.
+* [[8051](https://github.com/yugabyte/yugabyte-db/issues/8051)] Redact sensitive data and secrets from audit logs
+* [[8144](https://github.com/yugabyte/yugabyte-db/issues/8144)] Validate custom certificates to ensure they are signed by the correct CA, and that the cert is for the correct node
 * [[8302](https://github.com/yugabyte/yugabyte-db/issues/8302)] Added Platform's metrics endpoint (/prometheus_metrics) as a scrape target to the Prometheus instance that is configured as part of the Platform install
 * [[8460](https://github.com/yugabyte/yugabyte-db/issues/8460)] Made proxy timeout configurable, Default value is 60 seconds.
-* [[5296](https://github.com/yugabyte/yugabyte-db/issues/5296)] Allow editing cloud provider in case of provider is not in use
-* [[5733](https://github.com/yugabyte/yugabyte-db/issues/5733)] Disabled "stop process" and "remove node" for a single node universe
-* [[6924](https://github.com/yugabyte/yugabyte-db/issues/6924)] When a node is removed/released from a universe, hide the "Show Live Queries" button.
-* [[5946](https://github.com/yugabyte/yugabyte-db/issues/5946)] Clock sync is now checked while creating or expanding the universe. Clock sync is added to health checks now.
-* [[8051](https://github.com/yugabyte/yugabyte-db/issues/8051)] Redact sensitive data and secrets from audit logs
 
 ### Bug fixes
 
