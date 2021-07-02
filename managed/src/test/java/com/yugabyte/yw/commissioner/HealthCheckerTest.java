@@ -595,7 +595,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             .setMessage("Test 1")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels())
             .setState(State.ACTIVE);
-    alert1 = alertService.create(alert1);
+    alert1 = alertService.save(alert1);
     // alert2 is in state CREATED.
     Alert alert2 =
         new Alert()
@@ -604,7 +604,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             .setType(KnownAlertTypes.Warning)
             .setMessage("Test 2")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alert2 = alertService.create(alert2);
+    alert2 = alertService.save(alert2);
     // alert3 should not be updated as it has another errCode.
     Alert alert3 =
         new Alert()
@@ -613,7 +613,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             .setType(KnownAlertTypes.Warning)
             .setMessage("Test 3")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alert3 = alertService.create(alert3);
+    alert3 = alertService.save(alert3);
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
