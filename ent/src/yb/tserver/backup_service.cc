@@ -78,7 +78,7 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   auto snapshot_hybrid_time = HybridTime::FromPB(req->snapshot_hybrid_time());
   tablet::ScopedReadOperation read_operation;
   // Transaction aware snapshot
-  if (snapshot_hybrid_time) {
+  if (snapshot_hybrid_time && req->operation() == TabletSnapshotOpRequestPB::CREATE_ON_TABLET) {
     // We need to ensure that the state of the tablet's data at the snapshot hybrid time is not
     // garbage-collected away only while performing submit.
     // Since history cutoff is propagated using Raft, it will use the same queue as the
