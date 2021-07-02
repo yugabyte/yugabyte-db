@@ -9,21 +9,26 @@ export const AddDestinationChannelFrom = (props) => {
   const [channelType, setChannelType] = useState(defaultChannel);
   const [customSMTP, setCustomSMTP] = useState(true);
 
+  const onModalHide = () => {
+    setCustomSMTP(true);
+    onHide();
+  };
+
   /**
    * Create the payload based on channel type and add the channel.
-   * @param {FormValues} values 
+   * @param {FormValues} values
    */
   const handleAddDestination = (values) => {
     const { onHide } = props;
     let payload = {
       name: '',
       params: {}
-    }
+    };
 
-    switch(values.ALERT_TARGET_TYPE) {
+    switch (values.ALERT_TARGET_TYPE) {
       case 'slack':
         payload['name'] = values.name;
-        payload['params']['targetType'] = 'Slack'
+        payload['params']['targetType'] = 'Slack';
         payload['params']['webhookUrl'] = values.webhookURL;
         payload['params']['channel'] = values.name;
         break;
@@ -47,9 +52,8 @@ export const AddDestinationChannelFrom = (props) => {
         });
         props.updateDestinationChannel(receivers);
       });
-      
     });
-    onHide();
+    onModalHide();
   };
 
   const handleOnToggle = (event) => {
@@ -250,11 +254,10 @@ export const AddDestinationChannelFrom = (props) => {
       title="Create a new Alert Destination"
       id="alert-destination-modal"
       visible={visible}
-      onHide={onHide}
+      onHide={onModalHide}
       submitLabel={'Create'}
     >
       <Row>
-        <Col lg={12}>
           <Row>
             <Col lg={8}>
               <div className="form-item-custom-label">Target</div>
@@ -269,7 +272,6 @@ export const AddDestinationChannelFrom = (props) => {
               />
             </Col>
           </Row>
-        </Col>
         <hr />
         {getChannelForm()}
       </Row>

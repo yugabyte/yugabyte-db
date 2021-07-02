@@ -229,7 +229,7 @@ export default function (state = INITIAL_STATE, action) {
         }
       };
     case GET_ALERT_RECEIVERS:
-      return setLoadingState(state, 'alertRecivers', []);
+      return setLoadingState(state, 'alertReceivers', []);
     case CREATE_ALERT_RECEIVER:
       return setLoadingState(state, 'createAlertReceiver', {});
     case CREATE_ALERT_RECEIVER_RESPONSE:
