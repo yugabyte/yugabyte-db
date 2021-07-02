@@ -97,6 +97,11 @@ rrdiagram*.jar*
 
 .clangd
 
+# Indexes built with clangd-indexer
+*.dex
+# Allows us to generate YAML-format clangd indexes.
+clangd_*.yml
+
 .cache
 
 target/

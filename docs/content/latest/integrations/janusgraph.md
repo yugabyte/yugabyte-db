@@ -6,7 +6,7 @@ aliases:
 menu:
   latest:
     identifier: janusgraph
-    parent: ecosystem-integrations
+    parent: integrations
     weight: 573
 isTocNested: true
 showAsideToc: true
@@ -16,7 +16,7 @@ In this tutorial, you are first going to setup [JanusGraph](https://janusgraph.o
 
 ## 1. Start local cluster
 
-Start a cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugabyteDB using `ycqlsh` by doing the following.
+Start a cluster on your [local computer](../../quick-start/install/). Check that you are able to connect to YugabyteDB using `ycqlsh` by executing the following:
 
 ```sh
 $ ycqlsh
@@ -26,8 +26,13 @@ $ ycqlsh
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-ycqlsh> DESCRIBE KEYSPACES;
+```
 
+```sql
+ycqlsh> DESCRIBE KEYSPACES;
+```
+
+```output
 system_schema  system_auth  system
 
 ycqlsh>

@@ -769,6 +769,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
+  int number_rows_processed = 0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -802,6 +803,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         req->start_key(),
         deadline,
         read_at,
+        &number_rows_processed,
         &backfilled_until,
         &failed_indexes);
   } else {
@@ -818,6 +820,7 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+  resp->set_number_rows_processed(number_rows_processed);
 
   if (!backfill_status.ok()) {
     VLOG(2) << " Failed indexes are " << yb::ToString(failed_indexes);
@@ -2503,7 +2506,7 @@ void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* r
   Status s = scope->StartElection(consensus::LeaderElectionData {
     .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
     .pending_commit = req->has_committed_index(),
-    .must_be_committed_opid = req->committed_index(),
+    .must_be_committed_opid = OpId::FromPB(req->committed_index()),
     .originator_uuid = req->has_originator_uuid() ? req->originator_uuid() : std::string(),
     .suppress_vote_request = consensus::TEST_SuppressVoteRequest(req->suppress_vote_request()),
     .initial_election = req->initial_election() });
