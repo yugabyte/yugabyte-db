@@ -7,14 +7,17 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
@@ -25,6 +28,7 @@ import java.util.UUID;
 
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
+  private int maxRetryCount = 200;
 
   @Inject Commissioner commissioner;
 
@@ -171,23 +175,69 @@ public class BackupsController extends AuthenticatedController {
         if (backup.state != Backup.BackupState.Completed) {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
-          DeleteBackup.Params taskParams = new DeleteBackup.Params();
-          taskParams.customerUUID = customerUUID;
-          taskParams.backupUUID = uuid;
-          UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-          LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
-          CustomerTask.create(
-              customer,
-              backup.getBackupInfo().universeUUID,
-              taskUUID,
-              CustomerTask.TargetType.Backup,
-              CustomerTask.TaskType.Delete,
-              "Backup");
+          UUID taskUUID = deleteBackup(customer, backup);
           taskUUIDList.add(taskUUID);
           auditService().createAuditEntry(ctx(), request(), taskUUID);
         }
       }
     }
     return new YWResults.YWTasks(taskUUIDList).asResult();
+  }
+
+  public UUID deleteBackup(Customer customer, Backup backup) {
+    DeleteBackup.Params taskParams = new DeleteBackup.Params();
+    taskParams.customerUUID = customer.getUuid();
+    taskParams.backupUUID = backup.backupUUID;
+    UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
+    LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backup.backupUUID);
+    CustomerTask.create(
+        customer,
+        backup.getBackupInfo().universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Delete,
+        "Backup");
+    return taskUUID;
+  }
+
+  public Result stop(UUID customerUUID, UUID backupUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Process process = Util.getProcessOrBadRequest(backupUUID);
+    Backup backup = Backup.get(customerUUID, backupUUID);
+    if (backup.state != Backup.BackupState.InProgress) {
+      LOG.info("The backup {} you are trying to stop is not in process.", backupUUID);
+      return YWResults.withData("The backup you are trying to stop is not in process.");
+    }
+    try {
+      process.destroyForcibly();
+    } catch (NullPointerException e) {
+      LOG.info("The back up process you want to stop is not exist");
+    } finally {
+      Util.removeProcessOrBadRequest(backupUUID);
+    }
+    try {
+      UUID taskUUID = deleteBackup(customer, backup);
+      waitForTask(taskUUID);
+    } catch (InterruptedException e) {
+      LOG.info("Error while waiting for the task.");
+    } finally {
+      backup.transitionState(BackupState.Stopped);
+    }
+    return YWResults.withData("Successfully stopped the backup process.");
+  }
+
+  public TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
+    int numRetries = 0;
+    while (numRetries < maxRetryCount) {
+      TaskInfo taskInfo = TaskInfo.get(taskUUID);
+      if (taskInfo.getTaskState() == TaskInfo.State.Success
+          || taskInfo.getTaskState() == TaskInfo.State.Failure) {
+        return taskInfo;
+      }
+      Thread.sleep(1000);
+      numRetries++;
+    }
+    throw new RuntimeException(
+        "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }
 }

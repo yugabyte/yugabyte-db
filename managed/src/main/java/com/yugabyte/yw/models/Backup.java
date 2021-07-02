@@ -48,6 +48,9 @@ public class Backup extends Model {
     // Complete or partial failure to delete
     @EnumValue("FailedToDelete")
     FailedToDelete,
+
+    @EnumValue("Stopped")
+    Stopped,
   }
 
   @Id public UUID backupUUID;
