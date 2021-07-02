@@ -190,6 +190,14 @@ Specify that any user from the defined host can connect to a YugabyteDB database
 
 Specify that the host or user should be rejected. Reject the connection unconditionally. This is useful for “filtering out” certain hosts from a group, for example a reject line could block a specific host from connecting, while a later line allows the remaining hosts in a specific network to connect.
 
+#### md5
+
+Use `md5` password encryption. For more information, refer to [Password authentication](../password-authentication/).
+
+#### scram-sha256
+
+Use `scram-sha256` password encryption. For more information, refer to [Password authentication](../password-authentication/).
+
 #### password
 
 Specify that for a connecting user, the password supplied must match the password in the global `yb_show` system table for the username. The password must be sent in clear text.
@@ -201,14 +209,6 @@ Obtain the operating system user name of the client by contacting the ident serv
 #### peer
 
 Obtain the client's operating system user name from the operating system and check if it matches the requested database user name. This is only available for local connections. 
-
-#### md5
-
-Use `md5` password encryption. For more information, refer to [Password authentication](../password-authentication/).
-
-#### scram-sha256
-
-Use `scram-sha256` password encryption. For more information, refer to [Password authentication](../password-authentication/).
 
 #### ldap 
 
@@ -224,9 +224,9 @@ Specify that any user requires GSSAPI authentication to connect.
 
 ### auth-options
 
-After the [auth-method](#auth-method) field, you can add fields in the form `name=value` that specify options for the authentication method. Details about which options are available for which authentication methods appear below.
+After the [auth-method](#auth-method) field, you can add fields in the form `name=value` that specify options specific to the authentication method.
 
-In addition to the method-specific options listed below, there is one method-independent authentication option `clientcert`, which can be specified in any `hostssl` record. When set to 1, this option requires the client to present a valid (trusted) SSL certificate, in addition to the other requirements of the authentication method.
+In addition to the method-specific options, there is one method-independent authentication option `clientcert`, which can be specified in any `hostssl` record. When set to 1, this option requires the client to present a valid (trusted) SSL certificate, in addition to the other requirements of the authentication method.
 
 ### Examples
 
