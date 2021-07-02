@@ -349,7 +349,7 @@ public class HealthChecker {
             .setMessage(details)
             .setSendEmail(true)
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alertService.create(alert);
+    alertService.save(alert);
   }
 
   static class CheckSingleUniverseParams {
