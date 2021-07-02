@@ -45,11 +45,14 @@ Users, roles, and groups allow administrators to verify whether a particular use
 
 Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/the-sql-language/statements/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statements are used to change or remove users and roles.
 
-## Specify default user password
+## Default user and password
 
-When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are launched using the default user, named `yugabyte`, and then this user is connected to the default database, also named `yugabyte`. When YSQL authentication is enabled, all users (including `yugabyte`) require a password to log into a YugabyteDB database. Before you start YugabyteDB with YSQL authentication enabled, you need to make sure that the `yugabyte` user has a password. 
+When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are launched using the default user, named `yugabyte`, and then this user is connected to the default database, also named `yugabyte`. 
 
-Starting in YugabyteDB 2.0.1, the default `yugabyte` user has a default password of `yugabyte` that lets this user sign into YugabyteDB when YSQL authentication is enabled. If you are using YugabyteDB 2.0.1 or later, you can skip the steps to create a password and jump to the next section on enabling YSQL authentication.
+Once YSQL authentication is enabled, all users (including `yugabyte`) require a password to log in to a YugabyteDB database. The default `yugabyte` user has a default password of `yugabyte` that lets this user sign into YugabyteDB when YSQL authentication is enabled. 
+
+{{< note title="Note" >}}
+Versions of YugabyteDB prior to 2.0.1 do not have a default password. In this case, before you start YugabyteDB with YSQL authentication enabled, you need to make sure that the `yugabyte` user has a password.
 
 If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not yet assigned a password to the `yugabyte` user, do the following:
 
@@ -59,6 +62,7 @@ If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not yet as
     ```plpgsql
     yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
     ```
+{{< /note >}}
 
 ## Enable YSQL authentication
 
@@ -235,7 +239,7 @@ $ ysqlsh -U john
 
 ### Edit user accounts
 
-You can edit existing user accounts using the [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
+You can edit existing user accounts using the [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) command. The role making these changes must have sufficient privileges to modify the target role.
 
 #### Changing password for a user
 
