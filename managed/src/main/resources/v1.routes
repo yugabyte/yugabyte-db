@@ -194,7 +194,7 @@ POST    /customers/:cUUID/universes/:uniUUID/cluster                           c
 DELETE  /customers/:cUUID/universes/:uniUUID/cluster/:clustUUID                com.yugabyte.yw.controllers.UniverseController.clusterDelete(cUUID: java.util.UUID, uniUUID: java.util.UUID, clustUUID: java.util.UUID, isForceDelete: Boolean ?= false)
 
 # Table Management API
-GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.universeList(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.describe(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.alter(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
