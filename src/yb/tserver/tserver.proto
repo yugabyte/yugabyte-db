@@ -143,6 +143,9 @@ message TabletServerErrorPB {
     // Tablet splitting has been started (after split is completed - tablet stays in this state
     // until it is deleted).
     TABLET_SPLIT = 28;
+
+    // Tablet splitting has not been started on this peer yet.
+    TABLET_SPLIT_PARENT_STILL_LIVE = 29;
   }
 
   // The error code.

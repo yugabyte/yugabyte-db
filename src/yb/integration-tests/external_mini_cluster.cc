@@ -1412,7 +1412,7 @@ Result<std::vector<ListTabletsForTabletServerResponsePB::Entry>> ExternalMiniClu
   ListTabletsForTabletServerResponsePB resp;
 
   rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(10));
+  rpc.set_timeout(10s * kTimeMultiplier);
   RETURN_NOT_OK(proxy.ListTabletsForTabletServer(req, &resp, &rpc));
 
   std::vector<ListTabletsForTabletServerResponsePB::Entry> result;

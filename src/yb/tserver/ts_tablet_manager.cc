@@ -874,6 +874,7 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
     // 1) Their consensus metadata only differ by tablet id.
     // 2) Flush() will save it into a new path corresponding to tablet id we set before flushing.
     cmeta->set_tablet_id(new_tablet_id);
+    cmeta->set_split_parent_tablet_id(tablet_id);
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();

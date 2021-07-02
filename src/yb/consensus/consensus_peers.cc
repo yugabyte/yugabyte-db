@@ -238,6 +238,9 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       status = STATUS(NotSupported, "remote bootstrap is disabled");
     } else {
       status = queue_->GetRemoteBootstrapRequestForPeer(peer_pb_.permanent_uuid(), &rb_request_);
+      if (!consensus_->split_parent_tablet_id().empty()) {
+        rb_request_.set_split_parent_tablet_id(consensus_->split_parent_tablet_id());
+      }
     }
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Unable to generate remote bootstrap request for peer: "
@@ -454,7 +457,10 @@ void Peer::ProcessRemoteBootstrapResponse() {
   }
 
   if (rb_response_.has_error()) {
-    if (rb_response_.error().code() == tserver::TabletServerErrorPB::ALREADY_IN_PROGRESS) {
+    const auto error_code = rb_response_.error().code();
+    if (
+        error_code == tserver::TabletServerErrorPB::ALREADY_IN_PROGRESS ||
+        error_code == tserver::TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE) {
       queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
       YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
         << ":::Unable to begin remote bootstrap on peer: " << rb_response_.ShortDebugString();

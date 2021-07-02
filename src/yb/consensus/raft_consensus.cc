@@ -415,7 +415,9 @@ RaftConsensus::RaftConsensus(
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
-          METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(table_metric_entity)) {
+          METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(table_metric_entity)),
+      split_parent_tablet_id_(
+          cmeta->has_split_parent_tablet_id() ? cmeta->split_parent_tablet_id() : "") {
   DCHECK_NOTNULL(log_.get());
 
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests_seconds > 0)) {
@@ -2938,6 +2940,10 @@ string RaftConsensus::peer_uuid() const {
 
 string RaftConsensus::tablet_id() const {
   return state_->GetOptions().tablet_id;
+}
+
+const TabletId& RaftConsensus::split_parent_tablet_id() const {
+  return split_parent_tablet_id_;
 }
 
 ConsensusStatePB RaftConsensus::ConsensusState(

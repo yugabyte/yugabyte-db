@@ -40,6 +40,7 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
@@ -277,6 +278,8 @@ class Consensus {
 
   // Returns the id of the tablet whose updates this consensus instance helps coordinate.
   virtual std::string tablet_id() const = 0;
+
+  virtual const TabletId& split_parent_tablet_id() const = 0;
 
   // Returns a copy of the committed state of the Consensus system. Also allows returning the
   // leader lease status captured under the same lock.

@@ -192,4 +192,6 @@ message ConsensusMetadataPB {
   // Permanent UUID of the candidate voted for in 'current_term', or not present
   // if no vote was made in the current term.
   optional string voted_for = 3;
+
+  optional bytes split_parent_tablet_id = 4;
 }
