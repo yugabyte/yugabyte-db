@@ -71,8 +71,12 @@ import {
   CREATE_ALERT_RECEIVER,
   CREATE_ALERT_RECEIVER_RESPONSE,
   GET_ALERT_RECEIVERS,
+  GET_ALERT_DESTIONATIONS,
   CREATE_ALERT_DESTINATION,
-  CREATE_ALERT_DESTINATION_RESPONSE
+  CREATE_ALERT_DESTINATION_RESPONSE,
+  UPDATE_ALERT_DESTINATION,
+  UPDATE_ALERT_DESTINATION_RESPONSE,
+  DELETE_ALERT_DESTINATION
 } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -98,6 +102,8 @@ const INITIAL_STATE = {
     updated: null
   },
   alertReceivers: getInitialState([]),
+  alertDestinations: getInitialState([]),
+  deleteDestination: getInitialState([]),
   hostInfo: null,
   customerCount: {},
   yugawareVersion: getInitialState({}),
@@ -118,7 +124,8 @@ const INITIAL_STATE = {
   schedules: getInitialState([]),
   createUser: getInitialState({}),
   createAlertReceiver: getInitialState({}),
-  createAlertDestination: getInitialState({})
+  createAlertDestination: getInitialState({}),
+  updateAlertDestination: getInitialState({})
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -230,6 +237,10 @@ export default function (state = INITIAL_STATE, action) {
       };
     case GET_ALERT_RECEIVERS:
       return setLoadingState(state, 'alertReceivers', []);
+    case GET_ALERT_DESTIONATIONS:
+      return setLoadingState(state, 'alertDestinations', []);
+    case DELETE_ALERT_DESTINATION:
+      return setLoadingState(state, 'deleteDestination', []);
     case CREATE_ALERT_RECEIVER:
       return setLoadingState(state, 'createAlertReceiver', {});
     case CREATE_ALERT_RECEIVER_RESPONSE:
@@ -252,6 +263,17 @@ export default function (state = INITIAL_STATE, action) {
         }
       }
       return setPromiseResponse(state, 'createAlertReceiver', action);
+    case UPDATE_ALERT_DESTINATION:
+      return setLoadingState(state, 'updateAlertDestination', {});
+    case UPDATE_ALERT_DESTINATION_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertReceiver', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'createAlertReceiver', action);
     case FETCH_YUGAWARE_VERSION:
       return setLoadingState(state, 'yugawareVersion', {});
     case FETCH_YUGAWARE_VERSION_RESPONSE:
@@ -262,7 +284,7 @@ export default function (state = INITIAL_STATE, action) {
       return {
         ...state,
         setInitialVal: action.payload
-      }
+      };
     case ADD_CUSTOMER_CONFIG_RESPONSE:
       return setPromiseResponse(state, 'addConfig', action);
     case EDIT_CUSTOMER_CONFIG:

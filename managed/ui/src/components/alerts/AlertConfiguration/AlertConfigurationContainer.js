@@ -14,7 +14,11 @@ import {
   createAlertDestinationResponse,
   createAlertReceiver,
   createAlertReceiverResponse,
+  deleteAlertDestination,
   getAlertReceivers,
+  setInitialValues,
+  updateAlertDestination,
+  updateAlertDestinationResponse,
   updateProfile,
   updateProfileFailure,
   updateProfileSuccess
@@ -28,7 +32,9 @@ const mapStateToProps = (state) => {
     users: state.customer.users.data,
     apiToken: state.customer.apiToken,
     customerProfile: state.customer ? state.customer.profile : null,
-    modal: state.modal
+    modal: state.modal,
+    visibleModal: state.modal.visibleModal,
+    initialValues: state.customer.setInitialVal
   };
 };
 
@@ -38,7 +44,17 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(alertConfigs());
     },
     alertDestionations: () => {
-      return dispatch(alertDestionations());
+      return dispatch(alertDestionations()).then((response) => {
+        if(response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+          return;
+        }
+        return response.payload.data;
+      });
+    },
+    setInitialValues: (initialValues) => {
+      return dispatch(setInitialValues(initialValues));
     },
     updateCustomerDetails: (values) => {
       dispatch(updateProfile(values)).then((response) => {
@@ -81,11 +97,35 @@ const mapDispatchToProps = (dispatch) => {
         return dispatch(createAlertDestinationResponse(response.payload));
       })
     },
+    updateAlertDestination: (payload, uuid) => {
+      return dispatch(updateAlertDestination(payload, uuid)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully updated the destination');
+        }
+        return dispatch(updateAlertDestinationResponse(response.payload));
+      })
+    },
+    deleteAlertDestination: (uuid) => {
+      return dispatch(deleteAlertDestination(uuid)).then((response) => {
+        if(response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+          return;
+        }
+        return response.payload.data;
+      });
+    },
     closeModal: () => {
       dispatch(closeDialog());
     },
     showAddChannelModal: () => {
       dispatch(openDialog('alertDestinationForm'));
+    },
+    showDeleteModal: (name) => {
+      dispatch(openDialog(name));
     }
   };
 };

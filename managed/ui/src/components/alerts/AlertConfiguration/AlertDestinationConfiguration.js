@@ -52,19 +52,23 @@ const AlertDestinationConfiguration = (props) => {
     }
     payload.name = values['ALERT_DESTINATION_NAME'];
     values['DESTINATION_CHANNEL_LIST'].forEach(channel => payload.receivers.push(channel.value));
+    props.setInitialValues();
+    values.type === "update" ? props.updateAlertDestination(payload, values.uuid).then(() => props.onAddCancel()) :
     props.createAlertDestination(payload).then(() => props.onAddCancel())
 
   };
 
   const {
     handleSubmit,
+    onAddCancel,
+    setInitialValues,
+    initialValues,
     modal: { showModal, visibleModal },
-    onAddCancel
   } = props;
 
   return (
     <>
-      <Formik initialValues={null}>
+      <Formik initialValues={initialValues}>
         <form name="alertDestinationForm" onSubmit={handleSubmit(handleOnSubmit)}>
           <Row className="config-section-header">
             <Row>
@@ -88,6 +92,7 @@ const AlertDestinationConfiguration = (props) => {
                   options={destinationChannelList}
                   hideSelectedOptions={false}
                   isMulti={true}
+                  validate={required}
                 />
               </Col>
               <Col md={6} style={styles['add-destination-container']}>
@@ -119,6 +124,7 @@ const AlertDestinationConfiguration = (props) => {
                   btnText="Cancel"
                   btnClass="btn"
                   onClick={() => {
+                    setInitialValues();
                     onAddCancel(false);
                   }}
                 />
