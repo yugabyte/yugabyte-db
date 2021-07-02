@@ -62,6 +62,7 @@ If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not yet as
     ```plpgsql
     yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
     ```
+
 {{< /note >}}
 
 ## Enable YSQL authentication
