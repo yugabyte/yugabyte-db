@@ -17,7 +17,6 @@ import CreateAlert from './CreateAlert';
 
 export const AlertConfiguration = (props) => {
   const [alertList, setAlertList] = useState([]);
-  const [alertDestionation, setAlertDesionation] = useState([]);
   const [profileStatus, setProfileStatus] = useState({
     statusUpdated: true,
     updateStatus: ''
@@ -35,7 +34,6 @@ export const AlertConfiguration = (props) => {
 
   useEffect(() => {
     setAlertList(props.alertConfigs());
-    setAlertDesionation(props.alertDestionations());
   }, []);
 
   return (
@@ -47,7 +45,6 @@ export const AlertConfiguration = (props) => {
         id="alert-config-tab-panel"
         routePrefix={routePrefix}
       >
-        
         {/* Alert Creation Tab */}
         <Tab
           eventKey={defaultTab}
@@ -77,9 +74,9 @@ export const AlertConfiguration = (props) => {
           unmountOnExit
         >
           {alertDestinationListView ? (
-            <AlertDestinationConfiguration onAddCancel={setAlertDestinationListView} {...props}/>
+            <AlertDestinationConfiguration onAddCancel={setAlertDestinationListView} {...props} />
           ) : (
-            <AlertDestionations data={alertDestionation} onAddAlertDestination={setAlertDestinationListView}/>
+            <AlertDestionations onAddAlertDestination={setAlertDestinationListView} {...props} />
           )}
         </Tab>
 

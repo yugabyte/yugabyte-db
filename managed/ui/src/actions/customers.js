@@ -5,7 +5,6 @@ import { IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO } from '../config';
 import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
 import alertListMockData from '../components/alerts/AlertConfiguration/AlertListMockData.json';
-import alertDestionationsMockdata from '../components/alerts/AlertConfiguration/AlertDestinationMockData.json'
 
 // Get current user(me) from token in localStorage
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
@@ -57,6 +56,11 @@ export const CREATE_ALERT_RECEIVER_RESPONSE = 'CREATE_ALERT_RECEIVER_RESPONSE';
 
 export const CREATE_ALERT_DESTINATION = 'CREATE_ALERT_DESTINATION';
 export const CREATE_ALERT_DESTINATION_RESPONSE = 'CREATE_ALERT_DESTINATION_RESPONSE';
+
+export const UPDATE_ALERT_DESTINATION = 'UPDATE_ALERT_DESTINATION';
+export const UPDATE_ALERT_DESTINATION_RESPONSE = 'UPDATE_ALERT_DESTINATION_RESPONSE';
+
+export const DELETE_ALERT_DESTINATION = 'DELETE_ALERT_DESTINATION';
 
 export const GET_ALERT_RECEIVERS = 'GET_ALERT_RECEIVERS';
 export const GET_ALERT_RECEIVERS_SUCCESS = 'GET_ALERT_RECEIVERS_SUCCESS';
@@ -478,6 +482,31 @@ export function createAlertDestinationResponse(response) {
   };
 }
 
+export function updateAlertDestination(payload, uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_routes/${uuid}`, payload);
+  return {
+    type:   UPDATE_ALERT_DESTINATION,
+    payload: request
+  };
+}
+
+export function updateAlertDestinationResponse(response) {
+  return {
+    type: UPDATE_ALERT_DESTINATION_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteAlertDestination(uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_routes/${uuid}`);
+  return {
+    type:   DELETE_ALERT_DESTINATION,
+    payload: request
+  };
+}
+
 export function getAlertReceivers() {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_receivers`);
@@ -513,7 +542,7 @@ export function alertDestionations() {
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_routes`);
   return {
     type: GET_ALERT_DESTIONATIONS,
-    payload: request // alertDestionationsMockdata
+    payload: request
   }
 }
 
