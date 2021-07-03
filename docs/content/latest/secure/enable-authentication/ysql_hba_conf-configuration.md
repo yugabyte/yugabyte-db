@@ -2,7 +2,7 @@
 title: Configure ysql_hba_conf_csv
 headerTitle: Configure ysql_hba_conf_csv
 linkTitle: Configure ysql_hba_conf_csv
-description: Use ysql_hba_conf_csv configuration to set up client authentication.
+description: Use the ysql_hba_conf_csv flag to configure client authentication in YSQL.
 menu:
   latest:
     identifier: ysql_hba_conf-configuration
@@ -21,13 +21,13 @@ showAsideToc: true
   </li>
 </ul>
 
-Client authentication in YugabyteDB is managed by the YB-TServer [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) configuration flag, which works similarly to the `pg_hba.conf` file in PostgreSQL.
+YugabyteDB client authentication for YSQL is managed by the YB-TServer [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) configuration flag, which works similarly to the `pg_hba.conf` file in PostgreSQL.
 
 The values include records that specify allowed connection types, users, client IP addresses, and the authentication method.
 
 Records in the YugabyteDB `ysql_hba.conf` file are auto generated based on the values included in the `--ysql_hba_conf_csv` flag. 
 
-For example, starting a YB-TServer with the following `--ysql_hba_conf_csv` flag enables trust authentication for all users.
+For example, starting a YB-TServer with the following `--ysql_hba_conf_csv` flag enables trust authentication for all users:
 
 ```sh
 --ysql_hba_conf_csv='host all all 0.0.0.0/0 trust, host all all ::0/0 trust'
@@ -35,12 +35,11 @@ For example, starting a YB-TServer with the following `--ysql_hba_conf_csv` flag
 
 To display the current values in the `ysql_hba.conf` file, run the following `SHOW` statement to get the file location:
 
-```sh
+```sql
 yugabyte=# SHOW hba_file;
 ```
 
 ```output
-
                      hba_file
 -------------------------------------------------------
  /Users/yugabyte/yugabyte-data/node-1/disk-1/pg_data/ysql_hba.conf
