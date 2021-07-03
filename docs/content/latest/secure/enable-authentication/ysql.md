@@ -41,7 +41,7 @@ YSQL authentication, the process of identifying that YSQL users are who they say
 
 Users, roles, and groups allow administrators to verify whether a particular user or role is authorized to create, access, change, or remove databases or manage users and roles. Authentication verifies the identity of a user while authorization determines the verified user’s database access privileges. 
 
-[Authorization](../../authorization/) is the process of managing access controls based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Privileges are managed using [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/), [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/). 
+[Authorization](../../authorization/) is the process of managing access control based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Privileges are managed using [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/), [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/). 
 
 Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/the-sql-language/statements/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statements are used to change or remove users and roles.
 
@@ -57,7 +57,7 @@ Versions of YugabyteDB prior to 2.0.1 do not have a default password. In this ca
 If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not yet assigned a password to the `yugabyte` user, do the following:
 
 1. With your YugabyteDB cluster up and running, [open `ysqlsh`](#open-the-ysql-shell-ysqlsh).
-1. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice).
+1. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice):
 
     ```plpgsql
     yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
