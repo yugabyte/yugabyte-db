@@ -74,19 +74,19 @@ To enable YSQL authentication in your local YugabyteDB clusters, you can add the
 When you create a local cluster, run the `yb-ctl create` command as follows to enable YSQL authentication in the newly-created cluster:
 
 ```sh
-./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
+$ ./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
 ```
 
 After your local cluster has been created, enable YSQL authentication when you start your cluster with the following `yb-ctl start` command:
 
 ```sh
-./bin/yb-ctl start --tserver_flags "ysql_enable_auth=true"
+$ ./bin/yb-ctl start --tserver_flags "ysql_enable_auth=true"
 ```
 
 Enable YSQL authentication when you restart your cluster with the following `yb-ctl restart` command:
 
 ```sh
-./bin/yb-ctl restart --tserver_flags "ysql_enable_auth=true"
+$ ./bin/yb-ctl restart --tserver_flags "ysql_enable_auth=true"
 ```
 
 ### Start YB-TServer services
@@ -114,7 +114,7 @@ $ ./bin/ysqlsh -U yugabyte
 You will be prompted to enter the password. Upon successful login to the YSQL shell, you will see the following:
 
 ```output
-ysqlsh (11.2-YB-2.0.0.0-b16)
+ysqlsh (11.2-YB-2.7.0.0-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -197,7 +197,7 @@ You should see a table output similar to the following:
  yugabyte                  | t        | t
  john                      | f        | t
  admin                     | t        | t
-(13 rows)
+(12 rows)
 ```
 
 (To see all of the information available in the `pg_roles` table, run `SELECT * from pg_roles`.)
@@ -336,7 +336,7 @@ yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
 Trying to login as `john` using `ysqlsh` will now fail:
 
 ```sh
-yugabyte=# ./bin/ysqlsh -U john
+$ ./bin/ysqlsh -U john
 ```
 
 After entering the correct password, you see the following message:
