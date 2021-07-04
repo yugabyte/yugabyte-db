@@ -436,8 +436,19 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
                                       ScopedRWOperation* operation) {
   apply_state_ = apply_state;
   bool active = apply_state_.active();
+  if (active) {
+    // We are trying to assign set processing apply before starting actual process, and unset
+    // after we complete processing.
+    processing_apply_.store(true, std::memory_order_release);
+  }
 
   if (data) {
+    if (!active) {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Starting processing apply, but provided data in inactive state: " << data->ToString();
+      return;
+    }
+
     apply_data_ = *data;
     apply_data_.apply_state = &apply_state_;
 
@@ -452,6 +463,8 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   }
 
   if (!active) {
+    processing_apply_.store(false, std::memory_order_release);
+
     VLOG_WITH_PREFIX(3) << "Finished applying intents";
 
     MinRunningNotifier min_running_notifier(&context_.applier_);
@@ -461,7 +474,7 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
 }
 
 bool RunningTransaction::ProcessingApply() const {
-  return apply_state_.active();
+  return processing_apply_.load(std::memory_order_acquire);
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {

@@ -161,6 +161,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   TransactionApplyData apply_data_;
   docdb::ApplyTransactionState apply_state_;
+  // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
+  std::atomic<bool> processing_apply_{false};
   ApplyIntentsTask apply_intents_task_;
 
   // Time of the next check whether this transaction has been aborted.
