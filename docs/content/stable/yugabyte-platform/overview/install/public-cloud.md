@@ -5,8 +5,6 @@ linkTitle: Install
 description: Installing Yugabyte Platform on Public Cloud
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing Yugabyte Platform on Public Cloud
-aliases:
-  - /stable/yugabyte-platform/overview/install/
 menu:
   stable:
     identifier: install-1-public-cloud
