@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,8 @@ public class AlertConfigurationWriter {
 
   private final AlertDefinitionService alertDefinitionService;
 
+  private final AlertDefinitionGroupService alertDefinitionGroupService;
+
   private final SwamperHelper swamperHelper;
 
   private final MetricQueryHelper metricQueryHelper;
@@ -60,12 +63,14 @@ public class AlertConfigurationWriter {
       ExecutionContext executionContext,
       ActorSystem actorSystem,
       AlertDefinitionService alertDefinitionService,
+      AlertDefinitionGroupService alertDefinitionGroupService,
       SwamperHelper swamperHelper,
       MetricQueryHelper metricQueryHelper,
       RuntimeConfigFactory configFactory) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.alertDefinitionService = alertDefinitionService;
+    this.alertDefinitionGroupService = alertDefinitionGroupService;
     this.swamperHelper = swamperHelper;
     this.metricQueryHelper = metricQueryHelper;
     this.configFactory = configFactory;
@@ -103,7 +108,9 @@ public class AlertConfigurationWriter {
   private void syncDefinition(UUID definitionUuid) {
     try {
       AlertDefinition definition = alertDefinitionService.get(definitionUuid);
-      if (definition == null || !definition.isActive()) {
+      AlertDefinitionGroup group =
+          definition != null ? alertDefinitionGroupService.get(definition.getGroupUUID()) : null;
+      if (definition == null || group == null || !group.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
         return;
       }
@@ -111,9 +118,9 @@ public class AlertConfigurationWriter {
         LOG.info("Alert definition {} has config in sync", definitionUuid);
         return;
       }
-      swamperHelper.writeAlertDefinition(definition);
+      swamperHelper.writeAlertDefinition(group, definition);
       definition.setConfigWritten(true);
-      alertDefinitionService.update(definition);
+      alertDefinitionService.save(definition);
       requiresReload.set(true);
     } catch (Exception e) {
       LOG.error("Error syncing alert definition " + definitionUuid + " config", e);

@@ -6,8 +6,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedResponse;
 import io.ebean.ExpressionList;
 import io.ebean.Junction;
+import io.ebean.PagedList;
+import io.ebean.Query;
 import io.ebean.common.BeanList;
 import io.jsonwebtoken.lang.Collections;
 import lombok.extern.slf4j.Slf4j;
@@ -287,5 +291,30 @@ public class CommonUtils {
           .orElse(null);
     }
     return null;
+  }
+
+  public static <E, R extends PagedResponse<E>> R performPagedQuery(
+      Query<E> query, PagedQuery<?, ?> pagedQuery, Class<R> responseClass) {
+    if (pagedQuery.getDirection() == PagedQuery.SortDirection.DESC) {
+      query.orderBy().desc(pagedQuery.getSortBy().getSortField());
+    } else {
+      query.orderBy().asc(pagedQuery.getSortBy().getSortField());
+    }
+    query.setFirstRow(pagedQuery.getOffset());
+    query.setMaxRows(pagedQuery.getLimit() + 1);
+    PagedList<E> pagedList = query.findPagedList();
+    try {
+      R response = responseClass.newInstance();
+      response.setEntities(pagedList.getList().subList(0, pagedQuery.getLimit()));
+      response.setHasPrev(pagedList.hasPrev());
+      response.setHasNext(pagedList.getList().size() > pagedQuery.getLimit());
+      if (pagedQuery.isNeedTotalCount()) {
+        response.setTotalCount(pagedList.getTotalCount());
+      }
+      return response;
+    } catch (Exception e) {
+      throw new IllegalStateException(
+          "Failed to create " + responseClass.getSimpleName() + " instance", e);
+    }
   }
 }

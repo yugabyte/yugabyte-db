@@ -9,14 +9,12 @@ import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
-import play.data.validation.Constraints;
 
 import javax.persistence.*;
 import java.util.Comparator;
@@ -36,6 +34,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   public enum State {
     CREATED("firing"),
     ACTIVE("firing"),
+    ACKNOWLEDGED("acknowledged"),
     RESOLVED("resolved");
 
     private final String action;
@@ -49,29 +48,23 @@ public class Alert extends Model implements AlertLabelsProvider {
     }
   }
 
-  @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
   private UUID uuid;
 
-  @Constraints.Required
   @Column(nullable = false)
   private UUID customerUUID;
 
-  @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date createTime = new Date();
 
-  @Constraints.Required
   @Column(columnDefinition = "Text", nullable = false)
   private String errCode;
 
-  @Constraints.Required
-  @Column(length = 255)
-  private String type;
+  @Enumerated(EnumType.STRING)
+  private AlertDefinitionGroup.Severity severity;
 
-  @Constraints.Required
   @Column(columnDefinition = "Text", nullable = false)
   private String message;
 
@@ -82,9 +75,11 @@ public class Alert extends Model implements AlertLabelsProvider {
   @JsonIgnore
   private State targetState = State.ACTIVE;
 
-  @Constraints.Required @JsonIgnore private boolean sendEmail;
+  @JsonIgnore private boolean sendEmail;
 
-  private UUID definitionUUID;
+  private UUID definitionUuid;
+
+  private UUID groupUuid;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertLabel> labels;
@@ -102,6 +97,7 @@ public class Alert extends Model implements AlertLabelsProvider {
     return setUuid(UUID.randomUUID());
   }
 
+  @JsonIgnore
   public boolean isNew() {
     return uuid == null;
   }
@@ -121,16 +117,6 @@ public class Alert extends Model implements AlertLabelsProvider {
         .map(AlertLabel::getValue)
         .findFirst()
         .orElse(null);
-  }
-
-  public Alert setType(String type) {
-    this.type = type;
-    return this;
-  }
-
-  public Alert setType(KnownAlertTypes type) {
-    this.type = type.name();
-    return this;
   }
 
   public Alert setErrCode(String errCode) {
@@ -178,11 +164,17 @@ public class Alert extends Model implements AlertLabelsProvider {
     if (filter.getErrorCode() != null) {
       query.eq("errCode", filter.getErrorCode());
     }
-    appendInClause(query, "definitionUUID", filter.getDefinitionUuids());
+    appendInClause(query, "definitionUuid", filter.getDefinitionUuids());
     if (filter.getLabel() != null) {
       query
           .eq("labels.key.name", filter.getLabel().getName())
           .eq("labels.value", filter.getLabel().getValue());
+    }
+    if (filter.getGroupUuid() != null) {
+      query.eq("groupUuid", filter.getGroupUuid());
+    }
+    if (filter.getSeverity() != null) {
+      query.eq("severity", filter.getSeverity());
     }
     query.orderBy().desc("createTime");
     return query;

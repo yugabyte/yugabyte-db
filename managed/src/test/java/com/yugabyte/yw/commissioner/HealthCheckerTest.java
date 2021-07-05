@@ -591,29 +591,29 @@ public class HealthCheckerTest extends FakeDBApplication {
         new Alert()
             .setCustomerUUID(defaultCustomer.uuid)
             .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .setType(KnownAlertTypes.Warning)
+            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
             .setMessage("Test 1")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels())
             .setState(State.ACTIVE);
-    alert1 = alertService.create(alert1);
+    alert1 = alertService.save(alert1);
     // alert2 is in state CREATED.
     Alert alert2 =
         new Alert()
             .setCustomerUUID(defaultCustomer.uuid)
             .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .setType(KnownAlertTypes.Warning)
+            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
             .setMessage("Test 2")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alert2 = alertService.create(alert2);
+    alert2 = alertService.save(alert2);
     // alert3 should not be updated as it has another errCode.
     Alert alert3 =
         new Alert()
             .setCustomerUUID(defaultCustomer.uuid)
             .setErrCode(KnownAlertCodes.TASK_FAILURE)
-            .setType(KnownAlertTypes.Warning)
+            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
             .setMessage("Test 3")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alert3 = alertService.create(alert3);
+    alert3 = alertService.save(alert3);
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(

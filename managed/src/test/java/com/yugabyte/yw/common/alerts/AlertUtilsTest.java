@@ -93,7 +93,7 @@ public class AlertUtilsTest extends FakeDBApplication {
     AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
-    alert.setDefinitionUUID(definition.getUuid());
+    alert.setDefinitionUuid(definition.getUuid());
     AlertReceiver receiver = createEmailReceiver();
 
     assertEquals(
@@ -135,14 +135,16 @@ public class AlertUtilsTest extends FakeDBApplication {
   @Test
   public void testGetNotificationText_TemplateInAlert() {
     Universe universe = ModelFactory.createUniverse();
-    AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
+    AlertDefinitionGroup group = ModelFactory.createAlertDefinitionGroup(defaultCustomer, universe);
+    AlertDefinition definition =
+        ModelFactory.createAlertDefinition(defaultCustomer, universe, group);
 
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
-    alert.setDefinitionUUID(definition.getUuid());
+    alert.setDefinitionUuid(definition.getUuid());
 
     List<AlertLabel> labels =
         definition
-            .getEffectiveLabels()
+            .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());

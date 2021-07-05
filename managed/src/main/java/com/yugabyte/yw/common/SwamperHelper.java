@@ -16,6 +16,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.PatternFilenameFilter;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.apache.commons.io.FilenameUtils;
@@ -236,22 +237,42 @@ public class SwamperHelper {
     return null;
   }
 
-  public void writeAlertDefinition(AlertDefinition definition) {
+  public void writeAlertDefinition(AlertDefinitionGroup group, AlertDefinition definition) {
     String swamperFile = getSwamperRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
     }
 
-    String template;
-    try (InputStream templateStream = environment.resourceAsStream("alert/alert_definition.yml")) {
-      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+    String fileContent;
+    try (InputStream templateStream =
+        environment.resourceAsStream("alert/alert_definition_header.yml")) {
+      fileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
     } catch (IOException e) {
-      throw new RuntimeException("Failed to read alert definition template", e);
+      throw new RuntimeException("Failed to read alert definition header template", e);
     }
 
-    AlertRuleTemplateSubstitutor substitutor = new AlertRuleTemplateSubstitutor(definition);
-    String ruleDefinition = substitutor.replace(template);
-    writeFile(swamperFile, ruleDefinition);
+    String template;
+    try (InputStream templateStream =
+        environment.resourceAsStream("alert/alert_definition_rule.yml")) {
+      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to read alert definition rule template", e);
+    }
+
+    fileContent +=
+        group
+            .getThresholds()
+            .keySet()
+            .stream()
+            .map(
+                severity -> {
+                  AlertRuleTemplateSubstitutor substitutor =
+                      new AlertRuleTemplateSubstitutor(group, definition, severity);
+                  return substitutor.replace(template);
+                })
+            .collect(Collectors.joining());
+
+    writeFile(swamperFile, fileContent);
   }
 
   public void removeAlertDefinition(UUID definitionUUID) {

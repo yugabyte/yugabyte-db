@@ -11,9 +11,7 @@ package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.AlertDefinitionLabel;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import lombok.Builder;
-import lombok.NonNull;
-import lombok.Value;
+import lombok.*;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -25,9 +23,8 @@ import java.util.UUID;
 public class AlertDefinitionFilter {
   Set<UUID> uuids;
   UUID customerUuid;
-  String name;
+  Set<UUID> groupUuids;
   AlertDefinitionLabel label;
-  Boolean active;
   Boolean configWritten;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
@@ -40,14 +37,11 @@ public class AlertDefinitionFilter {
     if (customerUuid != null) {
       result.customerUuid(customerUuid);
     }
-    if (name != null) {
-      result.name(name);
+    if (groupUuids != null) {
+      result.groupUuids(groupUuids);
     }
     if (label != null) {
       result.label(label);
-    }
-    if (active != null) {
-      result.active(active);
     }
     if (configWritten != null) {
       result.configWritten(configWritten);
@@ -57,13 +51,9 @@ public class AlertDefinitionFilter {
 
   public static class AlertDefinitionFilterBuilder {
     Set<UUID> uuids = new HashSet<>();
-    UUID customerUuid;
-    String name;
-    AlertDefinitionLabel label;
-    Boolean active;
-    Boolean configWritten;
+    Set<UUID> groupUuids = new HashSet<>();
 
-    public AlertDefinitionFilterBuilder uuids(@NonNull UUID uuid) {
+    public AlertDefinitionFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
       return this;
     }
@@ -78,13 +68,13 @@ public class AlertDefinitionFilter {
       return this;
     }
 
-    public AlertDefinitionFilterBuilder name(@NonNull String name) {
-      this.name = name;
+    public AlertDefinitionFilterBuilder groupUuid(UUID groupUuid) {
+      this.groupUuids.add(groupUuid);
       return this;
     }
 
-    public AlertDefinitionFilterBuilder active(@NonNull Boolean active) {
-      this.active = active;
+    public AlertDefinitionFilterBuilder groupUuids(@NonNull Collection<UUID> groupUuids) {
+      this.groupUuids.addAll(groupUuids);
       return this;
     }
 
