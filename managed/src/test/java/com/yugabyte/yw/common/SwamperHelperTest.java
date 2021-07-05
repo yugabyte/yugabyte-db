@@ -5,7 +5,10 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import org.apache.commons.exec.OS;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -30,7 +33,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.ModelFactory.*;
+import static com.yugabyte.yw.common.ModelFactory.createAlertDefinition;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertFalse;
@@ -142,10 +146,9 @@ public class SwamperHelperTest extends FakeDBApplication {
   public void testWriteAlertDefinition() throws IOException {
     when(appConfig.getString("yb.swamper.rulesPath")).thenReturn(SWAMPER_TMP_PATH);
     Universe universe = createUniverse(defaultCustomer.getCustomerId());
-    AlertDefinitionGroup group = createAlertDefinitionGroup(defaultCustomer, universe);
-    AlertDefinition definition = createAlertDefinition(defaultCustomer, universe, group);
+    AlertDefinition definition = createAlertDefinition(defaultCustomer, universe);
 
-    swamperHelper.writeAlertDefinition(group, definition);
+    swamperHelper.writeAlertDefinition(definition);
     BufferedReader br =
         new BufferedReader(new FileReader(generateRulesFileName(definition.getUuid().toString())));
 
@@ -155,7 +158,6 @@ public class SwamperHelperTest extends FakeDBApplication {
         IOUtils.toString(
             getClass().getClassLoader().getResourceAsStream("alert/test_alert_definition.yml"),
             StandardCharsets.UTF_8);
-    expectedContent = expectedContent.replace("<group_uuid>", group.getUuid().toString());
     expectedContent = expectedContent.replace("<definition_uuid>", definition.getUuid().toString());
     expectedContent =
         expectedContent.replace("<customer_uuid>", defaultCustomer.getUuid().toString());
