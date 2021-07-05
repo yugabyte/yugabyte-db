@@ -38,6 +38,17 @@
     <script src="./swagger-ui-bundle.js" charset="UTF-8"> </script>
     <script src="./swagger-ui-standalone-preset.js" charset="UTF-8"> </script>
     <script>
+    function getCSRF() {
+      var name = "csrfCookie=";
+      var ca = document.cookie.split(';');
+      for(var i=0; i<ca.length; i++) {
+          var c = ca[i];
+          while (c.charAt(0) === ' ') c = c.substring(1);
+          if (c.indexOf(name) !== -1) return c.substring(name.length,c.length);
+      }
+      return "";
+    }
+
     window.onload = function() {
       // Begin Swagger UI call region
       const ui = SwaggerUIBundle({
@@ -51,7 +62,11 @@
         plugins: [
           SwaggerUIBundle.plugins.DownloadUrl
         ],
-        layout: "StandaloneLayout"
+        layout: "StandaloneLayout",
+        requestInterceptor: function(req) {
+          req.headers['Csrf-Token'] = getCSRF();
+          return req;
+        }
       });
       // End Swagger UI call region
 
