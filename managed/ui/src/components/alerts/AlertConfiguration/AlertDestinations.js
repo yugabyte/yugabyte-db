@@ -10,6 +10,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
+import { AlertDestinationDetails } from './AlertDestinationDetails';
 
 /**
  * This is the header for YB Panel Item.
@@ -32,14 +33,16 @@ const header = (onAddAlertDestination) => (
 
 export const AlertDestionations = (props) => {
   const [alertDestionation, setAlertDesionation] = useState([]);
+  const [alertDestionationDetails, setAlertDesionationDetails] = useState({});
   const {
     alertDestionations,
     closeModal,
     deleteAlertDestination,
+    modal: { showModal, visibleModal },
     onAddAlertDestination,
     setInitialValues,
     showDeleteModal,
-    visibleModal
+    showDetailsModal
   } = props;
 
   useEffect(() => {
@@ -95,6 +98,15 @@ export const AlertDestionations = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
+          <MenuItem
+            onClick={() => {
+              setAlertDesionationDetails(row);
+              showDetailsModal();
+            }}
+          >
+            <i className="fa fa-info-circle"></i> Details
+          </MenuItem>
+
           <MenuItem onClick={() => onEditDestination(row)}>
             <i className="fa fa-pencil"></i> Edit Destination
           </MenuItem>
@@ -120,45 +132,51 @@ export const AlertDestionations = (props) => {
     );
   };
 
-  // TODO: This needs to be updated once the real data will come.
-  // For now, we're dealing with the mock data.
   return (
-    <YBPanelItem
-      header={header(onAddAlertDestination)}
-      body={
-        <>
-          <BootstrapTable
-            className="backup-list-table middle-aligned-table"
-            data={alertDestionation}
-          >
-            <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
-            <TableHeaderColumn
-              dataField="name"
-              columnClassName="no-border name-column"
-              className="no-border"
+    <>
+      <YBPanelItem
+        header={header(onAddAlertDestination)}
+        body={
+          <>
+            <BootstrapTable
+              className="backup-list-table middle-aligned-table"
+              data={alertDestionation}
             >
-              Destinations
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="channels"
-              // dataFormat={}
-              columnClassName="no-border name-column"
-              className="no-border"
-            >
-              Channels
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="configActions"
-              dataFormat={(cell, row) => formatConfigActions(cell, row)}
-              columnClassName="yb-actions-cell"
-              className="yb-actions-cell"
-            >
-              Actions
-            </TableHeaderColumn>
-          </BootstrapTable>
-        </>
-      }
-      noBackground
-    />
+              <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
+              <TableHeaderColumn
+                dataField="name"
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                Destinations
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="channels"
+                // dataFormat={}
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                Channels
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="configActions"
+                dataFormat={(cell, row) => formatConfigActions(cell, row)}
+                columnClassName="yb-actions-cell"
+                className="yb-actions-cell"
+              >
+                Actions
+              </TableHeaderColumn>
+            </BootstrapTable>
+          </>
+        }
+        noBackground
+      />
+
+      <AlertDestinationDetails
+        visible={showModal && visibleModal === 'alertDestinationDetailsModal'}
+        onHide={closeModal}
+        details={alertDestionationDetails}
+      />
+    </>
   );
 };

@@ -6,8 +6,8 @@
     "severity": "Sever",
     "destination": "Slack, Email",
     "created": "01-01-2021",
-    "occurance": "2",
-    "status": "Active"
+    "metricName": "Platform",
+    "createdBy": "Nishant Sharma"
   },
   {
     "configUUID": 456,
@@ -15,8 +15,8 @@
     "type": "Platform",
     "severity": "Warning",
     "destination": "Slack, Email",
-    "created": "01-01-2021",
-    "occurance": "25",
-    "status": "Active"
+    "created": "02-01-2021",
+    "metricName": "Universe",
+    "createdBy": "Honey"
   }
 ]

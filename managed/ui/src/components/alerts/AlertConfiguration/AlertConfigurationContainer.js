@@ -2,8 +2,6 @@
 //
 // Author: Nishant Sharma(nissharma@deloitte.com)
 //
-// TODO: Redux still needs to be configured once the API contract
-// will be finalized and be available.
 
 import { connect } from 'react-redux';
 import { toast } from 'react-toastify';
@@ -33,7 +31,6 @@ const mapStateToProps = (state) => {
     apiToken: state.customer.apiToken,
     customerProfile: state.customer ? state.customer.profile : null,
     modal: state.modal,
-    visibleModal: state.modal.visibleModal,
     initialValues: state.customer.setInitialVal
   };
 };
@@ -45,7 +42,7 @@ const mapDispatchToProps = (dispatch) => {
     },
     alertDestionations: () => {
       return dispatch(alertDestionations()).then((response) => {
-        if(response.error) {
+        if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
           return;
@@ -78,13 +75,13 @@ const mapDispatchToProps = (dispatch) => {
     },
     getAlertReceivers: () => {
       return dispatch(getAlertReceivers()).then((response) => {
-        if(response.error) {
+        if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
           return;
         }
-        return response.payload.data
-      })
+        return response.payload.data;
+      });
     },
     createAlertDestination: (payload) => {
       return dispatch(createAlertDestination(payload)).then((response) => {
@@ -95,7 +92,7 @@ const mapDispatchToProps = (dispatch) => {
           toast.success('Successfully added the destination');
         }
         return dispatch(createAlertDestinationResponse(response.payload));
-      })
+      });
     },
     updateAlertDestination: (payload, uuid) => {
       return dispatch(updateAlertDestination(payload, uuid)).then((response) => {
@@ -106,11 +103,11 @@ const mapDispatchToProps = (dispatch) => {
           toast.success('Successfully updated the destination');
         }
         return dispatch(updateAlertDestinationResponse(response.payload));
-      })
+      });
     },
     deleteAlertDestination: (uuid) => {
       return dispatch(deleteAlertDestination(uuid)).then((response) => {
-        if(response.error) {
+        if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
           return;
@@ -126,6 +123,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     showDeleteModal: (name) => {
       dispatch(openDialog(name));
+    },
+    showDetailsModal: () => {
+      dispatch(openDialog('alertDestinationDetailsModal'));
     }
   };
 };
