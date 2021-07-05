@@ -22,12 +22,12 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertDefinitionTest extends FakeDBApplication {
 
+  private static final String TEST_DEFINITION_NAME = "Alert Definition";
   private static final String TEST_DEFINITION_QUERY = "some_metric > 100";
 
   private static final String TEST_LABEL = "test_label";
@@ -40,15 +40,12 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
   private Universe universe;
 
-  private AlertDefinitionGroup group;
-
   @InjectMocks private AlertDefinitionService alertDefinitionService;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("Customer");
     universe = ModelFactory.createUniverse();
-    group = ModelFactory.createAlertDefinitionGroup(customer, universe);
   }
 
   @Test
@@ -69,6 +66,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
         alertDefinitionService.list(
             AlertDefinitionFilter.builder()
                 .customerUuid(customer.uuid)
+                .name(TEST_DEFINITION_NAME)
                 .label(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString())
                 .build());
 
@@ -98,8 +96,9 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
     String newQuery = "qwewqewqe";
     definition.setQuery(newQuery);
+    definition.setActive(false);
     definition.setLabels(ImmutableList.of(label2));
-    alertDefinitionService.save(definition);
+    alertDefinitionService.update(definition);
 
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
     List<AlertDefinition> queriedDefinitions =
@@ -115,7 +114,9 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
     AlertDefinition queriedDefinition = queriedDefinitions.get(0);
     assertThat(queriedDefinition.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(queriedDefinition.getName(), equalTo(TEST_DEFINITION_NAME));
     assertThat(queriedDefinition.getQuery(), equalTo(newQuery));
+    assertFalse(queriedDefinition.isActive());
 
     assertThat(queriedDefinition.getLabelValue(TEST_LABEL_2), equalTo(TEST_LABEL_VALUE_2));
   }
@@ -128,11 +129,12 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
     String newQuery = "qwewqewqe";
     definition.setQuery(newQuery);
-    alertDefinitionService.save(definition);
+    definition.setActive(false);
+    alertDefinitionService.update(definition);
 
     createdDefinition.setConfigWritten(true);
     assertThrows(
-        OptimisticLockException.class, () -> alertDefinitionService.save(createdDefinition));
+        OptimisticLockException.class, () -> alertDefinitionService.update(createdDefinition));
   }
 
   @Test
@@ -153,10 +155,10 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinition definition =
         new AlertDefinition()
             .setCustomerUUID(customer.uuid)
-            .setGroupUUID(group.getUuid())
+            .setName(TEST_DEFINITION_NAME)
             .setQuery(TEST_DEFINITION_QUERY)
             .setLabels(Arrays.asList(label1, knownLabel));
-    return alertDefinitionService.save(definition);
+    return alertDefinitionService.create(definition);
   }
 
   private AlertDefinition createTestDefinition2() {
@@ -164,10 +166,10 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinition definition =
         new AlertDefinition()
             .setCustomerUUID(customer.uuid)
-            .setGroupUUID(group.getUuid())
+            .setName(TEST_DEFINITION_NAME)
             .setQuery(TEST_DEFINITION_QUERY)
             .setLabels(Collections.singletonList(label2));
-    return alertDefinitionService.save(definition);
+    return alertDefinitionService.create(definition);
   }
 
   private void assertTestDefinition1(AlertDefinition definition) {
@@ -178,7 +180,9 @@ public class AlertDefinitionTest extends FakeDBApplication {
         new AlertDefinitionLabel(
             definition, KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString());
     assertThat(definition.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(definition.getName(), equalTo(TEST_DEFINITION_NAME));
     assertThat(definition.getQuery(), equalTo(TEST_DEFINITION_QUERY));
+    assertTrue(definition.isActive());
     assertFalse(definition.isConfigWritten());
     assertThat(definition.getLabels(), containsInAnyOrder(label1, knownLabel));
   }

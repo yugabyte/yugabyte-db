@@ -2,45 +2,28 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
-
 import java.util.EnumSet;
-import java.util.Map;
 
 public enum AlertDefinitionTemplate {
 
   // @formatter:off
   REPLICATION_LAG(
-      "Replication Lag",
-      "Average universe replication lag for 10 minutes in ms is above threshold",
+      "Replication Lag Alert",
       "max by (node_prefix) (avg_over_time(async_replication_committed_lag_micros"
-          + "{node_prefix=\"__nodePrefix__\"}[10m]) "
-          + "or avg_over_time(async_replication_sent_lag_micros"
-          + "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 "
-          + "{{ query_condition }} {{ query_threshold }}",
-      15,
+          + "{node_prefix=\"__nodePrefix__\"}[10m]) or avg_over_time(async_replication_sent_lag_micros"
+          + "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 > {{ query_threshold }}",
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, "yb.alert.replication_lag_ms"),
-      AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN),
+      "yb.alert.replication_lag_ms"),
 
   CLOCK_SKEW(
-      "Clock Skew",
-      "Max universe clock skew in ms is above threshold during last 10 minutes",
+      "Clock Skew Alert",
       "max by (node_prefix) (max_over_time(hybrid_clock_skew"
-          + "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 "
-          + "{{ query_condition }} {{ query_threshold }}",
-      15,
-      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, "yb.alert.max_clock_skew_ms"),
-      AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN),
+          + "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 > {{ query_threshold }}",
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_UNIVERSE),
+      "yb.alert.max_clock_skew_ms"),
 
   MEMORY_CONSUMPTION(
-      "Memory Consumption",
-      "Average node memory consumption percentage for 10 minutes is above threshold",
+      "Memory Consumption Alert",
       "(max by (node_prefix)"
           + "   (avg_over_time(node_memory_MemTotal{node_prefix=\"__nodePrefix__\"}[10m])) -"
           + " max by (node_prefix)"
@@ -53,33 +36,24 @@ public enum AlertDefinitionTemplate {
           + "   (avg_over_time(node_memory_Slab{node_prefix=\"__nodePrefix__\"}[10m]))) /"
           + " (max by (node_prefix)"
           + "   (avg_over_time(node_memory_MemTotal{node_prefix=\"__nodePrefix__\"}[10m])))"
-          + " {{ query_condition }} {{ query_threshold }} / 100",
-      15,
-      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, "yb.alert.max_memory_cons_pct"),
-      AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN);
+          + " > {{ query_threshold }} / 100",
+      EnumSet.of(
+          DefinitionSettings.CREATE_FOR_NEW_UNIVERSE, DefinitionSettings.CREATE_ON_MIGRATION),
+      "yb.alert.max_memory_cons_pct");
   // @formatter:on
 
   enum DefinitionSettings {
-    CREATE_FOR_NEW_CUSTOMER
+    CREATE_FOR_NEW_UNIVERSE,
+    CREATE_ON_MIGRATION
   }
 
   private final String name;
 
-  private final String description;
-
   private final String template;
-
-  private final int defaultDurationSec;
 
   private final EnumSet<DefinitionSettings> settings;
 
-  private final Map<AlertDefinitionGroup.Severity, String> defaultThresholdParamMap;
-
-  private final AlertDefinitionGroup.TargetType targetType;
-
-  private final AlertDefinitionGroupThreshold.Condition defaultThresholdCondition;
+  private final String defaultThresholdParamName;
 
   /**
    * Prepares the template for further usage. Does a substitution for parameter '__nodePrefix__'.
@@ -93,52 +67,28 @@ public enum AlertDefinitionTemplate {
 
   AlertDefinitionTemplate(
       String name,
-      String description,
       String template,
-      int defaultDurationSec,
       EnumSet<DefinitionSettings> settings,
-      Map<AlertDefinitionGroup.Severity, String> defaultThresholdParamMap,
-      AlertDefinitionGroup.TargetType targetType,
-      AlertDefinitionGroupThreshold.Condition defaultThresholdCondition) {
+      String defaultThresholdParamName) {
     this.name = name;
-    this.description = description;
     this.template = template;
-    this.defaultDurationSec = defaultDurationSec;
     this.settings = settings;
-    this.defaultThresholdParamMap = defaultThresholdParamMap;
-    this.targetType = targetType;
-    this.defaultThresholdCondition = defaultThresholdCondition;
+    this.defaultThresholdParamName = defaultThresholdParamName;
   }
 
-  public boolean isCreateForNewCustomer() {
-    return settings.contains(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER);
+  public boolean isCreateForNewUniverse() {
+    return settings.contains(DefinitionSettings.CREATE_FOR_NEW_UNIVERSE);
+  }
+
+  public boolean isCreateOnMigration() {
+    return settings.contains(DefinitionSettings.CREATE_ON_MIGRATION);
   }
 
   public String getName() {
     return name;
   }
 
-  public String getDescription() {
-    return description;
-  }
-
-  public Map<AlertDefinitionGroup.Severity, String> getDefaultThresholdParamMap() {
-    return defaultThresholdParamMap;
-  }
-
-  public String getTemplate() {
-    return template;
-  }
-
-  public AlertDefinitionGroup.TargetType getTargetType() {
-    return targetType;
-  }
-
-  public AlertDefinitionGroupThreshold.Condition getDefaultThresholdCondition() {
-    return defaultThresholdCondition;
-  }
-
-  public int getDefaultDurationSec() {
-    return defaultDurationSec;
+  public String getDefaultThresholdParamName() {
+    return defaultThresholdParamName;
   }
 }

@@ -6,13 +6,13 @@ import { YBButton, YBFormInput, YBFormToggle } from '../../common/forms/fields';
 import { YBModalForm } from '../../common/forms';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import {
-  createAlertDefinitionGroup,
-  getAlertDefinitionGroups,
-  getAlertDefinitionTemplates,
-  updateAlertDefinitionGroup
+  createAlertDefinition,
+  getAlertDefinition,
+  updateAlertDefinition
 } from '../../../actions/universe';
 
-const ALERT_NAME = 'Replication Lag';
+const ALERT_NAME = 'Replication Lag Alert';
+const ALERT_TEMPLATE = 'REPLICATION_LAG';
 const DEFAULT_THRESHOLD = 180000;
 
 const DEFAULT_FORM_VALUE = {
@@ -32,30 +32,23 @@ const validationSchema = Yup.object().shape({
 export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
   const formik = useRef();
   const [isModalVisible, setModalVisible] = useState(false);
-  const [alertDefinitionGroupUUID, setAlertDefinitionGroupUUID] = useState(null);
+  const [alertDefinitionUUID, setAlertDefinitionUUID] = useState(null);
   const [submissionError, setSubmissionError] = useState();
-  const definitionGroupFilter = {
-      name: ALERT_NAME,
-      targetUuid: universeUUID
-  }
 
   const { isFetching } = useQuery(
-    ['getAlertDefinitionGroups', definitionGroupFilter],
-    () => getAlertDefinitionGroups(definitionGroupFilter),
+    ['getAlertDefinition', universeUUID, ALERT_NAME],
+    () => getAlertDefinition(universeUUID, ALERT_NAME),
     {
       enabled: isModalVisible,
       onSuccess: (data) => {
-        if(Array.isArray(data) && data.length > 0) {
-           const group = data[0];
-           setAlertDefinitionGroupUUID(group.uuid);
+        setAlertDefinitionUUID(data.uuid);
 
-           // update form value via workaround as initial form value inside <YBModalForm> is set when
-           // it rendered for the first time and we don't have an API response at that time yet
-           formik.current.setValues({
-             enableAlert: group.active,
-             lagThreshold: group.thresholds.SEVERE.threshold
-           });
-        }
+        // update form value via workaround as initial form value inside <YBModalForm> is set when
+        // it rendered for the first time and we don't have an API response at that time yet
+        formik.current.setValues({
+          enableAlert: data.active,
+          lagThreshold: data.queryThreshold
+        });
       }
     }
   );
@@ -73,24 +66,18 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
   };
 
   const submit = async (values, formikBag) => {
-    const templateFilter = {
-       name: ALERT_NAME
-    };
-    const groupTemplates = await getAlertDefinitionTemplates(templateFilter);
-    const template = groupTemplates[0]
-    template.active = values.enableAlert;
-    template.thresholds.SEVERE.threshold = values.lagThreshold;
-    template.target = {
-      all: false,
-      uuids: [universeUUID]
+    const payload = {
+      name: ALERT_NAME,
+      template: ALERT_TEMPLATE,
+      active: values.enableAlert,
+      value: values.lagThreshold
     };
 
     try {
-      if (alertDefinitionGroupUUID) {
-        template.uuid = alertDefinitionGroupUUID;
-        await updateAlertDefinitionGroup(template);
+      if (alertDefinitionUUID) {
+        await updateAlertDefinition(alertDefinitionUUID, payload);
       } else {
-        await createAlertDefinitionGroup(template);
+        await createAlertDefinition(universeUUID, payload);
       }
 
       formikBag.setSubmitting(false);

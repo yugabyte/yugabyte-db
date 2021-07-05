@@ -11,34 +11,39 @@
 package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.common.alerts.*;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import lombok.extern.slf4j.Slf4j;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Singleton
-@Slf4j
 public class AlertManager {
+
+  private static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
 
   private final EmailHelper emailHelper;
   private final AlertService alertService;
-  private final AlertDefinitionGroupService alertDefinitionGroupService;
   private final AlertReceiverManager receiversManager;
 
   @Inject
   public AlertManager(
-      EmailHelper emailHelper,
-      AlertService alertService,
-      AlertDefinitionGroupService alertDefinitionGroupService,
-      AlertReceiverManager receiversManager) {
+      EmailHelper emailHelper, AlertService alertService, AlertReceiverManager receiversManager) {
     this.emailHelper = emailHelper;
     this.alertService = alertService;
-    this.alertDefinitionGroupService = alertDefinitionGroupService;
     this.receiversManager = receiversManager;
   }
 
@@ -54,19 +59,19 @@ public class AlertManager {
     try {
       switch (alert.getState()) {
         case CREATED:
-          log.info("Transitioning alert {} to active", alert.getUuid());
+          LOG.info("Transitioning alert {} to active", alert.getUuid());
           report.raiseAttempt();
           alert.setState(Alert.State.ACTIVE);
           sendNotification(alert, report);
           break;
         case ACTIVE:
-          log.info("Transitioning alert {} to resolved (with email)", alert.getUuid());
+          LOG.info("Transitioning alert {} to resolved (with email)", alert.getUuid());
           report.resolveAttempt();
           alert.setState(Alert.State.RESOLVED);
           sendNotification(alert, report);
           break;
         default:
-          log.warn(
+          LOG.warn(
               "Unexpected alert state {} during notification for alert {}",
               alert.getState().name(),
               alert.getUuid());
@@ -75,47 +80,34 @@ public class AlertManager {
       alert.save();
     } catch (Exception e) {
       report.failAttempt();
-      log.error("Error transitioning alert state for alert {}", alert.getUuid(), e);
+      LOG.error("Error transitioning alert state for alert {}", alert.getUuid(), e);
     }
 
     return alert;
   }
 
-  private Optional<AlertRoute> getRouteByAlert(Alert alert) {
-    String groupUuid = alert.getLabelValue(KnownAlertLabels.GROUP_UUID);
-    if (groupUuid == null) {
-      return Optional.empty();
-    }
-    AlertDefinitionGroup group = alertDefinitionGroupService.get(UUID.fromString(groupUuid));
-    if (group == null) {
-      log.warn("Missing group {} for alert {}", groupUuid, alert.getUuid());
-      return Optional.empty();
-    }
-    if (group.getRouteUUID() == null) {
-      return Optional.empty();
-    }
-    AlertRoute route = AlertRoute.get(group.getCustomerUUID(), group.getRouteUUID());
-    if (route == null) {
-      log.warn("Missing route {} for alert {}", group.getRouteUUID(), alert.getUuid());
-      return Optional.empty();
-    }
-    return Optional.of(route);
+  private List<AlertRoute> getRoutesByAlert(Alert alert) {
+    // TODO:
+    return Collections.emptyList();
   }
 
   public void sendNotification(Alert alert, AlertNotificationReport report) {
     Customer customer = Customer.get(alert.getCustomerUUID());
 
+    List<AlertRoute> routes = getRoutesByAlert(alert);
     boolean atLeastOneSucceeded = false;
-    Optional<AlertRoute> route = getRouteByAlert(alert);
     List<AlertReceiver> receivers =
-        new ArrayList<>(route.map(AlertRoute::getReceiversList).orElse(Collections.emptyList()));
+        routes
+            .stream()
+            .flatMap(route -> route.getReceiversList().stream())
+            .collect(Collectors.toList());
 
     if (receivers.isEmpty()) {
       if (!alert.isSendEmail()) {
         return;
       }
       // Creating default receiver with email only, w/o saving it to DB.
-      log.debug("For alert {} no routes/receivers found, using default email.", alert.getUuid());
+      LOG.debug("For alert {} no routes/receivers found, using default email.", alert.getUuid());
       receivers.add(getDefaultReceiver(alert.getCustomerUUID()));
     }
 
@@ -124,7 +116,7 @@ public class AlertManager {
         AlertUtils.validate(receiver);
       } catch (YWValidateException e) {
         if (report.failuresByReceiver(receiver.getUuid()) == 0) {
-          log.warn("Receiver {} skipped: {}", receiver.getUuid(), e.getMessage(), e);
+          LOG.warn("Receiver {} skipped: {}", receiver.getUuid(), e.getMessage(), e);
         }
         report.failReceiver(receiver.getUuid());
         continue;
@@ -142,7 +134,7 @@ public class AlertManager {
         }
       } catch (Exception e) {
         if (report.failuresByReceiver(receiver.getUuid()) == 0) {
-          log.error(e.getMessage());
+          LOG.error(e.getMessage());
         }
         report.failReceiver(receiver.getUuid());
         createOrUpdateAlert(customer, receiver, "Error sending notification: " + e);
@@ -180,7 +172,7 @@ public class AlertManager {
                 new Alert()
                     .setCustomerUUID(c.getUuid())
                     .setErrCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-                    .setSeverity(AlertDefinitionGroup.Severity.SEVERE));
+                    .setType(KnownAlertTypes.Error));
     alert
         .setMessage(details)
         .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(receiver).getAlertLabels());

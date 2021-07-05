@@ -10,10 +10,8 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -63,7 +61,6 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
   protected AlertService alertService;
   protected AlertDefinitionService alertDefinitionService;
-  protected AlertDefinitionGroupService alertDefinitionGroupService;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -77,10 +74,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
     alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    SettableRuntimeConfigFactory configFactory = new SettableRuntimeConfigFactory(app.config());
-    alertDefinitionGroupService =
-        new AlertDefinitionGroupService(alertDefinitionService, configFactory);
+    alertDefinitionService = new AlertDefinitionService();
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(app.config());
@@ -91,9 +85,6 @@ public abstract class CommissionerBaseTest extends WithApplication {
     when(mockBaseTaskDependencies.getTableManager()).thenReturn(mockTableManager);
     when(mockBaseTaskDependencies.getAlertService()).thenReturn(alertService);
     when(mockBaseTaskDependencies.getAlertDefinitionService()).thenReturn(alertDefinitionService);
-    when(mockBaseTaskDependencies.getRuntimeConfigFactory()).thenReturn(configFactory);
-    when(mockBaseTaskDependencies.getAlertDefinitionGroupService())
-        .thenReturn(alertDefinitionGroupService);
   }
 
   @Override

@@ -24,10 +24,10 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
@@ -35,7 +35,7 @@ import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
@@ -60,7 +60,7 @@ public class CustomerController extends AuthenticatedController {
 
   @Inject private AlertService alertService;
 
-  @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
+  @Inject private AlertDefinitionService alertDefinitionService;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
@@ -139,21 +139,21 @@ public class CustomerController extends AuthenticatedController {
         }
 
         // Update Clock Skew Alert definition activity.
-        // TODO: Remove after implementation of a separate window for
-        // all definition groups configuration.
-        List<AlertDefinitionGroup> groups =
-            alertDefinitionGroupService.list(
-                AlertDefinitionGroupFilter.builder()
+        // TODO: Remove after implementation of a separate window for all definitions
+        // configuration.
+        List<AlertDefinition> definitions =
+            alertDefinitionService.list(
+                AlertDefinitionFilter.builder()
                     .customerUuid(customerUUID)
                     .name(AlertDefinitionTemplate.CLOCK_SKEW.getName())
                     .build());
-        for (AlertDefinitionGroup group : groups) {
-          group.setActive(alertingFormData.alertingData.enableClockSkew);
+        for (AlertDefinition definition : definitions) {
+          definition.setActive(alertingFormData.alertingData.enableClockSkew);
+          alertDefinitionService.update(definition);
         }
-        alertDefinitionGroupService.save(groups);
         LOG.info(
-            "Updated {} Clock Skew Alert definition groups, new state {}",
-            groups.size(),
+            "Updated {} Clock Skew Alert definitions, new state {}",
+            definitions.size(),
             alertingFormData.alertingData.enableClockSkew);
       }
 

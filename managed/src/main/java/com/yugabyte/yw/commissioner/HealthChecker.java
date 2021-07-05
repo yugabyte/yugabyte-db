@@ -20,9 +20,9 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
@@ -344,11 +345,11 @@ public class HealthChecker {
         new Alert()
             .setCustomerUUID(c.getUuid())
             .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
+            .setType(KnownAlertTypes.Warning)
             .setMessage(details)
             .setSendEmail(true)
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alertService.save(alert);
+    alertService.create(alert);
   }
 
   static class CheckSingleUniverseParams {

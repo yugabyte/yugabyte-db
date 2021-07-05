@@ -9,7 +9,6 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -21,6 +20,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -63,7 +63,6 @@ public abstract class AbstractTaskBase implements ITask {
   protected final RuntimeConfigFactory runtimeConfigFactory;
   protected final AlertService alertService;
   protected final AlertDefinitionService alertDefinitionService;
-  protected final AlertDefinitionGroupService alertDefinitionGroupService;
   protected final YBClientService ybService;
   protected final TableManager tableManager;
 
@@ -76,7 +75,6 @@ public abstract class AbstractTaskBase implements ITask {
     this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
     this.alertService = baseTaskDependencies.getAlertService();
     this.alertDefinitionService = baseTaskDependencies.getAlertDefinitionService();
-    this.alertDefinitionGroupService = baseTaskDependencies.getAlertDefinitionGroupService();
     this.ybService = baseTaskDependencies.getYbService();
     this.tableManager = baseTaskDependencies.getTableManager();
   }
@@ -218,11 +216,11 @@ public abstract class AbstractTaskBase implements ITask {
         new Alert()
             .setCustomerUUID(customer.getUuid())
             .setErrCode(KnownAlertCodes.TASK_FAILURE)
-            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
+            .setType(KnownAlertTypes.Error)
             .setMessage(content)
             .setSendEmail(true)
             .setLabels(labelsBuilder.getAlertLabels());
-    alertService.save(alert);
+    alertService.create(alert);
   }
 
   /**

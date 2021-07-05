@@ -2,10 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
@@ -13,7 +11,9 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import javax.mail.MessagingException;
@@ -37,15 +37,9 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Mock private EmailHelper emailHelper;
 
-  private AlertService alertService;
+  @Spy private AlertService alertService;
 
-  private AlertDefinitionService alertDefinitionService;
-
-  private AlertDefinitionGroupService alertDefinitionGroupService;
-
-  private AlertManager am;
-
-  private AlertDefinitionGroup group;
+  @InjectMocks private AlertManager am;
 
   private AlertDefinition definition;
 
@@ -59,27 +53,19 @@ public class AlertManagerTest extends FakeDBApplication {
     when(receiversManager.get(AlertReceiver.TargetType.Email.name())).thenReturn(emailReceiver);
 
     universe = ModelFactory.createUniverse();
-    group = ModelFactory.createAlertDefinitionGroup(defaultCustomer, universe);
-    definition = ModelFactory.createAlertDefinition(defaultCustomer, universe, group);
+    definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
 
     // Configuring default SMTP configuration.
     SmtpData smtpData = new SmtpData();
     when(emailHelper.getDestinations(defaultCustomer.uuid))
         .thenReturn(Collections.singletonList("to@to.com"));
     when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(smtpData);
-
-    alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    alertDefinitionGroupService =
-        new AlertDefinitionGroupService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    am = new AlertManager(emailHelper, alertService, alertDefinitionGroupService, receiversManager);
   }
 
   @Test
   public void testSendEmail() {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-    alert.setDefinitionUuid(definition.getUuid());
+    alert.setDefinitionUUID(definition.getUuid());
     alert.save();
 
     am.sendNotification(alert, report);
@@ -195,18 +181,17 @@ public class AlertManagerTest extends FakeDBApplication {
     verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
   }
 
-  @Test
+  // TODO: To update the test after AlertDefinitionGroup is introduced.
+  // @Test
   public void testSendNotification_TwoEmailRoutes()
       throws MessagingException, YWNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
     AlertReceiver receiver1 = createEmailReceiver();
+    AlertRoute.create(defaultCustomer.uuid, ALERT_ROUTE_NAME, Collections.singletonList(receiver1));
+
     AlertReceiver receiver2 = createEmailReceiver();
-    AlertRoute route =
-        AlertRoute.create(
-            defaultCustomer.uuid, ALERT_ROUTE_NAME, ImmutableList.of(receiver1, receiver2));
-    group.setRouteUUID(route.getUuid());
-    group.save();
+    AlertRoute.create(defaultCustomer.uuid, ALERT_ROUTE_NAME, Collections.singletonList(receiver2));
 
     am.sendNotification(alert, report);
     verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());

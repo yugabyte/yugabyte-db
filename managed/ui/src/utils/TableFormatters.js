@@ -78,15 +78,15 @@ export function successStringFormatter(cell, row) {
   }
 }
 
-export function alertSeverityFormatter(cell, row) {
+export function alertTypeFormatter(cell, row) {
   switch (row.type) {
-    case 'SEVERE':
+    case 'Error':
       return (
         <span className="yb-fail-color">
           <i className="fa fa-warning" /> Error
         </span>
       );
-    case 'WARNING':
+    case 'Warning':
       return (
         <span className="yb-warn-color">
           <i className="fa fa-warning" /> Warning
