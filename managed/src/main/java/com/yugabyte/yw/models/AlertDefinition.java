@@ -11,9 +11,12 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
+import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -23,6 +26,7 @@ import lombok.experimental.Accessors;
 import play.data.validation.Constraints;
 
 import javax.persistence.*;
+import java.text.DecimalFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -32,7 +36,10 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.*;
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
-public class AlertDefinition extends Model {
+public class AlertDefinition extends Model implements AlertLabelsProvider {
+
+  private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
+  private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
 
   @Constraints.Required
   @Id
@@ -41,15 +48,25 @@ public class AlertDefinition extends Model {
 
   @Constraints.Required
   @Column(columnDefinition = "Text", nullable = false)
+  private String name;
+
+  @Constraints.Required
+  @Column(columnDefinition = "Text", nullable = false)
   private String query;
 
   @Constraints.Required
   @Column(nullable = false)
-  private UUID customerUUID;
+  private int queryDurationSec = 15;
 
   @Constraints.Required
   @Column(nullable = false)
-  private UUID groupUUID;
+  private double queryThreshold;
+
+  @Constraints.Required private boolean active = true;
+
+  @Constraints.Required
+  @Column(nullable = false)
+  private UUID customerUUID;
 
   @Constraints.Required
   @Column(nullable = false)
@@ -70,11 +87,16 @@ public class AlertDefinition extends Model {
     ExpressionList<AlertDefinition> query = find.query().fetch("labels").where();
     appendInClause(query, "uuid", filter.getUuids());
     if (filter.getCustomerUuid() != null) {
-      query.eq("customerUUID", filter.getCustomerUuid());
+      query.eq("customer_uuid", filter.getCustomerUuid());
     }
-    appendInClause(query, "groupUUID", filter.getGroupUuids());
+    if (filter.getName() != null) {
+      query.eq("name", filter.getName());
+    }
+    if (filter.getActive() != null) {
+      query.eq("active", filter.getActive());
+    }
     if (filter.getConfigWritten() != null) {
-      query.eq("configWritten", filter.getConfigWritten());
+      query.eq("config_written", filter.getConfigWritten());
     }
     if (filter.getLabel() != null) {
       query
@@ -90,29 +112,21 @@ public class AlertDefinition extends Model {
     return this;
   }
 
-  @JsonIgnore
-  public boolean isNew() {
-    return uuid == null;
-  }
-
-  public List<AlertDefinitionLabel> getEffectiveLabels(
-      AlertDefinitionGroup group, AlertDefinitionGroup.Severity severity) {
+  public List<AlertDefinitionLabel> getEffectiveLabels() {
     List<AlertDefinitionLabel> effectiveLabels = new ArrayList<>();
     effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.GROUP_UUID, group.getUuid().toString()));
-    effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_UUID, uuid.toString()));
-    effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, group.getName()));
+    effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, name));
     effectiveLabels.add(
         new AlertDefinitionLabel(
-            this, KnownAlertLabels.DEFINITION_ACTIVE, String.valueOf(group.isActive())));
+            this, KnownAlertLabels.DEFINITION_ACTIVE, String.valueOf(isActive())));
     effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString()));
     effectiveLabels.add(
         new AlertDefinitionLabel(
             this, KnownAlertLabels.ERROR_CODE, KnownAlertCodes.CUSTOMER_ALERT.name()));
-    effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.SEVERITY, severity.name()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.ALERT_TYPE, KnownAlertTypes.Error.name()));
     effectiveLabels.addAll(labels);
     return effectiveLabels;
   }
@@ -129,7 +143,7 @@ public class AlertDefinition extends Model {
   }
 
   public String getLabelValue(String name) {
-    return getLabels()
+    return getEffectiveLabels()
         .stream()
         .filter(label -> name.equals(label.getName()))
         .map(AlertDefinitionLabel::getValue)
@@ -158,5 +172,30 @@ public class AlertDefinition extends Model {
         .stream()
         .sorted(Comparator.comparing(AlertDefinitionLabel::getName))
         .collect(Collectors.toList());
+  }
+
+  public String getMessageTemplate() {
+    // Will allow to store custom message templates later in definition, if needed.
+    // Note that we're replacing definition labels right here as Prometheus is not doing it:
+    // https://groups.google.com/g/prometheus-users/c/oUJOv7_9k8U/m/9ytCiLmmAQAJ
+    AlertTemplateSubstitutor<AlertDefinition> substitutor = new AlertTemplateSubstitutor<>(this);
+    return substitutor.replace(
+        "{{ $labels.definition_name }} for {{ $labels.target_name }} is firing");
+  }
+
+  public String getQueryWithThreshold() {
+    return query.replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(queryThreshold));
+  }
+
+  public boolean configEquals(AlertDefinition other) {
+    if (Objects.equals(getName(), other.getName())
+        && Objects.equals(getQuery(), other.getQuery())
+        && Objects.equals(getQueryDurationSec(), other.getQueryDurationSec())
+        && Objects.equals(getQueryThreshold(), other.getQueryThreshold())
+        && Objects.equals(isActive(), other.isActive())
+        && Objects.equals(getEffectiveLabels(), other.getEffectiveLabels())) {
+      return true;
+    }
+    return false;
   }
 }

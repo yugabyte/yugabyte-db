@@ -21,14 +21,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -56,7 +57,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,7 +65,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.models.Users.Role;
@@ -91,8 +90,6 @@ public class SessionController extends Controller {
   @Inject ApiHelper apiHelper;
 
   @Inject PasswordPolicyService passwordPolicyService;
-
-  @Inject AlertDefinitionGroupService alertDefinitionGroupService;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
@@ -336,13 +333,6 @@ public class SessionController extends Controller {
         role = Role.SuperAdmin;
       }
       passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-
-      List<AlertDefinitionGroup> alertGroups =
-          Arrays.stream(AlertDefinitionTemplate.values())
-              .filter(AlertDefinitionTemplate::isCreateForNewCustomer)
-              .map(template -> alertDefinitionGroupService.createGroupFromTemplate(cust, template))
-              .collect(Collectors.toList());
-      alertDefinitionGroupService.save(alertGroups);
 
       Users user =
           Users.create(
