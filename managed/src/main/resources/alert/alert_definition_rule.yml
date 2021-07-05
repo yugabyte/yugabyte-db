@@ -1,6 +1,3 @@
-groups:
-  - name: yugaware
-    rules:
       - alert: {{ definition_name }}
         expr: {{ definition_expr }}
         for: {{ duration }}

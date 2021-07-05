@@ -12,35 +12,85 @@ package com.yugabyte.yw.common.alerts;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.EntityOperation;
+import io.ebean.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.AlertDefinition.createQueryByFilter;
+import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
+import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 @Slf4j
 public class AlertDefinitionService {
 
-  public AlertDefinition create(AlertDefinition definition) {
-    if (definition.getUuid() != null) {
-      throw new IllegalArgumentException("Can't create alert definition with predefined uuid");
+  private final AlertService alertService;
+
+  @Inject
+  public AlertDefinitionService(AlertService alertService) {
+    this.alertService = alertService;
+  }
+
+  @Transactional
+  public List<AlertDefinition> save(List<AlertDefinition> definitions) {
+    if (CollectionUtils.isEmpty(definitions)) {
+      return definitions;
     }
-    definition.generateUUID();
-    definition.save();
-    log.debug("Alert definition {} created", definition);
-    return definition;
+
+    Set<UUID> definitionUuids =
+        definitions
+            .stream()
+            .filter(definition -> !definition.isNew())
+            .map(AlertDefinition::getUuid)
+            .collect(Collectors.toSet());
+    AlertDefinitionFilter filter = AlertDefinitionFilter.builder().uuids(definitionUuids).build();
+    Map<UUID, AlertDefinition> beforeDefinitions =
+        list(filter)
+            .stream()
+            .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()));
+
+    Map<EntityOperation, List<AlertDefinition>> toCreateAndUpdate =
+        definitions
+            .stream()
+            .peek(definition -> validate(definition, beforeDefinitions.get(definition.getUuid())))
+            .collect(Collectors.groupingBy(definition -> definition.isNew() ? CREATE : UPDATE));
+
+    if (toCreateAndUpdate.containsKey(CREATE)) {
+      List<AlertDefinition> toCreate = toCreateAndUpdate.get(CREATE);
+      toCreate.forEach(AlertDefinition::generateUUID);
+      AlertDefinition.db().saveAll(toCreate);
+    }
+
+    if (toCreateAndUpdate.containsKey(UPDATE)) {
+      List<AlertDefinition> toUpdate = toCreateAndUpdate.get(UPDATE);
+      AlertDefinition.db().updateAll(toUpdate);
+    }
+
+    log.debug("{} alert definitions saved", definitions.size());
+    return definitions;
+  }
+
+  @Transactional
+  public AlertDefinition save(AlertDefinition definition) {
+    return save(Collections.singletonList(definition)).get(0);
   }
 
   public AlertDefinition get(UUID uuid) {
     if (uuid == null) {
       throw new IllegalArgumentException("Can't get alert definition by null uuid");
     }
-    return list(AlertDefinitionFilter.builder().uuids(uuid).build())
+    return list(AlertDefinitionFilter.builder().uuid(uuid).build())
         .stream()
         .findFirst()
         .orElse(null);
@@ -69,31 +119,41 @@ public class AlertDefinitionService {
     createQueryByFilter(filter).findEach(consumer);
   }
 
-  public AlertDefinition update(AlertDefinition definition) {
-    if (definition.getUuid() == null) {
-      throw new IllegalArgumentException("Can't update alert definition without uuid");
-    }
-    AlertDefinition before = get(definition.getUuid());
-    if (!definition.configEquals(before)) {
-      definition.setConfigWritten(false);
-    }
-    definition.save();
-    log.debug("Alert definition {} updated", definition);
-    return definition;
-  }
-
+  @Transactional
   public void delete(UUID uuid) {
-    AlertDefinition definition = get(uuid);
-    if (definition == null) {
-      log.warn("Alert definition {} is already deleted", uuid);
-      return;
-    }
-    definition.delete();
-    log.debug("Alert definition {} deleted", uuid);
+    delete(AlertDefinitionFilter.builder().uuid(uuid).build());
   }
 
+  @Transactional
   public void delete(AlertDefinitionFilter filter) {
+    List<AlertDefinition> toDelete = list(filter);
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .definitionUuids(
+                toDelete.stream().map(AlertDefinition::getUuid).collect(Collectors.toList()))
+            .build();
+    alertService.markResolved(alertFilter);
     int deleted = createQueryByFilter(filter).delete();
     log.debug("{} alert definitions deleted", deleted);
+  }
+
+  private void validate(AlertDefinition definition, AlertDefinition before) {
+    if (definition.getCustomerUUID() == null) {
+      throw new IllegalArgumentException("Customer UUID field is mandatory");
+    }
+    if (definition.getGroupUUID() == null) {
+      throw new IllegalArgumentException("Group UUID field is mandatory");
+    }
+    if (StringUtils.isEmpty(definition.getQuery())) {
+      throw new IllegalArgumentException("Query field is mandatory");
+    }
+    if (before != null) {
+      if (!definition.getCustomerUUID().equals(before.getCustomerUUID())) {
+        throw new IllegalArgumentException(
+            "Can't change customer UUID for definition " + definition.getUuid());
+      }
+    } else if (!definition.isNew()) {
+      throw new IllegalArgumentException("Can't update missing definition " + definition.getUuid());
+    }
   }
 }

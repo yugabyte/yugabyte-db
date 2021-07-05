@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
-import { alertTypeFormatter } from '../../../utils/TableFormatters';
+import { alertSeverityFormatter } from '../../../utils/TableFormatters';
 
 export default class AlertsList extends Component {
   componentDidMount() {
@@ -39,10 +39,10 @@ export default class AlertsList extends Component {
                 Time
               </TableHeaderColumn>
               <TableHeaderColumn
-                dataField="type"
+                dataField="severity"
                 columnClassName="no-border name-column"
                 className="no-border"
-                dataFormat={alertTypeFormatter}
+                dataFormat={alertSeverityFormatter}
                 width={'10%'}
               >
                 Type
