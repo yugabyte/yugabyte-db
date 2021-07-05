@@ -85,7 +85,7 @@ export const AlertConfiguration = (props) => {
           eventKey="health-alerting"
           title={
             <span>
-              <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Health Check
+              <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Health
             </span>
           }
           key="health-alerting-tab"

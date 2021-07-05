@@ -20,15 +20,15 @@ const header = (onCreateAlert) => (
       <FlexShrink>
         <DropdownButton
           className="alert-config-actions btn btn-default"
-          title="Create Alert"
+          title="Create Alert Config"
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem onClick={() => onCreateAlert(true)}>
+          <MenuItem className="alert-config-list" onClick={() => onCreateAlert(true)}>
             <i className="fa fa-globe"></i> Universe Alert
           </MenuItem>
 
-          <MenuItem>
+          <MenuItem className="alert-config-list">
             <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
           </MenuItem>
         </DropdownButton>
@@ -84,6 +84,7 @@ export const AlertsList = (props) => {
             <TableHeaderColumn
               dataField="type"
               // dataFormat={}
+              dataSort
               columnClassName="no-border name-column"
               className="no-border"
             >
@@ -92,6 +93,7 @@ export const AlertsList = (props) => {
             <TableHeaderColumn
               dataField="severity"
               // dataFormat={}
+              dataSort
               columnClassName="no-border name-column"
               className="no-border"
             >
@@ -108,26 +110,28 @@ export const AlertsList = (props) => {
             <TableHeaderColumn
               dataField="created"
               // dataFormat={}
+              dataSort
               columnClassName="no-border name-column"
               className="no-border"
             >
               Created
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="occurance"
+              dataField="metricName"
               // dataFormat={}
               columnClassName="no-border name-column"
               className="no-border"
             >
-              Occurance
+              Metric Name
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="status"
+              dataField="createdBy"
               // dataFormat={}
+              dataSort
               columnClassName="no-border name-column"
               className="no-border"
             >
-              Status
+              Created By
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="configActions"
