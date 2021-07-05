@@ -5,10 +5,14 @@ package com.yugabyte.yw.commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -71,7 +75,7 @@ public class AbstractTaskBaseTest extends FakeDBApplication {
         universe.universeUUID.toString(), alert.getLabelValue(KnownAlertLabels.TARGET_UUID));
     assertEquals("universe", alert.getLabelValue(KnownAlertLabels.TARGET_TYPE));
     assertEquals(KnownAlertCodes.TASK_FAILURE.name(), alert.getErrCode());
-    assertEquals(AlertDefinitionGroup.Severity.SEVERE.name(), alert.getSeverity());
+    assertEquals(KnownAlertTypes.Error.name(), alert.getType());
   }
 
   private class AbstractTaskBaseFake extends AbstractTaskBase {
