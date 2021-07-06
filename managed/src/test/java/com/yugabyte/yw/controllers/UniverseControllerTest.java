@@ -13,6 +13,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
@@ -1168,6 +1169,99 @@ public class UniverseControllerTest extends WithApplication {
     assertBadRequest(result, "as it has nodes in one of");
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
     assertAuditEntry(0, customer.uuid);
+  }
+
+  private ObjectNode getResizeNodeValidPayload(Universe u, Provider p) {
+    UUID fakeClusterUUID = UUID.randomUUID();
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("universeUUID", u.universeUUID.toString())
+            .put("taskType", UpgradeUniverse.UpgradeTaskType.ResizeNode.toString())
+            .put("upgradeOption", "Rolling");
+
+    ObjectNode deviceInfoJson = Json.newObject().put("volumeSize", 600);
+
+    ObjectNode userIntentJson = Json.newObject().put("instanceType", "test-instance-type");
+    userIntentJson.set("deviceInfo", deviceInfoJson);
+
+    if (p != null) {
+      userIntentJson.put("providerType", p.code).put("provider", p.uuid.toString());
+    }
+
+    ObjectNode primaryCluster =
+        Json.newObject().put("uuid", fakeClusterUUID.toString()).put("clusterType", "PRIMARY");
+    primaryCluster.set("userIntent", (ObjectNode) userIntentJson);
+
+    ArrayNode clustersJsonArray = Json.newArray().add(primaryCluster);
+    bodyJson.set("clusters", clustersJsonArray);
+
+    return bodyJson;
+  }
+
+  @Test
+  public void testResizeNodeWithUnsupportedProvider() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Universe u = createUniverse(customer.getCustomerId());
+
+    Provider p = ModelFactory.newProvider(customer, CloudType.other);
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.providerType = CloudType.other;
+          userIntent.provider = p.uuid.toString();
+          universe.setUniverseDetails(universeDetails);
+        };
+    Universe.saveDetails(u.universeUUID, updater);
+
+    ObjectNode bodyJson = getResizeNodeValidPayload(u, p);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result =
+        assertThrows(
+                YWServiceException.class,
+                () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
+            .getResult();
+
+    assertBadRequest(
+        result, "Smart resizing is only supported for AWS / GCP, It is: " + p.code.toString());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testResizeNodeValidParams() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Universe u = createUniverse(customer.getCustomerId());
+
+    ObjectNode bodyJson = getResizeNodeValidPayload(u, null);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), any(UniverseTaskParams.class));
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.ResizeNode)));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test

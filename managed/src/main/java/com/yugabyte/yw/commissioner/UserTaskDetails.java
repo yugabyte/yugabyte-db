@@ -37,6 +37,12 @@ public class UserTaskDetails {
     // placement info, wait for the tservers to start up, etc.
     ConfigureUniverse,
 
+    // Increasing disk size
+    ResizingDisk,
+
+    // Change instance type
+    ChangeInstanceType,
+
     // Migrating data from one set of nodes to another.
     WaitForDataMigration,
 
@@ -195,6 +201,14 @@ public class UserTaskDetails {
         description =
             "Creating and populating the universe config, waiting for the various"
                 + " machines to discover one another.";
+        break;
+      case ResizingDisk:
+        title = "Increasing disk size";
+        description = "Increasing disk size on live nodes to the size intended by the user";
+        break;
+      case ChangeInstanceType:
+        title = "Changing instance type";
+        description = "Change the instance type of all the nodes in the universe";
         break;
       case WaitForDataMigration:
         title = "Waiting for data migration";

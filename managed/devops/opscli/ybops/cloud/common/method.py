@@ -543,6 +543,48 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         self.cloud.expand_file_system(args, ssh_options)
 
 
+class ChangeInstanceTypeMethod(AbstractInstancesMethod):
+    """Superclass for resizing the instances (instance type) in the given pattern.
+    """
+
+    def __init__(self, base_command):
+        super(ChangeInstanceTypeMethod, self).__init__(base_command, "change_instance_type")
+
+    def prepare(self):
+        super(ChangeInstanceTypeMethod, self).prepare()
+
+    def callback(self, args):
+        self._validate_args(args)
+        host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Instance {} not found".format(args.search_pattern))
+
+        self._resize_instance(args, host_info)
+
+    def _validate_args(self, args):
+        # Make sure "instance_type" exists in args
+        if args.instance_type is None:
+            raise YBOpsRuntimeError("instance_type not defined. Please define your intended type"
+                                    " using --instance_type argument")
+
+    def _resize_instance(self, args, host_info):
+        logging.info("Stopping instance {}".format(args.search_pattern))
+        self.cloud.stop_instance(host_info)
+        logging.info('Instance {} is stopped'.format(args.search_pattern))
+
+        try:
+            # Change instance type
+            self._change_instance_type(args, host_info)
+            logging.info('Instance {}\'s type changed to {}'
+                         .format(args.search_pattern, args.instance_type))
+        except Exception as e:
+            raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
+                                    .format(repr(e)))
+        finally:
+            self.cloud.start_instance(host_info, int(args.custom_ssh_port))
+            logging.info('Instance {} is started'.format(args.search_pattern))
+
+
 class CronCheckMethod(AbstractInstancesMethod):
     """Superclass for checking cronjob status on specified node.
     """

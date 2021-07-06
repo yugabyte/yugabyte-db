@@ -217,7 +217,6 @@ public class UniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UpgradeParams taskParams = bindFormDataToTaskParams(request(), UpgradeParams.class);
-
     UUID taskUUID = universeCRUDHandler.upgrade(customer, universe, taskParams);
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();

@@ -322,6 +322,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createPersistResizeNodeTask(String instanceType) {
+    return createPersistResizeNodeTask(instanceType, null);
+  }
+
+  /** Create a task to persist changes by ResizeNode task */
+  public SubTaskGroup createPersistResizeNodeTask(String instanceType, Integer volumeSize) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("PersistResizeNode", executor);
+    PersistResizeNode.Params params = new PersistResizeNode.Params();
+
+    params.universeUUID = taskParams().universeUUID;
+    params.instanceType = instanceType;
+    params.volumeSize = volumeSize;
+    PersistResizeNode task = createTask(PersistResizeNode.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Create a task to mark the updated cert on a universe. */
   public SubTaskGroup createUnivSetCertTask(UUID certUUID) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);

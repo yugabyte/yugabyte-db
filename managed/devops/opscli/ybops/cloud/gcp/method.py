@@ -10,7 +10,7 @@
 
 from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesMethod,\
     AbstractMethod, DestroyInstancesMethod, AbstractAccessMethod, CreateRootVolumesMethod, \
-    ReplaceRootVolumeMethod
+    ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils import validated_key_file, format_rsa_key
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
@@ -276,3 +276,11 @@ class GcpNetworkQueryMethod(GcpAbstractNetworkMethod):
             print(json.dumps(self.cloud.query_vpc(args)))
         except YBOpsRuntimeError as ye:
             print(json.dumps({"error": get_exception_message(ye)}))
+
+
+class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
+    def __init__(self, base_command):
+        super(GcpChangeInstanceTypeMethod, self).__init__(base_command)
+
+    def _change_instance_type(self, args, host_info):
+        self.cloud.change_instance_type(host_info, args.instance_type)

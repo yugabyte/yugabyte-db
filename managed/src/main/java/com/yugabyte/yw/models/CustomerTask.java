@@ -103,6 +103,9 @@ public class CustomerTask extends Model {
     @EnumValue("UpgradeVMImage")
     UpgradeVMImage,
 
+    @EnumValue("ResizeNode")
+    ResizeNode,
+
     @EnumValue("UpdateCert")
     UpdateCert,
 

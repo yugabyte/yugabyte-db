@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -126,6 +127,7 @@ public class NodeManagerTest extends FakeDBApplication {
     public String privateKey = "/path/to/private.key";
     public final List<String> baseCommand = new ArrayList<>();
     public final String replacementVolume = "test-volume";
+    public final String NewInstanceType = "test-c5.2xlarge";
 
     public TestData(
         Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
@@ -710,9 +712,14 @@ public class NodeManagerTest extends FakeDBApplication {
         }
         break;
       case Disk_Update:
-        InstanceActions.Params taskParam = (InstanceActions.Params) params;
+        InstanceActions.Params duTaskParams = (InstanceActions.Params) params;
         expectedCommand.add("--instance_type");
-        expectedCommand.add(taskParam.instanceType);
+        expectedCommand.add(duTaskParams.instanceType);
+        break;
+      case Change_Instance_Type:
+        ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
+        expectedCommand.add("--instance_type");
+        expectedCommand.add(citTaskParams.instanceType);
         break;
     }
     if (params.deviceInfo != null) {
@@ -757,6 +764,26 @@ public class NodeManagerTest extends FakeDBApplication {
 
     expectedCommand.add(params.nodeName);
     return expectedCommand;
+  }
+
+  @Test
+  public void testChangeInstanceTypeCommand() {
+    for (TestData t : testData) {
+      ChangeInstanceType.Params params = new ChangeInstanceType.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      List<String> expectedCommand = t.baseCommand;
+      params.instanceType = t.NewInstanceType;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
   }
 
   private void runAndVerifyNodeCommand(
@@ -1175,26 +1202,6 @@ public class NodeManagerTest extends FakeDBApplication {
               "3333");
       expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
 
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
-    }
-  }
-
-  @Test
-  public void testConfigureNodeCommandInShellMode() {
-    for (TestData t : testData) {
-      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(
-          t,
-          params,
-          Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
-      params.isMasterInShellMode = false;
-      params.ybSoftwareVersion = "0.0.1";
-
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
@@ -1817,16 +1824,41 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDiskUpdate() {
+  public void testDiskUpdateCommand() {
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
-      UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
-      buildValidParams(t, params, universe);
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
+      params.deviceInfo = new DeviceInfo();
+      params.deviceInfo.numVolumes = 1;
+      params.deviceInfo.volumeSize = 500;
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Disk_Update, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Disk_Update, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  public void testConfigureNodeCommandInShellMode() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      params.isMasterInShellMode = false;
+      params.ybSoftwareVersion = "0.0.1";
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
