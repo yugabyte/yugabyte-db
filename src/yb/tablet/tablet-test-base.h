@@ -379,7 +379,7 @@ class TabletTestBase : public YBTabletTest {
   }
 
   void VerifyTestRows(int64_t first_row, uint64_t expected_count) {
-    auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+    auto iter = tablet()->NewRowIterator(client_schema_);
     ASSERT_OK(iter);
 
     if (expected_count > INT_MAX) {
@@ -426,7 +426,7 @@ class TabletTestBase : public YBTabletTest {
   // a very small number of rows.
   CHECKED_STATUS IterateToStringList(vector<string> *out) {
     // TODO(dtxn) pass correct transaction ID if needed
-    auto iter = this->tablet()->NewRowIterator(this->client_schema_, boost::none);
+    auto iter = this->tablet()->NewRowIterator(this->client_schema_);
     RETURN_NOT_OK(iter);
     return yb::tablet::IterateToStringList(iter->get(), out);
   }

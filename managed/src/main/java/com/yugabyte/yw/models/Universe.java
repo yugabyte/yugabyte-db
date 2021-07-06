@@ -13,12 +13,10 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import io.ebean.Ebean;
-import io.ebean.Finder;
-import io.ebean.Model;
-import io.ebean.SqlUpdate;
+import io.ebean.*;
 import io.ebean.annotation.DbJson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,6 +124,10 @@ public class Universe extends Model {
     return universeDetails;
   }
 
+  public UUID getUniverseUUID() {
+    return universeUUID;
+  }
+
   public String getDnsName() {
     Provider p =
         Provider.get(UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider));
@@ -208,6 +210,19 @@ public class Universe extends Model {
         find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
   }
 
+  public static Set<Universe> getAllWithoutResources(Customer customer) {
+    List<Universe> rawList =
+        find.query().where().eq("customer_id", customer.getCustomerId()).findList();
+    return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
+  }
+
+  public static Set<Universe> getAllWithoutResources(Set<UUID> uuids) {
+    ExpressionList<Universe> query = find.query().where();
+    CommonUtils.appendInClause(query, "universeUUID", uuids);
+    List<Universe> rawList = query.findList();
+    return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
+  }
+
   /**
    * Returns the Universe object given its uuid.
    *
@@ -227,20 +242,7 @@ public class Universe extends Model {
       return Optional.empty();
     }
 
-    JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
-    universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
-
-    // For backwards compatibility from {universeDetails: {"userIntent": <foo>, "placementInfo":
-    // <bar>}}
-    // to {universeDetails: {clusters: [{"userIntent": <foo>, "placementInfo": <bar>},...]}}
-    if (detailsJson != null
-        && !detailsJson.isNull()
-        && (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0)) {
-      UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
-      PlacementInfo placementInfo =
-          Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
-      universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
-    }
+    fillUniverseDetails(universe);
 
     // Return the universe object.
     return Optional.of(universe);
@@ -806,5 +808,22 @@ public class Universe extends Model {
       return false;
     }
     return universe.getUniverseDetails().universePaused;
+  }
+
+  private static void fillUniverseDetails(Universe universe) {
+    JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
+    universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
+
+    // For backwards compatibility from {universeDetails: {"userIntent": <foo>, "placementInfo":
+    // <bar>}}
+    // to {universeDetails: {clusters: [{"userIntent": <foo>, "placementInfo": <bar>},...]}}
+    if (detailsJson != null
+        && !detailsJson.isNull()
+        && (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0)) {
+      UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
+      PlacementInfo placementInfo =
+          Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
+      universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+    }
   }
 }

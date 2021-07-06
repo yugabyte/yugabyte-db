@@ -189,7 +189,6 @@ Result<bool> GetPgIndexStatus(
   const auto idx_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
 
   auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
-                                                           boost::none /* transaction_id */,
                                                            {} /* read_hybrid_time */,
                                                            pg_index_id));
 
@@ -1428,9 +1427,13 @@ void BackfillChunk::HandleResponse(int attempt) {
 }
 
 void BackfillChunk::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kAborted) {
+    VLOG(1) << " was aborted";
+    return;
+  }
+
   Status status;
   std::unordered_set<TableId> failed_indexes;
-
   if (resp_.has_error()) {
     status = StatusFromPB(resp_.error().status());
     if (resp_.failed_index_ids_size() > 0) {

@@ -426,7 +426,8 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
 						 tuple,		/* heap tuple */
 						 heapRelation,	/* heap relation */
 						 checkUnique,	/* type of uniqueness check to do */
-						 indexInfo);	/* index AM may need this */
+						 indexInfo,		/* index AM may need this */
+						 false);	/* yb_shared_insert */
 
 		/*
 		 * If the index has an associated exclusion constraint, check that.

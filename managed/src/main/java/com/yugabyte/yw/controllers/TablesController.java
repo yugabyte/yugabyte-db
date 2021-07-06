@@ -216,7 +216,7 @@ public class TablesController extends AuthenticatedController {
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
     for (TableInfo table : tableInfoList) {
       String tableKeySpace = table.getNamespace().getName();
-      if (table.getRelationType() != RelationType.SYSTEM_TABLE_RELATION) {
+      if (table.getRelationType() != RelationType.SYSTEM_TABLE_RELATION || isSystemRedis(table)) {
         String id = table.getId().toStringUtf8();
         TableInfoResp.TableInfoRespBuilder builder =
             TableInfoResp.builder()
@@ -234,6 +234,13 @@ public class TablesController extends AuthenticatedController {
       }
     }
     return YWResults.withData(tableInfoRespList);
+  }
+
+  private boolean isSystemRedis(TableInfo table) {
+    return table.getTableType() == TableType.REDIS_TABLE_TYPE
+        && table.getRelationType() == RelationType.SYSTEM_TABLE_RELATION
+        && table.getNamespace().getName().equals("system_redis")
+        && table.getName().equals("redis");
   }
 
   // Query prometheus for table sizes.

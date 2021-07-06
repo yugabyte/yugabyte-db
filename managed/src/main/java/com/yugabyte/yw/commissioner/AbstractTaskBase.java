@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -63,6 +64,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final RuntimeConfigFactory runtimeConfigFactory;
   protected final AlertService alertService;
   protected final AlertDefinitionService alertDefinitionService;
+  protected final AlertDefinitionGroupService alertDefinitionGroupService;
   protected final YBClientService ybService;
   protected final TableManager tableManager;
 
@@ -75,6 +77,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
     this.alertService = baseTaskDependencies.getAlertService();
     this.alertDefinitionService = baseTaskDependencies.getAlertDefinitionService();
+    this.alertDefinitionGroupService = baseTaskDependencies.getAlertDefinitionGroupService();
     this.ybService = baseTaskDependencies.getYbService();
     this.tableManager = baseTaskDependencies.getTableManager();
   }
@@ -220,7 +223,7 @@ public abstract class AbstractTaskBase implements ITask {
             .setMessage(content)
             .setSendEmail(true)
             .setLabels(labelsBuilder.getAlertLabels());
-    alertService.create(alert);
+    alertService.save(alert);
   }
 
   /**
