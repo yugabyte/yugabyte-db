@@ -7,11 +7,10 @@
 // TODO: Platform alert creation.
 
 import { Field, reduxForm, FieldArray } from 'redux-form';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import {
   YBButton,
-  YBFormInput,
   YBMultiSelectWithLabel,
   YBRadioButtonGroup,
   YBSelectWithLabel,
@@ -20,14 +19,30 @@ import {
 } from '../../common/forms/fields';
 import { Formik } from 'formik';
 import '../CreateAlerts.scss';
-import { useSelector } from 'react-redux';
 import AlertsPolicy from './AlertsPolicy';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
 const CreateAlert = (props) => {
-  const { onCreateCancel, handleSubmit } = props;
+  const { onCreateCancel, handleSubmit, alertDestionations, universes } = props;
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
+  const [alertDestionation, setAlertDesionation] = useState([]);
+  const [alertUniverseList, setAlertUniverseList] = useState([]);
+
+  useEffect(() => {
+    alertDestionations().then((res) => {
+      res = res.map((destination) => (
+        <option key={1} value={destination.uuid}>
+          {destination.name}
+        </option>
+      ));
+      setAlertDesionation(res);
+    });
+
+    setAlertUniverseList([
+      ...universes.data.map((universe) => ({ label: universe.name, value: universe.universeUUID }))
+    ]);
+  }, []);
 
   /**
    * Constant option for metrics condition
@@ -43,41 +58,18 @@ const CreateAlert = (props) => {
   ];
 
   /**
-   * Constant option for universe list
-   * TODO: Get the list of universe from API
-   */
-  const alertUniverseList = [
-    { value: 'puppy-food-4s-1', label: 'puppy-food-4s-1' },
-    { value: 'yugabye-adoption-1', label: 'yugabye-adoption-1' }
-  ];
-
-  /**
-   * Constant option for alert destination list
-   * TODO: Get the list of universe from API
-   */
-  const alertDestinationList = [
-    <option key={1} value={'Configured Email destination 1'}>
-      {'Configured Email destination 1'}
-    </option>,
-    <option key={1} value={'Configured Email destination 2'}>
-      {'Configured Email destination 2'}
-    </option>,
-    <option key={1} value={'Configured Slack destination 2'}>
-      {'Configured Slack destination 2'}
-    </option>,
-    <option key={1} value={'Configured Slack destination 1'}>
-      {'Configured Slack destination 1'}
-    </option>
-  ];
-
-  /**
    *
-   * @param {Event} event
-   * TODO: Change the state to disable/enable the universe multi-select list.
+   * @param {Event} Event
+   * Disable universe list dropdown and clear all the selection
    */
-  const handleMetricConditionChange = (event) => {
+  const handleTargetTypeChange = (event) => {
     const value = event.target?.value;
-    value === 'allCluster' ? setIsAllUniversesDisabled(true) : setIsAllUniversesDisabled(false);
+    if (value === 'allCluster') {
+      setIsAllUniversesDisabled(true);
+      props.updateField('alertConfigForm', 'ALERT_UNIVERSE_LIST', []);
+    } else {
+      setIsAllUniversesDisabled(false);
+    }
   };
   /**
    *
@@ -85,7 +77,7 @@ const CreateAlert = (props) => {
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
   const handleOnSubmit = (values) => {
-    console.log(values)
+    console.log(values);
   };
   return (
     <Formik initialValues={{ ALERT_TARGET_TYPE: 'allCluster' }}>
@@ -122,18 +114,15 @@ const CreateAlert = (props) => {
                   { label: 'All Cluster', value: 'allCluster' },
                   { label: 'Selected Cluster', value: 'selectedCluster' }
                 ]}
-                onClick={handleMetricConditionChange}
+                onClick={handleTargetTypeChange}
               />
               <Field
                 name="ALERT_UNIVERSE_LIST"
                 component={YBMultiSelectWithLabel}
                 options={alertUniverseList}
                 hideSelectedOptions={false}
-                data-yb-field="regions"
                 isMulti={true}
                 isDisabled={isAllUniversesDisabled}
-                // selectValChanged={handleMetricConditionChange}
-                providerSelected={'puppy-food-4s-1'}
               />
             </Col>
           </Row>
@@ -153,7 +142,7 @@ const CreateAlert = (props) => {
                 />
               </Col>
               <Col md={6}>
-              <div className="form-item-custom-label">Duration</div>
+                <div className="form-item-custom-label">Duration</div>
                 <Field
                   name="ALERT_METRICS_DURATION"
                   component={YBTextInputWithLabel}
@@ -176,7 +165,7 @@ const CreateAlert = (props) => {
               <Field
                 name="ALERT_DESTINATION_LIST"
                 component={YBSelectWithLabel}
-                options={alertDestinationList}
+                options={alertDestionation}
               />
             </Col>
           </Row>

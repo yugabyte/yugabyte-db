@@ -5,6 +5,7 @@
 
 import { connect } from 'react-redux';
 import { toast } from 'react-toastify';
+import { change } from 'redux-form';
 import {
   alertConfigs,
   alertDestionations,
@@ -22,6 +23,8 @@ import {
   updateProfileSuccess
 } from '../../../actions/customers';
 import { closeDialog, openDialog } from '../../../actions/modal';
+import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
+import { UniverseTaskList } from '../../universes/UniverseDetail/compounds/UniverseTaskList';
 import { AlertConfiguration } from './AlertConfiguration';
 
 const mapStateToProps = (state) => {
@@ -31,7 +34,8 @@ const mapStateToProps = (state) => {
     apiToken: state.customer.apiToken,
     customerProfile: state.customer ? state.customer.profile : null,
     modal: state.modal,
-    initialValues: state.customer.setInitialVal
+    initialValues: state.customer.setInitialVal,
+    universes: state.universe.universeList
   };
 };
 
@@ -115,6 +119,11 @@ const mapDispatchToProps = (dispatch) => {
         return response.payload.data;
       });
     },
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList()).then((response) => {
+        dispatch(fetchUniverseListResponse(response.payload));
+      });
+    },
     closeModal: () => {
       dispatch(closeDialog());
     },
@@ -126,7 +135,8 @@ const mapDispatchToProps = (dispatch) => {
     },
     showDetailsModal: () => {
       dispatch(openDialog('alertDestinationDetailsModal'));
-    }
+    },
+    updateField: (form, field, newValue) => dispatch(change(form, field, newValue))
   };
 };
 

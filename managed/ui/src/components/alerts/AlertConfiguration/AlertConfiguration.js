@@ -56,7 +56,7 @@ export const AlertConfiguration = (props) => {
           unmountOnExit
         >
           {listView ? (
-            <CreateAlert onCreateCancel={setListView} />
+            <CreateAlert onCreateCancel={setListView} {...props} />
           ) : (
             <AlertsList data={alertList} onCreateAlert={setListView} />
           )}

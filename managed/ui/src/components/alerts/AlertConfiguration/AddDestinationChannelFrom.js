@@ -2,13 +2,31 @@ import { Field } from 'formik';
 import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
-import { YBFormInput, YBRadioButtonGroup, YBToggle } from '../../common/forms/fields';
+import {
+  YBFormInput,
+  YBRadioButtonGroup,
+  YBSelectWithLabel,
+  YBToggle
+} from '../../common/forms/fields';
 
 export const AddDestinationChannelFrom = (props) => {
   const { visible, onHide, defaultChannel } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
   const [customSMTP, setCustomSMTP] = useState(true);
 
+  // TODO: Add option for pagerDuty oce API is avaialable
+  const targetTypeList = [
+    <option key={1} value={'email'}>
+      {'Email'}
+    </option>,
+    <option key={2} value={'slack'}>
+      {'Slack'}
+    </option>
+  ];
+
+  /**
+   * Hide the modal after setting the custom smtp flag to false.
+   */
   const onModalHide = () => {
     setCustomSMTP(true);
     onHide();
@@ -19,7 +37,6 @@ export const AddDestinationChannelFrom = (props) => {
    * @param {FormValues} values
    */
   const handleAddDestination = (values) => {
-    const { onHide } = props;
     let payload = {
       name: '',
       params: {}
@@ -37,7 +54,9 @@ export const AddDestinationChannelFrom = (props) => {
         payload['name'] = values.name;
         payload['params']['targetType'] = 'Email';
         payload['params']['recipients'] = values.emailIds.split(',');
-        payload['params']['smtpData'] = values.smtpData;
+        if (customSMTP) {
+          payload['params']['smtpData'] = values.smtpData;
+        }
         break;
       default:
         break;
@@ -64,8 +83,8 @@ export const AddDestinationChannelFrom = (props) => {
     }
   };
 
-  const handleChannelTypeChange = (event) => {
-    setChannelType(event.target.value);
+  const handleChannelTypeChange = (value) => {
+    setChannelType(value);
   };
 
   const getChannelForm = () => {
@@ -76,7 +95,7 @@ export const AddDestinationChannelFrom = (props) => {
             <Row>
               <Col lg={12}>
                 <Field
-                  name="name"
+                  name="pagerDuty_name"
                   type="text"
                   label="Name"
                   placeholder="Enter channel name"
@@ -103,7 +122,7 @@ export const AddDestinationChannelFrom = (props) => {
             <Row>
               <Col lg={12}>
                 <Field
-                  name="name"
+                  name="slack_name"
                   type="text"
                   placeholder="Enter channel name"
                   label="Name"
@@ -130,7 +149,7 @@ export const AddDestinationChannelFrom = (props) => {
             <Row>
               <Col lg={12}>
                 <Field
-                  name="name"
+                  name="email_name"
                   type="text"
                   label="Name"
                   placeholder="Enter channel name"
@@ -258,20 +277,16 @@ export const AddDestinationChannelFrom = (props) => {
       submitLabel={'Create'}
     >
       <Row>
-          <Row>
-            <Col lg={8}>
-              <div className="form-item-custom-label">Target</div>
-              <YBRadioButtonGroup
-                name={'ALERT_TARGET_TYPE'}
-                options={[
-                  { label: 'Email', value: 'email' },
-                  { label: 'Slack', value: 'slack' },
-                  { label: 'PagerDuty', value: 'pagerDuty' }
-                ]}
-                onClick={handleChannelTypeChange}
-              />
-            </Col>
-          </Row>
+        <Row>
+          <Col lg={8}>
+            <div className="form-item-custom-label">Target</div>
+            <YBSelectWithLabel
+              name={'ALERT_TARGET_TYPE'}
+              options={targetTypeList}
+              onInputChanged={handleChannelTypeChange}
+            />
+          </Col>
+        </Row>
         <hr />
         {getChannelForm()}
       </Row>
