@@ -4,6 +4,8 @@ package com.yugabyte.yw.models;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -28,7 +30,10 @@ import java.util.stream.Collectors;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 @Entity
+@ApiModel(description = "Scheduled backup")
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
@@ -46,13 +51,16 @@ public class Schedule extends Model {
 
   private static final int MAX_FAIL_COUNT = 3;
 
-  @Id public UUID scheduleUUID;
+  @Id
+  @ApiModelProperty(value = "Schedule UUID", accessMode = READ_ONLY)
+  public UUID scheduleUUID;
 
   public UUID getScheduleUUID() {
     return scheduleUUID;
   }
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   public UUID getCustomerUUID() {
@@ -60,6 +68,7 @@ public class Schedule extends Model {
   }
 
   @Column(nullable = false, columnDefinition = "integer default 0")
+  @ApiModelProperty(value = "Number of failed schedule", accessMode = READ_ONLY)
   private int failureCount;
 
   public int getFailureCount() {
@@ -67,6 +76,7 @@ public class Schedule extends Model {
   }
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Frequency of schedule")
   private long frequency;
 
   public long getFrequency() {
@@ -75,6 +85,7 @@ public class Schedule extends Model {
 
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
+  @ApiModelProperty(value = "Schedule params")
   private JsonNode taskParams;
 
   public JsonNode getTaskParams() {
@@ -83,6 +94,7 @@ public class Schedule extends Model {
 
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Schedule Type")
   private TaskType taskType;
 
   public TaskType getTaskType() {
@@ -91,13 +103,16 @@ public class Schedule extends Model {
 
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Status of schedule")
   private State status = State.Active;
 
   public State getStatus() {
     return status;
   }
 
-  @Column private String cronExpression;
+  @Column
+  @ApiModelProperty(value = "Cron expression for schedule")
+  private String cronExpression;
 
   public String getCronExpression() {
     return cronExpression;

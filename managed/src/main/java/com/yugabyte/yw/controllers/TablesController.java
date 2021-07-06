@@ -22,8 +22,7 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.*;
 import lombok.Builder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +42,9 @@ import java.util.*;
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
+@Api(value = "Tables", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TablesController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
 
@@ -59,6 +60,15 @@ public class TablesController extends AuthenticatedController {
     this.ybService = service;
   }
 
+  @ApiOperation(value = "Create table in Yugabyte DB", response = YWResults.YWTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Table",
+        value = "Table Definition to be created",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.TableDefinitionTaskParams",
+        paramType = "body")
+  })
   public Result create(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID and universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -95,16 +105,19 @@ public class TablesController extends AuthenticatedController {
         tableDetails.keyspace,
         tableDetails.tableName);
 
-    ObjectNode resultNode = Json.newObject();
-    resultNode.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return Results.status(OK, resultNode);
+    return new YWResults.YWTask(taskUUID).asResult();
   }
 
+  @ApiOperation(
+      value = "Alter table in Yugabyte DB",
+      response = Object.class,
+      responseContainer = "Map")
   public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID) {
     return play.mvc.Results.TODO;
   }
 
+  @ApiOperation(value = "Drop table in Yugabyte DB", response = YWResults.YWTask.class)
   public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -157,12 +170,15 @@ public class TablesController extends AuthenticatedController {
         taskParams.tableUUID,
         taskParams.getFullName());
 
-    ObjectNode resultNode = Json.newObject();
-    resultNode.put("taskUUID", taskUUID.toString());
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return ok(resultNode);
+    return new YWResults.YWTask(taskUUID).asResult();
   }
 
+  @ApiOperation(
+      value = "UI_ONLY",
+      response = Object.class,
+      responseContainer = "Map",
+      hidden = true)
   public Result getColumnTypes() {
     ColumnDetails.YQLDataType[] dataTypes = ColumnDetails.YQLDataType.values();
     ObjectNode result = Json.newObject();
@@ -180,21 +196,44 @@ public class TablesController extends AuthenticatedController {
     return YWResults.withRawData(result);
   }
 
+  @ApiOperation(
+      value = "Get columns Types",
+      response = ColumnDetails.YQLDataType.class,
+      responseContainer = "List")
+  public Result getYQLDataTypes() {
+    return YWResults.withData(ColumnDetails.YQLDataType.values());
+  }
+
   @ApiModel("TableInfo")
   @Builder
   static class TableInfoResp {
-    // TODO annotate properties
+
+    @ApiModelProperty(value = "Table UUID", accessMode = READ_ONLY)
     public final UUID tableUUID;
+
+    @ApiModelProperty(value = "Key space")
     public final String keySpace;
+
+    @ApiModelProperty(value = "Table type")
     public final TableType tableType;
+
+    @ApiModelProperty(value = "Table name")
     public final String tableName;
+
+    @ApiModelProperty(value = "Relation type")
     public final RelationType relationType;
+
+    @ApiModelProperty(value = "Size in bytes", accessMode = READ_ONLY)
     public final double sizeBytes;
 
     @ApiModelProperty(value = "UI_ONLY", hidden = true)
     public final boolean isIndexTable;
   }
 
+  @ApiOperation(
+      value = "List of tables",
+      response = TableInfoResp.class,
+      responseContainer = "List")
   public Result listTables(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer.getOrBadRequest(customerUUID);
@@ -281,6 +320,7 @@ public class TablesController extends AuthenticatedController {
    * @param tableUUID UUID of the table to describe.
    * @return json-serialized description of the table.
    */
+  @ApiOperation(value = "Describe table", response = TableDefinitionTaskParams.class)
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
     Customer.getOrBadRequest(customerUUID);
@@ -310,6 +350,20 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(value = "Create multiple table backup", response = YWResults.YWTask.class)
+  @ApiResponses(
+      @ApiResponse(
+          code = 200,
+          message = "If requested schedule backup.",
+          response = Schedule.class))
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Table backup",
+        value = "Table backup data to be created",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.MultiTableBackupRequestParams",
+        paramType = "body")
+  })
   public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -371,6 +425,15 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(value = "Create table backup", response = YWResults.YWTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Backup",
+        value = "Backup data to be created",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.BackupTableParams",
+        paramType = "body")
+  })
   public Result createBackup(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -446,6 +509,15 @@ public class TablesController extends AuthenticatedController {
    * @param universeUUID UUID of the universe in which the table resides.
    * @param tableUUID UUID of the table to describe.
    */
+  @ApiOperation(value = "Bulk import table", response = YWResults.YWTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Bulk import",
+        value = "Bulk data to be Imported",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.BulkImportParams",
+        paramType = "body")
+  })
   public Result bulkImport(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);

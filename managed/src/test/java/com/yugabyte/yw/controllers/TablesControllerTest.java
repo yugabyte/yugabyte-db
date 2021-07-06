@@ -2,7 +2,10 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -17,6 +20,7 @@ import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -394,6 +398,21 @@ public class TablesControllerTest extends FakeDBApplication {
 
     // Check all
     assertTrue(resultTypes.containsAll(types));
+  }
+
+  @Test
+  public void testGetYQLDataTypes() throws IOException {
+    Result result = FakeApiHelper.doRequest("GET", "/api/metadata/yql_data_types");
+    Set<ColumnDetails.YQLDataType> types = ImmutableSet.copyOf(ColumnDetails.YQLDataType.values());
+    assertEquals(OK, result.status());
+
+    JsonNode json = Json.parse(contentAsString(result));
+    ObjectMapper mapper = new ObjectMapper();
+    ObjectReader reader = mapper.readerFor(new TypeReference<List<ColumnDetails.YQLDataType>>() {});
+    List<ColumnDetails.YQLDataType> yqlList = reader.readValue(json);
+
+    // Check all
+    assertTrue(yqlList.containsAll(types));
   }
 
   @Test

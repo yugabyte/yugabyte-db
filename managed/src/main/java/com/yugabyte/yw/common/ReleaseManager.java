@@ -4,6 +4,8 @@ package com.yugabyte.yw.common;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -40,12 +42,21 @@ public class ReleaseManager {
 
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
 
+  @ApiModel(value = "Release data", description = "Release data")
   public static class ReleaseMetadata {
+
+    @ApiModelProperty(value = "Release state", example = "ACTIVE")
     public ReleaseState state = ReleaseState.ACTIVE;
+
+    @ApiModelProperty(value = "Release notes")
     public List<String> notes;
+
     // File path where the release binary is stored
+    @ApiModelProperty(value = "Release file path")
     public String filePath;
+
     // Docker image tag corresponding to the release
+    @ApiModelProperty(value = "Release image tag")
     public String imageTag;
 
     public static ReleaseMetadata fromLegacy(String version, Object metadata) {

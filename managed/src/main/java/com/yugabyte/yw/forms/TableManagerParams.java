@@ -1,14 +1,23 @@
 package com.yugabyte.yw.forms;
 
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+
 import java.util.UUID;
 
+@ApiModel(value = "Table params", description = "Table params")
 public class TableManagerParams extends UniverseTaskParams {
+
+  @ApiModelProperty(value = "Key space")
   private String keyspace;
 
+  @ApiModelProperty(value = "Table name")
   private String tableName;
 
+  @ApiModelProperty(value = "Table UUID")
   public UUID tableUUID;
 
+  @ApiModelProperty(value = "Is SSE")
   public boolean sse = false;
 
   public String getKeyspace() {
