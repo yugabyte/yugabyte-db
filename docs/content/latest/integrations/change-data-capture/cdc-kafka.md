@@ -1,7 +1,7 @@
 ---
 title: Change data capture to Kafka
 headerTitle: Change data capture to Kafka
-linkTitle: Change data capture to Kafka
+linkTitle: Change Data Capture
 description: Use change data capture API to send data changes to Apache Kafka.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
@@ -30,7 +30,7 @@ showAsideToc: true
       Kafka
     </a>
   </li>
-  
+
 </ul>
 
 You can enable a YugabyteDB cluster to use the change data capture [(CDC)](../../../architecture/cdc-architecture) API to send data changes to Apache Kafka.

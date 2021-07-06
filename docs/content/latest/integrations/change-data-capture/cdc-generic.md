@@ -29,7 +29,7 @@ showAsideToc: true
       Kafka
     </a>
   </li>
-  
+
 </ul>
 
 [Change data capture (CDC)](../../../architecture/cdc-architecture) can be used to asynchronously stream data changes from a YugabyteDB cluster to external systems such as message queues and OLAP warehouses. The data changes in YugabyteDB are detected, captured, and then directed to a specified target.
