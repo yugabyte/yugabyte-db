@@ -170,14 +170,40 @@ class AbstractCloud(AbstractCommandParser):
         }
         updated_vars.update(extra_vars)
         updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        remote_shell = RemoteShell(updated_vars)
         if os.environ.get("YB_USE_FABRIC", False):
-            remote_shell = RemoteShell(updated_vars)
-            file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
-            remote_shell.run_command(
-                "{} {} {}".format(file_path, process, command)
-            )
+            if args.systemd_services:
+                if command == "start":
+                    remote_shell.run_command(
+                        "sudo systemctl enable yb-{}".format(process)
+                    )
+                remote_shell.run_command(
+                    "sudo systemctl {} yb-{}".format(command, process)
+                )
+                if command == "stop":
+                    remote_shell.run_command(
+                        "sudo systemctl disable yb-{}".format(process)
+                    )
+            else:
+                file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
+                remote_shell.run_command(
+                    "{} {} {}".format(file_path, process, command)
+                )
         else:
-            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
+            if args.systemd_services:
+                if command == "start":
+                    remote_shell.run_command(
+                        "sudo systemctl enable yb-{}".format(process)
+                    )
+                remote_shell.run_command(
+                    "sudo systemctl {} yb-{}".format(command, process)
+                )
+                if command == "stop":
+                    remote_shell.run_command(
+                        "sudo systemctl disable yb-{}".format(process)
+                    )
+            else:
+                self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
 
     def initYSQL(self, master_addresses, ssh_options):
         remote_shell = RemoteShell(ssh_options)

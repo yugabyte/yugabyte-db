@@ -29,6 +29,8 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams {
   // TODO: currently only used for onprem cloud.
   public String instanceType;
 
+  public boolean useSystemd;
+
   public AvailabilityZone getAZ() {
     if (azUuid != null) {
       return AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();

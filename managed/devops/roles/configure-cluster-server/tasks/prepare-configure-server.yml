@@ -1,3 +1,7 @@
+- assert:
+    that:
+      - systemd_option is defined
+
 - name: Setup | Create bin directory for {{ user_name }}
   file:
     path: "{{ yb_bin_dir }}"
@@ -55,24 +59,61 @@
 - set_fact:
     cron_result: {}
 
-- name: Setup cron to cleanup core files.
-  cron:
-    name: "cleanup core files hourly"
-    minute: "0"
-    user: "{{ user_name }}"
-    job: "{{ yb_bin_dir }}/clean_cores.sh"
-  register: cron_result
-  failed_when:
-    - cron_result is failed
-    - cloud_type != "onprem"
+- block:
+  # Cronjob approach for logs and cores
+  - name: Setup cron to cleanup core files.
+    cron:
+      name: "cleanup core files hourly"
+      minute: "0"
+      user: "{{ user_name }}"
+      job: "{{ yb_bin_dir }}/clean_cores.sh"
+    register: cron_result
+    failed_when:
+      - cron_result is failed
+      - cloud_type != "onprem"
 
-- name: Setup cron to cleanup log files.
-  cron:
-    name: "cleanup yb log files hourly"
-    minute: "5"
-    user: "{{ user_name }}"
-    job: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
-  register: cron_result
-  failed_when:
-    - cron_result is failed
-    - cloud_type != "onprem"
+  - name: Setup cron to cleanup log files.
+    cron:
+      name: "cleanup yb log files hourly"
+      minute: "5"
+      user: "{{ user_name }}"
+      job: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+    register: cron_result
+    failed_when:
+      - cron_result is failed
+      - cloud_type != "onprem"
+  when: not systemd_option
+
+- block:
+  # Daemon-reload for zip_purge_yb_logs and clean_cores
+  - name: Perform daemon-reload for the new services
+    shell:
+      cmd: "sudo systemctl daemon-reload"
+
+  # Enable zip_purge_yb_logs and clean_cores service files
+  - name: Enable yb-zip_purge_yb_logs.service for purging logs
+    shell:
+      cmd: "sudo systemctl enable yb-zip_purge_yb_logs"
+
+  - name: Enable yb-clean_cores.service for cleaning cores
+    shell:
+      cmd: "sudo systemctl enable yb-clean_cores"
+
+  # Enable zip_purge_yb_logs and clean_cores timers
+  - name: Enable yb-zip_purge_yb_logs.timer for purging logs
+    shell:
+      cmd: "sudo systemctl enable yb-zip_purge_yb_logs.timer"
+
+  - name: Enable yb-clean_cores.timer for cleaning cores
+    shell:
+      cmd: "sudo systemctl enable yb-clean_cores.timer"
+
+  # Starting zip_purge_yb_logs and clean_cores timers
+  - name: Run yb-zip_purge_yb_logs.sh (using timer) for purging logs
+    shell:
+      cmd: "sudo systemctl start yb-zip_purge_yb_logs.timer"
+
+  - name: Run yb-clean_cores.sh (using timer) for cleaning cores
+    shell:
+      cmd: "sudo systemctl start yb-clean_cores.timer"
+  when: systemd_option
