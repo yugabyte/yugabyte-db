@@ -156,6 +156,7 @@ class UniverseForm extends Component {
         instanceType: formValues[clusterType].instanceType,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
         replicationFactor: formValues[clusterType].replicationFactor,
+        useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
           numVolumes: formValues[clusterType].numVolumes,
@@ -379,6 +380,7 @@ class UniverseForm extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         replicationFactor: formValues[clusterType].replicationFactor,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
+        useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
           numVolumes: formValues[clusterType].numVolumes,
@@ -957,6 +959,7 @@ class PrimaryClusterFields extends Component {
           'primary.volumeSize',
           'primary.storageType',
           'primary.assignPublicIP',
+          'primary.useSystemd',
           'primary.useTimeSync',
           'primary.enableYSQL',
           'primary.enableIPV6',
@@ -994,6 +997,7 @@ class ReadOnlyClusterFields extends Component {
           'async.volumeSize',
           'async.storageType',
           'async.assignPublicIP',
+          'async.useSystemd',
           'async.useTimeSync',
           'async.enableYSQL',
           'async.enableIPV6',

@@ -1,6 +1,7 @@
 - assert:
     that:
       - yb_process_type is defined
+      - systemd_option is defined
 
 - name: Setup | Create config directory for {{ yb_process_type }}
   file:
@@ -83,6 +84,7 @@
   tags:
     - override_gflags
 
+# Cronjob approach for starting yb-master and yb-tserver
 - name: Setup cron to check liveness of {{ yb_process_type }}
   cron:
     name: "Check liveness of {{ yb_process_type }}"
@@ -95,3 +97,29 @@
   failed_when:
     - cron_result is failed
     - cloud_type != "onprem"
+  when: not systemd_option
+
+- block:
+  # Systemd daemon-reload for yb-master and yb-tserver service files
+  - name: Perform daemon-reload for the new services
+    shell:
+      cmd: "sudo systemctl daemon-reload"
+
+  # Enabling master and tserver using systemd services
+  - name: Run yb-master.service to start the master
+    shell:
+      cmd: "sudo systemctl enable yb-master"
+
+  - name: Run yb-tserver.service to start the tserver
+    shell:
+      cmd: "sudo systemctl enable yb-tserver"
+
+  # Starting master and tserver using systemd services
+  - name: Run yb-master.service to start the master
+    shell:
+      cmd: "sudo systemctl start yb-master"
+
+  - name: Run yb-tserver.service to start the tserver
+    shell:
+      cmd: "sudo systemctl start yb-tserver"
+  when: systemd_option

@@ -17,6 +17,8 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
+
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +50,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public String ipArnString;
     public String machineImage;
     public boolean reprovision;
+
+    // Systemd vs Cron Option (Default: Cron)
+    public boolean useSystemd = false;
   }
 
   @Override
@@ -60,6 +65,10 @@ public class AnsibleSetupServer extends NodeTaskBase {
     Provider p = taskParams().getProvider();
     List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
+
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    taskParams().useSystemd =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
     // For now we will skipProvision if it's set in accessKeys.
     if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
