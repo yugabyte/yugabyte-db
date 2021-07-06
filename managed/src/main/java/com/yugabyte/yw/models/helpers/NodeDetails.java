@@ -6,6 +6,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.NodeActionType;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 
 import java.util.Set;
 import java.util.UUID;
@@ -14,24 +16,34 @@ import static com.yugabyte.yw.common.NodeActionType.*;
 
 /** Represents all the details of a cloud node that are of interest. */
 @JsonIgnoreProperties(ignoreUnknown = true)
+@ApiModel(value = "Node details", description = "Node details")
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
+  @ApiModelProperty(value = "Node id")
   public int nodeIdx = -1;
+
   // Name of the node.
+  @ApiModelProperty(value = "Node name")
   public String nodeName;
+
   // The UUID of the node we are using.
   // TODO: only used for onprem at the moment.
+  @ApiModelProperty(value = "Node UUID")
   public UUID nodeUuid;
 
   // Information about the node that is returned by the cloud provider.
+  @ApiModelProperty(value = "Cloud information")
   public CloudSpecificInfo cloudInfo;
 
   // The AZ UUID (the YB UUID for the AZ) into which the node is deployed.
+  @ApiModelProperty(value = "Az UUID")
   public UUID azUuid;
 
   // The UUID of the cluster that this node belongs to.
+  @ApiModelProperty(value = "Placement UUID")
   public UUID placementUuid;
 
+  @ApiModelProperty(value = "Machine image")
   public String machineImage;
 
   // Possible states in which this node can exist.
@@ -90,37 +102,65 @@ public class NodeDetails {
   }
 
   // The current state of the node.
+  @ApiModelProperty(value = "Node state")
   public NodeState state;
 
   // True if this node is a master, along with port info.
+  @ApiModelProperty(value = "True if this node is a master")
   public boolean isMaster;
+
+  @ApiModelProperty(value = "Master HTTP port")
   public int masterHttpPort = 7000;
+
+  @ApiModelProperty(value = "Master RCP port")
   public int masterRpcPort = 7100;
 
   // True if this node is a tserver, along with port info.
+  @ApiModelProperty(value = "True if this node is a tserver")
   public boolean isTserver = true;
+
+  @ApiModelProperty(value = "Tserver HTTP port")
   public int tserverHttpPort = 9000;
+
+  @ApiModelProperty(value = "Tserver RPC port")
   public int tserverRpcPort = 9100;
 
   // True if this node is a Redis server, along with port info.
+  @ApiModelProperty(value = "True if this node is a redis server")
   public boolean isRedisServer = true;
+
+  @ApiModelProperty(value = "Redis HTTP port")
   public int redisServerHttpPort = 11000;
+
+  @ApiModelProperty(value = "Redis RPC port")
   public int redisServerRpcPort = 6379;
 
   // True if this node is a YSQL server, along with port info.
+  @ApiModelProperty(value = "True if this node is a Yql")
   public boolean isYqlServer = true;
+
+  @ApiModelProperty(value = "Yql HTTP port")
   public int yqlServerHttpPort = 12000;
+
+  @ApiModelProperty(value = "Yql RPC port")
   public int yqlServerRpcPort = 9042;
 
   // True if this node is a YSQL server, along with port info.
+  @ApiModelProperty(value = "True if this node is a Ysql")
   public boolean isYsqlServer = true;
+
+  @ApiModelProperty(value = "Ysql HTTP port")
   public int ysqlServerHttpPort = 13000;
+
+  @ApiModelProperty(value = "Ysql RPC port")
   public int ysqlServerRpcPort = 5433;
 
   // Which port node_exporter is running on.
+  @ApiModelProperty(value = "Node exporter port")
   public int nodeExporterPort = 9300;
 
   // True if cronjobs were properly configured for this node.
+  @ApiModelProperty(value = "True if cronjobs were properly configured for this node")
   public boolean cronsActive = true;
 
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
