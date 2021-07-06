@@ -8,10 +8,10 @@ $$
     customer_value double precision;
     global_value double precision;
   BEGIN
-    customer_value := (select cast(c.value as double precision)
+    customer_value := (select cast(convert_from(c.value, 'UTF-8') as double precision)
                         from runtime_config_entry c
                         where c.scope_uuid = customer_uuid and c.path = name);
-    global_value := (select cast(c.value as double precision)
+    global_value := (select cast(convert_from(c.value, 'UTF-8') as double precision)
                       from runtime_config_entry c
                       where c.scope_uuid = '00000000-0000-0000-0000-000000000000' and c.path = name);
     RETURN COALESCE(customer_value, global_value, default_value);
