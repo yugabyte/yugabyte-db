@@ -30,7 +30,7 @@ from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.aws.utils import query_vpc, get_zones, \
     delete_vpc, get_client, get_clients, AwsBootstrapClient, \
     get_spot_pricing, YbVpcComponents, create_instance, has_ephemerals, get_device_names, \
-    modify_tags, update_disk, ROOT_VOLUME_LABEL
+    modify_tags, update_disk, ROOT_VOLUME_LABEL, change_instance_type
 
 
 class AwsCloud(AbstractCloud):
@@ -420,6 +420,9 @@ class AwsCloud(AbstractCloud):
         if not instance:
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         update_disk(args, instance["id"])
+
+    def change_instance_type(self, args, newInstanceType):
+        change_instance_type(args["region"], args["id"], newInstanceType)
 
     def stop_instance(self, args):
         ec2 = boto3.resource('ec2', args["region"])
