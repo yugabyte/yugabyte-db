@@ -21,6 +21,8 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   public final Map<UUID, String> machineImages = new HashMap<>();
   public boolean forceVMImageUpgrade;
 
+  public boolean forceResizeNode;
+
   // The certificate that needs to be used.
   public UUID certUUID = null;
   // If the root certificate needs to be rotated.
