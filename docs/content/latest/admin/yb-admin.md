@@ -1103,6 +1103,10 @@ replication_info {
 
 #### setup_universe_replication
 
+Sets up the universe replication for the specified producer universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+
+To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
+
 **Syntax**
 
 ```sh
@@ -1141,6 +1145,10 @@ Changes the universe replication for the specified producer universe. Use this c
 
 * Add or remove tables in an existing replication UUID.
 * Modify the master addresses.
+
+If no tables have been configured for replication, use [`setup_universe_replication`](#setup-universe-replication).
+
+To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
 
 **Syntax**
 
@@ -1371,6 +1379,34 @@ yb-admin \
 To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
 
 {{< /note >}}
+
+#### list_cdc_streams
+
+Lists the CDC streams for the specified YB-Master servers.
+
+{{< note title="Tip" >}}
+
+Use this command when setting up universe replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+
+{{< /note >}}
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_cdc_streams
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    list_cdc_streams
+```
 
 ---
 
