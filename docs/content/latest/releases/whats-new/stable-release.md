@@ -17,7 +17,7 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.6 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.6 stable release series.
 
-## v2.6.0.0 - July 5, 2021
+## v2.6.0.0 - July 6, 2021
 
 ### Downloads
 
@@ -37,7 +37,7 @@ Included here are the release notes for all releases in the v2.6 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.6.0.0-b67
+docker pull yugabytedb/yugabyte:2.6.0.0-b69
 ```
 
 ### New features
@@ -46,7 +46,7 @@ docker pull yugabytedb/yugabyte:2.6.0.0-b67
 
 ##### Point-in-time recovery
 
-This feature allows you to restore the state of a cluster back to a previous point in time. This release is focused on support for the YCQL API. You can set up PITR at a YCQL keyspace level and recover from data changes and from metadata operations, such as CREATE TABLE / CREATE INDEX / ALTER TABLE / DROP TABLE / DROP INDEX. Support for YSQL is still very limited, only allowing recovery of data.
+This feature allows you to restore the state of a cluster back to a previous point in time. This release is focused on support for the YCQL API. You can set up PITR at a YCQL keyspace level and recover from data changes and from metadata operations, such as CREATE TABLE / CREATE INDEX / ALTER TABLE / DROP TABLE / DROP INDEX. Support for YSQL is still very limited, only allowing recovery of data. (The items in this list cover new functionality as well as bug fixes.)
 
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] [[7135](https://github.com/yugabyte/yugabyte-db/issues/7135)] Restore table schema
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] Add restore_snapshot_schedule to admin
@@ -63,10 +63,13 @@ This feature allows you to restore the state of a cluster back to a previous poi
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] Special history retention mechanism
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] Take system catalog snapshot
 * [[7137](https://github.com/yugabyte/yugabyte-db/issues/7137)] Provide ability to create snapshot schedule for YSQL database and YCQL keyspace
-* [[8417](https://github.com/yugabyte/yugabyte-db/issues/8417)] PITR: Implement delete_snapshot_schedule
-* [[8543](https://github.com/yugabyte/yugabyte-db/issues/8543)] PITR: Add test for need to increase table version on restore
-* [[8773](https://github.com/yugabyte/yugabyte-db/issues/8773)] PITR: Add DDL log
-* [[9046](https://github.com/yugabyte/yugabyte-db/issues/9046)] PITR: Fix crash when using multiple masters
+* [[8417](https://github.com/yugabyte/yugabyte-db/issues/8417)] Implement delete_snapshot_schedule
+* [[8419](https://github.com/yugabyte/yugabyte-db/issues/8419)] PITR related fixes
+* [[8543](https://github.com/yugabyte/yugabyte-db/issues/8543)] Add test for need to increase table version on restore
+* [[8773](https://github.com/yugabyte/yugabyte-db/issues/8773)] Add DDL log
+* [[9046](https://github.com/yugabyte/yugabyte-db/issues/9046)] Fix crash when using multiple masters
+* [[9162](https://github.com/yugabyte/yugabyte-db/issues/9162)] Fix stack overflow in filtering iterator
+* [[9171](https://github.com/yugabyte/yugabyte-db/issues/9171)] Fix restoring snapshot to time before history cutoff
 
 #### Yugabyte Platform
 
