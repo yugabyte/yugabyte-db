@@ -11,13 +11,20 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.helpers.UniqueKeyListValue;
 import io.ebean.Model;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import javax.persistence.*;
 import java.util.Objects;
 
 @Entity
-public class AlertLabel extends Model {
+@Data
+@EqualsAndHashCode(exclude = "alert", callSuper = false)
+@ToString(exclude = "alert")
+public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> {
 
   @EmbeddedId private AlertLabelKey key;
 
@@ -44,8 +51,8 @@ public class AlertLabel extends Model {
     setAlert(definition);
   }
 
-  public Alert getAlert() {
-    return alert;
+  public String getName() {
+    return key.getName();
   }
 
   public void setAlert(Alert alert) {
@@ -53,37 +60,15 @@ public class AlertLabel extends Model {
     key.setAlertUUID(alert.getUuid());
   }
 
-  public String getName() {
-    return key.getName();
-  }
-
-  public void setName(String name) {
-    key.setName(name);
-  }
-
-  public String getValue() {
-    return value;
-  }
-
-  public void setValue(String value) {
-    this.value = value;
+  @Override
+  @JsonIgnore
+  public boolean keyEquals(AlertLabel other) {
+    return Objects.equals(getName(), other.getName());
   }
 
   @Override
-  public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-    AlertLabel label = (AlertLabel) o;
-    return Objects.equals(key, label.key) && Objects.equals(value, label.value);
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(key, value);
-  }
-
-  @Override
-  public String toString() {
-    return "AlertLabel{" + "key=" + key + ", value=" + value + '}';
+  @JsonIgnore
+  public boolean valueEquals(AlertLabel other) {
+    return keyEquals(other) && Objects.equals(getValue(), other.getValue());
   }
 }

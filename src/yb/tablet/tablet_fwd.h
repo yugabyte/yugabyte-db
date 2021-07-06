@@ -39,12 +39,12 @@ typedef std::shared_ptr<TableInfo> TableInfoPtr;
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
+class ChangeMetadataOperation;
 class Operation;
 class OperationFilter;
-class OperationState;
 class SnapshotCoordinator;
-class SnapshotOperationState;
-class SplitOperationState;
+class SnapshotOperation;
+class SplitOperation;
 class TabletSnapshots;
 class TabletSplitter;
 class TabletStatusPB;
@@ -54,10 +54,11 @@ class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
 class TransactionParticipantContext;
-class UpdateTxnOperationState;
-class WriteOperationState;
+class TruncateOperation;
+class UpdateTxnOperation;
 
 struct CreateSnapshotData;
+struct TabletMetrics;
 
 YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);

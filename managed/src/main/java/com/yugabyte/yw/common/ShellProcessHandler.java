@@ -38,6 +38,7 @@ public class ShellProcessHandler {
               + "Playbook run.* )with args.* (failed with.*) ");
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
+  static final String ANSIBLE_IGNORING = "ignoring";
 
   public ShellResponse run(
       List<String> command, Map<String, String> extraEnvVars, boolean logCmdOutput) {
@@ -208,11 +209,14 @@ public class ShellProcessHandler {
 
       // Attempt to find a line in ansible stdout for the failed task.
       // Logs for each task are separated by empty lines.
+      // Some fatal failures are ignored by ansible, so skip them
       for (String s : stdout.split("\\R\\R")) {
+        if (s.contains(ANSIBLE_IGNORING)) {
+          continue;
+        }
         Matcher m = ANSIBLE_FAILED_TASK_PAT.matcher(s);
         if (m.find()) {
-          result = m.group(0);
-          break;
+          result = ((result != null) ? (result + "\n") : "") + m.group(0);
         }
       }
     }

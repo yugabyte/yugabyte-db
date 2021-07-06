@@ -4,9 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.TemplateManager;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.YWResults;
@@ -17,7 +15,6 @@ import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -33,8 +30,6 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
 public class AccessKeyController extends AuthenticatedController {
 
-  @Inject ValidatingFormFactory formFactory;
-
   @Inject AccessManager accessManager;
 
   @Inject TemplateManager templateManager;
@@ -46,7 +41,7 @@ public class AccessKeyController extends AuthenticatedController {
     Provider.getOrBadRequest(customerUUID, providerUUID);
 
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
-    return ApiResponse.success(accessKey);
+    return YWResults.withData(accessKey);
   }
 
   public Result list(UUID customerUUID, UUID providerUUID) {
@@ -55,7 +50,7 @@ public class AccessKeyController extends AuthenticatedController {
 
     List<AccessKey> accessKeys;
     accessKeys = AccessKey.getAll(providerUUID);
-    return ApiResponse.success(accessKeys);
+    return YWResults.withData(accessKeys);
   }
 
   public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
@@ -133,7 +128,7 @@ public class AccessKeyController extends AuthenticatedController {
           formData.get().nodeExporterUser);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(accessKey);
+    return YWResults.withData(accessKey);
   }
 
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
@@ -145,6 +140,6 @@ public class AccessKeyController extends AuthenticatedController {
 
     accessKey.deleteOrThrow();
     auditService().createAuditEntry(ctx(), request());
-    return ApiResponse.success("Deleted KeyCode: " + keyCode);
+    return YWResults.withData("Deleted KeyCode: " + keyCode);
   }
 }

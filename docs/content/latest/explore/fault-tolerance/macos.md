@@ -50,7 +50,7 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). In this section, you'll see how YugabyteDB can continue to do reads and writes even in case of node failures. You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). In this section, you'll see how YugabyteDB can continue to do reads and writes even in case of node failures. You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
@@ -99,7 +99,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
 
 The `SqlInserts` workload prints some statistics while running, which is also shown below. You can read more details about the output of the workload applications at the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
 
-```
+```output
 32001 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4508.59 ops/sec (0.88 ms/op), 121328 total ops  |  Write: 658.11 ops/sec (1.51 ms/op), 18154 total ops  |  Uptime: 30024 ms | ...
 37006 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4342.41 ops/sec (0.92 ms/op), 143061 total ops  |  Write: 635.59 ops/sec (1.58 ms/op), 21335 total ops  |  Uptime: 35029 ms | ...
 ```

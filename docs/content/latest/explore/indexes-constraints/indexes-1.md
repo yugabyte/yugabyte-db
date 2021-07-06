@@ -17,7 +17,7 @@ The use of indexes can enhance database performance by enabling the database ser
 
 YSQL allows you to create, drop, and list indexes, as well as use indexes on expressions.
 
-## Creating Indexes
+## Create indexes
 
 You create indexes in YSQL using the `CREATE INDEX` statement that has the following syntax:
 
@@ -27,11 +27,11 @@ CREATE INDEX index_name ON table_name(column_list);
 
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index.
 
-You can also create a functional-based index, in which case you would replace any element of *column_list* with an expression. For more information, see [Using Indexes on Expressions](#using-indexes-on-expressions).
+You can also create a functional-based index, in which case you would replace any element of *column_list* with an expression. For more information, see [Use indexes on expressions](#use-indexes-on-expressions).
 
 The only type of index that is currently supported by YSQL is called LSM (log-structured merge-tree). This index is based on YugabyteDB's DocDB storage and is similar in functionality to PostgreSQL's B-tree. When you create an index, you do not need to specify the type because YSQL always maps it to LSM; if you do specify the type, such as `btree`, in your `CREATE INDEX` statement, you will receive a notification about replacement of the `btree` method with `lsm`. 
 
-You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC Examples](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
+You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC examples](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 
 You can use the `EXPLAIN` statement to check if a query uses an index.
 
@@ -58,7 +58,7 @@ The following example shows a query that finds employees working in Operations:
 SELECT * FROM employees WHERE department = 'Operations';
 ```
 
-To process the preceding query, the whole `employees` table needs to be scanned. For large organizations, this might take significant amount of time.
+To process the preceding query, the whole `employees` table needs to be scanned. For large organizations, this might take a significant amount of time.
 
 To speed up the process, you create an index for the department column, as follows:
 
@@ -82,39 +82,23 @@ Index Scan using index_employees_department on employees (cost=0.00..5.22 rows=1
 Index Cond: (department = 'Operations'::text)
 ```
 
-For additional information, see [Create Index](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique).
+For additional information, see [Create index API](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique).
 
-## Removing Indexes
-
-You can remove one or more existing indexes using the `DROP INDEX` statement that has the following syntax:
-
-```
-DROP INDEX index_name1, index_name2, index_name3, ... ;
-```
-
-The following example shows how to remove `index_employees_department` that was created in [Creating Indexes](#creating-indexes):
-
-```sql
-DROP INDEX index_employees_department;
-```
-
-If you execute the same `SELECT` query with the `EXPLAIN` statement as in [Creating Indexes](#creating-indexes), the query plan will not include any information about the index. 
-
-## Listing Indexes
+## List indexes
 
 YSQL inherits all the functionality of the PostgeSQL `pg_indexes` view that allows you to retrieve a list of all indexes in the database as well as detailed information about every index.
 
 For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
 
-## Using a UNIQUE Index
+## Use a UNIQUE index
 
-If you need values in some of the columns to be unique, you can specify a B-tree index as `UNIQUE`. 
+If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`. 
 
 When a `UNIQUE` index applied to two or more columns, the combined values in these columns cannot be duplicated in multiple rows. Note that since a `NULL` value is treated as distinct value, you can have multiple `NULL` values in a column with a `UNIQUE` index.
 
 If a table has primary key or a `UNIQUE` constraint defined, a corresponding `UNIQUE` index is created autumatically.
 
-The following example shows how to create a `UNIQUE` index for the `employee_no` column in the `employees` table from [Creating Indexes](#creating-indexes):
+The following example shows how to create a `UNIQUE` index for the `employee_no` column in the `employees` table from [Create indexes](#create-indexes):
 
 ```sql
 CREATE UNIQUE INDEX index_employees_no
@@ -123,9 +107,9 @@ CREATE UNIQUE INDEX index_employees_no
 
 After the preceding statement is executed, any attempt to insert a new employee with the same `employee_no` as one of the existing employees will result in an error.
 
-For additional information and examples, see [Unique Index with HASH Column Ordering](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering).
+For additional information and examples, see [Unique index with HASH column ordering](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering).
 
-## Using Indexes on Expressions
+## Use indexes on expressions
 
 YSQL enables you to create an index based on an expression involving table columns, as per the following syntax:
 
@@ -135,7 +119,7 @@ CREATE INDEX index_name ON table_name(expression);
 
 *expression* involves table columns of the *table_name* table. When the index expression is defined, this index is used when the expression that defines the index is included in the `WHERE` or `ORDER BY` clause in the YSQL statement.
 
-The following example uses the `employees` table from [Creating Indexes](#creating-indexes) to show how to create an index on expression that converts the department to lowercase to improve searchability:
+The following example uses the `employees` table from [Create indexes](#create-indexes) to show how to create an index on an expression that converts the department to lowercase to improve searchability:
 
 ```sql
 CREATE INDEX index_employees_department_lc
@@ -158,7 +142,7 @@ Index Scan using index_employees_department_lc on employees  (cost=0.00..5.25 ro
   Index Cond: (lower(department) = 'operations'::text)
 ```
 
-## Using Partial Indexes
+## Use partial indexes
 
 Partial indexes allow you to improve the query performance by reducing the index size. This is done by specifying the rows, typically within the `WHERE` clause, of a table to be indexed. 
 
@@ -169,4 +153,20 @@ CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 
 For examples, see [Partial Indexes](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#partial-indexes).
+
+## Remove indexes
+
+You can remove one or more existing indexes using the `DROP INDEX` statement that has the following syntax:
+
+```
+DROP INDEX index_name1, index_name2, index_name3, ... ;
+```
+
+The following example shows how to remove `index_employees_department` that was created in [Create indexes](#create-indexes):
+
+```sql
+DROP INDEX index_employees_department;
+```
+
+If you execute the same `SELECT` query with the `EXPLAIN` statement as in [Create indexes](#create-indexes), the query plan will not include any information about the index. 
 

@@ -14,14 +14,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.*;
-import play.Logger;
 import play.mvc.Result;
 
 import java.io.IOException;
@@ -30,13 +28,11 @@ import java.util.UUID;
 @Api(value = "Provider1", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderApiController extends AuthenticatedController {
 
-  @Inject private ValidatingFormFactory formFactory;
-
-  @Inject private CloudProviderService cloudProviderService;
+  @Inject private CloudProviderHandler cloudProviderHandler;
 
   @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
-    return ApiResponse.success(Provider.getAll(customerUUID));
+    return YWResults.withData(Provider.getAll(customerUUID));
   }
 
   // This endpoint we are using only for deleting provider for integration test purpose. our
@@ -45,7 +41,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    cloudProviderService.delete(customer, provider);
+    cloudProviderHandler.delete(customer, provider);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
   }
@@ -63,7 +59,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.customerUUID = customerUUID;
     Provider providerEbean =
-        cloudProviderService.createProvider(
+        cloudProviderHandler.createProvider(
             customer,
             Common.CloudType.valueOf(reqProvider.code),
             reqProvider.name,
@@ -72,7 +68,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
     CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
 
-    UUID taskUUID = cloudProviderService.bootstrap(customer, providerEbean, taskParams);
+    UUID taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
     return new YWResults.YWTask(taskUUID, providerEbean.uuid).asResult();
   }

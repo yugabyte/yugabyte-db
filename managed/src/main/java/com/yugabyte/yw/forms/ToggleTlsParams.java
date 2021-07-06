@@ -23,7 +23,7 @@ public class ToggleTlsParams {
 
   // Verifies the ToggleTlsParams by comparing with the existing
   // UniverseDefinitionTaskParams, returns YWError object if invalid else null
-  public YWError verifyParams(UniverseDefinitionTaskParams universeParams) {
+  public YWResults.YWError verifyParams(UniverseDefinitionTaskParams universeParams) {
     boolean existingEnableClientToNodeEncrypt =
         universeParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
     boolean existingEnableNodeToNodeEncrypt =
@@ -32,20 +32,22 @@ public class ToggleTlsParams {
 
     if (upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE
         && upgradeOption != UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE) {
-      return new YWError("TLS upgrade can be performed either rolling or non-rolling way.");
+      return new YWResults.YWError(
+          "TLS upgrade can be performed either rolling or non-rolling way.");
     }
 
     if (this.enableClientToNodeEncrypt == existingEnableClientToNodeEncrypt
         && this.enableNodeToNodeEncrypt == existingEnableNodeToNodeEncrypt) {
-      return new YWError("No changes in Tls parameters, cannot perform update operation.");
+      return new YWResults.YWError(
+          "No changes in Tls parameters, cannot perform update operation.");
     }
 
     if (rootCA != null && CertificateInfo.get(rootCA) == null) {
-      return new YWError("No valid rootCA found for UUID: " + rootCA);
+      return new YWResults.YWError("No valid rootCA found for UUID: " + rootCA);
     }
 
     if (existingRootCA != null && rootCA != null && !existingRootCA.equals(rootCA)) {
-      return new YWError("Cannot update root certificate, if already created.");
+      return new YWResults.YWError("Cannot update root certificate, if already created.");
     }
 
     return null;

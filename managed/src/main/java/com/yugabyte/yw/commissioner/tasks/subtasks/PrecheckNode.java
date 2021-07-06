@@ -10,27 +10,19 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Universe;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
+import javax.inject.Inject;
 import java.util.Map;
 
-import play.libs.Json;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 public class PrecheckNode extends UniverseTaskBase {
-
-  public static final Logger LOG = LoggerFactory.getLogger(PrecheckNode.class);
+  @Inject
+  protected PrecheckNode(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Parameters for failed precheck task.
   public static class Params extends UniverseTaskParams {

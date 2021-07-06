@@ -237,7 +237,7 @@ def write_json_file(
         json_data: Any, output_path: str, description_for_log: Optional[str] = None) -> None:
     with open(output_path, 'w') as output_file:
         json.dump(json_data, output_file, indent=JSON_INDENTATION)
-        if description_for_log is None:
+        if description_for_log is not None:
             logging.info("Wrote %s: %s", description_for_log, output_path)
 
 

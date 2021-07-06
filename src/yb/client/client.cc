@@ -112,6 +112,9 @@ using yb::master::ListTablesResponsePB_TableInfo;
 using yb::master::ListTabletServersRequestPB;
 using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
+using yb::master::ListLiveTabletServersRequestPB;
+using yb::master::ListLiveTabletServersResponsePB;
+using yb::master::ListLiveTabletServersResponsePB_Entry;
 using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
 using yb::master::AlterNamespaceRequestPB;
@@ -184,8 +187,24 @@ DEFINE_int32(backfill_index_client_rpc_timeout_ms, 60 * 60 * 1000, // 60 min.
              "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
-DEFINE_test_flag(int32, yb_num_total_tablets, 0,
-                 "The total number of tablets per table when a table is created.");
+DEFINE_int32(ycql_num_tablets, -1,
+             "The number of tablets per YCQL table. Default value is -1. "
+             "Colocated tables are not affected. "
+             "If it's value is not set then the value of yb_num_shards_per_tserver is used "
+             "in conjunction with the number of tservers to determine the tablet count. "
+             "If the user explicitly specifies a value of the tablet count in the Create Table "
+             "DDL statement (with tablets = x syntax) then it takes precedence over the value "
+             "of this flag. Needs to be set at tserver.");
+TAG_FLAG(ycql_num_tablets, runtime);
+
+DEFINE_int32(ysql_num_tablets, -1,
+             "The number of tablets per YSQL table. Default value is -1. "
+             "If it's value is not set then the value of ysql_num_shards_per_tserver is used "
+             "in conjunction with the number of tservers to determine the tablet count. "
+             "If the user explicitly specifies a value of the tablet count in the Create Table "
+             "DDL statement (split into x tablets syntax) then it takes precedence over the "
+             "value of this flag. Needs to be set at tserver.");
+TAG_FLAG(ysql_num_tablets, runtime);
 
 namespace yb {
 namespace client {
@@ -1469,6 +1488,46 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
   return Status::OK();
 }
 
+Status YBClient::ListLiveTabletServers(
+    vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers, bool primary_only) {
+  ListLiveTabletServersRequestPB req;
+  if (primary_only) req.set_primary_only(true);
+  ListLiveTabletServersResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListLiveTabletServers);
+
+  for (int i = 0; i < resp.servers_size(); i++) {
+    const ListLiveTabletServersResponsePB_Entry& entry = resp.servers(i);
+    CloudInfoPB cloud_info = entry.registration().common().cloud_info();
+    std::string cloud = "";
+    std::string region = "";
+    std::string zone = "";
+    int broadcast_sz = entry.registration().common().broadcast_addresses().size();
+
+    std::string publicIp = "";
+    if (broadcast_sz > 0) {
+      publicIp = entry.registration().common().broadcast_addresses().Get(0).host();
+    }
+
+    bool isPrimary = !entry.isfromreadreplica();
+    if (cloud_info.has_placement_cloud()) {
+      cloud = cloud_info.placement_cloud();
+      if (cloud_info.has_placement_region()) {
+        region = cloud_info.placement_region();
+      }
+      if (cloud_info.has_placement_zone()) {
+        zone = cloud_info.placement_zone();
+      }
+    }
+
+    auto ts = std::make_unique<YBTabletServerPlacementInfo>(
+        entry.instance_id().permanent_uuid(),
+        DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host(),
+        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary, publicIp);
+    tablet_servers->push_back(std::move(ts));
+  }
+  return Status::OK();
+}
+
 void YBClient::SetLocalTabletServer(const string& ts_uuid,
                                     const shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                                     const tserver::LocalTabletServer* local_tserver) {
@@ -1885,10 +1944,15 @@ bool YBClient::IsMultiMaster() const {
 }
 
 Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
-  if (FLAGS_TEST_yb_num_total_tablets > 0) {
-    VLOG(1) << "num_tablets=" << FLAGS_TEST_yb_num_total_tablets
-            << ": --TEST_yb_num_total_tablets is specified.";
-    return FLAGS_TEST_yb_num_total_tablets;
+  if (table_type == TableType::PGSQL_TABLE_TYPE &&
+        FLAGS_ysql_num_tablets > 0) {
+    VLOG(1) << "num_tablets = " << FLAGS_ysql_num_tablets
+              << ": --ysql_num_tablets is specified.";
+    return FLAGS_ysql_num_tablets;
+  } else if (FLAGS_ycql_num_tablets > 0) {
+    VLOG(1) << "num_tablets = " << FLAGS_ycql_num_tablets
+              << ": --ycql_num_tablets is specified.";
+    return FLAGS_ycql_num_tablets;
   } else {
     int tserver_count = 0;
     RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */));

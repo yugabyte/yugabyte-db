@@ -184,7 +184,7 @@ class CatalogManager :
   void CompleteShutdown();
 
   // Create Postgres sys catalog table.
-  CHECKED_STATUS CreatePgsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
+  CHECKED_STATUS CreateYsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
 
   CHECKED_STATUS ReplicatePgMetadataChange(const tserver::ChangeMetadataRequestPB* req);
 
@@ -809,6 +809,8 @@ class CatalogManager :
 
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
+
+  BlacklistSet BlacklistSetFromPB() const;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1510,6 +1512,33 @@ class CatalogManager :
   // Helper function to refresh the tablespace info.
   CHECKED_STATUS DoRefreshTablespaceInfo();
 
+  // Processes committed consensus state for specified tablet from ts_desc.
+  // Returns true if tablet was mutated.
+  bool ProcessCommittedConsensusState(
+      TSDescriptor* ts_desc,
+      bool is_incremental,
+      const ReportedTabletPB& report,
+      const TableInfo::ReadLock& table_lock,
+      const TabletInfoPtr& tablet,
+      const TabletInfo::WriteLock& tablet_lock,
+      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+
+  struct ReportedTablet {
+    TabletId tablet_id;
+    TabletInfoPtr info;
+    const ReportedTabletPB* report;
+  };
+  using ReportedTablets = std::vector<ReportedTablet>;
+
+  // Process tablets batch while processing tablet report.
+  CHECKED_STATUS ProcessTabletReportBatch(
+      TSDescriptor* ts_desc,
+      bool is_incremental,
+      ReportedTablets::const_iterator begin,
+      ReportedTablets::const_iterator end,
+      TabletReportUpdatesPB* full_report_update,
+      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -1532,8 +1561,6 @@ class CatalogManager :
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   ServerRegistrationPB server_registration_;
-
-  BlacklistSet BlacklistSetFromPB() const;
 
   TabletSplitManager tablet_split_manager_;
 

@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `DELETE` statement to remove rows from a specified table that meet a given condition. Currently, YugabyteDB can deletes one row at a time. Deleting multiple rows is not yet supported.
+Use the `DELETE` statement to remove rows from a specified table that meet a given condition.
 
 ## Syntax
 

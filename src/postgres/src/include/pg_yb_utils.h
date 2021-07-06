@@ -26,15 +26,17 @@
 #define PG_YB_UTILS_H
 
 #include "postgres.h"
-#include "utils/relcache.h"
 
+#include "access/reloptions.h"
+#include "catalog/pg_database.h"
 #include "common/pg_yb_common.h"
+#include "nodes/plannodes.h"
+#include "utils/relcache.h"
+#include "utils/resowner.h"
+
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "access/reloptions.h"
 
-#include "nodes/plannodes.h"
-#include "utils/resowner.h"
 
 /*
  * Version of the catalog entries in the relcache and catcache.
@@ -81,6 +83,32 @@ extern void YBResetCatalogVersion();
 extern bool IsYugaByteEnabled();
 
 extern bool yb_read_from_followers;
+
+/*
+ * Iterate over databases and execute a given code snippet.
+ * Should terminate with YB_FOR_EACH_DB_END.
+ */
+#define YB_FOR_EACH_DB(pg_db_tuple) \
+	{ \
+		/* Shared operations shouldn't be used during initdb. */ \
+		Assert(!IsBootstrapProcessingMode()); \
+		Relation    pg_db      = heap_open(DatabaseRelationId, AccessExclusiveLock); \
+		HeapTuple   pg_db_tuple; \
+		SysScanDesc pg_db_scan = systable_beginscan( \
+			pg_db, \
+			InvalidOid /* indexId */, \
+			false /* indexOK */, \
+			NULL /* snapshot */, \
+			0 /* nkeys */, \
+			NULL /* key */); \
+		while (HeapTupleIsValid(pg_db_tuple = systable_getnext(pg_db_scan))) \
+		{ \
+
+#define YB_FOR_EACH_DB_END \
+		} \
+		systable_endscan(pg_db_scan); \
+		heap_close(pg_db, AccessExclusiveLock); \
+	}
 
 /*
  * Given a relation, checks whether the relation is supported in YugaByte mode.
@@ -137,6 +165,9 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  * Subtracts (YBSystemFirstLowInvalidAttributeNumber + 1) from column attribute numbers.
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
+
+extern bool YBIsDatabaseColocated(Oid dbId);
+extern bool YBIsTableColocated(Oid dbId, Oid relationId);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -301,10 +332,12 @@ const char* YBCGetDatabaseName(Oid relid);
 const char* YBCGetSchemaName(Oid schemaoid);
 
 /*
- * Get the real database id of a relation. For shared relations, it will be
- * template1.
+ * Get the real database id of a relation. For shared relations
+ * (which are meant to be accessible from all databases), it will be template1.
  */
 Oid YBCGetDatabaseOid(Relation rel);
+Oid YBCGetDatabaseOidByRelid(Oid relid);
+Oid YBCGetDatabaseOidFromShared(bool relisshared);
 
 /*
  * Raise an unsupported feature error with the given message and
@@ -359,6 +392,17 @@ extern bool yb_debug_log_catcache_events;
 extern bool yb_debug_log_internal_restarts;
 
 /*
+ * Relaxes some internal sanity checks for system catalogs to allow creating them.
+ */
+extern bool yb_test_system_catalogs_creation;
+
+/*
+ * If set to true, next DDL operation (only creating a relation for now) will fail,
+ * resetting this back to false.
+ */
+extern bool yb_test_fail_next_ddl;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.
@@ -399,5 +443,12 @@ bool YBReadFromFollowersEnabled();
  */
 YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs);
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
+
+/*
+ * Check whether the given libc locale is supported in YugaByte mode.
+ */
+bool IsYBSupportedLibcLocale(const char *localebuf);
+
+void YBTestFailDdlIfRequested();
 
 #endif /* PG_YB_UTILS_H */

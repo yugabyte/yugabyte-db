@@ -25,13 +25,13 @@ namespace tablet {
 class SnapshotCoordinator {
  public:
   virtual CHECKED_STATUS CreateReplicated(
-      int64_t leader_term, const SnapshotOperationState& state) = 0;
+      int64_t leader_term, const SnapshotOperation& operation) = 0;
 
   virtual CHECKED_STATUS DeleteReplicated(
-      int64_t leader_term, const SnapshotOperationState& state) = 0;
+      int64_t leader_term, const SnapshotOperation& operation) = 0;
 
   virtual CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const SnapshotOperationState& state) = 0;
+      int64_t leader_term, const SnapshotOperation& operation) = 0;
 
   virtual CHECKED_STATUS Load(Tablet* tablet) = 0;
 
