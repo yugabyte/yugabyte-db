@@ -102,6 +102,7 @@ public class Alert extends Model implements AlertLabelsProvider {
     return setUuid(UUID.randomUUID());
   }
 
+  @JsonIgnore
   public boolean isNew() {
     return uuid == null;
   }

@@ -23,6 +23,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -205,6 +206,9 @@ TEST_F(BackupTxnTest, PointInTimeRestore) {
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }
 
+// This test writes a lot of update to the same key.
+// Then takes snapshot and restores it to time before the write.
+// So we test how filtering iterator works in case where a lot of record should be skipped.
 TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
   constexpr int kNumWrites = RegularBuildVsSanitizers(100000, 100);
   constexpr int kKey = 123;
@@ -236,6 +240,48 @@ TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
   ASSERT_EQ(value, 0);
 }
 
+// Restore to the time before current history cutoff.
+TEST_F(BackupTxnTest, PointInTimeRestoreBeforeHistoryCutoff) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
+
+  ASSERT_NO_FATALS(WriteData());
+  auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
+
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  ASSERT_OK(WaitFor([this, hybrid_time]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      // History cutoff is not moved for tablets w/o writes after current history cutoff.
+      // So just ignore such tablets.
+      if (peer->tablet()->mvcc_manager()->LastReplicatedHybridTime() < hybrid_time) {
+        continue;
+      }
+      // Check that history cutoff is after hybrid_time.
+      auto read_operation = tablet::ScopedReadOperation::Create(
+          peer->tablet(), tablet::RequireLease::kTrue, ReadHybridTime::SingleTime(hybrid_time));
+      if (read_operation.ok()) {
+        auto policy = peer->tablet()->RetentionPolicy();
+        LOG(INFO) << "Pending history cutoff, tablet: " << peer->tablet_id()
+                  << ", current: " << policy->GetRetentionDirective().history_cutoff
+                  << ", desired: " << hybrid_time;
+        return false;
+      }
+      if (!read_operation.status().IsSnapshotTooOld()) {
+        return read_operation.status();
+      }
+    }
+    return true;
+  }, kWaitTimeout, "History retention move past hybrid time"));
+
+  ASSERT_OK(RestoreSnapshot(snapshot_id, hybrid_time));
+
+  ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
+}
 
 TEST_F(BackupTxnTest, Persistence) {
   LOG(INFO) << "Write data";

@@ -126,13 +126,15 @@ HybridTime TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write
     return HybridTime();
   }
 
-  next_history_cutoff_propagation_ = now + FLAGS_history_cutoff_propagation_interval_ms * 1ms;
+  next_history_cutoff_propagation_ =
+      now + ANNOTATE_UNPROTECTED_READ(FLAGS_history_cutoff_propagation_interval_ms) * 1ms;
 
   return EffectiveHistoryCutoff();
 }
 
 HybridTime TabletRetentionPolicy::EffectiveHistoryCutoff() {
-  auto retention_delta = -FLAGS_timestamp_history_retention_interval_sec * 1s;
+  auto retention_delta =
+      -ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_history_retention_interval_sec) * 1s;
   // We try to garbage-collect history older than current time minus the configured retention
   // interval, but we might not be able to do so if there are still read operations reading at an
   // older snapshot.

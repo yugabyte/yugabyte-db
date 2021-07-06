@@ -794,6 +794,23 @@ public class UniverseCRUDHandler {
 
         customerTaskType = CustomerTask.TaskType.UpgradeVMImage;
         break;
+      case ResizeNode:
+        if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+          throw new YWServiceException(
+              Http.Status.METHOD_NOT_ALLOWED, "Smart resizing is disabled");
+        }
+
+        Common.CloudType providerType =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+        if (!(providerType.equals(Common.CloudType.gcp)
+            || providerType.equals(Common.CloudType.aws))) {
+          throw new YWServiceException(
+              BAD_REQUEST,
+              "Smart resizing is only supported for AWS / GCP, It is: " + providerType.toString());
+        }
+
+        customerTaskType = CustomerTask.TaskType.ResizeNode;
+        break;
       case Software:
         customerTaskType = CustomerTask.TaskType.UpgradeSoftware;
         if (taskParams.ybSoftwareVersion == null || taskParams.ybSoftwareVersion.isEmpty()) {
