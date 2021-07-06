@@ -30,7 +30,11 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YCQL tables in a keyspace or only the specified YCQL tables. To back up your universe YCQL data immediately, see [Back up universe YCQL data](../../back-up-universe-data/ycql).
+Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YCQL tables in a keyspace or only the specified YCQL tables. 
+
+To back up your universe YCQL data immediately, see [Back up universe YCQL data](../../back-up-universe-data/ycql).
+
+## Schedule a backup
 
 To schedule a backup of your universe YCQL data:
 
@@ -50,7 +54,7 @@ To schedule a backup of your universe YCQL data:
     - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
     - **Keyspace**: Select your keyspace from the drop-down list of predefined keyspaces.
     - **Tables to backup**: Select either **All Tables in Keyspace** or the specific tables to back up.
-    - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
+    - **Parallel Threads**: Enter or select the number of threads. The default is `8`.
     - **Number of Days to Retain Backup**: Default is unspecified which means to retain indefinitely.
 
 7. Click **OK**. The initial backup begins immediately.
