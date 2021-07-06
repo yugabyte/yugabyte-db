@@ -194,6 +194,7 @@ public class NodeInstanceController extends AuthenticatedController {
     taskParams.universeUUID = universe.universeUUID;
     taskParams.expectedUniverseVersion = universe.version;
     taskParams.nodeName = nodeName;
+    taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     NodeActionType nodeAction = formData.get().nodeAction;
 
     // Check deleting/removing a node will not go below the RF

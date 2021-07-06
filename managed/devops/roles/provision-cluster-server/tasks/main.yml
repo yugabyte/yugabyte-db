@@ -12,6 +12,7 @@
       - cloud_type is defined
       - use_chrony is defined
       - mount_points is defined
+      - systemd_option is defined
 
 - name: Do we need chrony?
   set_fact:
@@ -96,3 +97,97 @@
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
   with_items: "{{ mount_points.split(',') }}"
+
+- block:
+  # Give yugabyte user sudo access to start/stop/restart master and tserver
+  - name: Add yugabyte sudo user without password
+    lineinfile:
+      dest: /etc/sudoers.d/yugabyte
+      line: 'yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master,
+            /bin/systemctl stop yb-master,
+            /bin/systemctl restart yb-master,
+            /bin/systemctl enable yb-master,
+            /bin/systemctl disable yb-master,
+            /bin/systemctl start yb-tserver,
+            /bin/systemctl stop yb-tserver,
+            /bin/systemctl restart yb-tserver,
+            /bin/systemctl enable yb-tserver,
+            /bin/systemctl disable yb-tserver,
+            /bin/systemctl start yb-zip_purge_yb_logs.timer,
+            /bin/systemctl stop yb-zip_purge_yb_logs.timer,
+            /bin/systemctl restart yb-zip_purge_yb_logs.timer,
+            /bin/systemctl enable yb-zip_purge_yb_logs.timer,
+            /bin/systemctl disable yb-zip_purge_yb_logs.timer,
+            /bin/systemctl start yb-clean_cores.timer,
+            /bin/systemctl stop yb-clean_cores.timer,
+            /bin/systemctl restart yb-clean_cores.timer,
+            /bin/systemctl enable yb-clean_cores.timer,
+            /bin/systemctl disable yb-clean_cores.timer,
+            /bin/systemctl start yb-zip_purge_yb_logs,
+            /bin/systemctl stop yb-zip_purge_yb_logs,
+            /bin/systemctl restart yb-zip_purge_yb_logs,
+            /bin/systemctl enable yb-zip_purge_yb_logs,
+            /bin/systemctl disable yb-zip_purge_yb_logs,
+            /bin/systemctl start yb-clean_cores,
+            /bin/systemctl stop yb-clean_cores,
+            /bin/systemctl restart yb-clean_cores,
+            /bin/systemctl enable yb-clean_cores,
+            /bin/systemctl disable yb-clean_cores,
+            /bin/systemctl daemon-reload'
+      create: yes
+      state: present
+      mode: 0440
+      validate: 'visudo -cf %s'
+
+  - name: Set includedir in sudoers
+    lineinfile:
+      dest: /etc/sudoers
+      line: "#includedir /etc/sudoers.d"
+      state: present
+      validate: "/usr/sbin/visudo -cf %s"
+
+  # Adding systemd service files for yb-master and yb-tserver
+  - name: Add yb-master.service
+    template:
+      src: yb-master.service
+      dest: "/etc/systemd/system/yb-master.service"
+      owner: "{{ user_name }}"
+      mode: 0644
+
+  - name: Add yb-tserver.service
+    template:
+      src: yb-tserver.service
+      dest: "/etc/systemd/system/yb-tserver.service"
+      owner: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service and timer files for zip_purge_yb_logs
+  - name: Add yb-zip_purge_yb_logs.service
+    template:
+      src: yb-zip_purge_yb_logs.service
+      dest: "/etc/systemd/system/yb-zip_purge_yb_logs.service"
+      owner: "{{ user_name }}"
+      mode: 0644
+
+  - name: Add yb-zip_purge_yb_logs.timer
+    template:
+      src: yb-zip_purge_yb_logs.timer
+      dest: "/etc/systemd/system/yb-zip_purge_yb_logs.timer"
+      owner: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service and timer files for clean_cores
+  - name: Add yb-clean_cores.service
+    template:
+      src: yb-clean_cores.service
+      dest: "/etc/systemd/system/yb-clean_cores.service"
+      owner: "{{ user_name }}"
+      mode: 0644
+
+  - name: Add yb-clean_cores.timer
+    template:
+      src: yb-clean_cores.timer
+      dest: "/etc/systemd/system/yb-clean_cores.timer"
+      owner: "{{ user_name }}"
+      mode: 0644
+  when: systemd_option

@@ -230,6 +230,7 @@ const formFieldNames = [
   'primary.tlsCertificateId',
   'primary.mountPoints',
   'primary.awsArnString',
+  'primary.useSystemd',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -247,6 +248,7 @@ const formFieldNames = [
   'async.enableNodeToNodeEncrypt',
   'async.enableClientToNodeEncrypt',
   'async.mountPoints',
+  'async.useSystemd',
   'masterGFlags',
   'tserverGFlags',
   'instanceTags',
@@ -277,6 +279,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].replicationFactor = userIntent.replicationFactor;
     data[clusterType].instanceType = userIntent.instanceType;
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    data[clusterType].useSystemd = userIntent.useSystemd;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
     data[clusterType].throughput = userIntent.deviceInfo.throughput;
@@ -322,6 +325,7 @@ function mapStateToProps(state, ownProps) {
       instanceType: 'c5.large',
       accessKeyCode: 'yugabyte-default',
       assignPublicIP: true,
+      useSystemd: false,
       useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
@@ -338,6 +342,7 @@ function mapStateToProps(state, ownProps) {
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
+      useSystemd: false,
       useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
@@ -413,6 +418,7 @@ function mapStateToProps(state, ownProps) {
       'primary.yqlRpcPort',
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
+      'primary.useSystemd',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -437,6 +443,7 @@ function mapStateToProps(state, ownProps) {
       'async.enableClientToNodeEncrypt',
       'async.mountPoints',
       'async.useTimeSync',
+      'async.useSystemd',
       'masterGFlags',
       'tserverGFlags',
       'instanceTags'

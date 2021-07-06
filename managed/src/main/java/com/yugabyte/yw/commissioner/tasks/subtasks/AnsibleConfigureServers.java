@@ -25,7 +25,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import com.yugabyte.yw.models.Universe;
+
 import javax.inject.Inject;
+import java.util.*;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -60,6 +64,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // > 0 => node-to-node encryption is enabled
     // < 0 => node-to-node encryption is disabled
     public int nodeToNodeChange = 0;
+
+    // Systemd vs Cron Option (Default: Cron)
+    public boolean useSystemd = false;
   }
 
   @Override
@@ -69,6 +76,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
   @Override
   public void run() {
+    Universe universe_temp = Universe.getOrBadRequest(taskParams().universeUUID);
+    taskParams().useSystemd =
+        universe_temp.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     // Execute the ansible command.
     ShellResponse response =
         getNodeManager().nodeCommand(NodeManager.NodeCommandType.Configure, taskParams());

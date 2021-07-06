@@ -847,6 +847,11 @@ public class NodeManager extends DevopsBase {
             }
           }
 
+          // Systemd vs Cron Option
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
+
           if (taskParam.useTimeSync
               && (cloudType.equals(Common.CloudType.aws)
                   || cloudType.equals(Common.CloudType.gcp))) {
@@ -926,6 +931,12 @@ public class NodeManager extends DevopsBase {
           }
           AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
           commandArgs.addAll(getConfigureSubCommand(taskParam));
+
+          // Systemd vs Cron Option
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
+
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
@@ -990,6 +1001,10 @@ public class NodeManager extends DevopsBase {
           AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params) nodeTaskParam;
           commandArgs.add(taskParam.process);
           commandArgs.add(taskParam.command);
+          // Systemd vs Cron Option
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }

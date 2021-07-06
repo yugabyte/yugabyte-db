@@ -1,0 +1,13 @@
+[Unit]
+Description=Yugabyte clean cores
+Requires=yb-clean_cores.service
+
+[Timer]
+User=yugabyte
+Group=yugabyte
+Unit=yb-clean_cores.service
+# Run every 10 minutes offset by 5 (5, 15, 25...)
+OnCalendar=*:0/10:30
+
+[Install]
+WantedBy=timers.target

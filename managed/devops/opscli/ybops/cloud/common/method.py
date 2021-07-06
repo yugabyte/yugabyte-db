@@ -132,6 +132,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Tags for instances being created.")
         self.parser.add_argument("--vpcId", required=False,
                                  help="name of the virtual network associated with the subnet")
+        self.parser.add_argument("--systemd_services",
+                                 action="store_true",
+                                 default=False,
+                                 help="check if systemd services is set")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -451,6 +455,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
         if args.remote_package_path:
             self.extra_vars.update({"remote_package_path": args.remote_package_path})
+        self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
 
@@ -603,7 +608,7 @@ class CronCheckMethod(AbstractInstancesMethod):
             "private_key_file": args.private_key_file
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
-        if not validate_cron_status(
+        if not args.systemd_services and not validate_cron_status(
                 ssh_options['ssh_host'], ssh_options['ssh_port'], ssh_options['ssh_user'],
                 ssh_options['private_key_file']):
             raise YBOpsRuntimeError(
@@ -699,6 +704,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         else:
             raise YBOpsRuntimeError("Supported types for this command are only: {}".format(
                 self.supported_types))
+
+        self.extra_vars["systemd_option"] = args.systemd_services
 
         # Make sure we set server_type so we pick the right configure.
         self.update_ansible_vars_with_args(args)

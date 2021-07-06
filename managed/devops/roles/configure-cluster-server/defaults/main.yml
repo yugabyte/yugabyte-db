@@ -67,3 +67,4 @@ process_specific_gflags:
     webserver_interface: "{{ private_ip }}"
     cql_proxy_bind_address: "{{ private_ip }}:{{ cql_proxy_rpc_port }}"
     redis_proxy_bind_address: "{{ private_ip }}:{{ redis_proxy_rpc_port }}"
+systemd_option: false
