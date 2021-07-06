@@ -133,7 +133,7 @@ public class UniverseController extends AuthenticatedController {
     return YWResults.withData(universeCRUDHandler.list(customer));
   }
 
-  @ApiOperation(value = "getUniverse", response = UniverseResp.class)
+  @ApiOperation(value = "getUniverse", response = UniverseResp.class, nickname = "getUniverse")
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);

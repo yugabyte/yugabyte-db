@@ -74,7 +74,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "getCustomer", response = Customer.class)
+  @ApiOperation(value = "getCustomer", response = Customer.class, nickname = "getCustomer")
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
