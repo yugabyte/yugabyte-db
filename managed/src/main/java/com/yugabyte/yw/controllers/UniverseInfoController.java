@@ -22,6 +22,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.HealthCheck.Details;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -164,7 +166,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    List<String> detailsList = universeInfoHandler.healthCheck(universeUUID);
+    List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
     return YWResults.withData(detailsList);
   }
 
