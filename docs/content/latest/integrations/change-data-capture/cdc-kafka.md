@@ -33,13 +33,13 @@ showAsideToc: true
 
 </ul>
 
-You can enable a YugabyteDB cluster to use the change data capture [(CDC)](../../../architecture/cdc-architecture) API to send data changes to Apache Kafka.
+You can enable a YugabyteDB cluster to use the change data capture [(CDC)](../../../architecture/docdb-replication/change-data-capture/) API to send data changes to Apache Kafka.
 
 ## Prerequisites
 
 ### YugabyteDB
 
-You can create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../../manual-deployment/).
+You can create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../../../deploy/manual-deployment/).
 
 ### Java
 
