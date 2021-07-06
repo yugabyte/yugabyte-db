@@ -387,6 +387,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const TableName name() const;
 
   bool is_running() const;
+  bool is_deleted() const;
 
   std::string ToString() const override;
   std::string ToStringWithState() const;

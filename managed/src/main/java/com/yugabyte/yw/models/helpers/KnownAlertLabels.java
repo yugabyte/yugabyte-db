@@ -11,6 +11,7 @@
 package com.yugabyte.yw.models.helpers;
 
 public enum KnownAlertLabels {
+  GROUP_UUID,
   DEFINITION_UUID,
   DEFINITION_NAME,
   DEFINITION_ACTIVE,
@@ -22,7 +23,8 @@ public enum KnownAlertLabels {
   TARGET_TYPE,
   ERROR_CODE,
   ALERT_TYPE,
-  ALERT_STATE;
+  ALERT_STATE,
+  SEVERITY;
 
   public String labelName() {
     return name().toLowerCase();

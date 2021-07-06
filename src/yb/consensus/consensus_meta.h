@@ -36,6 +36,7 @@
 #include <string>
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
@@ -106,6 +107,11 @@ class ConsensusMetadata {
   // Accessors for committed configuration.
   const RaftConfigPB& committed_config() const;
   void set_committed_config(const RaftConfigPB& config);
+
+  // Accessors for split_parent_tablet_id.
+  bool has_split_parent_tablet_id() const;
+  const TabletId& split_parent_tablet_id() const;
+  void set_split_parent_tablet_id(const TabletId& split_parent_tablet_id);
 
   // Returns whether a pending configuration is set.
   bool has_pending_config() const;

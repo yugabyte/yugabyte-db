@@ -50,4 +50,6 @@ extern Oid GetNewRelFileNode(Oid reltablespace, Relation pg_class,
 extern Oid GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
 				  char relpersistence);
 
+extern Oid GetRowTypeOidFromRelOptions(List *relOptions);
+
 #endif							/* CATALOG_H */

@@ -37,7 +37,6 @@
 #include "commands/event_trigger.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
-#include "commands/tablegroup.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -64,6 +63,9 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
+#include "catalog/pg_database.h"
+#include "commands/tablegroup.h"
 #include "pg_yb_utils.h"
 
 /* non-export function prototypes */
@@ -367,6 +369,9 @@ DefineIndex(Oid relationId,
 	int			i;
 	bool		is_indexed_table_colocated = false;
 
+	Oid			databaseId;
+	bool		relIsShared;
+
 	/*
 	 * count key attributes in index
 	 */
@@ -395,15 +400,24 @@ DefineIndex(Oid relationId,
 						INDEX_MAX_KEYS)));
 
 	/*
+	 * Opening the relation under AccessShareLock first, just to get access to
+	 * its metadata. Stronger lock will be taken later.
+	 */
+	rel = heap_open(relationId, AccessShareLock);
+
+	databaseId = YBCGetDatabaseOid(rel);
+	relIsShared = rel->rd_rel->relisshared;
+
+	/*
 	 * Get whether the indexed table is colocated.  This includes tables that
 	 * are colocated because they are part of a tablegroup with colocation.
 	 */
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YBIsPreparingTemplates() &&
-		IsYBRelationById(relationId))
+		IsYBRelation(rel))
 	{
-		HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
+		HandleYBStatus(YBCPgIsTableColocated(databaseId,
 											 relationId,
 											 &is_indexed_table_colocated));
 	}
@@ -424,7 +438,7 @@ DefineIndex(Oid relationId,
 	 * - indexes in nested DDL
 	 * - indexes whose indexed table is colocated (issue #6215)
 	 * - unique indexes
-	 * - system table indexes (implied by disallowing on bootstrap mode)
+	 * - system table indexes
 	 * TODO(jason): check whether it's even possible to come here with
 	 * concurrent true and
 	 * - bootstrap mode
@@ -432,8 +446,9 @@ DefineIndex(Oid relationId,
 	 * - primary index
 	 */
 	if (stmt->primary ||
-		!IsYBRelationById(relationId) ||
-		IsBootstrapProcessingMode())
+		!IsYBRelation(rel) ||
+		IsBootstrapProcessingMode() ||
+		IsCatalogRelation(rel))
 		stmt->concurrent = false;
 	/*
 	 * Use fast path create index when in nested DDL.  This is desired
@@ -463,7 +478,7 @@ DefineIndex(Oid relationId,
 	 * functions will need to be updated, too.
 	 */
 	lockmode = stmt->concurrent ? ShareUpdateExclusiveLock : ShareLock;
-	rel = heap_open(relationId, lockmode);
+	LockRelationOid(relationId, lockmode);
 
 	/*
 	 * Ensure that system tables don't go through online schema change.  This
@@ -558,6 +573,21 @@ DefineIndex(Oid relationId,
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_SCHEMA,
 						   get_namespace_name(namespaceId));
+
+		/*
+		 * If not superuser, ensure having CREATE privileges over template1 -
+		 * this is where DocDB would actually store the shared index.
+		 */
+		if (!superuser() && relIsShared)
+		{
+			AclResult	aclresult;
+
+			aclresult = pg_database_aclcheck(TemplateDbOid, GetUserId(), ACL_CREATE);
+
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, OBJECT_DATABASE,
+							   get_database_name(TemplateDbOid));
+		}
 	}
 
 	/*
@@ -679,7 +709,7 @@ DefineIndex(Oid relationId,
 	 * hack but seems simpler than marking them in the BKI commands.  On the
 	 * other hand, if it's not shared, don't allow it to be placed there.
 	 */
-	if (rel->rd_rel->relisshared)
+	if (relIsShared)
 		tablespaceId = GLOBALTABLESPACE_OID;
 	else if (tablespaceId == GLOBALTABLESPACE_OID)
 		ereport(ERROR,
@@ -1001,9 +1031,13 @@ DefineIndex(Oid relationId,
 	 * step also actually builds the index, except if caller requested not to
 	 * or in concurrent mode, in which case it'll be done later, or doing a
 	 * partitioned index (because those don't have storage).
+	 *
+	 * YB NOTE:
+	 * We don't create constraints for system relation indexes during YSQL upgrade,
+	 * to simulate initdb behaviour.
 	 */
 	flags = constr_flags = 0;
-	if (stmt->isconstraint)
+	if (stmt->isconstraint && !(IsYBRelation(rel) && IsYsqlUpgrade && IsCatalogRelation(rel)))
 		flags |= INDEX_CREATE_ADD_CONSTRAINT;
 	if (skip_build || stmt->concurrent || partitioned)
 		flags |= INDEX_CREATE_SKIP_BUILD;
@@ -1327,7 +1361,7 @@ DefineIndex(Oid relationId,
 	/*
 	 * Update the pg_index row to mark the index as ready for inserts.
 	 */
-	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY);
+	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY, relIsShared);
 
 	elog(LOG, "committing pg_index tuple with indisready=true");
 	/*
@@ -1350,12 +1384,12 @@ DefineIndex(Oid relationId,
 	/* TODO(jason): handle exclusion constraints, possibly not here. */
 
 	/* Do backfill. */
-	HandleYBStatus(YBCPgBackfillIndex(MyDatabaseId, indexRelationId));
+	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
 	 */
-	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_VALID);
+	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_VALID, relIsShared);
 
 	/*
 	 * The pg_index update will cause backends (including this one) to update
@@ -1483,7 +1517,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Relation rel = RelationIdGetRelation(relId);
 		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
 		if (IsYBRelation(rel))
-			HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
+			HandleYBStatus(YBCPgIsTableColocated(YBCGetDatabaseOid(rel),
 												 relId,
 												 &colocated));
 		RelationClose(rel);
@@ -1659,7 +1693,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (attribute->ordering != SORTBY_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("including column does not support ASC/DESC options")));
+						 errmsg("including column does not support ASC/DESC/HASH options")));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
@@ -1816,7 +1850,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (attribute->ordering != SORTBY_DEFAULT)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("access method \"%s\" does not support ASC/DESC options",
+							 errmsg("access method \"%s\" does not support ASC/DESC/HASH options",
 									accessMethodName)));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
 					ereport(ERROR,

@@ -52,6 +52,10 @@ public enum TaskType {
 
   ReplaceRootVolume("subtasks.ReplaceRootVolume"),
 
+  ChangeInstanceType("subtasks.ChangeInstanceType"),
+
+  PersistResizeNode("subtasks.PersistResizeNode"),
+
   UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),

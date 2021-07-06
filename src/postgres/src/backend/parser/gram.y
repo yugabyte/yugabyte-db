@@ -151,7 +151,7 @@ typedef struct ImportQual
 	ybc_not_support(pos, yyscanner, feature " not supported yet", issue)
 
 #define parser_ybc_not_support_in_templates(pos, feature) \
-	ybc_not_support_in_templates(pos, yyscanner, feature " not supported yet in template0/template1")
+	ybc_not_support_in_templates(pos, yyscanner, feature " is not supported in template0/template1 yet")
 
 #define parser_ybc_beta_feature(pos, feature, has_own_flag) \
 	check_beta_feature(pos, yyscanner, has_own_flag ? "FLAGS_ysql_beta_feature_" feature : NULL, feature)
@@ -3719,7 +3719,8 @@ ColConstraint:
 			| ConstraintAttr						{ $$ = $1; }
 			| COLLATE any_name
 				{
-					parser_ybc_signal_unsupported(@1, "COLLATE", 1127);
+					if (!YBIsCollationEnabled())
+						parser_ybc_signal_unsupported(@1, "COLLATE", 1127);
 					/*
 					 * Note: the CollateClause is momentarily included in
 					 * the list built by ColQualList, but we split it out
@@ -6297,7 +6298,8 @@ DefineStmt:
 				}
 			| CREATE COLLATION any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE COLLATION");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "CREATE COLLATION");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_COLLATION;
 					n->args = NIL;
@@ -17414,7 +17416,7 @@ ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg)
 		restricted = YBIsUsingYBParser() && YBIsPreparingTemplates();
 	}
 
-	if (restricted)
+	if (restricted && !IsYsqlUpgrade)
 	{
 		raise_feature_not_supported(pos, yyscanner, msg, -1);
 	}
