@@ -488,6 +488,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
       params.setProperty("processType", taskType.toString());
       params.gflags = gflags;
+      params.useSystemd = userIntent.useSystemd;
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
@@ -580,6 +581,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -592,6 +594,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.placementUuid = node.placementUuid;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
+      params.useSystemd = userIntent.useSystemd;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -699,6 +702,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       fillSetupParamsForNode(params, userIntent, node);
+      params.useSystemd = userIntent.useSystemd;
       params.reprovision = reprovision;
 
       // Create the Ansible task to setup the server.
@@ -773,6 +777,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.rootCA = taskParams().rootCA;
       params.clientRootCA = taskParams().clientRootCA;
       params.enableYEDIS = userIntent.enableYEDIS;
+      params.useSystemd = userIntent.useSystemd;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
