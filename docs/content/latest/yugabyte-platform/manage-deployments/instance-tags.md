@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: instance-tags
-    parent: configure-yugabyte-platform
-    weight: 
+    parent: manage-deployments
+    weight: 80
 isTocNested: true
 showAsideToc: true
 ---
