@@ -3937,6 +3937,17 @@ Result<TableDescription> CatalogManager::DescribeTable(
   return result;
 }
 
+Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
+  RSTATUS_DCHECK_EQ(table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Expected YSQL table, got: $0", table_info->GetTableType()));
+
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
+  const uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
+  const uint32_t relnamespace_oid = VERIFY_RESULT(
+      sys_catalog_->ReadPgClassRelnamespace(database_oid, table_oid));
+  return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
+}
+
 // Truncate a Table.
 Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
                                      TruncateTableResponsePB* resp,
