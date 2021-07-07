@@ -1237,6 +1237,14 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
   return true;
 }
 
+namespace {
+
+bool IsDefinitelyPermanentError(const Status& s) {
+  return s.IsInvalidArgument() || s.IsNotFound();
+}
+
+} // namespace
+
 // ============================================================================
 //  Class AsyncGetTabletSplitKey.
 // ============================================================================
@@ -1254,6 +1262,21 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
     LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
                              << ") failed for tablet " << tablet_id() << " with error code "
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
+    if (IsDefinitelyPermanentError(s) || s.IsIllegalState()) {
+      // It can happen that tablet leader has completed post-split compaction after previous split,
+      // but followers have not yet completed post-split compaction.
+      // Catalog manager decides to split again and sends GetTabletSplitKey RPC, but tablet leader
+      // changes due to some reason and new tablet leader is not yet compacted.
+      // In this case we get IllegalState error and we don't want to retry until post-split
+      // compaction happened on leader. Once post-split compaction is done, CatalogManager will
+      // resend RPC.
+      //
+      // Another case for IsIllegalState is trying to split a tablet that has all the data with
+      // the same hash_code or the same doc_key, in this case we also don't want to retry RPC
+      // automatically.
+      // See https://github.com/yugabyte/yugabyte-db/issues/9159.
+      TransitionToFailedState(state(), s);
+    }
   } else {
     VLOG_WITH_PREFIX(1)
         << "TS " << permanent_uuid() << ": got split key for tablet " << tablet_id();
@@ -1297,16 +1320,14 @@ AsyncSplitTablet::AsyncSplitTablet(
 void AsyncSplitTablet::HandleResponse(int attempt) {
   if (resp_.has_error()) {
     const Status s = StatusFromPB(resp_.error().status());
+    const TabletServerErrorPB::Code code = resp_.error().code();
+    LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": split (attempt " << attempt
+                             << ") failed for tablet " << tablet_id() << " with error code "
+                             << TabletServerErrorPB::Code_Name(code) << ": " << s;
     if (s.IsAlreadyPresent()) {
-      LOG_WITH_PREFIX(INFO) << "SplitTablet RPC for tablet " << req_.tablet_id()
-                            << " on TS " << permanent_uuid() << " returned already present: "
-                            << s;
       TransitionToCompleteState();
-    } else {
-      const TabletServerErrorPB::Code code = resp_.error().code();
-      LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": split (attempt " << attempt
-                              << ") failed for tablet " << tablet_id() << " with error code "
-                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
+    } else if (IsDefinitelyPermanentError(s)) {
+      TransitionToFailedState(state(), s);
     }
   } else {
     VLOG_WITH_PREFIX(1)
