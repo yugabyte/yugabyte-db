@@ -13,19 +13,25 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import javax.mail.MessagingException;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertManagerTest extends FakeDBApplication {
+
+  private static final String DEFAULT_EMAIL = "to@to.com";
 
   private static final String ALERT_ROUTE_NAME = "Test AlertRoute";
 
@@ -53,20 +59,17 @@ public class AlertManagerTest extends FakeDBApplication {
 
   private AlertNotificationReport report = new AlertNotificationReport();
 
+  private AlertRoute defaultRoute;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    defaultRoute = AlertRoute.createDefaultRoute(defaultCustomer.uuid);
     when(receiversManager.get(AlertReceiver.TargetType.Email.name())).thenReturn(emailReceiver);
 
     universe = ModelFactory.createUniverse();
     group = ModelFactory.createAlertDefinitionGroup(defaultCustomer, universe);
     definition = ModelFactory.createAlertDefinition(defaultCustomer, universe, group);
-
-    // Configuring default SMTP configuration.
-    SmtpData smtpData = new SmtpData();
-    when(emailHelper.getDestinations(defaultCustomer.uuid))
-        .thenReturn(Collections.singletonList("to@to.com"));
-    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(smtpData);
 
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
@@ -74,6 +77,9 @@ public class AlertManagerTest extends FakeDBApplication {
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
     am = new AlertManager(emailHelper, alertService, alertDefinitionGroupService, receiversManager);
+
+    when(emailHelper.getDestinations(defaultCustomer.getUuid()))
+        .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
   }
 
   @Test
@@ -127,11 +133,11 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Test
   public void testSendEmail_OwnAlertsReseted() {
+    UUID defaultReceiverUUID = defaultRoute.getReceivers().get(0);
     Alert amAlert =
         ModelFactory.createAlert(
             defaultCustomer, null, null, KnownAlertCodes.ALERT_MANAGER_FAILURE);
-    amAlert.setLabel(
-        KnownAlertLabels.TARGET_UUID, AlertManager.DEFAULT_ALERT_RECEIVER_UUID.toString());
+    amAlert.setLabel(KnownAlertLabels.TARGET_UUID, defaultReceiverUUID.toString());
     amAlert.setSendEmail(false);
     alertService.save(amAlert);
 
@@ -161,8 +167,6 @@ public class AlertManagerTest extends FakeDBApplication {
         AlertFilter.builder()
             .customerUuid(defaultCustomer.getUuid())
             .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-            .label(
-                KnownAlertLabels.TARGET_UUID, AlertManager.DEFAULT_ALERT_RECEIVER_UUID.toString())
             .build();
     List<Alert> alerts = alertService.list(alertFilter);
     assertEquals(0, alerts.size());
@@ -181,16 +185,13 @@ public class AlertManagerTest extends FakeDBApplication {
   public void testSendNotification_AlertWoDefinition_SendEmailOldManner()
       throws YWNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-
     am.sendNotification(alert, report);
-
     verify(emailReceiver, times(1)).sendNotification(eq(defaultCustomer), eq(alert), any());
   }
 
   @Test
   public void testSendNotification_NoRoutes() throws MessagingException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
-
     am.sendNotification(alert, report);
     verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
   }
@@ -200,8 +201,8 @@ public class AlertManagerTest extends FakeDBApplication {
       throws MessagingException, YWNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
-    AlertReceiver receiver1 = createEmailReceiver();
-    AlertReceiver receiver2 = createEmailReceiver();
+    AlertReceiver receiver1 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 1");
+    AlertReceiver receiver2 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 2");
     AlertRoute route =
         AlertRoute.create(
             defaultCustomer.uuid, ALERT_ROUTE_NAME, ImmutableList.of(receiver1, receiver2));
@@ -213,12 +214,51 @@ public class AlertManagerTest extends FakeDBApplication {
     verify(emailReceiver, times(2)).sendNotification(any(), any(), any());
   }
 
-  private AlertReceiver createEmailReceiver() {
-    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
-    params.continueSend = true;
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
+  @Test
+  public void testDefaultRoute_IsUsed() throws YWNotificationException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
 
-    return AlertReceiver.create(defaultCustomer.uuid, "Test AlertReceiver", params);
+    am.sendNotification(alert, report);
+    ArgumentCaptor<AlertReceiver> receiverCaptor = ArgumentCaptor.forClass(AlertReceiver.class);
+    verify(emailReceiver, times(1)).sendNotification(any(), any(), receiverCaptor.capture());
+
+    assertEquals("Email", AlertUtils.getJsonTypeName(receiverCaptor.getValue().getParams()));
+    AlertReceiverEmailParams params =
+        (AlertReceiverEmailParams) receiverCaptor.getValue().getParams();
+    assertNull(params.recipients);
+    assertTrue(params.defaultRecipients);
+  }
+
+  @Test
+  public void testDefaultRoute_EmptyRecipientsAlertResolved() throws YWNotificationException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
+    when(emailHelper.getDestinations(defaultCustomer.getUuid()))
+        .thenReturn(Collections.emptyList());
+
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
+            .targetState(Alert.State.CREATED, Alert.State.ACTIVE)
+            .build();
+    List<Alert> alerts = alertService.list(alertFilter);
+    assertEquals(0, alerts.size());
+
+    am.sendNotification(alert, report);
+    verify(emailReceiver, never()).sendNotification(any(), any(), any());
+
+    alerts = alertService.list(alertFilter);
+    assertEquals(1, alerts.size());
+    assertEquals(Alert.State.ACTIVE, alerts.get(0).getTargetState());
+    assertEquals(KnownAlertCodes.ALERT_MANAGER_FAILURE.name(), alerts.get(0).getErrCode());
+
+    // Restoring recipients.
+    when(emailHelper.getDestinations(defaultCustomer.getUuid()))
+        .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
+
+    am.sendNotification(alert, report);
+    verify(emailReceiver, times(1)).sendNotification(any(), any(), any());
+    alerts = alertService.list(alertFilter);
+    assertEquals(0, alerts.size());
   }
 }
