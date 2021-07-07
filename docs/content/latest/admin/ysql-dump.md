@@ -71,6 +71,9 @@ Create the dump in the specified character set encoding. By default, the dump is
 
 Send output to the specified file. This parameter can be omitted for file-based output formats, in which case the standard output is used.
 
+#### -m *addresses*, --masters=*addresses*
+Comma-separated list of YB-Master hosts and ports.
+
 #### -n *schema*, --schema=*schema*
 
 Dump only schemas matching *schema*; this selects both the schema itself, and all its contained objects. When this option is not specified, all non-system schemas in the target database will be dumped. Multiple schemas can be selected by writing multiple `-n|--schema` options. Also, the *schema* parameter is interpreted as a pattern according to the same rules used by the `ysqlsh \d` commands, so multiple schemas can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards.
@@ -92,9 +95,6 @@ Non-schema objects, such as blobs, are not dumped when `-n|--schema` is specifie
 Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [`-n|--schema`](#n-schema-schema-schema)` option. `-N|--exclude-schema` can be given more than once to exclude schemas matching any of several patterns.
 
 When both [`-n|--schema`](#n-schema-schema-schema)` and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one [`-n|--schema`](#n-schema-schema-schema)` option but no `-N|--exclude-schema` options. If `-N|--exclude-schema` appears without [`-n|--schema`](#n-schema-schema-schema)`, then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
-
-#### -m *addresses*, --exclude-schema=*addresses*
-Comma-separated list of YB-Master hosts and ports.
 
 #### -o, --oids
 
