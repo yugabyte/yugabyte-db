@@ -17,6 +17,8 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/master/catalog_entity_info.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -32,13 +34,18 @@ class SysCatalogWriter {
 
   ~SysCatalogWriter() = default;
 
-  template <class PersistentDataEntryClass>
-  CHECKED_STATUS MutateItem(const MetadataCowWrapper<PersistentDataEntryClass>* item,
+  // Disable for children of MetadataCowWrapper.
+  template <class Item>
+  CHECKED_STATUS MutateItem(const Item* item, QLWriteRequestPB::QLStmtType op_type) {
+    const auto& old_pb = item->old_pb();
+    const auto& new_pb = IsWrite(op_type) ? item->new_pb() : old_pb;
+    return DoMutateItem(Item::type(), item->id(), old_pb, new_pb, op_type);
+  }
+
+  template <class Item>
+  CHECKED_STATUS MutateItem(const scoped_refptr<Item>& item,
                             QLWriteRequestPB::QLStmtType op_type) {
-    const auto& old_pb = item->metadata().state().pb;
-    const auto& new_pb = IsWrite(op_type) ? item->metadata().dirty().pb : old_pb;
-    return DoMutateItem(
-        PersistentDataEntryClass::type(), item->id(), old_pb, new_pb, op_type);
+    return MutateItem(item.get(), op_type);
   }
 
   // Insert a row into a Postgres sys catalog table.
@@ -77,11 +84,20 @@ CHECKED_STATUS FillSysCatalogWriteRequest(
     int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
     QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req);
 
+CHECKED_STATUS FillSysCatalogWriteRequest(
+    int8_t type, const std::string& item_id, const Slice& data,
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req);
+
+using EnumerationCallback = std::function<Status(const Slice& id, const Slice& data)>;
+
 // Enumerate sys catalog calling provided callback for all entries of the specified type in sys
 // catalog.
 CHECKED_STATUS EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
-    const std::function<Status(const Slice& id, const Slice& data)>& callback);
+    const EnumerationCallback& callback);
+CHECKED_STATUS EnumerateSysCatalog(
+    docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
+    const EnumerationCallback& callback);
 
 } // namespace master
 } // namespace yb

@@ -43,9 +43,12 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 using std::string;
 using std::unordered_set;
+
+DECLARE_string(flagfile);
 
 #ifdef COVERAGE_BUILD
 extern "C" void __gcov_flush(void);
@@ -114,6 +117,17 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
   }
 
   rpc.RespondSuccess();
+}
+
+void GenericServiceImpl::RefreshFlags(const RefreshFlagsRequestPB* req,
+                                      RefreshFlagsResponsePB* resp,
+                                      rpc::RpcContext rpc) {
+  if (yb::RefreshFlagsFile(FLAGS_flagfile)) {
+    rpc.RespondSuccess();
+  } else {
+    rpc.RespondFailure(STATUS_SUBSTITUTE(InternalError,
+                                         "Unable to refresh flagsfile: $0", FLAGS_flagfile));
+  }
 }
 
 void GenericServiceImpl::GetFlag(const GetFlagRequestPB* req,

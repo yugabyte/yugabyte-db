@@ -50,6 +50,7 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master_fwd.h"
@@ -71,6 +72,8 @@ DEFINE_int32(
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
+
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 namespace yb {
 
@@ -201,7 +204,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
   string redirect;
   // Lock the CatalogManager in a self-contained block, to prevent double-locking on callbacks.
   {
-    CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
 
     // If we are not the master leader, redirect the URL.
     if (!l.first_failed_status().ok()) {
@@ -661,6 +664,20 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(desc->uncompressed_sst_file_size());
 
+        jw.String("path_metrics");
+        jw.StartArray();
+        for(const auto& path_metric : desc->path_metrics()) {
+          jw.StartObject();
+          jw.String("path");
+          jw.String(path_metric.first);
+          jw.String("space_used");
+          jw.Uint64(path_metric.second.used_space);
+          jw.String("total_space_size");
+          jw.Uint64(path_metric.second.total_space);
+          jw.EndObject();
+        }
+        jw.EndArray();
+
         jw.String("read_ops_per_sec");
         jw.Double(desc->read_ops_per_sec());
 
@@ -774,8 +791,7 @@ void MasterPathHandlers::HandleHealthCheck(
     jw.String("under_replicated_tablets");
     jw.StartArray();
 
-    vector<scoped_refptr<TableInfo>> tables;
-    master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+    auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
     for (const auto& table : tables) {
       // Ignore tables that are neither user tables nor user indexes.
       // However there are a bunch of system tables that still need to be investigated:
@@ -853,8 +869,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
 
   bool has_tablegroups = master_->catalog_manager()->HasTablegroups();
 
@@ -866,16 +881,16 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     ordered_tables[i] = std::make_unique<StringMap>();
   }
 
-  TableType table_cat;
-  for (const scoped_refptr<TableInfo>& table : tables) {
+  for (const auto& table : tables) {
     auto l = table->LockForRead();
-    if (!l->data().is_running()) {
+    if (!l->is_running()) {
       continue;
     }
 
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;
 
+    TableType table_cat;
     // Determine the table category. YugaWare tables should be displayed as system tables.
     if (is_platform) {
       table_cat = kSystemTable;
@@ -895,7 +910,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     }
 
     string table_uuid = table->id();
-    string state = SysTablesEntryPB_State_Name(l->data().pb.state());
+    string state = SysTablesEntryPB_State_Name(l->pb.state());
     Capitalize(&state);
     string ysql_table_oid;
     string ysql_parent_oid;
@@ -921,9 +936,9 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                       "<td>$2</td>" \
                       "<td>$3</td>" \
                       "<td>$4</td>",
-                      EscapeForHtmlToString(l->data().name()),
+                      EscapeForHtmlToString(l->name()),
                       state,
-                      EscapeForHtmlToString(l->data().pb.state_msg()),
+                      EscapeForHtmlToString(l->pb.state_msg()),
                       EscapeForHtmlToString(table_uuid),
                       ysql_table_oid);
 
@@ -942,7 +957,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       ysql_table_oid = GetParentTableOid(table);
 
       // Insert a newline in id and name to wrap long tablegroup text.
-      std::string parent_name = l->data().name();
+      std::string parent_name = l->name();
       display_info += Substitute(
                       "<td><a href=\"/table?id=$0\">$1</a></td>" \
                       "<td>$2</td>" \
@@ -952,7 +967,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                       EscapeForHtmlToString(table_uuid),
                       EscapeForHtmlToString(parent_name.insert(32, "\n")),
                       state,
-                      EscapeForHtmlToString(l->data().pb.state_msg()),
+                      EscapeForHtmlToString(l->pb.state_msg()),
                       EscapeForHtmlToString(table_uuid.insert(32, "\n")),
                       ysql_table_oid);
     } else {
@@ -963,9 +978,9 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                       "<td>$2</td>" \
                       "<td>$3</td>" \
                       "<td>$4</td>",
-                      EscapeForHtmlToString(l->data().name()),
+                      EscapeForHtmlToString(l->name()),
                       state,
-                      EscapeForHtmlToString(l->data().pb.state_msg()),
+                      EscapeForHtmlToString(l->pb.state_msg()),
                       EscapeForHtmlToString(table_uuid),
                       ysql_table_oid);
     }
@@ -1075,37 +1090,56 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   {
     auto l = table->LockForRead();
     keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
-    table_name = l->data().name();
+    table_name = l->name();
     *output << "<h1>Table: " << EscapeForHtmlToString(TableLongName(keyspace_name, table_name))
             << " ("<< table->id() <<") </h1>\n";
 
     *output << "<table class='table table-striped'>\n";
-    *output << "  <tr><td>Version:</td><td>" << l->data().pb.version() << "</td></tr>\n";
+    *output << "  <tr><td>Version:</td><td>" << l->pb.version() << "</td></tr>\n";
 
-    *output << "  <tr><td>Type:</td><td>" << TableType_Name(l->data().pb.table_type())
+    *output << "  <tr><td>Type:</td><td>" << TableType_Name(l->pb.table_type())
             << "</td></tr>\n";
 
-    string state = SysTablesEntryPB_State_Name(l->data().pb.state());
+    string state = SysTablesEntryPB_State_Name(l->pb.state());
     Capitalize(&state);
     *output << "  <tr><td>State:</td><td>"
             << state
-            << EscapeForHtmlToString(l->data().pb.state_msg())
+            << EscapeForHtmlToString(l->pb.state_msg())
             << "</td></tr>\n";
 
-    // TODO(deepthi.srinivasan): For now, pass empty tablespace_id as tablespaces feature
-    // is disabled anyway. Later when tablespaces are enabled, create and call the
-    // appropriate API to display placement information pertaining to tablespaces.
-    auto replication_info = CHECK_RESULT(
-      master_->catalog_manager()->GetTableReplicationInfo(
-        l->data().pb.replication_info(), "" /* tablespace_id */));
-    *output << "  <tr><td>Replication Info:</td><td>"
-            << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
-            << "  </td></tr>\n";
-    *output << "</table>\n";
+    TablespaceId tablespace_id;
+    auto result = master_->catalog_manager()->GetTablespaceForTable(table);
+    if (result.ok()) {
+      // If the table is associated with a tablespace, display tablespace, otherwise
+      // just display replication info.
+      if (result.get()) {
+        tablespace_id = result.get().value();
+        *output << "  <tr><td>Tablespace OID:</td><td>"
+                << GetPgsqlTablespaceOid(tablespace_id)
+                << "  </td></tr>\n";
+      }
+      auto replication_info = CHECK_RESULT(master_->catalog_manager()->GetTableReplicationInfo(
+            l->pb.replication_info(), tablespace_id));
+      *output << "  <tr><td>Replication Info:</td><td>"
+              << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
+              << "  </td></tr>\n </table>\n";
+    } else {
+      // The table was associated with a tablespace, but that tablespace was not found.
+      *output << "  <tr><td>Replication Info:</td><td>";
+      if (FLAGS_ysql_tablespace_info_refresh_secs > 0) {
+        *output << "  Tablespace information not available now, please try again after "
+                << FLAGS_ysql_tablespace_info_refresh_secs << " seconds. ";
+      } else {
+        *output << "  Tablespace information is not available as the periodic task "
+                << "  used to refresh it is disabled.";
 
-    Status s = SchemaFromPB(l->data().pb.schema(), &schema);
+      }
+      *output << "  </td></tr>\n </table>\n";
+    }
+
+    Status s = SchemaFromPB(l->pb.schema(), &schema);
     if (s.ok()) {
-      s = PartitionSchema::FromPB(l->data().pb.partition_schema(), schema, &partition_schema);
+      s = PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     }
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
@@ -1128,16 +1162,16 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     auto l = tablet->LockForRead();
 
     Partition partition;
-    Partition::FromPB(l->data().pb.partition(), &partition);
+    Partition::FromPB(l->pb.partition(), &partition);
 
-    string state = SysTabletsEntryPB_State_Name(l->data().pb.state());
+    string state = SysTabletsEntryPB_State_Name(l->pb.state());
     Capitalize(&state);
     *output << Substitute(
         "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
         tablet->tablet_id(),
         EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
         state,
-        EscapeForHtmlToString(l->data().pb.state_msg()),
+        EscapeForHtmlToString(l->pb.state_msg()),
         RaftConfigToHtml(sorted_locations, tablet->tablet_id()));
   }
   *output << "</table>\n";
@@ -1148,8 +1182,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
                                          Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
   *output << "<h3>Active Tasks</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Task Name</th><th>State</th><th>Start "
@@ -1205,8 +1238,7 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  std::vector<TableInfoPtr> tables;
-  master_->catalog_manager()->GetAllTables(&tables, /* includeOnlyRunningTables */ true);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   for (const auto& table : tables) {
     if (master_->catalog_manager()->IsSystemTable(*table.get())) {
@@ -1374,7 +1406,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
   if (!l.first_failed_status().ok()) {
     // We are not the leader master, retrieve the response from the leader master.
     RedirectToLeader(req, resp);
@@ -1389,8 +1421,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   }
 
   // Get all the tables.
-  vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables, true /* includeOnlyRunningTables */);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   // Get the list of user tables.
   vector<scoped_refptr<TableInfo> > user_tables;
@@ -1511,7 +1542,8 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
   (*output) << "<table class='table'>\n";
   (*output) << "  <tr>\n"
             << "    <th>Server</th>\n"
-            << "    <th>RAFT Role</th>"
+            << "    <th>RAFT Role</th>\n"
+            << "    <th>Uptime</th>\n"
             << "    <th>Details</th>\n"
             << "  </tr>\n";
 
@@ -1543,6 +1575,8 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
       reg_text = Substitute("<b>$0</b>", reg_text);
     }
     string raft_role = master.has_role() ? RaftPeerPB_Role_Name(master.role()) : "N/A";
+    auto delta = Env::Default()->NowMicros() - master.instance_id().start_time_us();
+    string uptime = UptimeString(MonoDelta::FromMicroseconds(delta).ToSeconds());
     string cloud = reg.cloud_info().placement_cloud();
     string region = reg.cloud_info().placement_region();
     string zone = reg.cloud_info().placement_zone();
@@ -1550,6 +1584,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     *output << "  <tr>\n"
             << "    <td>" << reg_text << "</td>\n"
             << "    <td>" << raft_role << "</td>\n"
+            << "    <td>" << uptime << "</td>\n"
             << "    <td><div><span class='yb-overview'>CLOUD: </span>" << cloud << "</div>\n"
             << "        <div><span class='yb-overview'>REGION: </span>" << region << "</div>\n"
             << "        <div><span class='yb-overview'>ZONE: </span>" << zone << "</div>\n"
@@ -1745,7 +1780,7 @@ void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
   JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
   {
-    CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
 
     // If we are not the master leader.
     if (!l.first_failed_status().ok()) {
@@ -1827,6 +1862,205 @@ void MasterPathHandlers::HandleVersionInfoDump(
   jw.Protobuf(version_info);
 }
 
+void MasterPathHandlers::HandlePrettyLB(
+  const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+
+  std::stringstream *output = &resp->output;
+
+  // Don't render if there are more than 5 tservers.
+  vector<std::shared_ptr<TSDescriptor>> descs;
+  const auto& ts_manager = master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
+
+  if (descs.size() > 5) {
+    *output << "<div class='alert alert-warning'>"
+            << "Current configuration has more than 5 tservers. Not recommended"
+            << " to view this pretty display as it might not be rendered properly."
+            << "</div>";
+    return;
+  }
+
+  // Don't render if there is a lot of placement nesting.
+  unordered_set<std::string> clouds;
+  unordered_set<std::string> regions;
+  // Map of zone -> {tserver UUIDs}
+  // e.g. zone1 -> {ts1uuid, ts2uuid, ts3uuid}.
+  unordered_map<std::string, vector<std::string>> zones;
+  for (const auto& desc : descs) {
+    std::string uuid = desc->permanent_uuid();
+    std::string cloud = desc->GetCloudInfo().placement_cloud();
+    std::string region = desc->GetCloudInfo().placement_region();
+    std::string zone = desc->GetCloudInfo().placement_zone();
+
+    zones[zone].push_back(uuid);
+    clouds.insert(cloud);
+    regions.insert(region);
+  }
+
+  // If the we have more than 1 cloud or more than 1 region skip this page
+  // as currently it might not diplay prettily.
+  if (clouds.size() > 1 || regions.size() > 1 || zones.size() > 3) {
+    *output << "<div class='alert alert-warning'>"
+            << "Current placement has more than 1 cloud provider or 1 region or 3 zones. "
+            << "Not recommended to view this pretty display as it might not be rendered properly."
+            << "</div>";
+    return;
+  }
+
+  // Get the TServerTree.
+  // A map of tserver -> all tables with their tablets.
+  TServerTree tserver_tree;
+  Status s = CalculateTServerTree(&tserver_tree);
+  if (!s.ok()) {
+    *output << "<div class='alert alert-warning'>"
+            << "Current placement has more than 4 tables. Not recommended"
+            << " to view this pretty display as it might not be rendered properly."
+            << "</div>";
+    return;
+  }
+
+  BlacklistSet blacklist = master_->catalog_manager()->BlacklistSetFromPB();
+
+  // A single zone.
+  int color_index = 0;
+  unordered_map<std::string, std::string> tablet_colors;
+
+  *output << "<div class='row'>\n";
+  for (const auto& zone : zones) {
+    // Panel for this Zone.
+    // Split the zones in proportion of the number of tservers in each zone.
+    *output << Substitute("<div class='col-lg-$0'>\n", 12*zone.second.size()/descs.size());
+
+    // Change the display of the panel if all tservers in this zone are down.
+    bool all_tservers_down = true;
+    for (const auto& tserver : zone.second) {
+      std::shared_ptr<TSDescriptor> desc;
+      if (!master_->ts_manager()->LookupTSByUUID(tserver, &desc)) {
+        continue;
+      }
+      all_tservers_down = all_tservers_down && !desc->IsLive();
+    }
+    string zone_panel_display = "panel-success";
+    if (all_tservers_down) {
+      zone_panel_display = "panel-danger";
+    }
+
+    *output << Substitute("<div class='panel $0'>\n", zone_panel_display);
+    *output << Substitute("<div class='panel-heading'>"
+                          "<h6 class='panel-title'>Zone: $0</h6></div>\n", zone.first);
+    *output << "<div class='row'>\n";
+
+    // Tservers for this panel.
+    for (const auto& tserver : zone.second) {
+      // Split tservers equally.
+      *output << Substitute("<div class='col-lg-$0'>\n", 12/(zone.second.size()));
+      std::shared_ptr<TSDescriptor> desc;
+      if (!master_->ts_manager()->LookupTSByUUID(tserver, &desc)) {
+        continue;
+      }
+
+      // Get the state of tserver.
+      bool ts_live = desc->IsLive();
+      // Get whether tserver is blacklisted.
+      bool blacklisted = desc->IsBlacklisted(blacklist);
+      string panel_type = "panel-success";
+      string icon_type = "fa-check";
+      if (!ts_live || blacklisted) {
+        panel_type = "panel-danger";
+        icon_type = "fa-times";
+      }
+      *output << Substitute("<div class='panel $0' style='margin-bottom: 0px'>\n", panel_type);
+
+      // Point to the tablet servers link.
+      TSRegistrationPB reg = desc->GetRegistration();
+      string host_port = GetHttpHostPortFromServerRegistration(reg.common());
+      *output << Substitute("<div class='panel-heading'>"
+                            "<h6 class='panel-title'><a href='http://$0'>TServer - $0    "
+                            "<i class='fa $1'></i></a></h6></div>\n",
+                            HostPortPBToString(reg.common().http_addresses(0)),
+                            icon_type);
+
+      *output << "<table class='table table-borderless table-hover'>\n";
+      for (const auto& table : tserver_tree[tserver]) {
+        *output << Substitute("<tr height='200px'>\n");
+        // Display the table name.
+        string tname = master_->catalog_manager()->GetTableInfo(table.first)->name();
+        // Link the table name to the corresponding table page on the master.
+        ServerRegistrationPB reg;
+        if (!master_->GetMasterRegistration(&reg).ok()) {
+          continue;
+        }
+        *output << Substitute("<td><h4><a href='http://$0/table?id=$1'>"
+                              "<i class='fa fa-table'></i>    $2</a></h4>\n",
+                              HostPortPBToString(reg.http_addresses(0)),
+                              table.first,
+                              tname);
+        // Replicas of this table.
+        for (const auto& replica : table.second) {
+          // All the replicas of the same tablet will have the same color, so
+          // look it up in the map if assigned, otherwise assign one from the pool.
+          if (tablet_colors.find(replica.tablet_id) == tablet_colors.end()) {
+            tablet_colors[replica.tablet_id] = kYBColorList[color_index];
+            color_index = (color_index + 1)%kYBColorList.size();
+          }
+
+          // Leaders and followers have different formatting.
+          // Leaders need to stand out.
+          if (replica.role == consensus::RaftPeerPB_Role_LEADER) {
+            *output << Substitute("<button type='button' class='btn btn-default'"
+                                "style='background-image:none; border: 6px solid $0; "
+                                "font-weight: bolder'>"
+                                "L</button>\n",
+                                tablet_colors[replica.tablet_id]);
+          } else {
+            *output << Substitute("<button type='button' class='btn btn-default'"
+                                "style='background-image:none; border: 4px dotted $0'>"
+                                "F</button>\n",
+                                tablet_colors[replica.tablet_id]);
+          }
+        }
+        *output << "</td>\n";
+        *output << "</tr>\n";
+      }
+      *output << "</table><!-- tserver-level-table -->\n";
+      *output << "</div><!-- tserver-level-panel -->\n";
+      *output << "</div><!-- tserver-level-spacing -->\n";
+    }
+    *output << "</div><!-- tserver-level-row -->\n";
+    *output << "</div><!-- zone-level-panel -->\n";
+    *output << "</div><!-- zone-level-spacing -->\n";
+  }
+  *output << "</div><!-- zone-level-row -->\n";
+}
+
+void MasterPathHandlers::HandleLBStatistics(
+  const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+
+  // Displays a table of all tables for which load balancing has been skipped.
+  std::stringstream *output = &resp->output;
+  const auto tables = master_->catalog_manager()
+                              ->load_balancer()->GetAllTablesLoadBalancerSkipped();
+
+  *output << "<h3>Load balance skipped Tables</h3>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Table Type</th></tr>\n";
+
+  for (const auto& table : tables) {
+    if (table->is_system()) {
+      continue;
+    }
+    *output << Substitute(
+        "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><td>$3</td></tr>\n",
+        EscapeForHtmlToString(table->id()),
+        EscapeForHtmlToString(table->name()),
+        EscapeForHtmlToString(table->id()),
+        EscapeForHtmlToString(TableType_Name(table->GetTableType())));
+  }
+
+  *output << "</table>\n";
+
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -1881,6 +2115,16 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleTabletReplicasPage, this, _1, _2);
   server->RegisterPathHandler(
       "/tablet-replication", "Tablet Replication Health",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
+  cb = std::bind(&MasterPathHandlers::HandleLBStatistics, this, _1, _2);
+  server->RegisterPathHandler(
+      "/lb-statistics", "Load balancer Statistics",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
+  cb = std::bind(&MasterPathHandlers::HandlePrettyLB, this, _1, _2);
+  server->RegisterPathHandler(
+      "/pretty-lb", "Load balancer Pretty Picture",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
 
@@ -1962,8 +2206,7 @@ string MasterPathHandlers::RegistrationToHtml(
 }
 
 void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
-  vector<scoped_refptr<TableInfo>> tables;
-  master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
     if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
       // will be taken care of by colocated parent table
@@ -1996,6 +2239,49 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
     }
   }
 }
+
+Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
+
+  int count = 0;
+  for (const auto& table : tables) {
+    if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
+    master_->catalog_manager()->IsColocatedUserTable(*table)) {
+      continue;
+    }
+
+    count++;
+    if (count > 4) {
+      return STATUS(NotSupported, "Not supported for more than 4 tables.");
+    }
+  }
+
+  for (const auto& table : tables) {
+    if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
+    master_->catalog_manager()->IsColocatedUserTable(*table)) {
+      // only display user created tables that are not colocated.
+      continue;
+    }
+
+    TabletInfos tablets;
+    table->GetAllTablets(&tablets);
+
+    for (const auto& tablet : tablets) {
+      auto replica_locations = tablet->GetReplicaLocations();
+      for (const auto& replica : *replica_locations) {
+        (*tserver_tree)[replica.first][tablet->table()->id()].emplace_back(
+          replica.second.role,
+          tablet->tablet_id()
+        );
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+
+
 
 } // namespace master
 } // namespace yb

@@ -76,6 +76,11 @@ enum TabletDataState {
   // - add integration test for remote bootstrap from source split tablet before/after
   // follower_unavailable_considered_failed_sec.
   TABLET_DATA_SPLIT_COMPLETED = 4;
+
+  // This tablet has been initialized as a subtablet of another tablet undergoing a split. Once this
+  // tablet is ready to assume responsibility for it's portion of the split keyspace, it will be
+  // moved to the TABLET_DATA_READY state.
+  TABLET_DATA_INIT_STARTED = 5;
 }
 
 // Table information.
@@ -212,6 +217,17 @@ message RaftGroupReplicaSuperBlockPB {
 
   // Is this tablet currently a consumer tablet for 2dc replication.
   optional bool is_under_twodc_replication = 27;
+
+  // Reject client queries (read and write) to this tablet like it does not present.
+  optional bool hidden = 28;
+
+  // Picked at master while enabling writes after restoration.
+  optional fixed64 restoration_hybrid_time = 32;
+
+  optional OpIdPB split_op_id = 29;
+  repeated bytes split_child_tablet_ids = 30;
+
+  repeated bytes active_restorations = 31;
 }
 
 message FilePB {

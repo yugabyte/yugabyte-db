@@ -79,11 +79,41 @@ class Executor : public QLExprExecutor {
                     StatementExecutedCallback cb);
   void ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb);
 
+  void Shutdown();
+
+  static constexpr int64_t kAsyncCallsIdle = -1;
+
  private:
+  class ResetAsyncCalls {
+   public:
+    explicit ResetAsyncCalls(std::atomic<int64_t>* num_async_calls);
+
+    ResetAsyncCalls(const ResetAsyncCalls&) = delete;
+    void operator=(const ResetAsyncCalls&) = delete;
+
+    ResetAsyncCalls(ResetAsyncCalls&& rhs);
+    void operator=(ResetAsyncCalls&& rhs);
+
+    bool empty() const {
+      return num_async_calls_ == nullptr;
+    }
+
+    void Cancel();
+    void Perform();
+
+    ~ResetAsyncCalls();
+
+   private:
+    std::atomic<int64_t>* num_async_calls_;
+  };
+
+  ResetAsyncCalls PrepareExecuteAsync();
+
+  bool HasAsyncCalls();
+
   //------------------------------------------------------------------------------------------------
   // Currently, we don't yet have code generator into byte code, so the following ExecTNode()
   // functions are operating directly on the parse tree.
-
   // Execute a parse tree.
   CHECKED_STATUS Execute(const ParseTree& parse_tree, const StatementParameters& params);
 
@@ -184,16 +214,16 @@ class Executor : public QLExprExecutor {
 
   // Flush operations that have been applied and commit. If there is none, finish the statement
   // execution.
-  void FlushAsync();
+  void FlushAsync(ResetAsyncCalls* reset_async_calls);
 
   // Callback for FlushAsync.
-  void FlushAsyncDone(Status s, ExecContext* exec_context = nullptr);
+  void FlushAsyncDone(client::FlushStatus* s, ExecContext* exec_context = nullptr);
 
   // Callback for Commit.
   void CommitDone(Status s, ExecContext* exec_context);
 
   // Process async results from FlushAsync and Commit.
-  void ProcessAsyncResults(bool rescheduled = false);
+  void ProcessAsyncResults(bool rescheduled, ResetAsyncCalls* reset_async_calls);
 
   // Process async results from FlushAsync and Commit for a tnode. Returns true if there are new ops
   // being buffered to be flushed.
@@ -215,6 +245,13 @@ class Executor : public QLExprExecutor {
 
   // Append rows result.
   CHECKED_STATUS AppendRowsResult(RowsResult::SharedPtr&& rows_result);
+
+  // Read paging state from user's StatementParams.
+  Result<QueryPagingState*> LoadPagingStateFromUser(const PTSelectStmt* tnode,
+                                                    TnodeContext* tnode_context);
+
+  // When request does not need to be executed, create and return empty result (0 row) to users.
+  CHECKED_STATUS GenerateEmptyResult(const PTSelectStmt* tnode);
 
   // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
   Result<bool> FetchMoreRows(const PTSelectStmt* tnode,
@@ -249,10 +286,10 @@ class Executor : public QLExprExecutor {
                          QLValue *ql_value);
 
   // Invoke statement executed callback.
-  void StatementExecuted(const Status& s);
+  void StatementExecuted(const Status& s, ResetAsyncCalls* reset_async_calls);
 
   // Reset execution state.
-  void Reset();
+  void Reset(ResetAsyncCalls* reset_async_calls);
 
   //------------------------------------------------------------------------------------------------
   // Expression evaluation.
@@ -384,6 +421,10 @@ class Executor : public QLExprExecutor {
                                   const QLWriteRequestPB& req,
                                   TnodeContext* tnode_context);
 
+  int64_t num_async_calls() const {
+    return num_async_calls_.load(std::memory_order_acquire);
+  }
+
   //------------------------------------------------------------------------------------------------
   // Helper class to separate inter-dependent write operations.
   class WriteBatch {
@@ -391,7 +432,9 @@ class Executor : public QLExprExecutor {
     // Add a write operation. Returns true if it does not depend on another operation in the batch.
     // Returns false if it does and is not added. In that case, the operation needs to be deferred
     // until the dependent operation has been applied.
-    bool Add(const client::YBqlWriteOpPtr& op);
+    bool Add(const client::YBqlWriteOpPtr& op,
+             const TnodeContext* tnode_context,
+             ExecContext* exec_context);
 
     // Clear the batch.
     void Clear();
@@ -431,9 +474,11 @@ class Executor : public QLExprExecutor {
   // are applied using the corresponding transactional session in ExecContext.
   const client::YBSessionPtr session_;
 
-  // The number of outstanding async calls pending, the async error status and the mutex to protect
-  // its update.
-  std::atomic<int64_t> num_async_calls_ = {0};
+  // The number of outstanding async calls pending. 0 means that we are processing result of all
+  // calls, -1 (kAsyncCallsIdle) means that this executor is idle.
+  std::atomic<int64_t> num_async_calls_ = {kAsyncCallsIdle};
+
+  // The async error status and the mutex to protect its update.
   std::mutex status_mutex_;
   Status async_status_;
 
@@ -452,50 +497,37 @@ class Executor : public QLExprExecutor {
   // Whether this is a batch with statements that returns status.
   boost::optional<bool> returns_status_batch_opt_;
 
-  class ProcessAsyncResultsTask : public rpc::ThreadPoolTask {
+  class ExecutorTask : public rpc::ThreadPoolTask {
    public:
-    ProcessAsyncResultsTask& Bind(Executor* executor) {
-      executor_ = executor;
-      return *this;
-    }
+    ExecutorTask& Bind(Executor* executor, ResetAsyncCalls* reset_async_calls);
 
-    virtual ~ProcessAsyncResultsTask() {}
+    virtual ~ExecutorTask() = default;
 
    private:
-    void Run() override {
-      auto executor = executor_;
-      executor_ = nullptr;
-      executor->ProcessAsyncResults(true /* rescheduled */);
-    }
-
-    void Done(const Status& status) override {}
+    void Run() override;
+    void Done(const Status& status) override;
+    virtual void DoRun(Executor* executor, ResetAsyncCalls* reset_async_calls) = 0;
 
     Executor* executor_ = nullptr;
+    ResetAsyncCalls reset_async_calls_{nullptr};
+  };
+
+  class ProcessAsyncResultsTask : public ExecutorTask {
+   public:
+    void DoRun(Executor* executor, ResetAsyncCalls* reset_async_calls) override {
+      executor->ProcessAsyncResults(true /* rescheduled */, reset_async_calls);
+    }
   };
 
   friend class ProcessAsyncResultsTask;
 
   ProcessAsyncResultsTask process_async_results_task_;
 
-  class FlushAsyncTask : public rpc::ThreadPoolTask {
-   public:
-    FlushAsyncTask& Bind(Executor* executor) {
-      executor_ = executor;
-      return *this;
-    }
-
-    virtual ~FlushAsyncTask() {}
-
+  class FlushAsyncTask : public ExecutorTask {
    private:
-    void Run() override {
-      auto executor = executor_;
-      executor_ = nullptr;
-      executor->FlushAsync();
+    void DoRun(Executor* executor, ResetAsyncCalls* reset_async_calls) override {
+      executor->FlushAsync(reset_async_calls);
     }
-
-    void Done(const Status& status) override {}
-
-    Executor* executor_ = nullptr;
   };
 
   friend class FlushAsyncTask;

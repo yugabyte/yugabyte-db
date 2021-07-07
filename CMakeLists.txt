@@ -220,15 +220,7 @@ endif()
 if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "${YB_BUILD_TYPE}")
 elseif ("${COMPILER_FAMILY}" STREQUAL "clang")
-  if(NOT APPLE AND
-     (NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx" OR
-      "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0"))
-    # This must be a Clang third-party build where we use "uninstrumented" instead of
-    # "clang_uninstrumented" because everything is built with Clang.
-    set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
-  else()
-    set(THIRDPARTY_INSTRUMENTATION_TYPE "clang_uninstrumented")
-  endif()
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
 elseif ("${COMPILER_FAMILY}" STREQUAL "gcc")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
 else()
@@ -242,7 +234,7 @@ if (REBUILD_THIRDPARTY)
   set(BUILD_THIRDPARTY_ARGS --build-type ${THIRDPARTY_INSTRUMENTATION_TYPE})
   message("Invoking build_thirdparty.sh with these arguments: ${BUILD_THIRDPARTY_ARGS}")
   execute_process(
-    COMMAND ${YB_THIRDPARTY_DIR}/build_thirdparty.sh ${BUILD_THIRDPARTY_ARGS}
+    COMMAND ${YB_SRC_ROOT}/build-support/invoke_thirdparty_build.sh ${BUILD_THIRDPARTY_ARGS}
     RESULT_VARIABLE THIRDPARTY_SCRIPT_RESULT)
   if (NOT (${THIRDPARTY_SCRIPT_RESULT} EQUAL 0))
     message(FATAL_ERROR "Thirdparty was built unsuccessfully, terminating.")
@@ -257,12 +249,19 @@ if(NOT INCLUDE_COMPILER_INFO_EARLY)
   include(CompilerInfo)
 endif()
 
-# Generate a Clang compile_commands.json "compilation database" file for use
-# with various development tools, such as Vim's YouCompleteMe plugin.
+# Generate a compile_commands.json "compilation database" file.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
-if ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1" OR
-    "$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
-  set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+if (CMAKE_EXPORT_COMPILE_COMMANDS)
+  message("CMAKE_EXPORT_COMPILE_COMMANDS is already enabled, will export compile_commands.json.")
+elseif ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1")
+  message("The YB_EXPORT_COMPILE_COMMANDS environment variable is set to 1, will export "
+          "compile_commands.json.")
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+elseif ("$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
+  message("YB_RUN_AFFECTED_TESTS_ONLY is set to 1, will export compile_commands.json.")
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+else()
+  message("CMake will not export the compilation database")
 endif()
 
 # -------------------------------------------------------------------------------------------------
@@ -300,6 +299,7 @@ ADD_CXX_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
 ADD_CXX_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
 ADD_CXX_FLAGS("-DROCKSDB_LIB_IO_POSIX")
 ADD_CXX_FLAGS("-DSNAPPY")
+ADD_CXX_FLAGS("-DLZ4")
 ADD_CXX_FLAGS("-DZLIB")
 if ($ENV{YB_COMPILER_TYPE} STREQUAL "zapcc")
   ADD_CXX_FLAGS("-DYB_ZAPCC")
@@ -341,8 +341,9 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
-  # Remove this check when all Clang builds will use libc++.
-  if("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$" OR APPLE)
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "11.0.0")
+    # Clang versions earlier than 11 cannot correctly handle unique_lock with manual
+    # locking/unlocking.
     ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
     ADD_CXX_FLAGS("-Wthread-safety-analysis")
   endif()
@@ -506,14 +507,7 @@ set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
 if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   YB_SETUP_SANITIZER()
 elseif (NOT APPLE AND IS_CLANG)
-  # Special setup for Clang on Linux. This is not needed on macOS.
-  if (EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
-    YB_SETUP_CLANG("clang_uninstrumented")
-  else()
-    # Going forward, for third-party dependency builds where we are only using Clang to build
-   # everything, we will simply use the "uninstrumented" path instead.
-    YB_SETUP_CLANG("uninstrumented")
-  endif()
+  YB_SETUP_CLANG()
 endif()
 
 if (USING_LINUXBREW)
@@ -647,6 +641,7 @@ ADD_LINKER_FLAGS("-L${YB_PREFIX_COMMON}/lib")
 set(YB_THIRDPARTY_INSTALLED_DEPS_DIR
     "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}")
 set(CMAKE_PREFIX_PATH ${YB_THIRDPARTY_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
+ADD_LINKER_FLAGS("-L${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib")
 
 set(YB_THIRDPARTY_INSTALLED_DIR ${YB_PREFIX_COMMON})
 
@@ -777,8 +772,11 @@ math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
 message("Total tests: ${YB_NUM_TESTS}, "
         "included: ${YB_NUM_INCLUDED_TESTS}, "
         "excluded: ${YB_NUM_EXCLUDED_TESTS}")
-if(NOT ${BUILD_TESTS} AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "0")
-  message(FATAL_ERROR "BUILD_TESTS is not set, but we still added ${YB_NUM_INCLUDED_TESTS} tests")
+if(NOT ${BUILD_TESTS} AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "1")
+  message(
+    FATAL_ERROR
+    "BUILD_TESTS is not set, but we still added ${YB_NUM_INCLUDED_TESTS} tests"
+    " (one test would be OK because we always add create_initial_sys_catalog_snapshot).")
 endif()
 
 math(EXPR YB_NUM_EXCLUDED_EXECUTABLES "${YB_NUM_EXECUTABLES} - ${YB_NUM_INCLUDED_EXECUTABLES}")

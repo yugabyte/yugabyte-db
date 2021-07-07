@@ -13,6 +13,7 @@
 package org.yb.cql;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Vector;
 import java.lang.reflect.Field;
 
@@ -43,17 +44,16 @@ import org.slf4j.LoggerFactory;
 public class TestPrepareExecute extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPrepareExecute.class);
 
-  @BeforeClass
-  public static void SetUpBeforeClass() throws Exception {
+  @Override
+  protected Map<String, String> getTServerFlags() {
     // Set up prepare statement cache size. Each SELECT statement below takes about 16kB (two 4kB
     // memory page for the parse tree and two for semantic analysis results). A 64kB cache
     // should be small enough to force prepared statements to be freed and reprepared.
     // Note: add "--v=1" below to see the prepared statement cache usage in trace output.
-    BaseMiniClusterTest.tserverArgs.add(
-        "--cql_service_max_prepared_statement_size_bytes=65536");
-    BaseCQLTest.setUpBeforeClass();
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("cql_service_max_prepared_statement_size_bytes", "65536");
+    return flagMap;
   }
-
   @Test
   public void testBasicPrepareExecute() throws Exception {
     LOG.info("Begin test");

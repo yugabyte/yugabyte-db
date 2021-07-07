@@ -93,6 +93,12 @@ message SetFlagResponsePB {
   optional string old_value = 3;
 }
 
+message RefreshFlagsRequestPB {
+}
+
+message RefreshFlagsResponsePB {
+}
+
 // Get the value of the gflag with the given flag name.
 message GetFlagRequestPB {
   optional string flag = 1;
@@ -140,6 +146,9 @@ service GenericService {
 
   rpc GetFlag(GetFlagRequestPB)
     returns (GetFlagResponsePB);
+
+  rpc RefreshFlags(RefreshFlagsRequestPB)
+    returns (RefreshFlagsResponsePB);
 
   rpc FlushCoverage(FlushCoverageRequestPB)
     returns (FlushCoverageResponsePB);

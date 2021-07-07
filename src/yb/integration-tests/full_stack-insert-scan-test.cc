@@ -45,7 +45,6 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strcat.h"
@@ -159,7 +158,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void InitCluster() {
     // Start mini-cluster with 1 tserver, config client options
-    cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+    cluster_.reset(new MiniCluster(MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
     YBClientBuilder builder;
     builder.add_master_server_addr(
@@ -204,23 +203,23 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
 namespace {
 
-gscoped_ptr<Subprocess> MakePerfStat() {
-  if (!FLAGS_perf_stat_scan) return gscoped_ptr<Subprocess>();
+std::unique_ptr<Subprocess> MakePerfStat() {
+  if (!FLAGS_perf_stat_scan) return std::unique_ptr<Subprocess>();
   // No output flag for perf-stat 2.x, just print to output
   string cmd = Substitute("perf stat --pid=$0", getpid());
   LOG(INFO) << "Calling: \"" << cmd << "\"";
-  return gscoped_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
+  return std::unique_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
 }
 
-gscoped_ptr<Subprocess> MakePerfRecord() {
-  if (!FLAGS_perf_record_scan) return gscoped_ptr<Subprocess>();
+std::unique_ptr<Subprocess> MakePerfRecord() {
+  if (!FLAGS_perf_record_scan) return std::unique_ptr<Subprocess>();
   string cmd = Substitute("perf record --pid=$0 --call-graph", getpid());
   if (FLAGS_perf_fp_flag) cmd += " fp";
   LOG(INFO) << "Calling: \"" << cmd << "\"";
-  return gscoped_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
+  return std::unique_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
 }
 
-void InterruptNotNull(gscoped_ptr<Subprocess> sub) {
+void InterruptNotNull(std::unique_ptr<Subprocess> sub) {
   if (!sub) return;
   ASSERT_OK(sub->Kill(SIGINT));
   int exit_status = 0;
@@ -364,8 +363,8 @@ void FullStackInsertScanTest::CreateTable() {
 void FullStackInsertScanTest::DoTestScans() {
   LOG(INFO) << "Doing test scans on table of " << kNumRows << " rows.";
 
-  gscoped_ptr<Subprocess> stat = MakePerfStat();
-  gscoped_ptr<Subprocess> record = MakePerfRecord();
+  auto stat = MakePerfStat();
+  auto record = MakePerfRecord();
   if (stat) {
     CHECK_OK(stat->Start());
   }
@@ -379,8 +378,8 @@ void FullStackInsertScanTest::DoTestScans() {
   ASSERT_NO_FATALS(ScanProjection(Int32ColumnNames(), "Int32 projection, 4 col"));
   ASSERT_NO_FATALS(ScanProjection(Int64ColumnNames(), "Int64 projection, 4 col"));
 
-  ASSERT_NO_FATALS(InterruptNotNull(record.Pass()));
-  ASSERT_NO_FATALS(InterruptNotNull(stat.Pass()));
+  ASSERT_NO_FATALS(InterruptNotNull(std::move(record)));
+  ASSERT_NO_FATALS(InterruptNotNull(std::move(stat)));
 }
 
 void FullStackInsertScanTest::FlushToDisk() {
@@ -410,10 +409,10 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   int64_t end = start + kNumInsertsPerClient;
   // Printed id value is in the range 1..kNumInsertClients inclusive
   ++id;
-  // Use synchronizer to keep 1 asynchronous batch flush maximum
-  Synchronizer sync;
-  // Prime the synchronizer as if it was running a batch (for for-loop code)
-  sync.StatusCB(Status::OK());
+  // Prime the future as if it was running a batch (for for-loop code)
+  std::promise<client::FlushStatus> promise;
+  auto flush_status_future = promise.get_future();
+  promise.set_value(client::FlushStatus());
   // Maintain buffer for random string generation
   char randstr[kRandomStrMaxLength + 1];
   // Insert in the id's key range
@@ -424,21 +423,20 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
 
     // Report updates or flush every so often, using the synchronizer to always
     // start filling up the next batch while previous one is sent out.
-    if (key % kFlushEveryN == 0) {
-      Status s = sync.Wait();
-      if (!s.ok()) {
-        LogSessionErrorsAndDie(session, s);
+    if (key % kFlushEveryN == 0 || key == end - 1) {
+      auto flush_status = flush_status_future.get();
+      if (!flush_status.status.ok()) {
+        LogSessionErrorsAndDie(flush_status);
       }
-      sync.Reset();
-      session->FlushAsync(sync.AsStatusFunctor());
+      flush_status_future = session->FlushFuture();
     }
     ReportTenthDone(key, start, end, id, kNumInsertClients);
   }
-  ReportAllDone(id, kNumInsertClients);
-  Status s = sync.Wait();
-  if (!s.ok()) {
-    LogSessionErrorsAndDie(session, s);
+  auto flush_status = flush_status_future.get();
+  if (!flush_status.status.ok()) {
+    LogSessionErrorsAndDie(flush_status);
   }
+  ReportAllDone(id, kNumInsertClients);
   FlushSessionOrDie(session);
 }
 

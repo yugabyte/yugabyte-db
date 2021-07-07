@@ -19,6 +19,8 @@ public enum NodeActionType {
   // Delete the node from yugaware db if it failed to come up during creation.
   // Shown only for ToBeAdded node status.
   DELETE,
+  // Allows node to be included in live queries dashboard
+  QUERY,
   // Release the instance to the IaaS/provider. Shown only for stopped/removed nodes.
   RELEASE,
   // Start the Master server on the node.
@@ -36,6 +38,8 @@ public enum NodeActionType {
         return completed ? "Stopped" : "Stopping";
       case DELETE:
         return completed ? "Deleted" : "Deleting";
+      case QUERY:
+        return "Queries";
       case RELEASE:
         return completed ? "Released" : "Releasing";
       case START_MASTER:

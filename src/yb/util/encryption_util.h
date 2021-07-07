@@ -25,9 +25,6 @@ namespace yb {
 
 class EncryptionParamsPB;
 class RandomAccessFile;
-
-namespace enterprise {
-
 class HeaderManager;
 class BlockAccessCipherStream;
 class OpenSSLInitializer;
@@ -104,9 +101,8 @@ Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
 
   Slice encryption_info;
   auto metadata_start = header_manager->GetEncryptionMetadataStartIndex();
-  auto buf = static_cast<BufType*>(EncryptionBuffer::Get()->GetBuffer(metadata_start));
-
-  RETURN_NOT_OK(underlying_r->Read(0, metadata_start, &encryption_info, buf));
+  auto buf = std::unique_ptr<BufType[]>(new BufType[metadata_start]);
+  RETURN_NOT_OK(underlying_r->Read(0, metadata_start, &encryption_info, buf.get()));
   auto encryption_status = VERIFY_RESULT(
       header_manager->GetFileEncryptionStatusFromPrefix(encryption_info));
   if (!encryption_status.is_encrypted) {
@@ -114,9 +110,9 @@ Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
   }
 
   *header_size = metadata_start + encryption_status.header_size;
-  buf = static_cast<BufType*>(EncryptionBuffer::Get()->GetBuffer(*header_size));
+  buf = std::unique_ptr<BufType[]>(new BufType[*header_size]);
   RETURN_NOT_OK(underlying_r->Read(
-      metadata_start, encryption_status.header_size, &encryption_info, buf));
+      metadata_start, encryption_status.header_size, &encryption_info, buf.get()));
   auto encryption_params = VERIFY_RESULT(
       header_manager->DecodeEncryptionParamsFromEncryptionMetadata(encryption_info));
 
@@ -189,7 +185,6 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 
 OpenSSLInitializer& InitOpenSSL();
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_ENCRYPTION_UTIL_H

@@ -36,8 +36,6 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
-
   // Create a new flush request UUID.
   const FlushRequestId flush_id = catalog_manager_->GenerateId();
 
@@ -103,8 +101,6 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
 
 Status FlushManager::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
                                        IsFlushTablesDoneResponsePB* resp) {
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
-
   LOG(INFO) << "Servicing IsFlushTablesDone request: " << req->ShortDebugString();
 
   std::lock_guard<LockType> l(lock_);

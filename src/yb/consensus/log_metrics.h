@@ -45,7 +45,8 @@ class MetricEntity;
 namespace log {
 
 struct LogMetrics {
-  explicit LogMetrics(const scoped_refptr<MetricEntity>& metric_entity);
+  LogMetrics(const scoped_refptr<MetricEntity>& table_metric_entity,
+             const scoped_refptr<MetricEntity>& tablet_metric_entity);
 
   // Global stats
   scoped_refptr<Counter> bytes_logged;
@@ -61,7 +62,7 @@ struct LogMetrics {
 
 // TODO extract and generalize this for all histogram metrics
 #define SCOPED_LATENCY_METRIC(_mtx, _h) \
-  ScopedLatencyMetric _h##_metric(_mtx ? _mtx->_h.get() : NULL)
+  ScopedLatencyMetric _h##_metric(_mtx ? _mtx->_h.get() : nullptr)
 
 } // namespace log
 } // namespace yb

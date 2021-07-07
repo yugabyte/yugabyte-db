@@ -11,11 +11,12 @@ from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCo
 from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvisionInstancesMethod, \
     AzureCreateInstancesMethod, AzureAccessAddKeyMethod, AzureQueryVPCMethod, \
     AzureQueryRegionsMethod, AzureQueryZonesMethod, AzureDestroyInstancesMethod, \
-    AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureAccessDeleteKeyMethod, \
-    AzureNetworkCleanupMethod, AzureQueryUltraMethod, AzureCreateDnsEntryMethod, \
-    AzureEditDnsEntryMethod, AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod
+    AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureNetworkCleanupMethod, \
+    AzureQueryUltraMethod, AzureCreateDnsEntryMethod, AzureEditDnsEntryMethod, \
+    AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod
 from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
-    ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod
+    ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
+    AccessEditVaultMethod, AccessDeleteKeyMethod
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -50,7 +51,7 @@ class AzureAccessCommand(AccessCommand):
         self.add_method(AzureAccessAddKeyMethod(self))
         self.add_method(AccessCreateVaultMethod(self))
         self.add_method(AccessEditVaultMethod(self))
-        self.add_method(AzureAccessDeleteKeyMethod(self))
+        self.add_method(AccessDeleteKeyMethod(self))
 
 
 class AzureQueryCommand(QueryCommand):

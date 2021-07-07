@@ -23,3 +23,4 @@ target_link_libraries(ql_util
                       yb_util
                       lz4
                       snappy)
+add_dependencies(ql_util ql_parser_flex_bison_output)

@@ -71,6 +71,17 @@
   margin-top: 34px;
 }
 
+.aws-instance-with-ephemeral-storage-warning {
+  margin-left: 120px;
+  color: $YB_WARNING_COLOR;
+  display: inline-block;
+}
+
+.gcp-ephemeral-storage-warning {
+  display: inherit !important;
+  color: $YB_WARNING_COLOR;
+}
+
 .universe-form-instance-info {
   .volume-info {
     display: inline-block;
@@ -367,7 +378,7 @@
     border-radius: 7px;
     width: 100%;
     line-height: 1.2
-  
+
     p {
       margin: 0 0 5px 0;
     }

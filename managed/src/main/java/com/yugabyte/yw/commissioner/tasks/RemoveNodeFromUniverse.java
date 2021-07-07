@@ -10,10 +10,12 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -21,29 +23,34 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.HashSet;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import play.api.Play;
-
 // Allows the removal of a node from a universe. Ensures the task waits for the right set of
 // server data move primitives. And stops using the underlying instance, though YW still owns it.
+@Slf4j
 public class RemoveNodeFromUniverse extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(RemoveNodeFromUniverse.class);
+
+  @Inject
+  protected RemoveNodeFromUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
-    return (NodeTaskParams)taskParams;
+    return (NodeTaskParams) taskParams;
   }
 
   @Override
   public void run() {
-    LOG.info("Started {} task for node {} in univ uuid={}", getName(),
-             taskParams().nodeName, taskParams().universeUUID);
+    log.info(
+        "Started {} task for node {} in univ uuid={}",
+        getName(),
+        taskParams().nodeName,
+        taskParams().universeUUID);
     NodeDetails currentNode = null;
     boolean hitException = false;
     try {
@@ -57,17 +64,20 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
       if (currentNode.state != NodeDetails.NodeState.Live
           && currentNode.state != NodeDetails.NodeState.ToBeRemoved
           && currentNode.state != NodeDetails.NodeState.ToJoinCluster) {
-        String msg = "Node " + taskParams().nodeName
-            + " is not in Live/ToJoinCluster/ToBeRemoved states, but is in " + currentNode.state
-            + ", so cannot be removed.";
-        LOG.error(msg);
+        String msg =
+            "Node "
+                + taskParams().nodeName
+                + " is not in Live/ToJoinCluster/ToBeRemoved states, but is in "
+                + currentNode.state
+                + ", so cannot be removed.";
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -76,8 +86,8 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
       String masterAddrs = universe.getMasterAddresses();
 
-      Cluster currCluster = universe.getUniverseDetails()
-                                    .getClusterByUuid(taskParams().placementUuid);
+      Cluster currCluster =
+          universe.getUniverseDetails().getClusterByUuid(taskParams().placementUuid);
       UserIntent userIntent = currCluster.userIntent;
       PlacementInfo pi = currCluster.placementInfo;
 
@@ -89,7 +99,9 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       try {
         instanceAlive = instanceExists(taskParams());
       } catch (Exception e) {
-        LOG.info("Instance {} in universe {} not found, assuming dead", taskParams().nodeName,
+        log.info(
+            "Instance {} in universe {} not found, assuming dead",
+            taskParams().nodeName,
             universe.name);
       }
 
@@ -97,7 +109,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         // Remove the master on this node from master quorum and update its state from YW DB,
         // only if it reachable.
         boolean masterReachable = isMasterAliveOnNode(currentNode, masterAddrs);
-        LOG.info("Master {}, reachable = {}.", currentNode.cloudInfo.private_ip, masterReachable);
+        log.info("Master {}, reachable = {}.", currentNode.cloudInfo.private_ip, masterReachable);
         if (currentNode.isMaster) {
           // Wait for Master Leader before doing any MasterChangeConfig operations.
           createWaitForMasterLeaderTask()
@@ -130,20 +142,26 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       // removed and we know LoadBalancer will not be able to handle that.
       if (instanceAlive) {
 
-        int rfInZone = PlacementInfoUtil.getZoneRF(pi, currentNode.cloudInfo.cloud,
-                                                   currentNode.cloudInfo.region,
-                                                   currentNode.cloudInfo.az);
-        long nodesInZone = PlacementInfoUtil.getNumActiveTserversInZone(
-            universe.getNodes(), currentNode.cloudInfo.cloud,
-            currentNode.cloudInfo.region, currentNode.cloudInfo.az);
+        int rfInZone =
+            PlacementInfoUtil.getZoneRF(
+                pi,
+                currentNode.cloudInfo.cloud,
+                currentNode.cloudInfo.region,
+                currentNode.cloudInfo.az);
+        long nodesInZone =
+            PlacementInfoUtil.getNumActiveTserversInZone(
+                universe.getNodes(),
+                currentNode.cloudInfo.cloud,
+                currentNode.cloudInfo.region,
+                currentNode.cloudInfo.az);
 
         if (rfInZone == -1 || nodesInZone == 0) {
-          throw new RuntimeException("Error getting placement info for cluster with node: " +
-                                     currentNode.nodeName);
+          throw new RuntimeException(
+              "Error getting placement info for cluster with node: " + currentNode.nodeName);
         }
         // Perform a data migration and stop the tserver process only if it is reachable.
         boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
-        LOG.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
+        log.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
         if (tserverReachable) {
           // Since numNodes can never be less, that will mean there is a potential node to move
           // data to.
@@ -172,14 +190,17 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Removed)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
-      // Mark universe task state to success
-      createMarkUniverseUpdateSuccessTasks()
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
+
+      // Mark universe task state to success
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       hitException = true;
       throw t;
     } finally {
@@ -192,6 +213,6 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

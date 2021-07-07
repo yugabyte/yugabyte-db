@@ -62,7 +62,7 @@ class TestRaftGroupMetadata : public YBTabletTest {
                        QLWriteRequestPB* req);
 
  protected:
-  gscoped_ptr<LocalTabletWriter> writer_;
+  std::unique_ptr<LocalTabletWriter> writer_;
 };
 
 void TestRaftGroupMetadata::BuildPartialRow(int key, int intval, const char* strval,
@@ -130,19 +130,17 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   const string snapshotId = "0123456789ABCDEF0123456789ABCDEF";
   tserver::TabletSnapshotOpRequestPB request;
   request.set_snapshot_id(snapshotId);
-  tablet::SnapshotOperationState tx_state(tablet.get(), &request);
-  tx_state.set_hybrid_time(tablet->clock()->Now());
-  auto* op_id = tx_state.mutable_op_id();
-  op_id->set_index(2);
-  op_id->set_term(-1);
-  ASSERT_OK(tablet->snapshots().Create(&tx_state));
+  tablet::SnapshotOperation operation(tablet.get(), &request);
+  operation.set_hybrid_time(tablet->clock()->Now());
+  operation.set_op_id(OpId(-1, 2));
+  ASSERT_OK(tablet->snapshots().Create(&operation));
 
   ASSERT_TRUE(env_->DirExists(tablet->metadata()->rocksdb_dir()));
   ASSERT_TRUE(env_->DirExists(tablet->metadata()->intents_rocksdb_dir()));
   ASSERT_TRUE(env_->DirExists(tablet->metadata()->snapshots_dir()));
 
   CHECK_OK(tablet->metadata()->DeleteTabletData(
-    TabletDataState::TABLET_DATA_DELETED, yb::OpId::FromPB(*op_id)));
+    TabletDataState::TABLET_DATA_DELETED, operation.op_id()));
 
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->rocksdb_dir()));
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->intents_rocksdb_dir()));

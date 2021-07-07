@@ -84,8 +84,8 @@ public class PlatformInstanceClient {
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#getHAConfigByClusterKey()}
-   * on remote platform instance
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#getHAConfigByClusterKey()} on
+   * remote platform instance
    *
    * @return a HighAvailabilityConfig model representing the remote platform instance's HA config
    */
@@ -96,8 +96,8 @@ public class PlatformInstanceClient {
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#syncInstances(long timestamp)}
-   * on remote platform instance
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#syncInstances(long timestamp)} on
+   * remote platform instance
    *
    * @param payload the JSON platform instance data
    */
@@ -106,24 +106,21 @@ public class PlatformInstanceClient {
   }
 
   /**
-   * calls
-   * {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long timestamp)}
-   * on remote platform instance
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long
+   * timestamp)} on remote platform instance
    */
   public void demoteInstance(String localAddr, long timestamp) {
     ObjectNode formData = Json.newObject().put("leader_address", localAddr);
     this.makeRequest(this.controller.demoteLocalLeader(timestamp), formData);
   }
 
-  public boolean syncBackups(
-    String leaderAddr,
-    String senderAddr,
-    File backupFile) {
-    JsonNode response = this.apiHelper.multipartRequest(
-      this.controller.syncBackups().url(),
-      this.requestHeader,
-      buildPartsList(backupFile,
-        ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)));
+  public boolean syncBackups(String leaderAddr, String senderAddr, File backupFile) {
+    JsonNode response =
+        this.apiHelper.multipartRequest(
+            this.controller.syncBackups().url(),
+            this.requestHeader,
+            buildPartsList(
+                backupFile, ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)));
     if (response == null || response.get("error") != null) {
       LOG.error("Error received from remote instance {}", this.remoteAddress);
       return false;
@@ -133,20 +130,19 @@ public class PlatformInstanceClient {
   }
 
   public static List<Http.MultipartFormData.Part<Source<ByteString, ?>>> buildPartsList(
-    File file, ImmutableMap<String, String> dataParts) {
+      File file, ImmutableMap<String, String> dataParts) {
     Http.MultipartFormData.FilePart<Source<ByteString, ?>> filePart =
-      new Http.MultipartFormData.FilePart<>(
-        "backup",
-        file.getName(),
-        "application/octet-stream",
-        FileIO.fromFile(file, 1024));
+        new Http.MultipartFormData.FilePart<>(
+            "backup", file.getName(), "application/octet-stream", FileIO.fromFile(file, 1024));
 
-    List<Http.MultipartFormData.Part<Source<ByteString, ?>>> ret = dataParts.entrySet().stream()
-      .map(kv -> new Http.MultipartFormData.DataPart(kv.getKey(), kv.getValue()))
-      .collect(Collectors.toList());
+    List<Http.MultipartFormData.Part<Source<ByteString, ?>>> ret =
+        dataParts
+            .entrySet()
+            .stream()
+            .map(kv -> new Http.MultipartFormData.DataPart(kv.getKey(), kv.getValue()))
+            .collect(Collectors.toList());
 
     ret.add(filePart);
     return ret;
   }
-
 }

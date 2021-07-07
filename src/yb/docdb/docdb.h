@@ -245,6 +245,7 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     HybridTime commit_ht,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* apply_state,
+    HybridTime log_ht,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* intents_batch);

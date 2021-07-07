@@ -8,7 +8,7 @@ public class AWSCloudModule extends AbstractModule {
   @Override
   protected void configure() {
     MapBinder<String, CloudAPI> mapBinder =
-      MapBinder.newMapBinder(binder(), String.class, CloudAPI.class);
+        MapBinder.newMapBinder(binder(), String.class, CloudAPI.class);
     mapBinder.addBinding("aws").to(AWSCloudImpl.class);
   }
 }

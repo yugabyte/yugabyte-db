@@ -1,14 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.Configuration;
-import play.libs.Json;
-
-import javax.inject.Singleton;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -24,17 +21,18 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.Configuration;
+import play.libs.Json;
 
 @Singleton
 public class ReleaseManager {
 
-  @Inject
-  ConfigHelper configHelper;
+  @Inject ConfigHelper configHelper;
 
-  @Inject
-  Configuration appConfig;
+  @Inject Configuration appConfig;
 
   public enum ReleaseState {
     ACTIVE,
@@ -44,12 +42,21 @@ public class ReleaseManager {
 
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
 
+  @ApiModel(value = "Release data", description = "Release data")
   public static class ReleaseMetadata {
+
+    @ApiModelProperty(value = "Release state", example = "ACTIVE")
     public ReleaseState state = ReleaseState.ACTIVE;
+
+    @ApiModelProperty(value = "Release notes")
     public List<String> notes;
+
     // File path where the release binary is stored
+    @ApiModelProperty(value = "Release file path")
     public String filePath;
+
     // Docker image tag corresponding to the release
+    @ApiModelProperty(value = "Release image tag")
     public String imageTag;
 
     public static ReleaseMetadata fromLegacy(String version, Object metadata) {
@@ -66,6 +73,16 @@ public class ReleaseManager {
       rm.imageTag = version;
       rm.notes = new ArrayList<>();
       return rm;
+    }
+
+    public String toString() {
+      return getClass().getName()
+          + " state: "
+          + String.valueOf(state)
+          + " filePath: "
+          + String.valueOf(filePath)
+          + " imageTag: "
+          + String.valueOf(imageTag);
     }
   }
 
@@ -84,12 +101,14 @@ public class ReleaseManager {
 
     try {
       // Return a map of version# and software package
-      releaseMap = Files.walk(Paths.get(localReleasePath))
-                   .filter(packagesFilter)
-                   .collect(Collectors.toMap(
+      releaseMap =
+          Files.walk(Paths.get(localReleasePath))
+              .filter(packagesFilter)
+              .collect(
+                  Collectors.toMap(
                       p -> p.getName(p.getNameCount() - 2).toString(),
-                      p -> p.toAbsolutePath().toString()
-                  ));
+                      p -> p.toAbsolutePath().toString()));
+      LOG.debug("Local releases: [ {} ]", releaseMap.toString());
     } catch (IOException e) {
       LOG.error(e.getMessage());
     }
@@ -99,13 +118,15 @@ public class ReleaseManager {
   public Map<String, Object> getReleaseMetadata() {
     Map<String, Object> releases = configHelper.getConfig(CONFIG_TYPE);
     if (releases == null || releases.isEmpty()) {
+      LOG.debug("getReleaseMetadata: No releases found");
       return new HashMap<>();
     }
-    releases.forEach((version, metadata) -> {
-      if (metadata instanceof String) {
-        releases.put(version, ReleaseMetadata.fromLegacy(version, metadata));
-      }
-    });
+    releases.forEach(
+        (version, metadata) -> {
+          if (metadata instanceof String) {
+            releases.put(version, ReleaseMetadata.fromLegacy(version, metadata));
+          }
+        });
 
     return releases;
   }
@@ -120,6 +141,7 @@ public class ReleaseManager {
     if (currentReleases.containsKey(version)) {
       throw new RuntimeException("Release already exists: " + version);
     }
+    LOG.info("Adding release version {} with metadata {}", version, metadata.toString());
     currentReleases.put(version, metadata);
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
@@ -131,9 +153,13 @@ public class ReleaseManager {
       Map<String, String> localReleases = getLocalReleases(ybReleasesPath);
       Map<String, Object> currentReleases = getReleaseMetadata();
       localReleases.keySet().removeAll(currentReleases.keySet());
+      LOG.debug("Current releases: [ {} ]", currentReleases.keySet().toString());
+      LOG.debug("Local releases: [ {} ]", localReleases.keySet());
       if (!localReleases.isEmpty()) {
-        localReleases.forEach((version, releaseFile) ->
-            currentReleases.put(version, ReleaseMetadata.fromLegacy(version, releaseFile)));
+        LOG.info("Importing local releases: [ {} ]", localReleases.keySet().toString());
+        localReleases.forEach(
+            (version, releaseFile) ->
+                currentReleases.put(version, ReleaseMetadata.fromLegacy(version, releaseFile)));
         configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
       }
     }
@@ -148,8 +174,8 @@ public class ReleaseManager {
   }
 
   /**
-   * This method would move the yugabyte server package that we bundle with docker image
-   * to yb releases path.
+   * This method would move the yugabyte server package that we bundle with docker image to yb
+   * releases path.
    *
    * @param ybReleasesPath (str): Yugabyte releases path to create the move the files to.
    */
@@ -161,22 +187,27 @@ public class ReleaseManager {
 
     try {
       Files.walk(Paths.get(ybDockerRelease))
-        .map(String::valueOf).map(ybPackagePattern::matcher)
-        .filter(Matcher::matches)
-        .forEach(match -> {
-          File releaseFile = new File(match.group());
-          File destinationFolder = new File(ybReleasesPath, match.group(1));
-          File destinationFile = new File(destinationFolder, releaseFile.getName());
-          if (!destinationFolder.exists()) {
-            destinationFolder.mkdir();
-          }
-          try {
-            Files.move(releaseFile.toPath(), destinationFile.toPath(), REPLACE_EXISTING);
-          } catch (IOException e) {
-            throw new RuntimeException("Unable to move docker release file " +
-                releaseFile.toPath() + " to " + destinationFile);
-          }
-        });
+          .map(String::valueOf)
+          .map(ybPackagePattern::matcher)
+          .filter(Matcher::matches)
+          .forEach(
+              match -> {
+                File releaseFile = new File(match.group());
+                File destinationFolder = new File(ybReleasesPath, match.group(1));
+                File destinationFile = new File(destinationFolder, releaseFile.getName());
+                if (!destinationFolder.exists()) {
+                  destinationFolder.mkdir();
+                }
+                try {
+                  Files.move(releaseFile.toPath(), destinationFile.toPath(), REPLACE_EXISTING);
+                } catch (IOException e) {
+                  throw new RuntimeException(
+                      "Unable to move docker release file "
+                          + releaseFile.toPath()
+                          + " to "
+                          + destinationFile);
+                }
+              });
     } catch (IOException e) {
       LOG.error(e.getMessage());
       throw new RuntimeException("Unable to look up release files in " + ybDockerRelease);

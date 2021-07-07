@@ -67,10 +67,10 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
   tserver::ChangeMetadataRequestPB req;
   req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
-  ChangeMetadataOperationState operation_state(nullptr, nullptr, &req);
-  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(&operation_state, &schema));
-  ASSERT_OK(tablet()->AlterSchema(&operation_state));
-  operation_state.Finish();
+  ChangeMetadataOperation operation(nullptr, nullptr, &req);
+  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(&operation, &schema));
+  ASSERT_OK(tablet()->AlterSchema(&operation));
+  operation.Release();
 }
 
 Status IterateToStringList(
@@ -98,7 +98,7 @@ Status IterateToStringList(
 
 // Dump all of the rows of the tablet into the given vector.
 Status DumpTablet(const Tablet& tablet, const Schema& projection, std::vector<std::string>* out) {
-  auto iter = tablet.NewRowIterator(projection, boost::none);
+  auto iter = tablet.NewRowIterator(projection);
   RETURN_NOT_OK(iter);
   std::vector<string> rows;
   RETURN_NOT_OK(IterateToStringList(iter->get(), &rows));

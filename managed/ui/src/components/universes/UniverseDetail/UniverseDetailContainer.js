@@ -6,9 +6,10 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse,
   resetUniverseInfo,
-  closeUniverseDialog,
   getHealthCheck,
-  getHealthCheckResponse
+  getHealthCheckResponse,
+  updateBackupState,
+  updateBackupStateResponse
 } from '../../../actions/universe';
 import {
   fetchCustomerTasks,
@@ -28,6 +29,7 @@ import {
 } from '../../../actions/tables';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -80,6 +82,23 @@ const mapDispatchToProps = (dispatch) => {
     showRollingRestartModal: () => {
       dispatch(openDialog('rollingRestart'));
     },
+    showToggleBackupModal: () => {
+      dispatch(openDialog('toggleBackupModalForm'));
+    },
+    updateBackupState: (universeUUID, flag) => {
+      dispatch(updateBackupState(universeUUID, flag)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully Enabled the backups.');
+        }
+        dispatch(updateBackupStateResponse(response.payload));
+        dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+          dispatch(fetchUniverseInfoResponse(response.payload));
+        });
+      });
+    },
     closeModal: () => {
       dispatch(closeDialog());
     },
@@ -88,7 +107,7 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(getHealthCheckResponse(response.payload));
       });
     },
-    
+
     fetchCustomerTasks: () => {
       return dispatch(fetchCustomerTasks()).then((response) => {
         if (!response.error) {
@@ -168,7 +187,8 @@ function mapStateToProps(state, ownProps) {
     universeTables: state.tables.universeTablesList,
     modal: state.modal,
     providers: state.cloud.providers,
-    updateAvailable: isUpdateAvailable(state)
+    updateAvailable: isUpdateAvailable(state),
+    featureFlags: state.featureFlags
   };
 }
 

@@ -4,6 +4,8 @@ package com.yugabyte.yw.models.helpers;
 
 import org.yb.ColumnSchema;
 import org.yb.Schema;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,18 +14,23 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
+@ApiModel(value = "Table details", description = "Table details")
 public class TableDetails {
 
   // The name of the table.
+  @ApiModelProperty(value = "Table name")
   public String tableName;
 
   // The keyspace that this table belongs to.
+  @ApiModelProperty(value = "Keyspace that this table belongs to")
   public String keyspace;
 
   // The default table-level time to live (in seconds).
+  @ApiModelProperty(value = "The default table-level time to live")
   public long ttlInSeconds = -1;
 
   // Details of the columns that make up the table (to be used to create ColumnSchemas).
+  @ApiModelProperty(value = "Details of the columns that make up the table")
   public List<ColumnDetails> columns;
 
   /**
@@ -35,7 +42,7 @@ public class TableDetails {
   public static TableDetails createWithSchema(Schema schema) {
     TableDetails tableDetails = new TableDetails();
     if (schema.getTimeToLiveInMillis() > 0) {
-      tableDetails.ttlInSeconds = schema.getTimeToLiveInMillis()/1000;
+      tableDetails.ttlInSeconds = schema.getTimeToLiveInMillis() / 1000;
     }
     tableDetails.columns = new LinkedList<>();
     for (ColumnSchema columnSchema : schema.getColumns()) {
@@ -44,28 +51,24 @@ public class TableDetails {
     return tableDetails;
   }
 
+  @ApiModelProperty(value = "CQL create keyspace detail")
   public String getCQLCreateKeyspaceString() {
     return "CREATE KEYSPACE IF NOT EXISTS \"" + keyspace + "\"";
   }
 
+  @ApiModelProperty(value = "CQL use keyspace detail")
   public String getCQLUseKeyspaceString() {
     return "USE \"" + keyspace + "\"";
   }
 
   /**
    * This method produces a CQL statement of the following format to create a table from the
-   * TableDetails representation of it from the UI:
-   * CREATE TABLE tablename (
-   *   col1 type1,
-   *   col2 type2,
-   *   col3 type3,
-   *   col4 type4,
-   *   col5 type5,
-   *   primary key ((col1, col2), col3, col4)
-   * );
+   * TableDetails representation of it from the UI: CREATE TABLE tablename ( col1 type1, col2 type2,
+   * col3 type3, col4 type4, col5 type5, primary key ((col1, col2), col3, col4) );
    *
    * @return a CQL CREATE TABLE statement for the table represented by this TableDetails object
    */
+  @ApiModelProperty(value = "CQL create table detail")
   public String getCQLCreateTableString() {
     List<String> partitionKeys = new ArrayList<>();
     List<String> clusteringKeys = new ArrayList<>();
@@ -166,5 +169,4 @@ public class TableDetails {
 
     return builder.toString();
   }
-
 }

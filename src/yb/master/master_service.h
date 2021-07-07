@@ -63,6 +63,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                          IsCreateTableDoneResponsePB* resp,
                          rpc::RpcContext rpc) override;
+  void AnalyzeTable(const AnalyzeTableRequestPB* req,
+                    AnalyzeTableResponsePB* resp,
+                    rpc::RpcContext rpc) override;
   void TruncateTable(const TruncateTableRequestPB* req,
                      TruncateTableResponsePB* resp,
                      rpc::RpcContext rpc) override;
@@ -72,6 +75,12 @@ class MasterServiceImpl : public MasterServiceIf,
   void BackfillIndex(const BackfillIndexRequestPB* req,
                      BackfillIndexResponsePB* resp,
                      rpc::RpcContext rpc) override;
+  void GetBackfillJobs(const GetBackfillJobsRequestPB* req,
+                            GetBackfillJobsResponsePB* resp,
+                            rpc::RpcContext rpc) override;
+  void LaunchBackfillIndexForTable(const LaunchBackfillIndexForTableRequestPB* req,
+                                   LaunchBackfillIndexForTableResponsePB* resp,
+                                   rpc::RpcContext rpc) override;
   void DeleteTable(const DeleteTableRequestPB* req,
                    DeleteTableResponsePB* resp,
                    rpc::RpcContext rpc) override;
@@ -98,6 +107,9 @@ class MasterServiceImpl : public MasterServiceIf,
                                 rpc::RpcContext rpc) override;
   void ListTabletServers(const ListTabletServersRequestPB* req,
                          ListTabletServersResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+  void ListLiveTabletServers(const ListLiveTabletServersRequestPB* req,
+                         ListLiveTabletServersResponsePB* resp,
                          rpc::RpcContext rpc) override;
 
   void CreateNamespace(const CreateNamespaceRequestPB* req,
@@ -315,6 +327,8 @@ class MasterServiceImpl : public MasterServiceIf,
 
   void DeleteTablet(
       const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) override;
+
+  void DdlLog(const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext rpc) override;
 
  private:
 };

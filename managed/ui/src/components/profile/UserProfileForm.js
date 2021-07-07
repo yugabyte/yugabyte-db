@@ -6,7 +6,7 @@ import { isEqual } from 'lodash';
 import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBButton } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
-import { showOrRedirect, isDisabled } from '../../utils/LayoutUtils';
+import { showOrRedirect } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
@@ -69,6 +69,9 @@ export default class UserProfileForm extends Component {
 
       password: Yup.string()
         .notRequired()
+        .min(8, 'Password is too short - must be 8 characters minimum.')
+        .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
+          'Password must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.')
         .oneOf([Yup.ref('confirmPassword')], "Passwords don't match"),
 
       confirmPassword: Yup.string()
@@ -214,7 +217,7 @@ export default class UserProfileForm extends Component {
                   <YBButton
                     btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting || isDisabled(customer.data.features, 'universe.create')}
+                    disabled={isSubmitting}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>

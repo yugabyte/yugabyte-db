@@ -60,7 +60,7 @@ class OnPremCloud(AbstractCloud):
                 region=data.get("region"),
                 zone=data.get("zone"),
                 instance_type=data.get("instanceType"),
-                ssh_port=data.get("sshPort", 22),
+                ssh_port=args.custom_ssh_port or data.get("sshPort", 22),
                 ssh_user=data.get("sshUser"),
                 # TODO: would we ever use this for non yugabyte servers?
                 server_type=AbstractInstancesMethod.YB_SERVER_TYPE

@@ -24,6 +24,8 @@
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance_mocked.h"
 
+DECLARE_bool(load_balancer_count_move_as_add);
+
 namespace yb {
 namespace master {
 
@@ -38,13 +40,13 @@ scoped_refptr<TabletInfo> CreateTablet(
     const string& end_key) {
   scoped_refptr<TabletInfo> tablet = new TabletInfo(table, tablet_id);
   auto l = tablet->LockForWrite();
-  PartitionPB* partition = l->mutable_data()->pb.mutable_partition();
+  PartitionPB* partition = l.mutable_data()->pb.mutable_partition();
   partition->set_partition_key_start(start_key);
   partition->set_partition_key_end(end_key);
-  l->mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+  l.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
 
   table->AddTablet(tablet.get());
-  l->Commit();
+  l.Commit();
   return tablet;
 }
 
@@ -61,9 +63,9 @@ void CreateTable(const vector<string> split_keys, const int num_replicas, bool s
 
   if (setup_placement) {
     auto l = table->LockForWrite();
-    auto* ri = l->mutable_data()->pb.mutable_replication_info();
+    auto* ri = l.mutable_data()->pb.mutable_replication_info();
     ri->mutable_live_replicas()->set_num_replicas(num_replicas);
-    l->Commit();
+    l.Commit();
   }
 
   // The splits are of the form ("-a", "a-b", "b-c", "c-"), hence the +1.
@@ -934,8 +936,9 @@ class TestLoadBalancerBase {
 
   void TestAddLoad(const string& expected_tablet_id,
                    const string& expected_from_ts,
-                   const string& expected_to_ts) {
+                   const string& expected_to_ts) NO_THREAD_SAFETY_ANALYSIS {
     string tablet_id, from_ts, to_ts;
+    auto over_replication_at_start = cb_->get_total_over_replication();
     ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
     if (!expected_tablet_id.empty()) {
       ASSERT_EQ(expected_tablet_id, tablet_id);
@@ -945,6 +948,11 @@ class TestLoadBalancerBase {
     }
     if (!expected_to_ts.empty()) {
       ASSERT_EQ(expected_to_ts, to_ts);
+    }
+
+    if (!from_ts.empty() && GetAtomicFlag(&FLAGS_load_balancer_count_move_as_add)) {
+      ASSERT_EQ(1, cb_->get_total_over_replication() - over_replication_at_start);
+      ASSERT_OK(cb_->RemoveReplica(tablet_id, from_ts));
     }
   }
 

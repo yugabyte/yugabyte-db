@@ -12,20 +12,27 @@ export default class DeleteBackup extends Component {
 
   confirmDeleteBackup = async () => {
     const {
-      tableInfo: { backupUUID },
+      tableInfo: {
+        backupUUID,
+        data,
+        type
+      },
       deleteBackup,
       onHide,
       onSubmit,
       onError
-    } = this.props;
+    } = this.props;   
+    const payload = type === "bulkDelete" ? data : [backupUUID];
+
     try {
-      const response = await deleteBackup(backupUUID);
+      const response = await deleteBackup(payload);
       onSubmit(response.data);
     } catch (err) {
       if (onError) {
         onError();
       }
     }
+
     onHide();
   };
 

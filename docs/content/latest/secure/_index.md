@@ -93,10 +93,10 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
         aria-hidden="true" />
-        <div class="title">Audit logging</div>
+        <div class="title">Audit Logging</div>
       </div>
       <div class="body">
-          Use audit logging for security and compliance.
+          Configure YugabyteDB's session-level and object-level audit logging for security and compliance.
       </div>
     </a>
   </div>
@@ -110,19 +110,6 @@ menu:
       </div>
       <div class="body">
           Encrypt data present in columns containing sensitive data using per-column encryption at the application layer in YugabyteDB (using symmetric and asymmetric encryption).
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="audit-logging/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
-        aria-hidden="true" />
-        <div class="title">Audit Logging</div>
-      </div>
-      <div class="body">
-          Configure session-level and object-level in YugabyteDB and customize the output to your needs.
       </div>
     </a>
   </div>

@@ -14,6 +14,8 @@
 #ifndef YB_MASTER_STATE_WITH_TABLETS_H
 #define YB_MASTER_STATE_WITH_TABLETS_H
 
+#include <boost/iterator/transform_iterator.hpp>
+
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
@@ -58,7 +60,6 @@ class StateWithTablets {
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
-  void TabletsToPB(google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* out);
   void Done(const TabletId& tablet_id, const Status& status);
   bool AllInState(SysSnapshotEntryPB::State state);
   bool HasInState(SysSnapshotEntryPB::State state);
@@ -70,6 +71,7 @@ class StateWithTablets {
 
   template <class TabletIds>
   void InitTabletIds(const TabletIds& tablet_ids, SysSnapshotEntryPB::State state) {
+    tablets_.clear();
     for (const auto& id : tablet_ids) {
       tablets_.emplace(id, state);
     }
@@ -81,6 +83,16 @@ class StateWithTablets {
   template <class TabletIds>
   void InitTabletIds(const TabletIds& tablet_ids) {
     InitTabletIds(tablet_ids, initial_state_);
+  }
+
+  template <class PB>
+  void TabletsToPB(google::protobuf::RepeatedPtrField<PB>* out) {
+    out->Reserve(tablets_.size());
+    for (const auto& tablet : tablets_) {
+      auto* tablet_state = out->Add();
+      tablet_state->set_id(tablet.id);
+      tablet_state->set_state(tablet.state);
+    }
   }
 
   // Invoking callback for all operations that are not running and are still in the initial state.
@@ -110,7 +122,16 @@ class StateWithTablets {
     }
   }
 
+  void RemoveTablets(const std::vector<std::string>& tablet_ids);
+
   virtual bool IsTerminalFailure(const Status& status) = 0;
+
+  auto tablet_ids() const {
+    auto lambda = [](const TabletData& data) { return data.id; };
+    return boost::make_iterator_range(
+        boost::make_transform_iterator(tablets_.begin(), lambda),
+        boost::make_transform_iterator(tablets_.end(), lambda));
+  }
 
  protected:
   struct TabletData {

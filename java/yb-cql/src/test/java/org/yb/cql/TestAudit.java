@@ -90,13 +90,6 @@ public class TestAudit extends BaseCQLTest {
     auditRecords.discard();
   }
 
-  @After
-  public void dropRoles() throws Exception {
-    for (String role : Arrays.asList("user1", "user2", "user3")) {
-      session.execute("DROP ROLE IF EXISTS " + role);
-    }
-  }
-
   @Test
   public void auth() throws Exception {
     try (Cluster cluster = getCluster("user1", "123");
@@ -764,7 +757,7 @@ public class TestAudit extends BaseCQLTest {
 
     /** Retrieve the audit records added to the log since last call, discarding them. */
     public List<AuditLogEntry> popAll() throws Exception {
-      Thread.sleep((long) (200 * SanitizerUtil.getTimeoutMultiplier()));
+      Thread.sleep(SanitizerUtil.adjustTimeout(200));
       synchronized (storage) {
         List<AuditLogEntry> result = new ArrayList<>(storage);
         storage.clear();

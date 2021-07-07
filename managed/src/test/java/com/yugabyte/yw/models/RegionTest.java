@@ -24,7 +24,6 @@ import play.libs.Json;
 
 import javax.persistence.PersistenceException;
 
-
 public class RegionTest extends FakeDBApplication {
   Provider defaultProvider;
   Customer defaultCustomer;
@@ -49,7 +48,8 @@ public class RegionTest extends FakeDBApplication {
   @Test
   public void testCreateWithLocation() {
     Region region =
-      Region.create(defaultProvider, "region-1", "Awesome PlacementRegion", "default-image", 100, 100);
+        Region.create(
+            defaultProvider, "region-1", "Awesome PlacementRegion", "default-image", 100, 100);
     assertEquals(region.code, "region-1");
     assertEquals(region.name, "Awesome PlacementRegion");
     assertEquals(region.provider.name, "Amazon");
@@ -92,34 +92,19 @@ public class RegionTest extends FakeDBApplication {
     Provider provider2 = ModelFactory.gcpProvider(defaultCustomer);
     Region.create(provider2, "region-3", "region 3", "default-image");
 
-    Set<Region> regions = Region.find.query().where()
-      .eq("provider_uuid", defaultProvider.uuid)
-      .findSet();
+    Set<Region> regions =
+        Region.find.query().where().eq("provider_uuid", defaultProvider.uuid).findSet();
     assertEquals(regions.size(), 2);
-    for (Region region:regions) {
+    for (Region region : regions) {
       assertThat(region.code, containsString("region-"));
     }
   }
 
   @Test
-  public void testSettingValidLatLong() {
-    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    r.setLatLon(-10, 120);
-    assertEquals(r.latitude, -10, 0);
-    assertEquals(r.longitude, 120, 0);
-  }
-
-  @Test(expected=IllegalArgumentException.class)
-  public void testSettingInvalidLatLong() {
-    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    r.setLatLon(-90, 200);
-  }
-
-  @Test
   public void testDisableRegionZones() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "AZ - 1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "AZ - 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-1", "AZ - 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "AZ - 2", "subnet-2");
 
     assertTrue(r.isActive());
     for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.uuid)) {
@@ -182,7 +167,7 @@ public class RegionTest extends FakeDBApplication {
   @Test
   public void testCascadeDelete() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "az 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "az 1", "subnet-1");
     r.delete();
     assertEquals(0, AvailabilityZone.find.all().size());
   }
@@ -221,5 +206,4 @@ public class RegionTest extends FakeDBApplication {
     assertNotNull(r.uuid);
     assertNotNull(r.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
-
 }

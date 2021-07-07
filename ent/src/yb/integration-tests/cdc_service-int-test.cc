@@ -92,7 +92,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
     SetAtomicFlag(GetParam(), &FLAGS_cdc_enable_replicate_intents);
     opts.num_tablet_servers = server_count();
     opts.num_masters = 1;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
@@ -131,7 +131,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
       int64_t term, int64_t index, bool* has_error = nullptr);
   void WriteTestRow(int32_t key, int32_t int_val, const string& string_val,
       const TabletId& tablet_id, const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
-  void WriteToProxyWithRetries(
+  CHECKED_STATUS WriteToProxyWithRetries(
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
       const tserver::WriteRequestPB& req, tserver::WriteResponsePB* resp, RpcController* rpc);
 
@@ -251,7 +251,8 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
       return true;
     }
     return false;
-  }, MonoDelta::FromSeconds(timeout_secs), "Stream rows in cdc_state have been deleted."));
+  }, MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
+      "Stream rows in cdc_state have been deleted."));
 }
 
 void CDCServiceTest::GetTablets(std::vector<TabletId>* tablet_ids,
@@ -281,7 +282,7 @@ void CDCServiceTest::GetChanges(const TabletId& tablet_id, const CDCStreamId& st
 
   {
     RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(10.0));
+    rpc.set_timeout(MonoDelta::FromSeconds(10.0) * kTimeMultiplier);
     SCOPED_TRACE(change_req.DebugString());
     auto s = cdc_proxy_->GetChanges(change_req, &change_resp, &rpc);
     if (!has_error) {
@@ -306,17 +307,17 @@ void CDCServiceTest::WriteTestRow(int32_t key,
   RpcController rpc;
   AddTestRowInsert(key, int_val, string_val, &write_req);
   SCOPED_TRACE(write_req.DebugString());
-  WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+  ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
   SCOPED_TRACE(write_resp.DebugString());
   ASSERT_FALSE(write_resp.has_error());
 }
 
-void CDCServiceTest::WriteToProxyWithRetries(
+Status CDCServiceTest::WriteToProxyWithRetries(
     const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
     const tserver::WriteRequestPB& req,
     tserver::WriteResponsePB* resp,
     RpcController* rpc) {
-  AssertLoggedWaitFor(
+  return LoggedWaitFor(
       [&req, resp, rpc, proxy]() -> Result<bool> {
         auto s = proxy->Write(req, resp, rpc);
         if (s.IsTryAgain() ||
@@ -327,7 +328,7 @@ void CDCServiceTest::WriteToProxyWithRetries(
         RETURN_NOT_OK(s);
         return true;
       },
-      MonoDelta::FromSeconds(10), "Write test row");
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Write test row");
 }
 
 TEST_P(CDCServiceTest, TestCompoundKey) {
@@ -543,7 +544,7 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     AddTestRowInsert(1, 11, "key1", &write_req);
     AddTestRowInsert(2, 22, "key2", &write_req);
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -555,7 +556,7 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     return metrics->async_replication_sent_lag_micros->value() > 0 &&
         metrics->async_replication_committed_lag_micros->value() > 0;
-  }, MonoDelta::FromSeconds(10), "Wait for Lag > 0"));
+  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
 
   // Now, delete the replication stream and assert that lag is 0.
   ASSERT_OK(client_->DeleteCDCStream(stream_id));
@@ -563,7 +564,7 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     return metrics->async_replication_sent_lag_micros->value() == 0 &&
         metrics->async_replication_committed_lag_micros->value() == 0;
-  }, MonoDelta::FromSeconds(10), "Wait for Lag = 0"));
+  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
 }
 
 
@@ -588,7 +589,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
     AddTestRowInsert(1, 11, "key1", &write_req);
     AddTestRowInsert(2, 22, "key2", &write_req);
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -641,7 +642,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
 
     RpcController rpc;
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -674,7 +675,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
 
     RpcController rpc;
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -774,7 +775,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
       }
     }
     return leader_mini_tserver != nullptr && follower_mini_tserver != nullptr;
-  }, MonoDelta::FromSeconds(30), "Wait for tablet to have a leader."));
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
 
 
   auto leader_proxy = std::make_unique<CDCServiceProxy>(
@@ -812,7 +813,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
       return follower_metrics->async_replication_sent_lag_micros->value() == 0 &&
           follower_metrics->async_replication_committed_lag_micros->value() == 0;
     }
-  }, MonoDelta::FromSeconds(10), "At start, wait for Lag = 0"));
+  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "At start, wait for Lag = 0"));
 
 
   // Create the in-memory structures for both follower and leader by polling for the tablet.
@@ -839,7 +840,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     RpcController rpc;
     AddTestRowInsert(1, 11, "key1", &write_req);
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -850,7 +851,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     RpcController rpc;
     AddTestRowInsert(2, 22, "key2", &write_req);
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -860,7 +861,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     return metrics->async_replication_sent_lag_micros->value() > 0 &&
         metrics->async_replication_committed_lag_micros->value() > 0;
-  }, MonoDelta::FromSeconds(10), "Wait for Lag > 0"));
+  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
 
   {
     // Make sure we wait for follower update thread to run at least once.
@@ -886,7 +887,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     return metrics->async_replication_sent_lag_micros->value() == 0 &&
         metrics->async_replication_committed_lag_micros->value() > 0;
-  }, MonoDelta::FromSeconds(10), "Wait for Read Lag = 0"));
+  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Read Lag = 0"));
 
   change_req.mutable_from_checkpoint()->CopyFrom(change_resp.checkpoint());
   change_resp.Clear();
@@ -901,7 +902,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     return metrics->async_replication_sent_lag_micros->value() == 0 &&
         metrics->async_replication_committed_lag_micros->value() == 0;
-  }, MonoDelta::FromSeconds(10), "Wait for All Lag = 0"));
+  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for All Lag = 0"));
 }
 
 class CDCServiceTestMultipleServers : public CDCServiceTest {
@@ -1016,7 +1017,7 @@ TEST_P(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
       }
 
       SCOPED_TRACE(write_req.DebugString());
-      WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+      ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
       SCOPED_TRACE(write_resp.DebugString());
       ASSERT_FALSE(write_resp.has_error());
     }
@@ -1077,7 +1078,7 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
     AddTestRowInsert(2, 22, "key2", &write_req);
 
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -1095,7 +1096,7 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
     AddTestRowInsert(3, 33, "key3_ext", &write_req);
 
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -1160,7 +1161,7 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
       return false;
     }
     return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
-  }, MonoDelta::FromSeconds(30), "Wait until tablet has a leader."));
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait until tablet has a leader."));
 
   ASSERT_NO_FATALS(CheckChangesAndTable());
 
@@ -1188,7 +1189,7 @@ TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
     AddTestRowInsert(3, 33, "key3_ext", &write_req);
 
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -1242,7 +1243,7 @@ TEST_P(CDCServiceTest, TestCheckpointUpdate) {
     AddTestRowInsert(2, 22, "key2", &write_req);
 
     SCOPED_TRACE(write_req.DebugString());
-    WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc);
+    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
   }
@@ -1314,7 +1315,7 @@ void WaitForCDCIndex(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
       return true;
     }
     return false;
-  }, MonoDelta::FromSeconds(timeout_secs),
+  }, MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
       "Wait until cdc min replicated index."));
   LOG(INFO) << "Done waiting";
 }
@@ -1444,7 +1445,7 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDu
       }
     }
     return false;
-  }, MonoDelta::FromSeconds(30), "Wait until tablet has a leader."));
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait until tablet has a leader."));
 
   // Verify the log and meta min replicated index was loaded correctly from disk.
   ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), 10);
@@ -1786,7 +1787,7 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
     bool has_error = false;
     GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 5, &has_error);
     return !has_error;
-  }, MonoDelta::FromSeconds(180), "Wait until cdc state table can take writes."));
+  }, MonoDelta::FromSeconds(180) * kTimeMultiplier, "Wait until cdc state table can take writes."));
 
   std::unique_ptr<CDCServiceProxy> cdc_proxy;
   ASSERT_OK(WaitFor([&](){
@@ -1804,7 +1805,7 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
       }
     }
     return false;
-  }, MonoDelta::FromSeconds(30), "Wait until tablet has a leader."));
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait until tablet has a leader."));
 
   SleepFor(MonoDelta::FromSeconds((FLAGS_update_min_cdc_indices_interval_secs * 3)));
   LOG(INFO) << "Done sleeping";

@@ -76,11 +76,9 @@
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 namespace yb {
-namespace enterprise {
 
 class UniverseKeyManager;
 
-} // namespace enterprise
 } // namespace yb
 
 namespace rocksdb {
@@ -603,7 +601,7 @@ class DBTestBase : public testing::Test {
   Options last_options_;
 
   // For encryption
-  std::unique_ptr<yb::enterprise::UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<yb::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> encrypted_env_;
 
   static const std::string kKeyId;

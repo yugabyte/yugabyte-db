@@ -2,59 +2,53 @@
 
 package com.yugabyte.yw.controllers;
 
-import play.Configuration;
-
-import play.mvc.Action;
-import play.mvc.Http;
-import play.mvc.Result;
-import play.mvc.Results;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.UUID;
-
 import com.google.inject.Inject;
-
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.store.PlaySessionStore;
+import play.mvc.Action;
+import play.mvc.Http;
+import play.mvc.Result;
+import play.mvc.Results;
 
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import static com.yugabyte.yw.models.Users.Role;
 
 public class TokenAuthenticator extends Action.Simple {
   public static final String COOKIE_AUTH_TOKEN = "authToken";
-  public static final String AUTH_TOKEN_HEADER =  "X-AUTH-TOKEN";
+  public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
   public static final String API_TOKEN_HEADER = "X-AUTH-YW-API-TOKEN";
   public static final String COOKIE_PLAY_SESSION = "PLAY_SESSION";
 
-  @Inject
-  ConfigHelper configHelper;
+  @Inject ConfigHelper configHelper;
 
-  @Inject
-  Configuration appConfig;
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject
-  private PlaySessionStore playSessionStore;
+  @Inject private PlaySessionStore playSessionStore;
 
   private Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
     Users user = null;
-    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     Http.Cookie cookieValue = ctx.request().cookie(COOKIE_PLAY_SESSION);
 
     if (useOAuth) {
       final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
-      final ProfileManager<CommonProfile> profileManager = new ProfileManager(context);
+      final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
       if (profileManager.isAuthenticated()) {
-        String emailAttr = appConfig.getString("yb.security.oidcEmailAttribute", "");
+        String emailAttr =
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
         String email = "";
         if (emailAttr.equals("")) {
           email = profileManager.get(true).get().getEmail();
@@ -84,6 +78,23 @@ public class TokenAuthenticator extends Action.Simple {
     Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
     Matcher matcher = pattern.matcher(path);
     UUID custUUID = null;
+    String patternForUUID =
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+    String patternForHost = ".+:[0-9]{4,5}";
+
+    // Allow for disabling authentication on proxy endpoint so that
+    // Prometheus can scrape database nodes.
+    if (Pattern.matches(
+            String.format(
+                "^.*/universes/%s/proxy/%s/(metrics|prometheus-metrics)$",
+                patternForUUID, patternForHost),
+            path)
+        && !runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
+      return delegate.call(ctx);
+    }
+
     if (matcher.find()) {
       custUUID = UUID.fromString(matcher.group(1));
       endPoint = ((endPoint = matcher.group(2)) != null) ? endPoint : "";
@@ -113,7 +124,7 @@ public class TokenAuthenticator extends Action.Simple {
     return delegate.call(ctx);
   }
 
-  public boolean superAdminAuthentication(Http.Context ctx) {
+  public static boolean superAdminAuthentication(Http.Context ctx) {
     String token = fetchToken(ctx, true);
     Users user = null;
     if (token != null) {
@@ -123,14 +134,12 @@ public class TokenAuthenticator extends Action.Simple {
       user = Users.authWithToken(token);
     }
     if (user != null) {
-      if (user.getRole() == Role.SuperAdmin) {
-        return true;
-      }
+      return user.getRole() == Role.SuperAdmin;
     }
     return false;
   }
 
-  private String fetchToken(Http.Context ctx, boolean isApiToken) {
+  private static String fetchToken(Http.Context ctx, boolean isApiToken) {
     String header, cookie;
     if (isApiToken) {
       header = API_TOKEN_HEADER;
@@ -156,19 +165,13 @@ public class TokenAuthenticator extends Action.Simple {
     // Users should be allowed to change their password.
     // Even admin users should not be allowed to change another
     // user's password.
-    if (endPoint != null) {
-      if (endPoint.endsWith("/change_password")) {
-        UUID userUUID = UUID.fromString(endPoint.split("/")[2]);
-        if (userUUID.equals(user.uuid)) {
-          return true;
-        }
-        return false;
-      }
+    if (endPoint.endsWith("/change_password")) {
+      UUID userUUID = UUID.fromString(endPoint.split("/")[2]);
+      return userUUID.equals(user.uuid);
     }
 
     // All users have access to get, metrics and setting an API token.
-    if (requestType.equals("GET") || endPoint.equals("/metrics") ||
-        endPoint.equals("/api_token")) {
+    if (requestType.equals("GET") || endPoint.equals("/metrics") || endPoint.equals("/api_token")) {
       return true;
     }
     // If the user is readonly, then don't get any further access.
@@ -176,15 +179,13 @@ public class TokenAuthenticator extends Action.Simple {
       return false;
     }
     // All users other than read only get access to backup endpoints.
-    if (endPoint.endsWith("/create_backup") || endPoint.endsWith("/multi_table_backup") ||
-        endPoint.endsWith("/restore")) {
+    if (endPoint.endsWith("/create_backup")
+        || endPoint.endsWith("/multi_table_backup")
+        || endPoint.endsWith("/restore")) {
       return true;
     }
     // If the user is backupAdmin, they don't get further access.
-    if (user.getRole() == Role.BackupAdmin) {
-      return false;
-    }
+    return user.getRole() != Role.BackupAdmin;
     // If the user has reached here, they have complete access.
-    return true;
   }
 }

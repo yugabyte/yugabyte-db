@@ -51,7 +51,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "job", ++col_count,
                                              DataType::STRING, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
-  CommitTransaction();
+
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------
@@ -90,22 +90,22 @@ TEST_F(PggateTestDelete, TestDelete) {
   const int insert_row_count = 7;
   for (int i = 0; i < insert_row_count; i++) {
     // Insert the row with the original seed.
+    BeginTransaction();
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
     CommitTransaction();
 
     // Update the constant expresions to insert the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
     seed++;
-    YBCPgUpdateConstInt8(expr_hash, seed, false);
-    YBCPgUpdateConstInt4(expr_id, seed, false);
-    YBCPgUpdateConstInt2(expr_depcnt, seed, false);
-    YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false);
-    YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt8(expr_hash, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_id, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
     job = strings::Substitute("Job_title_$0", seed);
-    YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false));
   }
 
-  CommitTransaction();
   pg_stmt = nullptr;
 
   // DELETE ----------------------------------------------------------------------------------------
@@ -127,17 +127,17 @@ TEST_F(PggateTestDelete, TestDelete) {
   const int delete_row_count = (insert_row_count + 1)/ 2;
   for (int i = 0; i < delete_row_count; i++) {
     // Delete the row with the original seed.
+    BeginTransaction();
     CHECK_YBC_STATUS(YBCPgExecDelete(pg_stmt));
     CommitTransaction();
 
     // Update the constant expresions to delete the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
     seed = seed + 2;
-    YBCPgUpdateConstInt8(expr_hash, seed, false);
-    YBCPgUpdateConstInt4(expr_id, seed, false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt8(expr_hash, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_id, seed, false));
   }
 
-  CommitTransaction();
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------
@@ -147,21 +147,22 @@ TEST_F(PggateTestDelete, TestDelete) {
 
   // Specify the selected expressions.
   YBCPgExpr colref;
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
+  BeginTransaction();
+  CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
   // Fetching rows and check their contents.
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
@@ -169,7 +170,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   int select_row_count = 0;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
     if (!has_data) {
       break;
     }
@@ -200,6 +201,7 @@ TEST_F(PggateTestDelete, TestDelete) {
     CHECK_EQ(selected_job_name, expected_job_name);
   }
   CHECK_EQ(select_row_count, insert_row_count - delete_row_count) << "Unexpected row count";
+  CommitTransaction();
 
   pg_stmt = nullptr;
 }

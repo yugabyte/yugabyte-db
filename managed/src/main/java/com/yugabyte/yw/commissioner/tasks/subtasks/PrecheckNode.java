@@ -10,27 +10,19 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Universe;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
+import javax.inject.Inject;
 import java.util.Map;
 
-import play.libs.Json;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 public class PrecheckNode extends UniverseTaskBase {
-
-  public static final Logger LOG = LoggerFactory.getLogger(PrecheckNode.class);
+  @Inject
+  protected PrecheckNode(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Parameters for failed precheck task.
   public static class Params extends UniverseTaskParams {
@@ -42,13 +34,13 @@ public class PrecheckNode extends UniverseTaskBase {
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
     String errMsg = "";
-    for (Map.Entry<NodeInstance, String> entry: taskParams().failedNodes.entrySet()) {
+    for (Map.Entry<NodeInstance, String> entry : taskParams().failedNodes.entrySet()) {
       NodeInstance node = entry.getKey();
       if (!taskParams().reserveNodes) {
         try {
@@ -58,8 +50,10 @@ public class PrecheckNode extends UniverseTaskBase {
         }
       }
 
-      errMsg += String.format("\n-----\nNode %s (%s) failed preflight checks:\n%s",
-        node.instanceName, node.getDetails().ip, entry.getValue());
+      errMsg +=
+          String.format(
+              "\n-----\nNode %s (%s) failed preflight checks:\n%s",
+              node.instanceName, node.getDetails().ip, entry.getValue());
     }
 
     throw new RuntimeException(errMsg);

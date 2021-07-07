@@ -23,6 +23,7 @@ set(PGGATE_SRCS
     ybc_pggate_tool.cc
     pggate.cc
     pggate_thread_local_vars.cc
+    pg_analyze.cc
     pg_session.cc
     pg_statement.cc
     pg_ddl.cc

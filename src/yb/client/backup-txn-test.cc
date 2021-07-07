@@ -23,6 +23,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -205,26 +206,79 @@ TEST_F(BackupTxnTest, PointInTimeRestore) {
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }
 
-TEST_F(BackupTxnTest, PointInTimeRestoreInterval) {
+// This test writes a lot of update to the same key.
+// Then takes snapshot and restores it to time before the write.
+// So we test how filtering iterator works in case where a lot of record should be skipped.
+TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
+  constexpr int kNumWrites = RegularBuildVsSanitizers(100000, 100);
+  constexpr int kKey = 123;
+
+  std::vector<std::future<FlushStatus>> futures;
+  auto session = CreateSession();
+  ASSERT_OK(WriteRow(session, kKey, 0));
+  auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  for (size_t r = 1; r <= kNumWrites; ++r) {
+    ASSERT_OK(WriteRow(session, kKey, r, WriteOpType::INSERT, client::Flush::kFalse));
+    futures.push_back(session->FlushFuture());
+  }
+
+  int good = 0;
+  for (auto& future : futures) {
+    if (future.get().status.ok()) {
+      ++good;
+    }
+  }
+
+  LOG(INFO) << "Total good: " << good;
+
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+
+  ASSERT_OK(RestoreSnapshot(snapshot_id, hybrid_time));
+
+  auto value = ASSERT_RESULT(SelectRow(session, kKey));
+  ASSERT_EQ(value, 0);
+}
+
+// Restore to the time before current history cutoff.
+TEST_F(BackupTxnTest, PointInTimeRestoreBeforeHistoryCutoff) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
+
   ASSERT_NO_FATALS(WriteData());
-  auto pre_sleep_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
-  auto write_wait = 5s;
-  std::this_thread::sleep_for(write_wait);
+  auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
   ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
 
   auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
   ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
 
-  ASSERT_OK(WaitFor([this, &pre_sleep_ht, &snapshot_id, &write_wait]() -> Result<bool> {
-    LOG(INFO) << "Running RestoreSnapshot";
-    auto restore_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
-    auto interval = restore_ht.GetPhysicalValueMicros() - pre_sleep_ht.GetPhysicalValueMicros();
-    RETURN_NOT_OK(RestoreSnapshot(snapshot_id, restore_ht, interval));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
-    // Ensure the snapshot was restored before Now() - interval passed our sleep_for window.
-    auto finish_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
-    return finish_ht.PhysicalDiff(restore_ht) <  std::chrono::microseconds(write_wait).count();
-  }, kWaitTimeout * kTimeMultiplier, "Snapshot restored in time."));
+  ASSERT_OK(WaitFor([this, hybrid_time]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      // History cutoff is not moved for tablets w/o writes after current history cutoff.
+      // So just ignore such tablets.
+      if (peer->tablet()->mvcc_manager()->LastReplicatedHybridTime() < hybrid_time) {
+        continue;
+      }
+      // Check that history cutoff is after hybrid_time.
+      auto read_operation = tablet::ScopedReadOperation::Create(
+          peer->tablet(), tablet::RequireLease::kTrue, ReadHybridTime::SingleTime(hybrid_time));
+      if (read_operation.ok()) {
+        auto policy = peer->tablet()->RetentionPolicy();
+        LOG(INFO) << "Pending history cutoff, tablet: " << peer->tablet_id()
+                  << ", current: " << policy->GetRetentionDirective().history_cutoff
+                  << ", desired: " << hybrid_time;
+        return false;
+      }
+      if (!read_operation.status().IsSnapshotTooOld()) {
+        return read_operation.status();
+      }
+    }
+    return true;
+  }, kWaitTimeout, "History retention move past hybrid time"));
+
+  ASSERT_OK(RestoreSnapshot(snapshot_id, hybrid_time));
 
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }
@@ -449,7 +503,7 @@ TEST_F(BackupTxnTest, Consistency) {
         for (int j = 0; j != kKeys; ++j) {
           ASSERT_OK(WriteRow(session, j, v, WriteOpType::INSERT, Flush::kFalse));
         }
-        auto status = session->FlushFuture().get();
+        auto status = session->Flush();
         if (status.ok()) {
           status = txn->CommitFuture().get();
         }

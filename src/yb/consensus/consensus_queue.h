@@ -63,11 +63,6 @@ class MemTracker;
 class MetricEntity;
 class ThreadPoolToken;
 
-namespace log {
-class Log;
-class AsyncLogReader;
-}
-
 namespace consensus {
 class PeerMessageQueueObserver;
 struct MajorityReplicatedData;
@@ -109,8 +104,6 @@ struct FollowerWatermark {
 //
 // This also takes care of pushing requests to peers as new operations are added, and notifying
 // RaftConsensus when the commit index advances.
-//
-// This class is used only on the LEADER side.
 //
 // TODO Currently this class is able to track one outstanding operation per peer. If we want to have
 // more than one outstanding RPC we need to modify it.
@@ -373,14 +366,14 @@ class PeerMessageQueue {
 
   CHECKED_STATUS FlushLogIndex();
 
-  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
-
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);
 
   const server::ClockPtr& clock() const {
     return clock_;
   }
+
+  Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
@@ -451,7 +444,7 @@ class PeerMessageQueue {
     Mode mode = Mode::NON_LEADER;
 
     // The currently-active raft config. Only set if in LEADER mode.
-    gscoped_ptr<RaftConfigPB> active_config;
+    std::unique_ptr<RaftConfigPB> active_config;
 
     std::string ToString() const;
   };

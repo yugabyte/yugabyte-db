@@ -13,8 +13,8 @@ import {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    submitDeleteUniverse: (uuid, isForceDelete) => {
-      dispatch(deleteUniverse(uuid, isForceDelete)).then((response) => {
+    submitDeleteUniverse: (uuid, isForceDelete, isDeleteBackups) => {
+      dispatch(deleteUniverse(uuid, isForceDelete, isDeleteBackups)).then((response) => {
         dispatch(deleteUniverseResponse(response.payload));
       });
     },

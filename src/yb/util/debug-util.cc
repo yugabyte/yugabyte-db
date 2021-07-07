@@ -411,8 +411,15 @@ class GlobalBacktraceState {
 
     // To complete initialization we should call backtrace, otherwise it could fail in case of
     // concurrent initialization.
-    backtrace_full(bt_state_, /* skip = */ 1, DummyCallback,
-                   BacktraceErrorCallback, nullptr);
+    // We do this in a separate thread to avoid deadlock.
+    // TODO: implement proper fix to avoid other potential deadlocks/stuck threads related
+    // to locking common mutexes from signal handler. See
+    // https://github.com/yugabyte/yugabyte-db/issues/6672 for more details.
+    std::thread backtrace_thread([&] {
+      backtrace_full(bt_state_, /* skip = */ 1, DummyCallback,
+                     BacktraceErrorCallback, nullptr);
+    });
+    backtrace_thread.join();
   }
 
   backtrace_state* GetState() { return bt_state_; }

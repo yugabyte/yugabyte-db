@@ -22,17 +22,13 @@ public class SubTaskGroupQueue {
     this.userTaskUUID = userTaskUUID;
   }
 
-  /**
-   * Add a task list to this sequence.
-   */
+  /** Add a task list to this sequence. */
   public boolean add(SubTaskGroup subTaskGroup) {
     subTaskGroup.setTaskContext(subTaskGroups.size(), userTaskUUID);
     return subTaskGroups.add(subTaskGroup);
   }
 
-  /**
-   * Execute the sequence of task lists in a sequential manner.
-   */
+  /** Execute the sequence of task lists in a sequential manner. */
   public void run() {
     boolean runSuccess = true;
     for (SubTaskGroup subTaskGroup : subTaskGroups) {

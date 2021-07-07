@@ -166,7 +166,7 @@ unique_key_recheck(PG_FUNCTION_ARGS)
 		 */
 		index_insert(indexRel, values, isnull, &(new_row->t_self), new_row,
 					 trigdata->tg_relation, UNIQUE_CHECK_EXISTING,
-					 indexInfo);
+					 indexInfo, false /* yb_shared_insert */);
 	}
 	else
 	{

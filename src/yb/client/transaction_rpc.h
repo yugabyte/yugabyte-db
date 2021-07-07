@@ -18,10 +18,13 @@
 
 #include <functional>
 
+#include <boost/preprocessor/empty.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -32,20 +35,12 @@ namespace yb {
 class HybridTime;
 
 #define TRANSACTION_RPCS \
-    (UpdateTransaction) \
-    (GetTransactionStatus) \
-    (GetTransactionStatusAtParticipant) \
-    (AbortTransaction)
+    ((UpdateTransaction, WITH_REQUEST)) \
+    ((GetTransactionStatus, WITHOUT_REQUEST)) \
+    ((GetTransactionStatusAtParticipant, WITHOUT_REQUEST)) \
+    ((AbortTransaction, WITHOUT_REQUEST))
 
-namespace tserver {
-
-#define TRANSACTION_RPC_TSERVER_FORWARD(i, data, entry) \
-  class BOOST_PP_CAT(entry, RequestPB); \
-  class BOOST_PP_CAT(entry, ResponsePB);
-
-BOOST_PP_SEQ_FOR_EACH(TRANSACTION_RPC_TSERVER_FORWARD, ~, TRANSACTION_RPCS)
-
-}
+#define TRANSACTION_RPC_NAME(entry) BOOST_PP_TUPLE_ELEM(2, 0, entry)
 
 namespace client {
 
@@ -54,16 +49,27 @@ namespace client {
 // tablet - handle of status tablet for this transaction, could be null when unknown.
 // client - YBClient that should be used to send this request.
 
-#define TRANSACTION_RPC_CALLBACK(rpc) BOOST_PP_CAT(rpc, Callback)
-#define TRANSACTION_RPC_REQUEST_PB(rpc) tserver::BOOST_PP_CAT(rpc, RequestPB)
-#define TRANSACTION_RPC_RESPONSE_PB(rpc) tserver::BOOST_PP_CAT(rpc, ResponsePB)
+#define TRANSACTION_RPC_CALLBACK(rpc) BOOST_PP_CAT(TRANSACTION_RPC_NAME(rpc), Callback)
+#define TRANSACTION_RPC_REQUEST_PB(rpc) tserver::BOOST_PP_CAT(TRANSACTION_RPC_NAME(rpc), RequestPB)
+#define TRANSACTION_RPC_RESPONSE_PB(rpc) \
+    tserver::BOOST_PP_CAT(TRANSACTION_RPC_NAME(rpc), ResponsePB)
+
+#define TRANSACTION_RPC_OPTIONAL_REQUEST_HELPER_WITH_REQUEST(entry) \
+  const TRANSACTION_RPC_REQUEST_PB(entry)&,
+
+#define TRANSACTION_RPC_OPTIONAL_REQUEST_HELPER_WITHOUT_REQUEST(entry)
+
+#define TRANSACTION_RPC_OPTIONAL_REQUEST_PB(entry) \
+  BOOST_PP_CAT(TRANSACTION_RPC_OPTIONAL_REQUEST_HELPER_, BOOST_PP_TUPLE_ELEM(2, 1, entry))(entry)
 
 #define TRANSACTION_RPC_SEMICOLON(rpc) ; // NOLINT
 
 #define TRANSACTION_RPC_FUNCTION(i, data, entry) \
-  typedef std::function<void(const Status&, const TRANSACTION_RPC_RESPONSE_PB(entry)&)> \
-      TRANSACTION_RPC_CALLBACK(entry); \
-  MUST_USE_RESULT rpc::RpcCommandPtr entry( \
+  using TRANSACTION_RPC_CALLBACK(entry) = std::function<void( \
+      const Status&,                             \
+      TRANSACTION_RPC_OPTIONAL_REQUEST_PB(entry) \
+      const TRANSACTION_RPC_RESPONSE_PB(entry)&)>; \
+  MUST_USE_RESULT rpc::RpcCommandPtr TRANSACTION_RPC_NAME(entry)( \
       CoarseTimePoint deadline, \
       internal::RemoteTablet* tablet, \
       YBClient* client, \

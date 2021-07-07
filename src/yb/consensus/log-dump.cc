@@ -213,6 +213,7 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
                                 tablet_wal_path,
                                 fs_manager.uuid(),
                                 scoped_refptr<MetricEntity>(),
+                                scoped_refptr<MetricEntity>(),
                                 &reader));
 
   SegmentSequence segments;
@@ -272,7 +273,7 @@ Status FilterLogSegment(const string& segment_path) {
             << ": " << source_segment_size_bytes << " bytes";
   LOG(INFO) << "Target segment size: "
             << target_segment_size_bytes << " bytes";
-  gscoped_ptr<ThreadPool> log_thread_pool;
+  std::unique_ptr<ThreadPool> log_thread_pool;
   RETURN_NOT_OK(ThreadPoolBuilder("log").unlimited_threads().Build(&log_thread_pool));
 
   const OpId first_op_id_to_omit = { FLAGS_min_op_term_to_omit, FLAGS_min_op_index_to_omit };
@@ -318,7 +319,8 @@ Status FilterLogSegment(const string& segment_path) {
       "log-dump-tool",
       tablet_schema,
       segment_header.schema_version(),
-      /* metric_entity */ nullptr,
+      /* table_metric_entity */ nullptr,
+      /* tablet_metric_entity */ nullptr,
       log_thread_pool.get(),
       log_thread_pool.get(),
       /* cdc_min_replicated_index */ 0,

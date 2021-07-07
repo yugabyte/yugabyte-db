@@ -27,12 +27,17 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 
+DEFINE_bool(use_node_hostname_for_local_tserver, false,
+    "Connect to local t-server by using host name instead of local IP");
+
 // A macro for logging the function name and the state of the current transaction.
 // This macro is not enclosed in do { ... } while (true) because we want to be able to write
 // additional information into the same log message.
 #define VLOG_TXN_STATE(vlog_level) \
     VLOG(vlog_level) << __func__ << ": " << TxnStateDebugStr() \
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
+
+DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
 
 namespace {
 
@@ -87,6 +92,25 @@ using client::YBTransactionPtr;
 using client::YBSession;
 using client::YBSessionPtr;
 using client::LocalTabletFilter;
+
+#if defined(__APPLE__) && !defined(NDEBUG)
+// We are experiencing more slowness in tests on macOS in debug mode.
+const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
+#else
+const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
+#endif
+
+DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
+             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
+
+std::shared_ptr<yb::client::YBSession> BuildSession(
+    yb::client::YBClient* client,
+    const scoped_refptr<ClockBase>& clock) {
+  auto session = std::make_shared<YBSession>(client, clock);
+  session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
+  return session;
+}
 
 PgTxnManager::PgTxnManager(
     AsyncClientInitialiser* async_client_init,
@@ -151,9 +175,8 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 }
 
 void PgTxnManager::StartNewSession() {
-  session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
+  session_ = BuildSession(async_client_init_->client(), clock_);
   session_->SetReadPoint(client::Restart::kFalse);
-  session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 uint64_t PgTxnManager::GetPriority(const NeedsPessimisticLocking needs_pessimistic_locking) {
@@ -216,10 +239,18 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
   } else {
     if (tserver_shared_object_) {
       if (!tablet_server_proxy_) {
-        LOG(INFO) << "Using TServer endpoint: " << (**tserver_shared_object_).endpoint();
+        boost::optional<MonoDelta> resolve_cache_timeout;
+        const auto& tserver_shared_data_ = **tserver_shared_object_;
+        HostPort host_port(tserver_shared_data_.endpoint());
+        if (FLAGS_use_node_hostname_for_local_tserver) {
+          host_port = HostPort(tserver_shared_data_.host().ToBuffer(),
+                               tserver_shared_data_.endpoint().port());
+          resolve_cache_timeout = MonoDelta::kMax;
+        }
+        LOG(INFO) << "Using TServer host_port: " << host_port;
         tablet_server_proxy_ = std::make_unique<tserver::TabletServerServiceProxy>(
-          &async_client_init_->client()->proxy_cache(),
-          HostPort((**tserver_shared_object_).endpoint()));
+            &async_client_init_->client()->proxy_cache(), host_port,
+            nullptr /* protocol */, resolve_cache_timeout);
       }
       tserver::TakeTransactionRequestPB req;
       tserver::TakeTransactionResponsePB resp;
@@ -357,8 +388,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!ddl_txn_,
           IllegalState, "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
-  ddl_session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  ddl_session_ = BuildSession(async_client_init_->client(), clock_);
   ddl_txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
   ddl_session_->SetTransaction(ddl_txn_);
   RETURN_NOT_OK(ddl_txn_->Init(

@@ -48,10 +48,10 @@
 namespace yb {
 namespace client {
 
-void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
-                            const Status& s) {
+void LogSessionErrorsAndDie(const FlushStatus& flush_status) {
+  const auto& s = flush_status.status;
   CHECK(!s.ok());
-  auto errors = session->GetAndClearPendingErrors();
+  const auto& errors = flush_status.errors;
 
   // Log only the first 10 errors.
   LOG(INFO) << errors.size() << " failed ops. First 10 errors follow";
@@ -69,9 +69,9 @@ void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
 
 void FlushSessionOrDie(const std::shared_ptr<YBSession>& session,
                        const std::vector<std::shared_ptr<YBqlOp>>& ops) {
-  Status s = session->Flush();
-  if (PREDICT_FALSE(!s.ok())) {
-    LogSessionErrorsAndDie(session, s);
+  auto flush_status = session->FlushAndGetOpsErrors();
+  if (PREDICT_FALSE(!flush_status.status.ok())) {
+    LogSessionErrorsAndDie(flush_status);
   }
   for (auto& op : ops) {
     CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())

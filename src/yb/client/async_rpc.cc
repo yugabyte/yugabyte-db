@@ -36,22 +36,22 @@
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_write_remote, "yb.client.Write remote call time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Write call ", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Write call ");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_read_remote, "yb.client.Read remote call time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Read call ", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Read call ");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_write_local, "yb.client.Write local call time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Write call ", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Write call ");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_read_local, "yb.client.Read local call time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_time_to_send,
     "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent before sending the request to the server", 60000000LU, 2);
+    "Microseconds spent before sending the request to the server");
 
 METRIC_DEFINE_counter(server, consistent_prefix_successful_reads,
     "Number of consistent prefix reads that were served by the closest replica.",
@@ -80,6 +80,10 @@ DEFINE_bool(forward_redis_requests, true, "If false, the redis op will not be se
 DEFINE_bool(detect_duplicates_for_retryable_requests, true,
             "Enable tracking of write requests that prevents the same write from being applied "
                 "twice.");
+
+DEFINE_bool(ysql_forward_rpcs_to_local_tserver, false,
+            "When true, forward the PGSQL rpcs to the local tServer.");
+
 
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
@@ -306,7 +310,6 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
   if (async_rpc_metrics_) {
     async_rpc_metrics_->time_to_send->Increment(ToMicroseconds(end_time - start_));
   }
-
   CallRemoteMethod();
 }
 
@@ -491,9 +494,8 @@ void WriteRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.proxy()->WriteAsync(
-      req_, &resp_, PrepareController(),
-      std::bind(&WriteRpc::Finished, this, Status::OK()));
+  tablet_invoker_.WriteAsync(req_, &resp_, PrepareController(),
+                             std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
@@ -710,9 +712,8 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.proxy()->ReadAsync(
-      req_, &resp_, PrepareController(),
-      std::bind(&ReadRpc::Finished, this, Status::OK()));
+  tablet_invoker_.ReadAsync(req_, &resp_, PrepareController(),
+                            std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
@@ -795,6 +796,9 @@ void ReadRpc::SwapRequestsAndResponses(bool skip_responses) {
         }
         // Restore PGSQL read request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
+        if (resp_.has_used_read_time()) {
+          pgsql_op->SetUsedReadTime(ReadHybridTime::FromPB(resp_.used_read_time()));
+        }
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {

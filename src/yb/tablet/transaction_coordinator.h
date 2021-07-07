@@ -33,31 +33,17 @@
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/tserver/tserver_fwd.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/status.h"
 
 namespace yb {
-
-namespace server {
-
-class Clock;
-
-}
-
-namespace tserver {
-
-class AbortTransactionResponsePB;
-class GetTransactionStatusResponsePB;
-class TransactionStatePB;
-
-}
-
 namespace tablet {
-
-class TransactionIntentApplier;
-class UpdateTxnOperationState;
 
 // Get current transaction timeout.
 std::chrono::microseconds GetTransactionTimeout();
@@ -70,16 +56,17 @@ class TransactionCoordinatorContext {
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
   virtual int64_t LeaderTerm() const = 0;
   virtual const server::ClockPtr& clock_ptr() const = 0;
+  virtual Result<HybridTime> LeaderSafeTime() const = 0;
 
   // Returns current hybrid time lease expiration.
   // Valid only if we are leader.
   virtual HybridTime HtLeaseExpiration() const = 0;
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
-  virtual std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
+  virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       tserver::TransactionStatePB* request) = 0;
   virtual void SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
+      std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
   server::Clock& clock() const {
     return *clock_ptr();
@@ -106,7 +93,7 @@ class TransactionCoordinator {
   struct ReplicatedData {
     int64_t leader_term;
     const tserver::TransactionStatePB& state;
-    const OpIdPB& op_id;
+    const OpId& op_id;
     HybridTime hybrid_time;
 
     std::string ToString() const;
@@ -117,14 +104,16 @@ class TransactionCoordinator {
 
   struct AbortedData {
     const tserver::TransactionStatePB& state;
-    const OpIdPB& op_id;
+    const OpId& op_id;
+
+    std::string ToString() const;
   };
 
   // Process transaction state replication aborted.
   void ProcessAborted(const AbortedData& data);
 
   // Handles new request for transaction update.
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
   // Prepares log garbage collection. Return min index that should be preserved.
   int64_t PrepareGC(std::string* details = nullptr);

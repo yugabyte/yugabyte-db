@@ -1,1 +1,0 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20210210192517-45c97f45f1-macos/yugabyte-db-thirdparty-v20210210192517-45c97f45f1-macos.tar.gz

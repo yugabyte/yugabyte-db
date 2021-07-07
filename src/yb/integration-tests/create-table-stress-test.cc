@@ -133,7 +133,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client_ = ASSERT_RESULT(YBClientBuilder()
@@ -161,7 +161,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
   std::unique_ptr<YBClient> client_;
   YBSchema schema_;
   std::unique_ptr<Messenger> messenger_;
-  gscoped_ptr<MasterServiceProxy> master_proxy_;
+  std::unique_ptr<MasterServiceProxy> master_proxy_;
   TabletServerMap ts_map_;
 };
 
@@ -551,15 +551,15 @@ DontVerifyClusterBeforeNextTearDown();
   LOG(INFO) << "========================================================";
   LOG(INFO) << "Tables and tablets:";
   LOG(INFO) << "========================================================";
-  std::vector<scoped_refptr<master::TableInfo> > tables;
-  cluster_->mini_master()->master()->catalog_manager()->GetAllTables(&tables);
+  auto tables = cluster_->mini_master()->master()->catalog_manager()->GetTables(
+      master::GetTablesMode::kAll);
   for (const scoped_refptr<master::TableInfo>& table_info : tables) {
     LOG(INFO) << "Table: " << table_info->ToString();
     std::vector<scoped_refptr<master::TabletInfo> > tablets;
     table_info->GetAllTablets(&tablets);
     for (const scoped_refptr<master::TabletInfo>& tablet_info : tablets) {
       auto l_tablet = tablet_info->LockForRead();
-      const master::SysTabletsEntryPB& metadata = l_tablet->data().pb;
+      const master::SysTabletsEntryPB& metadata = l_tablet->pb;
       LOG(INFO) << "  Tablet: " << tablet_info->ToString()
                 << " { start_key: "
                 << ((metadata.partition().has_partition_key_start())
@@ -575,7 +575,7 @@ DontVerifyClusterBeforeNextTearDown();
 
   // Get a single tablet in the middle, make sure we get that one back
 
-  gscoped_ptr<YBPartialRow> row(schema_.NewRow());
+  std::unique_ptr<YBPartialRow> row(schema_.NewRow());
   ASSERT_OK(row->SetInt32(0, half_tablets - 1));
   string start_key_middle;
   ASSERT_OK(row->EncodeRowKey(&start_key_middle));

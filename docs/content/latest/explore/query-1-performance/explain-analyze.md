@@ -1,6 +1,6 @@
 ---
 title: Analyzing Queries with EXPLAIN
-linkTitle: Analyzing Queries with EXPLAIN
+linkTitle: Analyzing queries with EXPLAIN
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 aliases:
 headerTitle: Analyzing Queries with EXPLAIN
@@ -8,8 +8,8 @@ image: /images/section_icons/index/develop.png
 menu:
   latest:
     identifier: explain-analyze
-    parent: query-1-performance
-    weight: 566
+    parent: query-tuning
+    weight: 400
 isTocNested: true
 showAsideToc: true
 ---
@@ -55,7 +55,7 @@ To insert table rows, execute the following:
 
 ```sql
 yugabyte=# INSERT INTO employees (k1, k2, v1, v2) 
-  VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 To check the query plan for simple select, execute the following:
@@ -66,7 +66,7 @@ yugabyte=# EXPLAIN SELECT * FROM employees WHERE k1 = 1;
 
 The following output displays the query execution cost estimate:
 
-```
+```output
 QUERY PLAN
 ----------------------------------------------------------------
 Foreign Scan on employees  (cost=0.00..112.50 rows=1000 width=44)
@@ -77,12 +77,12 @@ To check the execution plan for select with a complex condition that requires fi
 
 ```sql
 yugabyte=# EXPLAIN SELECT * FROM employees 
-  WHERE k1 = 2 and floor(k2 + 1.5) = v1;
+WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
 The following output displays the cost estimate based on the filtered result:
 
-```
+```output
 QUERY PLAN
 ----------------------------------------------------------------
 Foreign Scan on employees  (cost=0.00..125.00 rows=1000 width=44)
@@ -95,29 +95,28 @@ By enabling the `ANALYZE` option and wrapping it to preserve data integrity, you
 ```sql
 BEGIN;
 yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees 
-  WHERE k1 = 2 and floor(k2 + 1.5) = v1;
+WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ROLLBACK;
 ```
 
 In addition to the cost estimates from the query planner, `EXPLAIN ANALYZE` displays the server output produced during the statement execution, as shown in the following example:
 
 ```sql
-yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees a 
-  LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
-                                 QUERY PLAN
--------------------------------------------------------------------------
- Hash Left Join (cost=112.50..390.00 rows=5000 width=8) 
-                (actual time=3.939..6.195 rows=100 loops=1)
-   Hash Cond: (a.a = b.a)
-   ->  Seq Scan on employees a (cost=0.00..100.00 rows=1000 width=4) 
-                               (actual time=0.568..2.798 rows=100 loops=1)
-   ->  Hash  (cost=100.00..100.00 rows=1000 width=4) 
-             (actual time=3.363..3.363 rows=100 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 12kB
-         ->  Seq Scan on employees b (cost=0.00..100.00 rows=1000 width=4) 
-                               (actual time=0.458..3.339 rows=100 loops=1)
- Planning Time: 0.939 ms
- Execution Time: 7.089 ms
+yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees a LEFT JOIN LATERAL 
+(SELECT * FROM employees b WHERE a = b) c ON TRUE;
+```
+
+```output
+QUERY PLAN
+-----------------------------------------------------------------------------------------
+Nested Loop Left Join  (cost=0.00..15202.50 rows=5000 width=88) (actual time=2.853..2.885 rows=3 loops=1)
+   Join Filter: (a.* = b.*)
+   Rows Removed by Join Filter: 6
+   ->  Seq Scan on employees_k a  (cost=0.00..100.00 rows=1000 width=112) (actual time=1.747..1.749 rows=3 loops=1)
+   ->  Materialize  (cost=0.00..105.00 rows=1000 width=112) (actual time=0.155..0.157 rows=3 loops=3)
+         ->  Seq Scan on employees_k b  (cost=0.00..100.00 rows=1000 width=112) (actual time=0.450..0.454 rows=3 loops=1)
+ Planning Time: 0.072 ms
+ Execution Time: 2.938 ms
 (8 rows)
 ```
 
@@ -126,14 +125,307 @@ The server output from the preceding example includes the number of rescans (loo
 `EXPLAIN`, on the other hand,  does not provide this additional information, as shown in the following examples:
 
 ```sql
-yugabyte=# EXPLAIN SELECT * FROM employees a 
-  LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
-                              QUERY PLAN
+yugabyte=# EXPLAIN SELECT * FROM employees_k a LEFT JOIN LATERAL 
+(SELECT * FROM employees_k b WHERE a = b) c ON TRUE;
+```
+
+```output
+QUERY PLAN
 ----------------------------------------------------------------------
- Hash Left Join (cost=112.50..390.00 rows=5000 width=8)
-   Hash Cond: (a.a = b.a)
-   ->  Seq Scan on employees a (cost=0.00..100.00 rows=1000 width=4)
-   ->  Hash (cost=100.00..100.00 rows=1000 width=4)
-         ->  Seq Scan on employees b (cost=0.00..100.00 rows=1000 width=4)
+Nested Loop Left Join  (cost=0.00..15202.50 rows=5000 width=88)
+   Join Filter: (a.* = b.*)
+   ->  Seq Scan on employees_k a  (cost=0.00..100.00 rows=1000 width=112)
+   ->  Materialize  (cost=0.00..105.00 rows=1000 width=112)
+         ->  Seq Scan on employees_k b  (cost=0.00..100.00 rows=1000 width=112)
 (5 rows)
+```
+
+## Real world example
+
+The following example is drawn from a real-world scenario, using the `EXPLAIN` statement to view query plans, and then optimizing those queries by adding indexes and adjusting tables.
+
+### Optimize `SELECT COUNT` using an index
+
+The following table is representative of the customer's data.
+
+```output
+                                    Table "public.contacts"
+Column          | Type                           | Collation | Nullable | Default
+----------------+--------------------------------+-----------+----------+--------
+id              | bigint                         |           | not null |
+account_id      | integer                        |           |          |
+email           | character varying              |           |          |
+first_name      | character varying              |           |          |
+last_name       | character varying              |           |          |
+address_line_1  | character varying              |           |          |
+address_line_2  | character varying              |           |          |
+address_city    | character varying              |           |          |
+address_state   | character varying              |           |          |
+address_postal  | character varying              |           |          |
+created_at      | timestamp(6) without time zone |           | not null |
+updated_at      | timestamp(6) without time zone |           | not null |
+is_over_charged | boolean                        |           |          | false
+is_paid         | boolean                        |           |          | false
+data_source     | character varying              |           |          |
+
+Indexes:
+    "contacts_pkey" PRIMARY KEY, lsm (id HASH)
+```
+
+Running the following queries with `EXPLAIN` output shows the query execution plan generated by YSQL for a given SQL statement.
+
+```sql
+yugabyte=# explain SELECT COUNT(*) FROM contacts WHERE contacts.account_id = 1234 
+    AND contacts.is_paid = TRUE 
+    AND contacts.is_over_charged = TRUE 
+    AND (updated_at > '2021-04-12 12:00:00 '); 
+```
+
+```output
+QUERY PLAN
+----------------------------------------------
+Aggregate (cost=107.50..107.51 rows=1 width=8)
+    Seq Scan on contacts (cost=0.00..105.00 rows=1000 width=0)
+        Filter: (is_paid AND is_over_charged AND (updated_at > '2021-04-12 12:00:00'::timestamp without time zone) AND (account_id = 1234))
+(3 rows)
+```
+
+```sql
+yugabyte=# explain SELECT COUNT(*) FROM contacts WHERE contacts.account_id = 5678 
+    AND contacts.is_paid_for = TRUE 
+    AND contacts.is_over_charged = TRUE 
+    AND (updated_at > '2021-04-12 12:00:00');
+```
+
+```output
+QUERY PLAN
+----------------------------------------------
+Aggregate (cost=107.50..107.51 rows=1 width=8)
+    Seq Scan on contacts (cost=0.00..105.00 rows=1000 width=0)
+        Filter: (is_paid AND is_over_charged AND (updated_at > '2021-04-12 12:00:00'::timestamp without time zone) AND (account_id = 5678))
+(3 rows)
+```
+
+```sql
+yugabyte=# explain SELECT COUNT(*) FROM contacts WHERE contacts.account_id = 7890 
+    AND contacts.is_paid = FALSE 
+    AND (updated_at > '2021-04-12 12:00:00');
+```
+
+```output
+QUERY PLAN
+----------------------------------------------
+Aggregate (cost=107.50..107.51 rows=1 width=8)
+    Seq Scan on contacts (cost=0.00..105.00 rows=1000 width=0)
+        Filter: ((NOT is_paid) AND (updated_at > '2021-04-12 12:00:00'::timestamp without time zone) AND (account_id =1234))
+(3 rows)
+```
+
+In each case, the queries do a `Seq Scan` (sequential scan) on the tables. This operation requires scanning the entire table to retrieve the desired columns. Even using the partition keys to do the lookup, it still needs to do a lot of scanning. 
+
+Avoid `SELECT COUNT(*)` queries in most cases, as they can require a full scan of the table to get the results. This can cause query degradation, and in some cases cause the query to not return at all.
+
+Because most of the queries above use `account_id` as the main qualifier, you can avoid a sequential scan by creating a direct index on that column, and then using the `INCLUDE` feature to cover the other columns that you also want in the index. Indexing is a powerful tool that can speed up queries with higher latencies. When creating an index, consider the column cardinality, as well as the different index types.
+
+Create the index as follows:
+
+```sql
+create index contacts_account_id on contacts (account_id hash, updated_at desc) include (is_paid, is_over_charged);
+```
+
+With the index in place, the queries now do an index rather than sequential scan to get the data, significantly improving performance.
+
+```sql
+yugabyte=# explain SELECT COUNT(*) FROM contacts WHERE contacts.account_id = 1234 
+    AND contacts.is_paid = TRUE 
+    AND contacts.is_over_charged = TRUE 
+    AND (updated_at > '2021-04-12 12:00:00');
+```
+
+```output
+QUERY PLAN
+------------------------------------------
+Aggregate (cost=5.30..5.31 rows=1 width=8)
+    Index Scan using contacts_account_id on contacts (cost=0.00..5.28 rows=10 width=0)
+    Index Cond: (account_id = 1234)
+        Filter: (is_paid AND is_over_charged AND (updated_at > '2021-04-12 12:00:00'::timestamp without time zone))
+(4 rows) 
+
+Time: 57.208 ms
+Previous run time: 194 seconds
+```
+
+```sql
+yugabyte=# explain SELECT COUNT(*) FROM contacts WHERE contacts.account_id = 5678 
+    AND contacts.is_paid = TRUE 
+    AND contacts.is_over_charged = TRUE 
+    AND (updated_at > '2021-04-12 12:00:00');
+```
+
+```output
+QUERY PLAN
+------------------------------------------
+Aggregate (cost=5.30..5.31 rows=1 width=8)
+    Index Scan using contacts_account_id on contacts (cost=0.00..5.28 rows=10 width=0)
+    Index Cond: (account_id = 5678)
+        Filter: (is_paid AND is_over_charged AND (updated_at > '2021-04-12 12:00:00'::timestamp without time zone))
+(4 rows)
+
+Time: 11.923 ms
+Previous run time 188 seconds
+```
+
+```sql
+yugabyte=# explain SELECT COUNT(*) FROM contacts WHERE contacts.account_id = 7890 
+    AND contacts.is_paid = FALSE 
+    AND (updated_at > '2021-04-12 12:00:00');
+```
+
+```output
+QUERY PLAN
+------------------------------------------
+Aggregate (cost=5.30..5.31 rows=1 width=8)
+    Index Scan using contacts_account_id on contacts (cost=0.00..5.28 rows=10 width=0)
+    Index Cond: (account_id = 8060)
+        Filter: ((NOT is_paid) AND (updated_at > '2021-04-12 12:00:00'::timestamp without time zone))
+(4 rows)
+
+Time: 46.658 ms
+Previous run time: 147 seconds
+```
+
+### Optimize `SELECT` by changing table sorting
+
+The following query retrieves data from an account table where some indexes are already defined.
+
+Table definition:
+
+```sql
+yugabyte=# \d accounts
+```
+
+```output
+                                    Table "public.accounts"
+Column        | Type                        | Collation | Nullable | Default
+--------------+-----------------------------+-----------+----------+--------
+id            | bigint                      | For       | not null | nextval('accounts_id_seq'::regclass)
+company_name  | character varying(125)      |           | not null |
+status        | character varying(25)       |           |          |
+first_name    | character varying(55)       |           |          |
+last_name     | character varying(55)       |           |          |
+phone         | character varying(25)       |           |          |
+created_at    | timestamp without time zone |           | not null |
+updated_at    | timestamp without time zone |           | not null |
+product_id    | integer                     |           |          |
+business_type | character varying(55)       |           |          |
+sales_rep     | character varying           |           |          |
+
+Indexes:
+    "accounts_pkey" PRIMARY KEY, lsm (id HASH)
+    "index_on_company_name" lsm (company_name HASH)
+```
+
+`EXPLAIN` output for the query is as follows:
+
+```sql
+yugabyte=# explain SELECT accounts.* FROM accounts 
+    ORDER BY accounts.id desc, accounts.id desc LIMIT 25 OFFSET 0;
+```
+
+```output
+QUERY PLAN
+----------------------------------------------
+Limit (cost=128.22..128.28 rows=25 width=1642)
+    Sort (cost=128.22..130.72 rows=1000 width=1642)
+        Sort Key: id DESC
+            Seq Scan on accounts (cost=0.00..100.00 rows=1000 width=1642)
+```
+
+In this case, a sort is run first, which adds extra time to the query, before running a sequential scan of the table, which also degrades performance.
+
+To optimize this query, adjust the sorting of the table by the primary key to be `DESC` rather than `HASH`.
+
+```sql
+CREATE TABLE public.accounts ( id bigint NOT NULL, ... ,PRIMARY KEY(id desc);
+```
+
+Now, the query no longer does a sequential scan; instead it uses an index scan, cutting execution time from 430ms to 3ms.
+
+```sql
+yugabyte=# explain SELECT accounts.* FROM accounts 
+    ORDER BY accounts.id desc, accounts.id desc LIMIT 25 OFFSET 0;
+```
+
+```output
+QUERY PLAN
+------------------------------------------
+Limit (cost=0.00..2.85 rows=25 width=1642)
+    Index Scan using accounts_pkey on accounts (cost=0.00..114.00 rows=1000 width=1642)
+
+Time: 2.994 ms
+Previous run time: 426.627 ms
+```
+
+### Optimize `SELECT` using an index
+
+The query in the following example runs a sequential scan, which you can fix by adding an index.
+
+```sql
+yugabyte=# \d account_type
+```
+
+```output 
+                                    Table "public.account_type"
+Column      | Type                           | Collation | Nullable | Default
+------------+--------------------------------+-----------+----------+--------
+id          | bigint                         |           | not null | nextval('account_domains_id_seq'::regclass)
+account_id  | integer                        |           | For      |
+type        | character varying(55)          |           |          |
+url         | character varying              |           |          |
+is_valid    | boolean                        |           |          |
+created_at  | timestamp(6) without time zone |           | not null |
+updated_at  | timestamp(6) without time zone |           | not null |
+verified_at | timestamp without time zone    |           |          |
+
+Indexes:
+    "account_type_pkey" PRIMARY KEY, lsm (id HASH)
+```
+
+```sql
+yugabyte=# explain SELECT account_domains.* FROM account_type 
+    WHERE account_type.account_id = 1234 ORDER BY account_type.url ASC;
+```
+
+```output
+QUERY PLAN
+----------------------------------------------
+Sort (cost=152.33..154.83 rows=1000 width=237)
+    Sort Key: url
+        Seq Scan on account_type (cost=0.00..102.50 rows=1000 width=237)
+            Filter: (account_id = 6873)
+```
+
+The query runs a sequential scan on the account_type table, so adding an index on `account_id` prevents the full scan of the table, as follows:
+
+```sql
+create index account_id on account_type(account_id);
+```
+
+With the new index, the query scans the index rather than the larger main table, significantly improving performance.
+
+```sql
+yugabyte=# explain SELECT account_type.* FROM account_type 
+    WHERE account_type.account_id = 6873 ORDER BY account_type.url ASC;
+```
+
+```output
+QUERY PLAN
+----------------------------------------
+Sort (cost=5.39..5.42 rows=10 width=237)
+    Sort Key: url
+        Index Scan using account_id on account_type (cost=0.00..5.22 rows=10 width=237)
+            Index Cond: (account_id = 6873)
+    
+Time: 71.757 ms
+Previous runtime: 460 ms
 ```

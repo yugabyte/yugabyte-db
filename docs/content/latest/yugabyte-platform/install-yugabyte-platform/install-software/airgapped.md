@@ -13,12 +13,15 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
+  </li>
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/openshift" class="nav-link">
+      <i class="fas fa-cubes"></i> OpenShift </a>
   </li>
 
   <li>
@@ -62,13 +65,13 @@ $ cd /opt/downloads
 Download the `replicated.tar.gz` file by executing the following command:
 
 ```sh
-$ wget https://downloads.yugabyte.com/replicated.tar.gz
+$ wget --trust-server-names https://get.replicated.com/airgap
 ```
 
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-2.1.2.0-b10.airgap
+$ wget https://downloads.yugabyte.com/yugaware-2.7.1.1-b1.airgap
 ```
 
 Switch to the following directory:
@@ -154,4 +157,3 @@ Specify TLS versions via **Application config**, as shown in the following illus
 ![Application Config](/images/replicated/application-config.png)
 
 The recommended TLS version is 1.2.
-

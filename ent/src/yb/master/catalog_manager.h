@@ -37,7 +37,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   virtual ~CatalogManager();
   void CompleteShutdown();
 
-  CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(lock_);
+  CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(mutex_);
 
   // API to start a snapshot creation.
   CHECKED_STATUS CreateSnapshot(const CreateSnapshotRequestPB* req,
@@ -70,6 +70,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS ListSnapshotSchedules(const ListSnapshotSchedulesRequestPB* req,
                                        ListSnapshotSchedulesResponsePB* resp,
                                        rpc::RpcContext* rpc);
+
+  CHECKED_STATUS DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
+                                        DeleteSnapshotScheduleResponsePB* resp,
+                                        rpc::RpcContext* rpc);
 
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
@@ -169,12 +173,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
  private:
   friend class SnapshotLoader;
-  friend class ClusterLoadBalancer;
+  friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
   friend class UniverseReplicationLoader;
 
   CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id)
-      REQUIRES(lock_);
+      REQUIRES(mutex_);
 
   // Per table structure for external cluster snapshot importing to this cluster.
   // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
@@ -241,38 +245,48 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
-      bool add_indexes,
-      bool include_parent_colocated_table,
-      bool succeed_if_create_in_progress) override;
+      CollectFlags flags);
+
+  Result<SysRowEntries> CollectEntriesForSnapshot(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override {
+    return CollectEntries(
+        tables,
+        CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
+                     CollectFlag::kSucceedIfCreateInProgress});
+  }
 
   server::Clock* Clock() override;
 
   const Schema& schema() override;
 
-  void Submit(std::unique_ptr<tablet::Operation> operation) override;
+  void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
-  void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                       const std::string& snapshot_id,
-                                       const SnapshotScheduleId& schedule_id,
-                                       HybridTime snapshot_hybrid_time,
-                                       TabletSnapshotOperationCallback callback) override;
+  AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
+      const TabletInfoPtr& tablet, const std::string& snapshot_id,
+      tserver::TabletSnapshotOpRequestPB::Operation operation,
+      TabletSnapshotOperationCallback callback) override;
 
-  void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                        const std::string& snapshot_id,
-                                        HybridTime restore_at,
-                                        TabletSnapshotOperationCallback callback) override;
-
-  void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                       const std::string& snapshot_id,
-                                       TabletSnapshotOperationCallback callback) override;
+  void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) override;
 
   CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
 
+  CHECKED_STATUS RestoreSysCatalog(
+      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) override;
+  CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
+
+  void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
+  void CleanupHiddenTablets(
+      const std::vector<TabletInfoPtr>& hidden_tablets,
+      const ScheduleMinRestoreTime& schedule_min_restore_time);
+  // Will filter tables content, so pass it by value here.
+  void CleanupHiddenTables(std::vector<TableInfoPtr> tables);
+
   rpc::Scheduler& Scheduler() override;
 
-  bool IsLeader() override;
+  int64_t LeaderTerm() override;
 
-  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() override;
+  Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
+      SysRowEntry::Type type) override;
 
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);
@@ -294,7 +308,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Find CDC streams for a table.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id);
 
-  bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override;
+  bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 
   CHECKED_STATUS FillHeartbeatResponseEncryption(const SysClusterConfigEntryPB& cluster_config,
                                                  const TSHeartbeatRequestPB* req,
@@ -353,6 +367,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
 
   void Started() override;
+
+  void SysCatalogLoaded(int64_t term) override;
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;

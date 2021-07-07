@@ -26,8 +26,8 @@ YB_STRONGLY_TYPED_UUID(TxnSnapshotId);
 YB_STRONGLY_TYPED_UUID(TxnSnapshotRestorationId);
 YB_STRONGLY_TYPED_UUID(SnapshotScheduleId);
 
-using SnapshotSchedulesToTabletsMap =
-    std::unordered_map<SnapshotScheduleId, std::vector<TabletId>, SnapshotScheduleIdHash>;
+using SnapshotSchedulesToObjectIdsMap =
+    std::unordered_map<SnapshotScheduleId, std::vector<std::string>, SnapshotScheduleIdHash>;
 
 } // namespace yb
 

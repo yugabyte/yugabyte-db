@@ -56,6 +56,11 @@ export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE'
 export const ADD_CUSTOMER_CONFIG = 'ADD_CUSTOMER_CONFIG';
 export const ADD_CUSTOMER_CONFIG_RESPONSE = 'ADD_CUSTOMER_CONFIG_RESPONSE';
 
+export const SET_INITIAL_VALUES = 'SET_INITIAL_VALUES';
+
+export const EDIT_CUSTOMER_CONFIG = 'EDIT_CUSTOMER_CONFIG';
+export const EDIT_CUSTOMER_CONFIG_RESPONSE = 'EDIT_CUSTOMER_CONFIG_RESPONSE';
+
 export const DELETE_CUSTOMER_CONFIG = 'DELETE_CUSTOMER_CONFIG';
 export const DELETE_CUSTOMER_CONFIG_RESPONSE = 'DELETE_CUSTOMER_CONFIG_RESPONSE';
 
@@ -488,9 +493,33 @@ export function addCustomerConfig(config) {
   };
 }
 
+export function setInitialValues(initialValues) {
+  return {
+    type: SET_INITIAL_VALUES,
+    payload: initialValues
+  };
+}
+
 export function addCustomerConfigResponse(response) {
   return {
     type: ADD_CUSTOMER_CONFIG_RESPONSE,
+    payload: response
+  };
+}
+
+export function editCustomerConfig(config) {
+  const cUUID = localStorage.getItem('customerId');
+  const configUUID = config.configUUID;
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/configs/${configUUID}`, config);
+  return {
+    type: EDIT_CUSTOMER_CONFIG,
+    payload: request
+  };
+}
+
+export function editCustomerConfigResponse(response) {
+  return {
+    type: EDIT_CUSTOMER_CONFIG_RESPONSE,
     payload: response
   };
 }

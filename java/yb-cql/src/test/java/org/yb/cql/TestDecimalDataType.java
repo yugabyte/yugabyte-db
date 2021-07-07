@@ -775,7 +775,7 @@ public class TestDecimalDataType extends BaseCQLTest {
                 .bind(hashDecimal);
         ResultSet selectResult = session.execute(selectStmt);
         List<Row> rows = selectResult.all();
-        assertEquals(hashDecimal, rows.get(0).getDecimal(0));
+        assertTrue(hashDecimal.compareTo(rows.get(0).getDecimal(0)) == 0);
 
         final String dropStmt = "DROP TABLE test_decimal;";
         session.execute(dropStmt);

@@ -56,16 +56,19 @@ import {
   isEmptyObject
 } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
-import {
-  EXPOSING_SERVICE_STATE_TYPES
-} from './ClusterFields';
+import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
 import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    submitConfigureUniverse: (values) => {
+    submitConfigureUniverse: (values, universeUUID = null) => {
       dispatch(configureUniverseTemplateLoading());
       return dispatch(configureUniverseTemplate(values)).then((response) => {
+        if(response.error && universeUUID) {
+          dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+            dispatch(fetchUniverseInfoResponse(response.payload));
+          });
+        }
         return dispatch(configureUniverseTemplateResponse(response.payload));
       });
     },
@@ -81,6 +84,10 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(getTlsCertificates()).then((response) => {
           dispatch(getTlsCertificatesResponse(response.payload));
         });
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        }
         return dispatch(createUniverseResponse(response.payload));
       });
     },
@@ -206,6 +213,7 @@ const formFieldNames = [
   'primary.tserverGFlags',
   'primary.instanceTags',
   'primary.diskIops',
+  'primary.throughput',
   'primary.numVolumes',
   'primary.volumeSize',
   'primary.storageType',
@@ -271,6 +279,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
+    data[clusterType].throughput = userIntent.deviceInfo.throughput;
     data[clusterType].numVolumes = userIntent.deviceInfo.numVolumes;
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
@@ -318,8 +327,8 @@ function mapStateToProps(state, ownProps) {
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
-      enableNodeToNodeEncrypt: false,
-      enableClientToNodeEncrypt: false,
+      enableNodeToNodeEncrypt: true,
+      enableClientToNodeEncrypt: true,
       enableEncryptionAtRest: false,
       awsArnString: '',
       selectEncryptionAtRestConfig: null
@@ -334,8 +343,8 @@ function mapStateToProps(state, ownProps) {
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
-      enableNodeToNodeEncrypt: false,
-      enableClientToNodeEncrypt: false
+      enableNodeToNodeEncrypt: true,
+      enableClientToNodeEncrypt: true
     }
   };
 
@@ -360,6 +369,7 @@ function mapStateToProps(state, ownProps) {
     userCertificates: state.customer.userCertificates,
     accessKeys: state.cloud.accessKeys,
     initialValues: data,
+    featureFlags: state.featureFlags,
     formValues: selector(
       state,
       'formType',
@@ -375,11 +385,11 @@ function mapStateToProps(state, ownProps) {
       'primary.masterGFlags',
       'primary.tserverGFlags',
       'primary.instanceTags',
-      'primary.diskIops',
       'primary.numVolumes',
       'primary.volumeSize',
       'primary.storageType',
       'primary.diskIops',
+      'primary.throughput',
       'primary.assignPublicIP',
       'primary.mountPoints',
       'primary.useTimeSync',
@@ -414,6 +424,7 @@ function mapStateToProps(state, ownProps) {
       'async.ybSoftwareVersion',
       'async.accessKeyCode',
       'async.diskIops',
+      'async.throughput',
       'async.numVolumes',
       'async.volumeSize',
       'async.storageType',
@@ -441,7 +452,7 @@ const asyncValidate = (values, dispatch) => {
       values.formType !== 'Async'
     ) {
       dispatch(checkIfUniverseExists(values.primary.universeName)).then((response) => {
-        if (response.payload.status !== 200 && values.formType !== 'Edit') {
+        if (response.payload.status === 200 && values.formType !== 'Edit' && response.payload.data.length > 0) {
           reject({ primary: { universeName: 'Universe name already exists' } });
         } else {
           resolve();
@@ -477,7 +488,10 @@ const validateProviderFields = (values, props, clusterType) => {
           'GCP Universe name cannot contain capital letters or special characters except dashes';
       }
     }
-    if (values[clusterType].enableEncryptionAtRest && !values[clusterType].selectEncryptionAtRestConfig) {
+    if (
+      values[clusterType].enableEncryptionAtRest &&
+      !values[clusterType].selectEncryptionAtRestConfig
+    ) {
       errors.selectEncryptionAtRestConfig = 'KMS Config is Required for Encryption at Rest';
     }
   }
@@ -512,7 +526,8 @@ const universeForm = reduxForm({
   form: 'UniverseForm',
   validate,
   asyncValidate,
-  fields: formFieldNames
+  fields: formFieldNames,
+  asyncChangeFields: ['primary.universeName', 'async.universeName']
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(universeForm(UniverseForm));

@@ -39,25 +39,27 @@ YsqlTransactionDdl::~YsqlTransactionDdl() {
   rpcs_.Shutdown();
 }
 
-void YsqlTransactionDdl::VerifyTransaction(TransactionMetadata transaction,
+void YsqlTransactionDdl::VerifyTransaction(
+    const TransactionMetadata& transaction_metadata,
     std::function<Status(bool)> complete_callback) {
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_bg_task_wait_ms));
 
-  LOG(INFO) << "Verifying Transaction " << transaction.ToString();
+  YB_LOG_EVERY_N_SECS(INFO, 1) << "Verifying Transaction " << transaction_metadata;
 
   tserver::GetTransactionStatusRequestPB req;
-  req.set_tablet_id(transaction.status_tablet);
-  req.add_transaction_id()->assign(pointer_cast<const char*>(transaction.transaction_id.data()),
-      transaction.transaction_id.size());
+  req.set_tablet_id(transaction_metadata.status_tablet);
+  req.add_transaction_id()->assign(
+      pointer_cast<const char*>(transaction_metadata.transaction_id.data()),
+      transaction_metadata.transaction_id.size());
 
   auto rpc_handle = rpcs_.Prepare();
   if (rpc_handle == rpcs_.InvalidHandle()) {
-    LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction.ToString();
+    LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction_metadata;
     return;
   }
   auto client = master_->async_client_initializer().client();
   if (!client) {
-    LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << transaction.ToString();
+    LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << transaction_metadata;
     return;
   }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
@@ -67,18 +69,20 @@ void YsqlTransactionDdl::VerifyTransaction(TransactionMetadata transaction,
       nullptr /* tablet */,
       client,
       &req,
-      [this, rpc_handle, transaction, complete_callback]
+      [this, rpc_handle, transaction_metadata, complete_callback]
           (Status status, const tserver::GetTransactionStatusResponsePB& resp) {
         auto retained = rpcs_.Unregister(rpc_handle);
-        TransactionReceived(transaction, complete_callback, status, resp);
+        TransactionReceived(transaction_metadata, complete_callback, status, resp);
       });
   (**rpc_handle).SendRpc();
 }
 
-void YsqlTransactionDdl::TransactionReceived(TransactionMetadata transaction,
+void YsqlTransactionDdl::TransactionReceived(
+    const TransactionMetadata& transaction,
     std::function<Status(bool)> complete_callback,
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
-  LOG(INFO) << "TransactionReceived: " << txn_status.ToString() << " : " << resp.DebugString();
+  YB_LOG_EVERY_N_SECS(INFO, 1) << "TransactionReceived: " << txn_status.ToString()
+                               << " : " << resp.DebugString();
 
   if (!txn_status.ok()) {
     LOG(WARNING) << "Transaction Status attempt (" << transaction.ToString()
@@ -98,7 +102,8 @@ void YsqlTransactionDdl::TransactionReceived(TransactionMetadata transaction,
     }), "Failed to enqueue callback");
     // #5981: Maybe have the same heuristic as above?
   } else {
-    LOG(INFO) << "Got Response for " << transaction.ToString() << ": " << resp.DebugString();
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Got Response for " << transaction.ToString()
+                                 << ": " << resp.DebugString();
     bool is_pending = (resp.status_size() == 0);
     for (int i = 0; i < resp.status_size() && !is_pending; ++i) {
       // NOTE: COMMITTED state is also "pending" because we need APPLIED.
@@ -135,8 +140,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
                 pg_database_schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), boost::none /* transaction_id */,
-      {} /* read_hybrid_time */, pg_table_id));
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
   auto e_oid_val = VERIFY_RESULT(entry_oid);
   {
     auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());

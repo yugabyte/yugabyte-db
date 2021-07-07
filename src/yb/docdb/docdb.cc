@@ -25,24 +25,25 @@
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/kv_debug.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
-#include "yb/docdb/deadline_info.h"
-#include "yb/docdb/docdb_types.h"
-#include "yb/docdb/kv_debug.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
@@ -1089,6 +1090,7 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     HybridTime commit_ht,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* apply_state,
+    HybridTime log_ht,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* intents_batch) {
@@ -1203,6 +1205,9 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     PutApplyState(transaction_id_slice, commit_ht, write_id, value_parts, regular_batch);
   }
 
+  if (regular_batch) {
+    YB_TRANSACTION_DUMP(ApplyIntents, transaction_id_slice, log_ht, regular_batch->Data());
+  }
   return ApplyTransactionState {};
 }
 

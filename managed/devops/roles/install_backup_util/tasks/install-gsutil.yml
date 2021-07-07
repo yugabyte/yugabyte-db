@@ -8,21 +8,18 @@
 
 - block:
     - set_fact:
-        gcloud_package_path: "/usr/local/{{ gcloud_package_name }}"
+        gsutil_package_path: "/usr/local/{{ gsutil_package_name }}"
 
-    - name: gsutil | Copy and unarchive {{ gcloud_package }} from {{ package_path }}
+    - name: gsutil | Copy and unarchive {{ gsutil_package }} from {{ package_path }}
       unarchive:
-        src: "{{ package_path }}/{{ gcloud_package }}"
+        src: "{{ package_path }}/{{ gsutil_package }}"
         dest: "/usr/local"
-        creates: "{{ gcloud_package_path }}"
+        creates: "{{ gsutil_package_path }}"
         remote_src: "{{ is_remote }}"
-
-    - name: gsutil | Run install script
-      command: "{{ gcloud_package_path }}/install.sh --quiet --usage-reporting false  --command-completion true --override-components gsutil"
 
     - name: gsutil | Create symlinks to {{ bin_path }}
       file:
-        src: "{{ gcloud_package_path }}/bin/gsutil"
+        src: "{{ gsutil_package_path }}/gsutil"
         path: "{{ bin_path }}/gsutil"
         state: link
         force: yes

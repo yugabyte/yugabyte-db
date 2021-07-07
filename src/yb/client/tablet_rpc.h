@@ -35,6 +35,11 @@ namespace yb {
 
 namespace tserver {
 class TabletServerServiceProxy;
+class TabletServerForwardServiceProxy;
+}
+
+namespace rpc {
+  class RpcController;
 }
 
 namespace client {
@@ -55,6 +60,7 @@ class TabletRpc {
 };
 
 tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error);
+
 class TabletInvoker {
  public:
   // If table is specified, TabletInvoker can detect that table partitions are stale in case tablet
@@ -77,6 +83,12 @@ class TabletInvoker {
   bool Done(Status* status);
 
   bool IsLocalCall() const;
+
+  void WriteAsync(const tserver::WriteRequestPB& req, tserver::WriteResponsePB *resp,
+                  rpc::RpcController *controller, std::function<void()>&& cb);
+
+  void ReadAsync(const tserver::ReadRequestPB& req, tserver::ReadResponsePB *resp,
+                 rpc::RpcController *controller, std::function<void()>&& cb);
 
   const RemoteTabletPtr& tablet() const { return tablet_; }
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy() const;
@@ -120,6 +132,8 @@ class TabletInvoker {
         ErrorCode(error_code) == tserver::TabletServerErrorPB::TABLET_NOT_FOUND &&
         current_ts_ != nullptr;
   }
+
+  bool ShouldUseNodeLocalForwardProxy();
 
   YBClient* const client_;
 
@@ -167,6 +181,14 @@ class TabletInvoker {
 
   // Should we assign new leader in meta cache when successful response is received.
   bool assign_new_leader_ = false;
+
+  // Whether to use the local node proxy or to use the default remote proxy for communication to the
+  // tablet servers. This flag is true if all of the following conditions are true:
+  // 1. FLAGS_ysql_forward_rpcs_to_local_tserver is true
+  // 2. The node local forward proxy is set in the client.
+  // 3. The destination tserver is not the same as the node local tserver.
+  // 4. The rpc is not intended for the master.
+  bool should_use_local_node_proxy_ = false;
 };
 
 CHECKED_STATUS ErrorStatus(const tserver::TabletServerErrorPB* error);

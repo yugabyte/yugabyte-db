@@ -623,7 +623,7 @@ TEST_F(DBIteratorTest, DBIteratorEmpty) {
 
 TEST_F(DBIteratorTest, DBIteratorUseSkipCountSkips) {
   Options options;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.merge_operator = MergeOperators::CreateFromStringId("stringappend");
 
   TestIterator* internal_iter = new TestIterator(BytewiseComparator());
@@ -673,7 +673,7 @@ TEST_F(DBIteratorTest, DBIteratorUseSkip) {
       }
       internal_iter->Finish();
 
-      options.statistics = rocksdb::CreateDBStatistics();
+      options.statistics = rocksdb::CreateDBStatisticsForTests();
       std::unique_ptr<Iterator> db_iter(NewDBIterator(
           env_, ImmutableCFOptions(options), BytewiseComparator(),
           internal_iter, i + 2, options.max_sequential_skip_in_iterations, 0));

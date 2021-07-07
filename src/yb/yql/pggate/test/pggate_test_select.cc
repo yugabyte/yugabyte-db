@@ -53,7 +53,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                                DataType::INT32, false, false));
   ++col_count;
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
-  CommitTransaction();
+
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------
@@ -95,19 +95,20 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   const int insert_row_count = 7;
   for (int i = 0; i < insert_row_count; i++) {
     // Insert the row with the original seed.
+    BeginTransaction();
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
     CommitTransaction();
 
     // Update the constant expresions to insert the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
     seed++;
-    YBCPgUpdateConstInt4(expr_id, seed, false);
-    YBCPgUpdateConstInt2(expr_depcnt, seed, false);
-    YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false);
-    YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_id, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
     job = strings::Substitute("Job_title_$0", seed);
-    YBCPgUpdateConstText(expr_job, job.c_str(), false);
-    YBCPgUpdateConstInt4(expr_oid, seed, false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_job, job.c_str(), false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_oid, seed, false));
   }
 
   pg_stmt = nullptr;
@@ -119,19 +120,19 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // Specify the selected expressions.
   YBCPgExpr colref;
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, -2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, -2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition and range columns for SELECT to select a specific row.
@@ -144,7 +145,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_id));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
+  BeginTransaction();
+  CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
   // Fetching rows and check their contents.
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
@@ -153,7 +155,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   YBCPgSysColumns syscols;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data));
     if (!has_data) {
       break;
     }
@@ -189,6 +191,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_EQ(oid, id) << "Unexpected result for OID column";
   }
   CHECK_EQ(select_row_count, 1) << "Unexpected row count";
+  CommitTransaction();
 
   pg_stmt = nullptr;
 
@@ -198,19 +201,19 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                   NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, -2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, -2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition column for SELECT.
@@ -218,14 +221,15 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_hash));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
+  BeginTransaction();
+  CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
   // Fetching rows and check their contents.
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data));
     CHECK(has_data) << "Not all inserted rows are fetch";
 
     // Print result
@@ -256,6 +260,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     int32_t oid = static_cast<int32_t>(syscols.oid);
     CHECK_EQ(oid, id) << "Unexpected result for OID column";
   }
+  CommitTransaction();
 
   pg_stmt = nullptr;
 }

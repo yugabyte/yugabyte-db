@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
-import { YBLoadingCircleIcon } from '../../../common/indicators';
+import { YBLoading } from '../../../common/indicators';
 import { withRouter } from 'react-router';
 import { isNonEmptyArray, isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import ListKubernetesConfigurations from './ListKubernetesConfigurations';
@@ -17,6 +17,12 @@ class KubernetesProviderConfiguration extends Component {
     this.state = {
       listView: true
     };
+  }
+
+  componentDidMount() {
+    if (!getPromiseState(this.props.universeList).isSuccess()) {
+      this.props.fetchUniverseList();
+    }
   }
 
   toggleListView = (value) => {
@@ -36,8 +42,12 @@ class KubernetesProviderConfiguration extends Component {
       params: { uuid }
     } = this.props;
 
-    if (getPromiseState(providers).isLoading() || getPromiseState(providers).isInit()) {
-      return <YBLoadingCircleIcon size="medium" />;
+    if (
+      getPromiseState(providers).isLoading() || getPromiseState(providers).isInit() ||
+      getPromiseState(regions).isLoading() || getPromiseState(regions).isInit() ||
+      getPromiseState(universeList).isLoading() || getPromiseState(universeList).isInit()
+    ) {
+      return <YBLoading />;
     }
 
     const kubernetesRegions = regions.data.filter(

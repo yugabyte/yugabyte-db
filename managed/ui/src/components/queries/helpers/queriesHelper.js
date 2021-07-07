@@ -48,12 +48,13 @@ export const useLiveQueriesApi = ({ universeUUID }) => {
   };
 };
 
-export const useSlowQueriesApi = ({ universeUUID, defaultStaleTime = 60000 }) => {
+export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60000 }) => {
   const { refetch, isFetching, data } = useQuery(
     ['getSlowQueries', universeUUID],
     () => fetchSlowQueries(universeUUID),
     {
-      staleTime: defaultStaleTime
+      enabled,
+      staleTime: defaultStaleTime      
     }
   );
 

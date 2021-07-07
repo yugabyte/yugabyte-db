@@ -47,6 +47,10 @@ YB_DEFINE_ENUM(
   ((SERIALIZABLE, 3))
 );
 
+std::shared_ptr<yb::client::YBSession> BuildSession(
+    yb::client::YBClient* client,
+    const scoped_refptr<ClockBase>& clock = nullptr);
+
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(client::AsyncClientInitialiser* async_client_init,
@@ -78,6 +82,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
 
   bool IsDdlMode() const { return ddl_session_.get() != nullptr; }
+  bool IsTxnInProgress() const { return txn_in_progress_; }
 
  private:
   YB_STRONGLY_TYPED_BOOL(NeedsPessimisticLocking);

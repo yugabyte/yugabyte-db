@@ -57,7 +57,6 @@
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/perf_context.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/snapshot.h"
 #include "yb/rocksdb/sst_file_writer.h"
@@ -84,9 +83,17 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/mock_env.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/xfunc.h"
+
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/priority_thread_pool.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
 #include "yb/util/tsan_util.h"
+
+DECLARE_bool(use_priority_thread_pool_for_compactions);
+DECLARE_bool(use_priority_thread_pool_for_flushes);
 
 namespace rocksdb {
 
@@ -385,7 +392,7 @@ TEST_F(DBTest, CompactedDB) {
 TEST_F(DBTest, IndexAndFilterBlocksOfNewTableAddedToCache) {
   Options options = CurrentOptions();
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   BlockBasedTableOptions table_options;
   table_options.cache_index_and_filter_blocks = true;
   table_options.filter_policy.reset(NewBloomFilterPolicy(20));
@@ -436,7 +443,7 @@ TEST_F(DBTest, IndexAndFilterBlocksOfNewTableAddedToCache) {
 TEST_F(DBTest, ParanoidFileChecks) {
   Options options = CurrentOptions();
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.level0_file_num_compaction_trigger = 2;
   options.paranoid_file_checks = true;
   BlockBasedTableOptions table_options;
@@ -970,7 +977,7 @@ TEST_F(DBTest, NonBlockingIteration) {
   do {
     ReadOptions non_blocking_opts, regular_opts;
     Options options = CurrentOptions();
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     non_blocking_opts.read_tier = kBlockCacheTier;
     CreateAndReopenWithCF({"pikachu"}, options);
     // write one kv to the database.
@@ -1033,7 +1040,7 @@ TEST_F(DBTest, ManagedNonBlockingIteration) {
   do {
     ReadOptions non_blocking_opts, regular_opts;
     Options options = CurrentOptions();
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     non_blocking_opts.read_tier = kBlockCacheTier;
     non_blocking_opts.managed = true;
     CreateAndReopenWithCF({"pikachu"}, options);
@@ -1371,7 +1378,7 @@ TEST_F(DBTest, IterReseek) {
   Options options = CurrentOptions(options_override);
   options.max_sequential_skip_in_iterations = 3;
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -2070,7 +2077,7 @@ TEST_F(DBTest, CompressedCache) {
   for (int iter = 0; iter < 4; iter++) {
     Options options;
     options.write_buffer_size = 64*1024;        // small write buffer
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     options = CurrentOptions(options);
 
     BlockBasedTableOptions table_options;
@@ -4464,7 +4471,7 @@ TEST_F(DBTest, GroupCommitTest) {
     Options options = CurrentOptions();
     options.env = env_;
     env_->log_write_slowdown_.store(100);
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     Reopen(options);
 
     // Start threads
@@ -6185,7 +6192,7 @@ TEST_F(DBTest, DynamicMiscOptions) {
   options.create_if_missing = true;
   options.max_sequential_skip_in_iterations = 16;
   options.compression = kNoCompression;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   DestroyAndReopen(options);
 
   auto assert_reseek_count = [this, &options](int key_start, int num_reseek) {
@@ -6240,7 +6247,7 @@ TEST_F(DBTest, L0L1L2AndUpHitCounter) {
   options.max_write_buffer_number = 2;
   options.max_background_compactions = 8;
   options.max_background_flushes = 8;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   CreateAndReopenWithCF({"mypikachu"}, options);
 
   int numkeys = 20000;
@@ -6315,7 +6322,7 @@ TEST_F(DBTest, EncodeDecompressedBlockSizeTest) {
 TEST_F(DBTest, MutexWaitStatsDisabledByDefault) {
   Options options = CurrentOptions();
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   CreateAndReopenWithCF({"pikachu"}, options);
   const uint64_t kMutexWaitDelay = 100;
   ASSERT_OK(Put("hello", "rocksdb"));
@@ -6408,7 +6415,7 @@ TEST_F(DBTest, MergeTestTime) {
   this->env_->no_sleep_ = true;
   Options options;
   options = CurrentOptions(options);
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.merge_operator.reset(new DelayedMergeOperator(this));
   DestroyAndReopen(options);
 
@@ -6447,7 +6454,7 @@ TEST_P(DBTestWithParam, MergeCompactionTimeTest) {
   Options options;
   options = CurrentOptions(options);
   options.compaction_filter_factory = std::make_shared<KeepFilterFactory>();
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.merge_operator.reset(new DelayedMergeOperator(this));
   options.compaction_style = kCompactionStyleUniversal;
   options.max_subcompactions = max_subcompactions_;
@@ -6469,7 +6476,7 @@ TEST_P(DBTestWithParam, FilterCompactionTimeTest) {
       std::make_shared<DelayFilterFactory>(this);
   options.disable_auto_compactions = true;
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.max_subcompactions = max_subcompactions_;
   options = CurrentOptions(options);
   DestroyAndReopen(options);
@@ -7145,7 +7152,7 @@ TEST_F(DBTest, FailWhenCompressionNotSupportedTest) {
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, RowCache) {
   Options options = CurrentOptions();
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.row_cache = NewLRUCache(8192);
   DestroyAndReopen(options);
 
@@ -8493,11 +8500,59 @@ TEST_F(DBTest, WalFilterTestWithChangeBatchExtraKeys) {
 }
 #endif  // ROCKSDB_LITE
 
+// Test for https://github.com/yugabyte/yugabyte-db/issues/8919.
+// Schedules flush after CancelAllBackgroundWork call.
+TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
+  FLAGS_use_priority_thread_pool_for_compactions = true;
+  constexpr auto kMaxBackgroundCompactions = 1;
+  constexpr auto kWriteBufferSize = 64_KB;
+  constexpr auto kValueSize = 2_KB;
+
+  for (const auto use_priority_thread_pool_for_flushes : {false, true}) {
+    LOG(INFO) << "use_priority_thread_pool_for_flushes: " << use_priority_thread_pool_for_flushes;
+    FLAGS_use_priority_thread_pool_for_flushes = use_priority_thread_pool_for_flushes;
+
+    yb::PriorityThreadPool thread_pool(kMaxBackgroundCompactions);
+    Options options = CurrentOptions();
+    options.create_if_missing = true;
+    options.priority_thread_pool_for_compactions_and_flushes = &thread_pool;
+    options.compression = kNoCompression;
+    options.write_buffer_size = kWriteBufferSize;
+    options.arena_block_size = kValueSize;
+    options.log_prefix = yb::Format(
+        "TEST_use_priority_thread_pool_for_flushes_$0: ", use_priority_thread_pool_for_flushes);
+    options.info_log_level = InfoLogLevel::INFO_LEVEL;
+    options.info_log = std::make_shared<yb::YBRocksDBLogger>(options.log_prefix);
+
+    DestroyAndReopen(options);
+
+    WriteOptions wo;
+    wo.disableWAL = true;
+
+    LOG(INFO) << "Writing data...";
+    Random rnd(301);
+    int key = 0;
+    while (key * kValueSize < kWriteBufferSize) {
+      ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
+    }
+
+    db_->SetDisableFlushOnShutdown(true);
+    CancelAllBackgroundWork(db_);
+
+    // Write one more key, that should trigger scheduling flush.
+    ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
+    LOG(INFO) << "Writing data - done";
+
+    Close();
+  }
+}
+
 }  // namespace rocksdb
 
 
 int main(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
+  google::ParseCommandLineNonHelpFlags(&argc, &argv, /* remove_flags */ true);
   return RUN_ALL_TESTS();
 }

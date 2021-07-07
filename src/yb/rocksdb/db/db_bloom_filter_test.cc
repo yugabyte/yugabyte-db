@@ -49,7 +49,7 @@ TEST_F(DBBloomFilterTest, KeyMayExist) {
     anon::OptionsOverride options_override;
     options_override.filter_policy.reset(NewBloomFilterPolicy(20));
     Options options = CurrentOptions(options_override);
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     CreateAndReopenWithCF({"pikachu"}, options);
 
     ASSERT_TRUE(!db_->KeyMayExist(ropts, handles_[1], "a", &value));
@@ -160,7 +160,7 @@ TEST_F(DBBloomFilterTest, FilterDeletes) {
 TEST_F(DBBloomFilterTest, GetFilterByPrefixBloom) {
   Options options = last_options_;
   options.prefix_extractor.reset(NewFixedPrefixTransform(8));
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   BlockBasedTableOptions bbto;
   bbto.filter_policy.reset(NewBloomFilterPolicy(10, false));
   bbto.whole_key_filtering = false;
@@ -196,7 +196,7 @@ TEST_F(DBBloomFilterTest, GetFilterByPrefixBloom) {
 TEST_F(DBBloomFilterTest, WholeKeyFilterProp) {
   Options options = last_options_;
   options.prefix_extractor.reset(NewFixedPrefixTransform(3));
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
 
   BlockBasedTableOptions bbto;
   bbto.filter_policy.reset(NewBloomFilterPolicy(10, false));
@@ -424,7 +424,7 @@ size_t BloomFilterUsefulLowerBound(const size_t num_unique_keys, const size_t nu
 TEST_F(DBBloomFilterTest, BloomFilterIndex) {
   do {
     Options options = CurrentOptions();
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     options.env = env_;
     // ChangeCompactOptions() only changes compaction style, which does not
     // trigger reset of table_factory
@@ -490,7 +490,7 @@ TEST_F(DBBloomFilterTest, BloomFilterIndex) {
 TEST_F(DBBloomFilterTest, BloomFilterRate) {
   while (ChangeFilterOptions()) {
     Options options = CurrentOptions();
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     CreateAndReopenWithCF({"pikachu"}, options);
 
     const int maxKey = 10000;
@@ -517,7 +517,7 @@ TEST_F(DBBloomFilterTest, BloomFilterRate) {
 
 TEST_F(DBBloomFilterTest, BloomFilterCompatibility) {
   Options options = CurrentOptions();
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   BlockBasedTableOptions table_options;
   table_options.filter_policy.reset(NewBloomFilterPolicy(10, true));
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
@@ -546,7 +546,7 @@ TEST_F(DBBloomFilterTest, BloomFilterCompatibility) {
 
 TEST_F(DBBloomFilterTest, BloomFilterReverseCompatibility) {
   Options options = CurrentOptions();
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   BlockBasedTableOptions table_options;
   table_options.filter_policy.reset(NewBloomFilterPolicy(10, false));
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
@@ -647,7 +647,7 @@ class KeyIdentityAltEmptyTransformer : public FilterPolicy::KeyTransformer {
 void DBBloomFilterTest::CheckOtherFilterPoliciesSupport(
     Options* options, const int num_unique_keys, FilterPolicyCreator write_policy_creator,
     FilterPolicyCreator new_policy_creator, const bool should_be_useful) {
-  options->statistics = rocksdb::CreateDBStatistics();
+  options->statistics = rocksdb::CreateDBStatisticsForTests();
   BlockBasedTableOptions table_options;
   table_options.filter_policy.reset(write_policy_creator());
   options->table_factory.reset(NewBlockBasedTableFactory(table_options));
@@ -723,7 +723,7 @@ TEST_F(DBBloomFilterTest, EmptyFilterKeys) {
   for (int parity = 0; parity < 2; ++parity) {
     LOG(INFO) << "KeyIdentityAltEmptyTransformer parity: " << parity;
     Options options = CurrentOptions();
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     BlockBasedTableOptions table_options;
     table_options.filter_policy = std::make_unique<TestFilterPolicy>(
         "KeyIdentityAltEmpty", std::make_unique<KeyIdentityAltEmptyTransformer>(parity));
@@ -817,7 +817,7 @@ class WrappedBloom : public FilterPolicy {
 
 TEST_F(DBBloomFilterTest, BloomFilterWrapper) {
   Options options = CurrentOptions();
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
 
   BlockBasedTableOptions table_options;
   WrappedBloom* policy = new WrappedBloom(10);
@@ -1210,7 +1210,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   bbto.whole_key_filtering = true;
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
   options.optimize_filters_for_hits = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   CreateAndReopenWithCF({"mypikachu"}, options);
 
   int numkeys = 200000;
@@ -1267,7 +1267,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   options.disable_auto_compactions = true;
   options.num_levels = 9;
   options.optimize_filters_for_hits = false;
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
   bbto.block_cache.reset();
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
 
@@ -1284,7 +1284,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   // Now that we know the filter blocks exist in the last level files, see if
   // filter caching is skipped for this optimization
   options.optimize_filters_for_hits = true;
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
   bbto.block_cache.reset();
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
 
@@ -1301,7 +1301,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
 
   // Check filter block ignored for files preloaded during DB::Open()
   options.max_open_files = -1;
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
   bbto.block_cache.reset();
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
 
@@ -1319,7 +1319,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   // Check filter block ignored for file trivially-moved to bottom level
   bbto.block_cache.reset();
   options.max_open_files = 100;  // setting > -1 makes it not preload all files
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
 
   ReopenWithColumnFamilies({"default", "mypikachu"}, options);
@@ -1358,7 +1358,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
 
   // Check filter block not cached for iterator
   bbto.block_cache.reset();
-  options.statistics = CreateDBStatistics();
+  options.statistics = CreateDBStatisticsForTests();
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
 
   ReopenWithColumnFamilies({"default", "mypikachu"}, options);

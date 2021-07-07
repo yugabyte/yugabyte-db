@@ -37,12 +37,12 @@
 #include <vector>
 
 #include "yb/client/async_rpc.h"
+#include "yb/client/error_collector.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/transaction.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -87,7 +87,9 @@ YB_DEFINE_ENUM(
                           // wait for response. When there is no transaction - we still sending
                           // operations marking transaction as auto ready.
     (kComplete)           // Batcher complete.
-    (kAborted));          // Batcher was aborted.
+    (kAborted)            // Batcher was aborted.
+    (kAddFailed)          // There was an error when adding operation to the batcher.
+    );
 
 // A Batcher is the class responsible for collecting row operations, routing them to the
 // correct tablet server, and possibly batching them together for better efficiency.
@@ -100,12 +102,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
  public:
   // Create a new batcher associated with the given session.
   //
-  // Any errors which come back from operations performed by this batcher are posted to
-  // the provided ErrorCollector.
-  //
-  // Takes a reference on error_collector. Creates a weak_ptr to 'session'.
+  // Creates a weak_ptr to 'session'.
   Batcher(YBClient* client,
-          ErrorCollector* error_collector,
           const YBSessionPtr& session,
           YBTransactionPtr transaction,
           ConsistentReadPoint* read_point,
@@ -121,14 +119,16 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // The timeout is currently set on all of the RPCs, but in the future will be relative
   // to when the Flush call is made (eg even if the lookup of the TS takes a long time, it
   // may time out before even sending an op). TODO: implement that
-  void SetTimeout(MonoDelta timeout);
+  void SetDeadline(CoarseTimePoint deadline);
 
   // Add a new operation to the batch. Requires that the batch has not yet been flushed.
   // TODO: in other flush modes, this may not be the case -- need to
   // update this when they're implemented.
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
-  CHECKED_STATUS Add(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
+  CHECKED_STATUS Add(std::shared_ptr<YBOperation> yb_op);
+
+  bool Has(std::shared_ptr<YBOperation> yb_op) const;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending
@@ -139,12 +139,20 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // "corked" (i.e not yet flushed). Once Flush has been called, this returns 0.
   int CountBufferedOperations() const;
 
+  // Return the number of operations successfully added, but not yet flushed.
+  // This differs from CountBufferedOperations that can decrease before flush due to tablet lookup
+  // errors after addition.
+  int GetAddedNotFlushedOperationsCount() const;
+
   // Flush any buffered operations. The callback will be called once there are no
   // more pending operations from this Batcher. If all of the operations succeeded,
   // then the callback will receive Status::OK. Otherwise, it will receive IOError,
   // and the caller must inspect the ErrorCollector to retrieve more detailed
   // information on which operations failed.
-  void FlushAsync(StatusFunctor callback);
+  // If is_within_transaction_retry is true, all operations to be flushed by this batcher have
+  // been already flushed, meaning we are now retrying them within the same session and the
+  // associated transaction (if any) already expects them.
+  void FlushAsync(StatusFunctor callback, IsWithinTransactionRetry is_within_transaction_retry);
 
   CoarseTimePoint deadline() const {
     return deadline_;
@@ -194,6 +202,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   double RejectionScore(int attempt_num);
 
+  // Returns errors occurred due tablet resolution or flushing operations to tablet server(s).
+  // Caller takes ownership of the returned errors.
+  CollectedErrors GetAndClearPendingErrors();
+
   std::string LogPrefix() const;
 
   // This is a status error string used when there are multiple errors that need to be fetched
@@ -208,6 +220,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   ~Batcher();
 
+  CHECKED_STATUS DoAdd(std::shared_ptr<YBOperation> yb_op);
   // Add an op to the in-flight set and increment the ref-count.
   void AddInFlightOp(const InFlightOpPtr& op);
 
@@ -251,10 +264,6 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Async Callbacks.
   void TabletLookupFinished(InFlightOpPtr op, Result<internal::RemoteTabletPtr> result);
 
-  // Compute a new deadline based on timeout_. If no timeout_ has been set,
-  // uses a hard-coded default and issues periodic warnings.
-  CoarseTimePoint ComputeDeadlineUnlocked() const;
-
   void TransactionReady(const Status& status, const BatcherPtr& self);
 
   // initial - whether this method is called first time for this batch.
@@ -271,7 +280,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   std::weak_ptr<YBSession> weak_session_;
 
   // Errors are reported into this error collector.
-  scoped_refptr<ErrorCollector> const error_collector_;
+  ErrorCollector error_collector_;
+
+  std::map<PartitionKey, Status> first_lookup_error_by_key_ GUARDED_BY(mutex_);
 
   // Set to true if there was at least one error from this Batcher.
   std::atomic<bool> had_errors_{false};
@@ -289,18 +300,15 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   InFlightOps ops_queue_;
   InFlightOpsGroupsWithMetadata ops_info_;
 
+  int added_not_flushed_operations_count_ GUARDED_BY(mutex_) = 0;
+
   // When each operation is added to the batcher, it is assigned a sequence number
   // which preserves the user's intended order. Preserving order is critical when
   // a batch contains multiple operations against the same row key. This member
   // assigns the sequence numbers.
   int next_op_sequence_number_ GUARDED_BY(mutex_);
 
-  // Amount of time to wait for a given op, from start to finish.
-  //
-  // Set by SetTimeout.
-  MonoDelta timeout_;
-
-  // After flushing, the absolute deadline for all in-flight ops.
+  // The absolute deadline for all in-flight ops.
   CoarseTimePoint deadline_;
 
   // Number of outstanding lookups across all in-flight ops.

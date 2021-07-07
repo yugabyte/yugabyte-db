@@ -140,6 +140,12 @@ message BackfillIndexResponsePB {
   // the backfill has completed, so that it can be resumed.
   // Encoded as the DocKey for the next row to be backfilled.
   optional bytes backfilled_until = 3;
+
+  // In case of a partial error, list of indexes that failed.
+  repeated bytes failed_index_ids = 4;
+
+  // Returns the number of rows backfilled in the request.
+  optional uint64 number_rows_processed = 5;
 }
 
 message CopartitionTableRequestPB {
@@ -216,6 +222,9 @@ message DeleteTabletRequestPB {
   // the value of the committed config opid index and shutting down the tablet
   // for deletion. See comments in ts_tablet_manager.cc
   optional int64 cas_config_opid_index_less_or_equal = 5;
+
+  // Hide tablet instead of deleting it.
+  optional bool hide_only = 6;
 }
 
 message DeleteTabletResponsePB {
@@ -295,6 +304,25 @@ message RemoveTableFromTabletResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message GetSplitKeyRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  required bytes tablet_id = 3;
+}
+
+message GetSplitKeyResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional bytes split_partition_key = 2;
+
+  optional bytes split_encoded_key = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
 message SplitTabletRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
@@ -350,5 +378,6 @@ service TabletServerAdminService {
   rpc RemoveTableFromTablet(RemoveTableFromTabletRequestPB)
       returns (RemoveTableFromTabletResponsePB);
 
+  rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
 }

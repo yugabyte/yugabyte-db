@@ -50,6 +50,9 @@ class StatementParameters {
   // Set paging state.
   CHECKED_STATUS SetPagingState(const std::string& paging_state);
 
+  // Write paging state to output.
+  void WritePagingState(QLPagingStatePB *output) const { output->CopyFrom(paging_state()); }
+
   // Accessor functions for paging state fields.
   const std::string& table_id() const { return paging_state().table_id(); }
 

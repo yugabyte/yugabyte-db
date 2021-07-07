@@ -22,6 +22,7 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master_fwd.h"
@@ -45,17 +46,58 @@ using namespace std::literals;
 namespace yb {
 namespace integration_tests {
 
+namespace {
+
+class StatEmuEnv : public EnvWrapper {
+ public:
+  StatEmuEnv() : EnvWrapper(Env::Default()) { }
+
+  virtual Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& f) override {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    auto i = stats_.find(f);
+    if (i == stats_.end()) {
+      return target()->GetFilesystemStatsBytes(f);
+    }
+    return i->second;
+  }
+
+  void AddPathStats(const std::string& path, const Env::FilesystemStats& stats) {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    ASSERT_TRUE(stats_.emplace(path, stats).second);
+  }
+
+ private:
+  std::unordered_map<std::string, Env::FilesystemStats> stats_ GUARDED_BY(data_mutex_);
+  std::mutex data_mutex_;
+};
+
+} // namespace
+
 const auto kDefaultTimeout = 30000ms;
 
 class LoadBalancerMiniClusterTest : public YBTableTestBase {
  protected:
   void SetUp() override {
+    StatEmuEnv* env = new StatEmuEnv();
+    ts_env_.reset(env);
     YBTableTestBase::SetUp();
+    // ts1 (free, used, total)
+    env->AddPathStats(mini_cluster()->GetTabletServerDrive(0, 0), { 50, 150, 200});
+    env->AddPathStats(mini_cluster()->GetTabletServerDrive(0, 1), {100, 100, 200});
+    env->AddPathStats(mini_cluster()->GetTabletServerDrive(0, 2), {150,  50, 200});
+    // ts2 (free, used, total)
+    env->AddPathStats(mini_cluster()->GetTabletServerDrive(1, 0), { 50, 150, 200});
+    env->AddPathStats(mini_cluster()->GetTabletServerDrive(1, 1), {100, 100, 200});
+    env->AddPathStats(mini_cluster()->GetTabletServerDrive(1, 2), {150,  50, 200});
   }
 
   bool use_yb_admin_client() override { return true; }
 
   bool use_external_mini_cluster() override { return false; }
+
+  int num_drives() override {
+    return 3;
+  }
 
   int num_tablets() override {
     return 4;
@@ -127,7 +169,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
       }
     }
     return foundReplica;
-  }, MonoDelta::FromMilliseconds(test_bg_task_wait_ms * 2), "WaitForAddTaskToBeProcessed"));
+  }, kDefaultTimeout, "WaitForAddTaskToBeProcessed"));
 
   // Modify GetAllReportedDescriptors so that it does not report the new tserver
   // (this could happen normally from a late heartbeat).
@@ -163,6 +205,75 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalancerIdle();
   },  kDefaultTimeout * 2, "IsLoadBalancerIdle"));
+}
+
+// Tests that load balancer shouldn't run for deleted/deleting tables.
+TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
+  // Delete the table.
+  DeleteTable();
+
+  LOG(INFO) << "Successfully sent Delete RPC.";
+  // Wait for the table to be removed.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    // 1) Should not list it in ListTables.
+    const auto tables = VERIFY_RESULT(client_->ListTables(/* filter */ "",
+                                                /* exclude_ysql */ true));
+    if (master::kNumSystemTables != tables.size()) {
+      return false;
+    }
+
+    // 2) Should respond to GetTableSchema with a NotFound error.
+    client::YBSchema schema;
+    PartitionSchema partition_schema;
+    Status s = client_->GetTableSchema(
+        client::YBTableName(YQL_DATABASE_CQL,
+                            table_name().namespace_name(),
+                            table_name().table_name()),
+        &schema, &partition_schema);
+    if (!s.IsNotFound()) {
+      return false;
+    }
+
+    return true;
+  }, kDefaultTimeout, "HasTableBeenDeleted"));
+
+  LOG(INFO) << "Table deleted successfully.";
+
+  // We should be able to find the deleted table in the list of skipped tables now.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto tables = mini_cluster_->leader_mini_master()->master()->catalog_manager()
+                                      ->load_balancer()->GetAllTablesLoadBalancerSkipped();
+    for (const auto& table : tables) {
+      if (table->name() == table_name().table_name() &&
+          table->namespace_name() == table_name().namespace_name()) {
+        return true;
+      }
+    }
+    return false;
+  }, kDefaultTimeout, "IsLBSkippingDeletedTables"));
+}
+
+// Check flow tablet size data from tserver to master
+TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    scoped_refptr<master::TableInfo> tbl_info =
+      mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+          GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
+                                                    table_name().namespace_name(),
+                                                    table_name().table_name());
+    vector<scoped_refptr<master::TabletInfo>> tablets;
+    tbl_info->GetAllTablets(&tablets);
+
+    for (const auto& tablet : tablets) {
+      auto replica_map = tablet->GetReplicaLocations();
+      for (const auto& replica : *replica_map.get()) {
+        if (!replica.second.drive_info.ts_path.empty()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, MonoDelta::FromMilliseconds(10000), "WaitForTabletDataSize"));
 }
 
 } // namespace integration_tests

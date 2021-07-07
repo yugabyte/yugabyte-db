@@ -11,16 +11,19 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 
 import javax.mail.MessagingException;
+import javax.mail.internet.AddressException;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.EmailValidator;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -32,8 +35,8 @@ import org.mockito.junit.MockitoRule;
 
 import com.icegreen.greenmail.util.GreenMail;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 
@@ -61,21 +64,21 @@ public class EmailHelperTest extends FakeDBApplication {
 
   private static final int EMAIL_SMTP_PORT = 25;
 
-  private static final int EMAIL_SMTP_PORT_SSL = 587;
+  private static final int EMAIL_SMTP_PORT_SSL = 465;
 
-  @Rule
-  public MockitoRule rule = MockitoJUnit.rule();
+  private static final int DEFAULT_SMTP_CONNECTION_TIMEOUT = 1000;
 
-  @Mock
-  private RuntimeConfigFactory configFactory;
+  private static final int DEFAULT_SMTP_TIMEOUT = 2000;
 
-  @InjectMocks
-  private EmailHelper emailHelper;
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
+
+  @Mock private RuntimeConfigFactory configFactory;
+
+  @InjectMocks private EmailHelper emailHelper;
 
   private Customer defaultCustomer;
 
-  @Mock
-  private RuntimeConfig<Customer> mockCustomerConfig;
+  @Mock private RuntimeConfig<Customer> mockCustomerConfig;
 
   @Before
   public void setUp() {
@@ -99,17 +102,30 @@ public class EmailHelperTest extends FakeDBApplication {
   @Test
   public void testSendEmail_FilledSmtpData() throws MessagingException, IOException {
     SmtpData smtpData = EmailFixtures.createSmtpData();
-    doTestSendEmail(smtpData.smtpServer, smtpData.smtpPort, smtpData,
+    doTestSendEmail(
+        smtpData.smtpServer,
+        smtpData.smtpPort,
+        smtpData,
         "smtp:" + smtpData.smtpServer + ":" + String.valueOf(smtpData.smtpPort));
   }
 
-  private void doTestSendEmail(String serverHost, int serverPort, SmtpData smtpData,
-      String expectedSmtpServerName) throws MessagingException, IOException {
+  private void doTestSendEmail(
+      String serverHost, int serverPort, SmtpData smtpData, String expectedSmtpServerName)
+      throws MessagingException, IOException {
 
-    GreenMail mailServer = EmailFixtures.setupMailServer(serverHost, serverPort, smtpData.emailFrom,
-        smtpData.smtpUsername, smtpData.smtpPassword);
+    GreenMail mailServer =
+        EmailFixtures.setupMailServer(
+            serverHost,
+            serverPort,
+            smtpData.emailFrom,
+            smtpData.smtpUsername,
+            smtpData.smtpPassword);
     try {
-      emailHelper.sendEmail(defaultCustomer, EMAIL_SUBJECT, EMAIL_TO, smtpData,
+      emailHelper.sendEmail(
+          defaultCustomer,
+          EMAIL_SUBJECT,
+          EMAIL_TO,
+          smtpData,
           Collections.singletonMap("plain/text", EMAIL_TEXT));
 
       MimeMessage[] messages = mailServer.getReceivedMessages();
@@ -125,7 +141,8 @@ public class EmailHelperTest extends FakeDBApplication {
       MimeMultipart content = (MimeMultipart) m.getContent();
       assertEquals(1, content.getCount());
       assertEquals("plain/text", content.getBodyPart(0).getContentType());
-      assertEquals(EMAIL_TEXT,
+      assertEquals(
+          EMAIL_TEXT,
           IOUtils.toString(content.getBodyPart(0).getInputStream(), StandardCharsets.UTF_8.name()));
 
       assertEquals(mailServer.getSmtp().getName(), expectedSmtpServerName);
@@ -136,10 +153,7 @@ public class EmailHelperTest extends FakeDBApplication {
 
   @Test
   // @formatter:off
-  @Parameters({ "to@mail.com, false, 1",
-                "to@mail.com, true, 2",
-                ", true, 1",
-                ", false, 0" })
+  @Parameters({"to@mail.com, false, 1", "to@mail.com, true, 2", ", true, 1", ", false, 0"})
   // @formatter:on
   public void testGetDestinations(String emailTo, boolean sendAlertsToYb, int expectedCount) {
     ModelFactory.createAlertConfig(defaultCustomer, emailTo, sendAlertsToYb, false);
@@ -199,8 +213,8 @@ public class EmailHelperTest extends FakeDBApplication {
   }
 
   @Test
+  // @formatter:off
   @Parameters({
-    // @formatter:off
     "localhost, -1, false",
     "localhost, -1, true",
     "localhost, 999, false",
@@ -209,8 +223,8 @@ public class EmailHelperTest extends FakeDBApplication {
     ", -1, true",
     "null, -1, false",
     "null, -1, true",
-    // @formatter:on
   })
+  // @formatter:on
   public void testSmtpDataToProperties(@Nullable String smtpServer, int smtpPort, boolean useSSL)
       throws MessagingException, IOException {
     SmtpData smtpData = EmailFixtures.createSmtpData();
@@ -218,8 +232,8 @@ public class EmailHelperTest extends FakeDBApplication {
     smtpData.smtpPort = smtpPort;
     smtpData.useSSL = useSSL;
     String expectedSmtpServer = StringUtils.isEmpty(smtpServer) ? EMAIL_SMTP_SERVER : smtpServer;
-    int expectedSmtpPort = smtpPort == -1 ? (useSSL ? EMAIL_SMTP_PORT_SSL : EMAIL_SMTP_PORT)
-        : smtpPort;
+    int expectedSmtpPort =
+        smtpPort == -1 ? (useSSL ? EMAIL_SMTP_PORT_SSL : EMAIL_SMTP_PORT) : smtpPort;
 
     Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
     assertNotNull(props);
@@ -263,6 +277,76 @@ public class EmailHelperTest extends FakeDBApplication {
   public void testSmtpDataToProperties_UsernameIsNull() {
     SmtpData smtpData = EmailFixtures.createSmtpData();
     smtpData.smtpUsername = null;
-    emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+    Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+    assertFalse(props.contains("mail.smtp.user"));
+    assertFalse(props.contains("mail.smtp.auth"));
+  }
+
+  @Test
+  public void testDefaultTimeoutsNotSSL() {
+    when(mockCustomerConfig.getInt("yb.health.smtp_connection_timeout_ms"))
+        .thenReturn(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1);
+    when(mockCustomerConfig.getInt("yb.health.smtp_timeout_ms"))
+        .thenReturn(DEFAULT_SMTP_TIMEOUT + 1);
+
+    SmtpData smtpData = EmailFixtures.createSmtpData();
+    smtpData.useSSL = false;
+    smtpData.smtpUsername = null;
+    Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+
+    assertEquals(
+        String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
+        props.get("mail.smtp.connectiontimeout"));
+    assertEquals(String.valueOf(DEFAULT_SMTP_TIMEOUT + 1), props.get("mail.smtp.timeout"));
+  }
+
+  @Test
+  public void testDefaultTimeoutsWithSSL() {
+    when(mockCustomerConfig.getInt("yb.health.smtp_connection_timeout_ms"))
+        .thenReturn(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1);
+    when(mockCustomerConfig.getInt("yb.health.smtp_timeout_ms"))
+        .thenReturn(DEFAULT_SMTP_TIMEOUT + 1);
+
+    SmtpData smtpData = EmailFixtures.createSmtpData();
+    smtpData.useSSL = true;
+    smtpData.smtpUsername = null;
+    Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+
+    assertEquals(
+        String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
+        props.get("mail.smtps.connectiontimeout"));
+    assertEquals(String.valueOf(DEFAULT_SMTP_TIMEOUT + 1), props.get("mail.smtps.timeout"));
+  }
+
+  @Test
+  public void testSplitEmails() throws AddressException {
+    String emails =
+        "test1@test1.com, \"A\" <test2@test2.com>; \"something;here,\" <test3@test3.com>";
+    Collection<String> emailsList =
+        EmailHelper.splitEmails(emails, EmailHelper.DEFAULT_EMAIL_SEPARATORS);
+    assertEquals(3, emailsList.size());
+
+    EmailValidator emailValidator = EmailValidator.getInstance(false);
+    int counter = 1;
+    for (String email : emailsList) {
+      String pureEmail = EmailHelper.extractEmailAddress(email);
+      assertEquals(true, emailValidator.isValid(pureEmail));
+      assertEquals("test" + counter + "@test" + counter + ".com", pureEmail);
+      counter++;
+    }
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    "to@mail.com, to@mail.com",
+    "A <to@mail.com>, to@mail.com",
+    "\"John Doe\" <unknown@google.com>, unknown@google.com",
+    "\"John Doe\" to@mail.com, null", // Incorrect format for email.
+    "<to@mail.com>, to@mail.com",
+  })
+  // @formatter:on
+  public void testExtractEmailAddress(String src, @Nullable String expectedEmail) {
+    assertEquals(expectedEmail, EmailHelper.extractEmailAddress(src));
   }
 }

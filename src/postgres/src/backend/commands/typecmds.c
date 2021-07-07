@@ -633,7 +633,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array Dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   collation);	/* type's collation */
+				   collation,	/* type's collation */
+				   false);		/* whether relation is shared (n/a here) */
 	Assert(typoid == address.objectId);
 
 	/*
@@ -674,7 +675,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   collation);		/* type's collation */
+			   collation,		/* type's collation */
+			   false);			/* whether relation is shared (n/a here) */
 
 	pfree(array_type);
 
@@ -1068,7 +1070,8 @@ DefineDomain(CreateDomainStmt *stmt)
 				   basetypeMod, /* typeMod value */
 				   typNDims,	/* Array dimensions for base type */
 				   typNotNull,	/* Type NOT NULL */
-				   domaincoll); /* type's collation */
+				   domaincoll,	/* type's collation */
+				   false);		/* whether relation is shared (n/a here) */
 
 	/*
 	 * Create the array type that goes with it.
@@ -1108,7 +1111,8 @@ DefineDomain(CreateDomainStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   domaincoll);		/* type's collation */
+			   domaincoll,		/* type's collation */
+			   false);			/* whether relation is shared (n/a here) */
 
 	pfree(domainArrayName);
 
@@ -1223,7 +1227,8 @@ DefineEnum(CreateEnumStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation */
+				   InvalidOid,	/* type's collation */
+				   false);		/* whether relation is shared (n/a here) */
 
 	/* Enter the enum's values into pg_enum */
 	EnumValuesCreate(enumTypeAddr.objectId, stmt->vals);
@@ -1263,7 +1268,8 @@ DefineEnum(CreateEnumStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* type's collation */
+			   InvalidOid,		/* type's collation */
+			   false);			/* whether relation is shared (n/a here) */
 
 	pfree(enumArrayName);
 
@@ -1316,7 +1322,8 @@ AlterEnum(AlterEnumStmt *stmt, bool isTopLevel)
 		 * theoretically be safe; but fortunately pg_dump only needs the
 		 * simplest case.
 		 */
-		if (HeapTupleHeaderGetXmin(tup->t_data) == GetCurrentTransactionId() &&
+		if (!IsYugaByteEnabled() &&
+			HeapTupleHeaderGetXmin(tup->t_data) == GetCurrentTransactionId() &&
 			!(tup->t_data->t_infomask & HEAP_UPDATED))
 			 /* safe to do inside transaction block */ ;
 		else
@@ -1572,7 +1579,8 @@ DefineRange(CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation (ranges never have one) */
+				   InvalidOid,	/* type's collation (ranges never have one) */
+				   false);		/* whether relation is shared (n/a here) */
 	Assert(typoid == address.objectId);
 
 	/* Create the entry in pg_range */
@@ -1614,7 +1622,8 @@ DefineRange(CreateRangeStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* typcollation */
+			   InvalidOid,		/* typcollation */
+			   false);			/* whether relation is shared (n/a here) */
 
 	pfree(rangeArrayName);
 
@@ -2312,7 +2321,9 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 							 0, /* relation kind is n/a */
 							 false, /* a domain isn't an implicit array */
 							 false, /* nor is it any kind of dependent type */
-							 true); /* We do need to rebuild dependencies */
+							 true, /* We do need to rebuild dependencies */
+							 false, /* not a system relation rowtype */
+							 false); /* not a shared relation rowtype */
 
 	InvokeObjectPostAlterHook(TypeRelationId, domainoid, 0);
 

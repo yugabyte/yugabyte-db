@@ -68,7 +68,6 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
-#include "yb/util/user.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
 #include "yb/util/spinlock_profiling.h"
@@ -224,18 +223,6 @@ const std::string RpcServerBase::get_hostname() const {
   } else {
     YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current host name: " << hostname.status();
     return "unknown_hostname";
-  }
-}
-
-const std::string RpcServerBase::get_current_user() const {
-  string user_name;
-  auto s = GetLoggedInUser(&user_name);
-  if (s.ok()) {
-    YB_LOG_FIRST_N(INFO, 1) << "Logged in user: " << user_name;
-    return user_name;
-  } else {
-    YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current user";
-    return "unknown_user";
   }
 }
 
@@ -455,13 +442,15 @@ Endpoint RpcAndWebServerBase::first_http_address() const {
 void RpcAndWebServerBase::GenerateInstanceID() {
   instance_pb_.reset(new NodeInstancePB);
   instance_pb_->set_permanent_uuid(fs_manager_->uuid());
+  auto now = Env::Default()->NowMicros();
   // TODO: maybe actually bump a sequence number on local disk instead of
   // using time.
-  instance_pb_->set_instance_seqno(Env::Default()->NowMicros());
+  instance_pb_->set_instance_seqno(now);
+  instance_pb_->set_start_time_us(now);
 }
 
 Status RpcAndWebServerBase::Init() {
-  yb::enterprise::InitOpenSSL();
+  yb::InitOpenSSL();
 
   Status s = fs_manager_->Open();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
@@ -586,9 +575,11 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Total memory.
   DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
   // Metrics.
-  DisplayIconTile(output, "fa-line-chart", "Metrics", "/metrics");
+  DisplayIconTile(output, "fa-line-chart", "Metrics", "/prometheus-metrics");
   // Threads.
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
+  // Drives.
+  DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
@@ -619,6 +610,7 @@ Status RpcAndWebServerBase::Start() {
   AddDefaultPathHandlers(web_server_.get());
   AddRpczPathHandlers(messenger_.get(), web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
+  RegisterPathUsageHandler(web_server_.get(), fs_manager_.get());
   TracingPathHandlers::RegisterHandlers(web_server_.get());
   web_server_->RegisterPathHandler("/utilz", "Utilities",
                                    std::bind(&RpcAndWebServerBase::HandleDebugPage, this, _1, _2),

@@ -49,7 +49,7 @@
 
 #include "yb/util/logging.h"
 
-DEFINE_int32(memstore_arena_size_kb, 128, "Size of each arena allocation for the memstore");
+DEFINE_int32(memstore_arena_size_kb, 64, "Size of each arena allocation for the memstore");
 
 namespace rocksdb {
 

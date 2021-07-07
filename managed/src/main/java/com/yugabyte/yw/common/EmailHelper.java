@@ -17,6 +17,7 @@ import javax.mail.Multipart;
 import javax.mail.PasswordAuthentication;
 import javax.mail.Session;
 import javax.mail.Transport;
+import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
@@ -29,9 +30,9 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 
@@ -42,44 +43,48 @@ public class EmailHelper {
 
   public static final Logger LOG = LoggerFactory.getLogger(EmailHelper.class);
 
-  @Inject
-  private RuntimeConfigFactory configFactory;
+  public static final String DEFAULT_EMAIL_SEPARATORS = ";,";
+
+  @Inject private RuntimeConfigFactory configFactory;
 
   /**
-   * Sends email with subject and content to recipients from destinations. STMP
-   * parameters are in {@link smtpData}.
-   * <p>
-   * The content map can hold more than one part. To save the parts order use the
-   * appropriate Map implementation (as example, LinkedHashMap).
-   * <p>
-   * If smtpData.smtpServer is empty, used configuration value
-   * "yb.health.default_smtp_server".
-   * <p>
-   * If smtpData.smtpPort is not set/filled (equals to -1), used configuration
-   * value "yb.health.default_smtp_port" for non SSL connection,
-   * "yb.health.default_smtp_port_ssl" - for SSL.
+   * Sends email with subject and content to recipients from destinations. STMP parameters are in
+   * {@link smtpData}.
    *
-   * @param customer     customer instance (used to get runtime configuration
-   *                     values)
-   * @param subject      email subject
+   * <p>The content map can hold more than one part. To save the parts order use the appropriate Map
+   * implementation (as example, LinkedHashMap).
+   *
+   * <p>If smtpData.smtpServer is empty, used configuration value "yb.health.default_smtp_server".
+   *
+   * <p>If smtpData.smtpPort is not set/filled (equals to -1), used configuration value
+   * "yb.health.default_smtp_port" for non SSL connection, "yb.health.default_smtp_port_ssl" - for
+   * SSL.
+   *
+   * @param customer customer instance (used to get runtime configuration values)
+   * @param subject email subject
    * @param destinations list of recipients comma separated
-   * @param smtpData     SMTP configuration parameters
-   * @param content      map of email body parts; key - content type, value - text
-   *
+   * @param smtpData SMTP configuration parameters
+   * @param content map of email body parts; key - content type, value - text
    * @throws MessagingException
    */
-  public void sendEmail(Customer customer, String subject, String destinations,
-      CustomerRegisterFormData.SmtpData smtpData, Map<String, String> content)
+  public void sendEmail(
+      Customer customer,
+      String subject,
+      String destinations,
+      SmtpData smtpData,
+      Map<String, String> content)
       throws MessagingException {
     LOG.info("Sending email: '{}' to '{}'", subject, destinations);
 
-    Session session = Session.getInstance(smtpDataToProperties(customer, smtpData),
-        new Authenticator() {
-          @Override
-          protected PasswordAuthentication getPasswordAuthentication() {
-            return new PasswordAuthentication(smtpData.smtpUsername, smtpData.smtpPassword);
-          }
-        });
+    Session session =
+        Session.getInstance(
+            smtpDataToProperties(customer, smtpData),
+            new Authenticator() {
+              @Override
+              protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(smtpData.smtpUsername, smtpData.smtpPassword);
+              }
+            });
 
     Message message = new MimeMessage(session);
     message.setFrom(new InternetAddress(smtpData.emailFrom));
@@ -107,31 +112,57 @@ public class EmailHelper {
    */
   @VisibleForTesting
   Properties smtpDataToProperties(Customer customer, SmtpData smtpData) {
-    Properties prop = new Properties();
+    Properties props = new Properties();
     try {
       Config runtimeConfig = configFactory.forCustomer(customer);
 
       // According to official Java documentation all the parameters should be added
       // as String.
       if (smtpData.smtpUsername != null) {
-        prop.put("mail.smtp.user", smtpData.smtpUsername);
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.user", smtpData.smtpUsername);
+      } else {
+        props.put("mail.smtp.auth", "false");
       }
-      prop.put("mail.smtp.auth", "true");
-      prop.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
-      String smtpServer = StringUtils.isEmpty(smtpData.smtpServer)
-          ? runtimeConfig.getString("yb.health.default_smtp_server")
-          : smtpData.smtpServer;
-      prop.put("mail.smtp.host", smtpServer);
-      prop.put("mail.smtp.port",
+      props.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
+      String smtpServer =
+          StringUtils.isEmpty(smtpData.smtpServer)
+              ? runtimeConfig.getString("yb.health.default_smtp_server")
+              : smtpData.smtpServer;
+      props.put("mail.smtp.host", smtpServer);
+      props.put(
+          "mail.smtp.port",
           String.valueOf(
               smtpData.smtpPort == -1
-                  ? (smtpData.useSSL ? runtimeConfig.getInt("yb.health.default_smtp_port_ssl")
+                  ? (smtpData.useSSL
+                      ? runtimeConfig.getInt("yb.health.default_smtp_port_ssl")
                       : runtimeConfig.getInt("yb.health.default_smtp_port"))
                   : smtpData.smtpPort));
-      prop.put("mail.smtp.ssl.enable", String.valueOf(smtpData.useSSL));
+      props.put("mail.smtp.ssl.enable", String.valueOf(smtpData.useSSL));
       if (smtpData.useSSL) {
-        prop.put("mail.smtp.ssl.trust", smtpServer);
+        props.put("mail.smtp.ssl.trust", smtpServer);
       }
+
+      boolean isDebugMode = runtimeConfig.getBoolean("yb.health.debug_email");
+      if (isDebugMode) {
+        props.put("mail.debug", "true");
+      }
+
+      // Adding timeout settings.
+      String connectionTimeout =
+          String.valueOf(runtimeConfig.getInt("yb.health.smtp_connection_timeout_ms"));
+      props.put(
+          smtpData.useSSL ? "mail.smtps.connectiontimeout" : "mail.smtp.connectiontimeout",
+          connectionTimeout);
+
+      String timeout = String.valueOf(runtimeConfig.getInt("yb.health.smtp_timeout_ms"));
+      props.put(smtpData.useSSL ? "mail.smtps.timeout" : "mail.smtp.timeout", timeout);
+
+      if (isDebugMode) {
+        LOG.info("SMTP connection timeout: " + connectionTimeout);
+        LOG.info("SMTP timeout: " + timeout);
+      }
+
     } catch (Exception e) {
       LOG.error("Error while converting smtpData to Properties", e);
       throw new IllegalArgumentException("SmtpData is not correctly filled.", e);
@@ -141,12 +172,12 @@ public class EmailHelper {
       throw new IllegalArgumentException(
           "SmtpData is not correctly filled: emailFrom can't be empty.");
     }
-    return prop;
+    return props;
   }
 
   /**
-   * Returns default YB email address specified in the configuration file as a
-   * parameter with name <i><b>yb.health.default_email</b></i>.
+   * Returns default YB email address specified in the configuration file as a parameter with name
+   * <i><b>yb.health.default_email</b></i>.
    *
    * @param customer
    * @return
@@ -156,9 +187,8 @@ public class EmailHelper {
   }
 
   /**
-   * Returns a list of email destinations configured for the specified customer.
-   * If the customer has flag sendAlertsToYb set then default YB address is added
-   * (see {@link #getYbEmail}).
+   * Returns a list of email destinations configured for the specified customer. If the customer has
+   * flag sendAlertsToYb set then default YB address is added (see {@link #getYbEmail}).
    *
    * @param customerUUID
    * @return
@@ -168,8 +198,8 @@ public class EmailHelper {
     List<String> destinations = new ArrayList<>();
     String ybEmail = getYbEmail(customer);
     CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
-    CustomerRegisterFormData.AlertingData alertingData = Json.fromJson(config.data,
-        CustomerRegisterFormData.AlertingData.class);
+    CustomerRegisterFormData.AlertingData alertingData =
+        Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
     if (alertingData.sendAlertsToYb && !StringUtils.isEmpty(ybEmail)) {
       destinations.add(ybEmail);
     }
@@ -183,23 +213,24 @@ public class EmailHelper {
   // TODO: (Sergey Potachev) Extract SmtpData class from CustomerRegisterFormData.
   // Move this logic to SmtpData (together with smtpDataToProperties).
   /**
-   * Returns the {@link SmtpData} instance fulfilled with parameters of the
-   * specified customer.
+   * Returns the {@link SmtpData} instance fulfilled with parameters of the specified customer.
+   *
+   * <p>If the the Smtp configuration doesn't exist for the customer, the default Smtp configuration
+   * is created with the next data:
+   *
    * <p>
-   * If the the Smtp configuration doesn't exist for the customer, the default
-   * Smtp configuration is created with the next data:
-   * <p>
+   *
    * <ul>
-   * <li>stmpUsername is taken from the configuration file, parameter
-   * <i><b>yb.health.ses_email_username</b></i>;</li>
-   * <li>smtpPassword is taken from the configuration file, parameter
-   * <i><b>yb.health.ses_email_password</b></i>;</li>
-   * <li>useSSL is taken from the configuration file, parameter
-   * <i><b>yb.health.default_ssl</b></i>, by default is <b>true</b>.</li>
+   *   <li>stmpUsername is taken from the configuration file, parameter
+   *       <i><b>yb.health.ses_email_username</b></i>;
+   *   <li>smtpPassword is taken from the configuration file, parameter
+   *       <i><b>yb.health.ses_email_password</b></i>;
+   *   <li>useSSL is taken from the configuration file, parameter
+   *       <i><b>yb.health.default_ssl</b></i>, by default is <b>true</b>.
    * </ul>
-   * <p>
-   * Also if emailFrom is empty (for both cases) it is filled with the default YB
-   * address (see {@link #getYbEmail})
+   *
+   * <p>Also if emailFrom is empty (for both cases) it is filled with the default YB address (see
+   * {@link #getYbEmail})
    *
    * @param customerUUID
    * @return filled SmtpData if all parameters exist or NULL otherwise
@@ -209,7 +240,7 @@ public class EmailHelper {
     CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
     SmtpData smtpData;
     if (smtpConfig != null) {
-      smtpData = Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
+      smtpData = Json.fromJson(smtpConfig.data, SmtpData.class);
     } else {
       Config runtimeConfig = configFactory.forCustomer(customer);
       smtpData = new SmtpData();
@@ -223,5 +254,57 @@ public class EmailHelper {
       smtpData.emailFrom = getYbEmail(customer);
     }
     return StringUtils.isEmpty(smtpData.emailFrom) ? null : smtpData;
+  }
+
+  /**
+   * Splits string with emails addresses using the passed <tt>separators</tt>. Blocks enclosed with
+   * quotes are not splitted.
+   *
+   * @param emails
+   * @param separators
+   * @return
+   */
+  public static List<String> splitEmails(String emails, String separators) {
+    List<String> result = new ArrayList<>();
+    int startPosition = 0;
+    int currPosition = 0;
+    while (currPosition < emails.length()) {
+      char c = emails.charAt(currPosition);
+      if (c == '"') {
+        int closingQuotesPos = emails.indexOf('"', currPosition + 1);
+        currPosition = closingQuotesPos == -1 ? emails.length() - 1 : closingQuotesPos;
+      } else if (separators.indexOf(c) >= 0) {
+        String email = emails.substring(startPosition, currPosition).trim();
+        if (email.length() > 0) {
+          result.add(email);
+          startPosition = currPosition + 1;
+        }
+      }
+      currPosition++;
+    }
+    // Copying tail of the string if needed.
+    if (startPosition < currPosition) {
+      String email = emails.substring(startPosition, currPosition).trim();
+      if (email.length() > 0) {
+        result.add(email);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Extracts pure email address from the common email string (which can be like "John Doe"
+   * <john@google.com>). Doesn't validate the email correctness.
+   *
+   * @param email
+   * @return Extracted email or null if the address can't be extracted or is incorrect.
+   */
+  public static String extractEmailAddress(String email) {
+    try {
+      InternetAddress addr = new InternetAddress(email, false);
+      return addr.getAddress();
+    } catch (AddressException e) {
+      return null;
+    }
   }
 }

@@ -1,5 +1,7 @@
 -- Testing pg_hint_plan
 -- Initialization of tables for pg_hint_plan test
+-- This test is derived from the init test in
+-- <https://github.com/ossc-db/pg_hint_plan/>.
 SET search_path TO public;
 CREATE EXTENSION pg_hint_plan;
 CREATE SCHEMA s0;
@@ -143,22 +145,19 @@ ERROR:  ALTER SYSTEM not supported yet
 LINE 6: ALTER SYSTEM SET effective_cache_size TO 16384;
         ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
-ERROR:  ALTER SYSTEM not supported yet
-LINE 6: ALTER SYSTEM SET effective_cache_size TO 16384;
-ERROR:  syntax error at or near "ERROR"
-LINE 1: ERROR:  ALTER SYSTEM not supported yet
-        ^
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT pg_reload_conf();
-ERROR:  syntax error at or near "^"
-LINE 1: ^
-        ^
+ pg_reload_conf
+----------------
+ t
+(1 row)
+
 SET effective_cache_size TO 16384;
+-- YB: modify view to avoid yb_ settings.
 CREATE VIEW settings AS
 SELECT name, setting, category
   FROM pg_settings
  WHERE category LIKE 'Query Tuning%'
+   AND name NOT LIKE 'yb_%'
     OR name = 'client_min_messages'
  ORDER BY category, name;
 SELECT * FROM settings;
@@ -211,84 +210,5 @@ SELECT * FROM settings;
  enable_tidscan                 | on        | Query Tuning / Planner Method Configuration
 (45 rows)
 
-ANALYZE;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
+-- TODO(jason): uncomment when closing issue #1420.
+-- ANALYZE;

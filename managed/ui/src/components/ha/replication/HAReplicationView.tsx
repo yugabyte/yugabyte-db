@@ -3,7 +3,7 @@ import React, { FC, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
-import { HAReplicationError } from './HAReplicationError';
+import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
 import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { FREQUENCY_MULTIPLIER } from './HAReplicationForm';
@@ -32,7 +32,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
   const currentInstance = sortedInstances.find((item) => item.is_local);
   if (currentInstance) {
     return (
-      <Grid fluid className="ha-replication-view">
+      <Grid fluid className="ha-replication-view" data-testid="ha-replication-config-overview">
         <DeleteModal
           configId={config.uuid}
           isStandby={!currentInstance.is_leader}
@@ -142,6 +142,6 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
       </Grid>
     );
   } else {
-    return <HAReplicationError error="Can't find an HA instance with is_local = true" />;
+    return <HAErrorPlaceholder error="Can't find an HA instance with is_local = true" />;
   }
 };

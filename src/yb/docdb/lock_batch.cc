@@ -18,6 +18,9 @@
 #include "yb/util/tostring.h"
 #include "yb/util/shared_lock.h"
 
+DEFINE_bool(dump_lock_keys, true,
+            "Whether to add keys to error message when lock batch timed out");
+
 namespace yb {
 namespace docdb {
 
@@ -26,9 +29,13 @@ LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_
     : data_(std::move(key_to_intent_type), lock_manager) {
   if (!empty() && !lock_manager->Lock(&data_.key_to_type, deadline)) {
     data_.shared_lock_manager = nullptr;
+    std::string batch_str;
+    if (FLAGS_dump_lock_keys) {
+      batch_str = Format(", batch: $0", data_.key_to_type);
+    }
     data_.key_to_type.clear();
     data_.status = STATUS_FORMAT(
-        TryAgain, "Failed to obtain locks until deadline: $0", deadline);
+        TryAgain, "Failed to obtain locks until deadline: $0$1", deadline, batch_str);
   }
 }
 

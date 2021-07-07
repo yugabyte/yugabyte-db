@@ -45,11 +45,11 @@ class YsqlTransactionDdl {
     thread_pool_ = thread_pool;
   }
 
-  void VerifyTransaction(TransactionMetadata transaction,
+  void VerifyTransaction(const TransactionMetadata& transaction,
                          std::function<Status(bool /* is_success */)> complete_callback);
   Result<bool> PgEntryExists(TableId tableId, Result<uint32_t> entry_oid);
  protected:
-  void TransactionReceived(TransactionMetadata transaction,
+  void TransactionReceived(const TransactionMetadata& transaction,
                            std::function<Status(bool)> complete_callback,
                            Status txn_status,
                            const tserver::GetTransactionStatusResponsePB& response);

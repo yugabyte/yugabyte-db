@@ -23,6 +23,7 @@ class ConsensusFrontier;
 class DeadlineInfo;
 class DocKey;
 class DocPath;
+class DocRowwiseIterator;
 class DocWriteBatch;
 class IntentAwareIterator;
 class KeyBytes;

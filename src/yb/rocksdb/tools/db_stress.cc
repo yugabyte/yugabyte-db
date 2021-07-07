@@ -2189,7 +2189,7 @@ int main(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
 
   if (FLAGS_statistics) {
-    dbstats = rocksdb::CreateDBStatistics();
+    dbstats = rocksdb::CreateDBStatisticsForTests();
   }
   FLAGS_compression_type_e =
     StringToCompressionType(FLAGS_compression_type.c_str());

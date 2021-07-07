@@ -163,13 +163,13 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   CHECKED_STATUS Open();
 
   // Fetches tablet partitions from master using GetTableLocations RPC.
-  Result<VersionedTablePartitionListPtr> FetchPartitions();
+  Result<VersionedTablePartitionListPtr> FetchPartitions(bool set_table_type = false);
 
   size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
 
   client::YBClient* const client_;
   YBTableType table_type_;
-  YBTableInfo info_;
+  const YBTableInfo info_;
 
   // Mutex protecting partitions_.
   mutable rw_spinlock mutex_;

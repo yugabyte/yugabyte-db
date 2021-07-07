@@ -198,9 +198,24 @@ class SemContext : public ProcessContext {
     return sem_state_->expected_ql_type();
   }
 
+  NullIsAllowed expected_ql_type_accepts_null() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->expected_ql_type_accepts_null();
+  }
+
   InternalType expr_expected_internal_type() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->expected_internal_type();
+  }
+
+  SelectScanInfo *scan_state() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->scan_state();
+  }
+
+  bool void_primary_key_condition() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->void_primary_key_condition();
   }
 
   WhereExprState *where_state() const {
@@ -213,9 +228,24 @@ class SemContext : public ProcessContext {
     return sem_state_->if_state();
   }
 
+  bool validate_orderby_expr() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->validate_orderby_expr();
+  }
+
+  IdxPredicateState *idx_predicate_state() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->idx_predicate_state();
+  }
+
   bool selecting_from_index() const {
     DCHECK(sem_state_) << "State variable is not set";
     return sem_state_->selecting_from_index();
+  }
+
+  int index_select_prefix_length() const {
+    DCHECK(sem_state_) << "State variable is not set";
+    return sem_state_->index_select_prefix_length();
   }
 
   bool processing_column_definition() const {
@@ -273,11 +303,16 @@ class SemContext : public ProcessContext {
   }
 
   PTDmlStmt *current_dml_stmt() const {
-    return current_dml_stmt_;
+    return sem_state_->current_dml_stmt();
   }
 
   void set_current_dml_stmt(PTDmlStmt *stmt) {
-    current_dml_stmt_ = stmt;
+    sem_state_->set_current_dml_stmt(stmt);
+  }
+
+  void set_void_primary_key_condition(bool val) {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    sem_state_->set_void_primary_key_condition(val);
   }
 
   CHECKED_STATUS HasKeyspacePermission(const PermissionType permission,
@@ -316,13 +351,11 @@ class SemContext : public ProcessContext {
                                             const PermissionType permission);
 
   bool IsUncoveredIndexSelect() const {
-    if (current_dml_stmt_ == nullptr ||
-        current_dml_stmt_->opcode() != TreeNodeOpcode::kPTSelectStmt) {
-      return false;
-    }
-    // Applicable to SELECT statement only.
-    const auto* select_stmt = static_cast<const PTSelectStmt*>(current_dml_stmt_);
-    return !select_stmt->index_id().empty() && !select_stmt->covers_fully();
+    return sem_state_->is_uncovered_index_select();
+  }
+
+  bool IsPartialIndexSelect() const {
+    return sem_state_->is_partial_index_select();
   }
 
  private:
@@ -343,9 +376,6 @@ class SemContext : public ProcessContext {
 
   // Is metadata cache used?
   bool cache_used_ = false;
-
-  // The current dml statement being processed.
-  PTDmlStmt *current_dml_stmt_ = nullptr;
 
   // sem_state_ consists of state variables that are used to process one tree node. It is generally
   // set and reset at the beginning and end of the semantic analysis of one treenode.

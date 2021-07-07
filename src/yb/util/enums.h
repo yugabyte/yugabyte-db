@@ -288,8 +288,20 @@ class EnumBitSet {
     return impl_.all();
   }
 
-  EnumBitSet& Set(Enum value) {
-    impl_.set(to_underlying(value));
+  EnumBitSet& Set(Enum value, bool val = true) {
+    impl_.set(to_underlying(value), val);
+    return *this;
+  }
+
+  EnumBitSet& Reset(Enum value) {
+    impl_.reset(to_underlying(value));
+    return *this;
+  }
+
+  EnumBitSet& SetIf(Enum value, bool do_it) {
+    if (do_it) {
+      impl_.set(to_underlying(value));
+    }
     return *this;
   }
 

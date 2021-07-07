@@ -243,8 +243,11 @@ Result<bool> YBTable::MaybeRefreshPartitions() {
   {
     std::lock_guard<rw_spinlock> partitions_lock(mutex_);
     if (partitions->version < partitions_->version) {
-      return STATUS_FORMAT(
-          TryAgain, "Received table $0 partitions version: $1, ours is: $2", id(),
+      // This might happen if another split happens after we had fetched partition in the current
+      // thread from master leader and partition list has been concurrently updated to version
+      // newer than version we got in current thread.
+      // In this case we can safely skip outdated partition list.
+      LOG(INFO) << Format("Received table $0 partition list version: $1, ours is newer: $2", id(),
           partitions->version, partitions_->version);
     }
     partitions_ = partitions;
@@ -261,7 +264,8 @@ bool YBTable::ArePartitionsStale() const {
   return partitions_are_stale_;
 }
 
-Result<std::shared_ptr<const VersionedTablePartitionList>> YBTable::FetchPartitions() {
+Result<std::shared_ptr<const VersionedTablePartitionList>> YBTable::FetchPartitions(
+    const bool set_table_type) {
   // TODO: fetch the schema from the master here once catalog is available.
   auto partitions = std::make_shared<VersionedTablePartitionList>();
 
@@ -358,9 +362,10 @@ Result<std::shared_ptr<const VersionedTablePartitionList>> YBTable::FetchPartiti
     }
   }
 
-
-  RETURN_NOT_OK_PREPEND(PBToClientTableType(resp.table_type(), &table_type_),
-    strings::Substitute("Invalid table type for table '$0'", info_.table_name.ToString()));
+  if (set_table_type) {
+    RETURN_NOT_OK_PREPEND(PBToClientTableType(resp.table_type(), &table_type_),
+      strings::Substitute("Invalid table type for table '$0'", info_.table_name.ToString()));
+  }
 
   VLOG(2) << "Fetched partitions for table " << info_.table_name.ToString() << ", found "
           << resp.tablet_locations_size() << " tablets";
@@ -369,7 +374,7 @@ Result<std::shared_ptr<const VersionedTablePartitionList>> YBTable::FetchPartiti
 
 Status YBTable::Open() {
   std::lock_guard<rw_spinlock> partitions_lock(mutex_);
-  partitions_ = VERIFY_RESULT(FetchPartitions());
+  partitions_ = VERIFY_RESULT(FetchPartitions(/* set_table_type = */ true));
   partitions_are_stale_ = false;
   return Status::OK();
 }

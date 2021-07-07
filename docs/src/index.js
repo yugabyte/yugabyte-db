@@ -151,16 +151,21 @@ $(document).ready(() => {
       let regExpCopy = /a^/;
       if (languageDescriptor) {
         // Then apply copy button
-        if (['postgresql', 'sql', 'postgres'].includes(languageDescriptor)) {
+        // Strip the prompt from SQL languages
+        if (['pgsql', 'plpgsql', 'postgres', 'postgresql', 'sql'].includes(languageDescriptor)) {
           if (element.textContent.match(/^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm)) {
             regExpCopy = /^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm;
           }
-        } else if (['sh', 'bash', 'shell'].includes(languageDescriptor)) {
+        // Strip the $ shell prompt
+        } else if (['bash', 'sh', 'shell', 'terminal', 'zsh'].includes(languageDescriptor)) {
           if (element.textContent.match(/^\$\s/gm)) {
             regExpCopy = /^\$\s/gm;
           } else if (element.textContent.match(/^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm)) {
             regExpCopy = /^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm;
           }
+        // Don't add a copy button to blocks labeled "output"
+        } else if (['output'].includes(languageDescriptor)) {
+          return;
         }
         const button = document.createElement('button');
         button.className = 'copy unclicked';

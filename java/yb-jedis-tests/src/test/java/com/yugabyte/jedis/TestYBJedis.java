@@ -18,7 +18,6 @@ import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.Integer;
 import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.Collection;
@@ -53,7 +52,7 @@ public class TestYBJedis extends BaseJedisTest {
 
   // Run each test with Jedis, JedisCluster, and YBJedis clients.
   @Parameterized.Parameters
-  public static Collection jedisClients() {
+  public static List<JedisClientType> jedisClients() {
     return Arrays.asList(JedisClientType.JEDIS, JEDISCLUSTER,
         JedisClientType.YBJEDIS);
   }
@@ -561,7 +560,7 @@ public class TestYBJedis extends BaseJedisTest {
     final String secondDBName = "second";
     createRedisTableForDB(secondDBName);
 
-    Collection dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
+    List<String> dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
     // Do a read/writes to test everything is working correctly.
     readAndWriteFromDBs(dbs, 10);
   }

@@ -104,6 +104,8 @@ using consensus::RaftPeerPB;
 using master::GetLeaderMasterRpc;
 using master::MasterServiceProxy;
 using master::MasterErrorPB;
+using master::AnalyzeTableRequestPB;
+using master::AnalyzeTableResponsePB;
 using rpc::Rpc;
 using rpc::RpcController;
 
@@ -261,6 +263,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
 // Explicit specialization for callers outside this compilation unit.
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTabletServers);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListLiveTabletServers);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListMasters);
@@ -552,6 +555,10 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
   if (!table_id.empty()) {
     req.mutable_table()->set_table_id(table_id);
   }
+  if (!req.has_table()) {
+    *create_in_progress = false;
+    return STATUS(InternalError, "Cannot query IsCreateTableInProgress without table info");
+  }
 
   const Status s =
       SyncLeaderMasterRpc<IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB>(
@@ -581,6 +588,16 @@ Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
                 table_name, table_id, _1, _2));
+}
+
+Result<AnalyzeTableResponsePB> YBClient::Data::AnalyzeTable(
+    YBClient* client, const AnalyzeTableRequestPB& req, CoarseTimePoint deadline) {
+  AnalyzeTableResponsePB resp;
+  const auto s = SyncLeaderMasterRpc<AnalyzeTableRequestPB, AnalyzeTableResponsePB>(
+      deadline, req, &resp, nullptr /* attempts */, "AnalyzeTable",
+      &MasterServiceProxy::AnalyzeTable);
+  RETURN_NOT_OK(s);
+  return resp;
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
@@ -623,19 +640,33 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   }
 
   // Spin until the table is fully deleted, if requested.
-  if (wait && resp.has_table_id()) {
-    RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
-  }
-  if (wait && resp.has_indexed_table()) {
-    auto res = WaitUntilIndexPermissionsAtLeast(
-        client,
-        resp.indexed_table().table_id(),
-        resp.table_id(),
-        IndexPermissions::INDEX_PERM_NOT_USED,
-        deadline);
-    if (!res && !res.status().IsNotFound()) {
-      LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
-      return res.status();
+  VLOG(3) << "Got response " << yb::ToString(resp);
+  if (wait) {
+    // Wait for the deleted tables to be gone.
+    if (resp.deleted_table_ids_size() > 0) {
+      for (const auto& table_id : resp.deleted_table_ids()) {
+        RETURN_NOT_OK(WaitForDeleteTableToFinish(client, table_id, deadline));
+        VLOG(2) << "Waited for table to be deleted " << table_id;
+      }
+    } else if (resp.has_table_id()) {
+      // for backwards compatibility, in case the master is not yet using deleted_table_ids.
+      RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
+      VLOG(2) << "Waited for table to be deleted " << resp.table_id();
+    }
+
+    // In case this table is an index, wait for the indexed table to remove reference to index
+    // table.
+    if (resp.has_indexed_table()) {
+      auto res = WaitUntilIndexPermissionsAtLeast(
+          client,
+          resp.indexed_table().table_id(),
+          resp.table_id(),
+          IndexPermissions::INDEX_PERM_NOT_USED,
+          deadline);
+      if (!res && !res.status().IsNotFound()) {
+        LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
+        return res.status();
+      }
     }
   }
 

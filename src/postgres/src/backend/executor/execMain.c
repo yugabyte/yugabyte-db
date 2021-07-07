@@ -1734,15 +1734,7 @@ ExecutePlan(EState *estate,
 		 * process so we just end the loop...
 		 */
 		if (TupIsNull(slot))
-		{
-			/*
-			 * If we know we won't need to back up, we can release resources
-			 * at this point.
-			 */
-			if (!(estate->es_top_eflags & EXEC_FLAG_BACKWARD))
-				(void) ExecShutdownNode(planstate);
 			break;
-		}
 
 		/*
 		 * If we have a junk filter, then project a new tuple with the junk
@@ -1785,16 +1777,15 @@ ExecutePlan(EState *estate,
 		 */
 		current_tuple_count++;
 		if (numberTuples && numberTuples == current_tuple_count)
-		{
-			/*
-			 * If we know we won't need to back up, we can release resources
-			 * at this point.
-			 */
-			if (!(estate->es_top_eflags & EXEC_FLAG_BACKWARD))
-				(void) ExecShutdownNode(planstate);
 			break;
-		}
 	}
+
+	/*
+	 * If we know we won't need to back up, we can release resources at this
+	 * point.
+	 */
+	if (!(estate->es_top_eflags & EXEC_FLAG_BACKWARD))
+		(void) ExecShutdownNode(planstate);
 
 	if (use_parallel_mode)
 		ExitParallelMode();

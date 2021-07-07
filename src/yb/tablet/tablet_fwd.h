@@ -16,6 +16,7 @@
 #include <memory>
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -38,10 +39,12 @@ typedef std::shared_ptr<TableInfo> TableInfoPtr;
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
+class ChangeMetadataOperation;
 class Operation;
+class OperationFilter;
 class SnapshotCoordinator;
-class SnapshotOperationState;
-class SplitOperationState;
+class SnapshotOperation;
+class SplitOperation;
 class TabletSnapshots;
 class TabletSplitter;
 class TabletStatusPB;
@@ -51,12 +54,13 @@ class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
 class TransactionParticipantContext;
-class UpdateTxnOperationState;
-class WriteOperationState;
+class TruncateOperation;
+class UpdateTxnOperation;
 
 struct CreateSnapshotData;
+struct TabletMetrics;
 
-YB_STRONGLY_TYPED_BOOL(RequireLease);
+YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
 

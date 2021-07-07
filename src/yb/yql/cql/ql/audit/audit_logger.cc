@@ -49,7 +49,7 @@ TAG_FLAG(ycql_enable_audit_log, runtime);
 // IMPORTANT:
 // These flags are expected to change at runtime, but due to the nature of std::string we shouldn't
 // access them directly as a concurrent read-write access would lead to an undefined behaviour.
-// Instead, use FLAGS_NAMESPACE::GetCommandLineOption("flag_name", &result)
+// Instead, use GFLAGS_NAMESPACE::GetCommandLineOption("flag_name", &result)
 
 DEFINE_string(ycql_audit_log_level,
               "ERROR",
@@ -59,7 +59,7 @@ TAG_FLAG(ycql_audit_log_level, runtime);
 DEFINE_string(ycql_audit_included_keyspaces,
               "",
               "Comma separated list of keyspaces to be included in the audit log, "
-              "if none - includes all keyspaces");
+              "if none - includes all (non-excluded) keyspaces");
 TAG_FLAG(ycql_audit_included_keyspaces, runtime);
 
 DEFINE_string(ycql_audit_excluded_keyspaces,
@@ -70,7 +70,7 @@ TAG_FLAG(ycql_audit_excluded_keyspaces, runtime);
 DEFINE_string(ycql_audit_included_categories,
               "",
               "Comma separated list of categories to be included in the audit log, "
-              "if none - includes all categories");
+              "if none - includes all (non-excluded) categories");
 TAG_FLAG(ycql_audit_included_categories, runtime);
 
 DEFINE_string(ycql_audit_excluded_categories,
@@ -80,7 +80,8 @@ TAG_FLAG(ycql_audit_excluded_categories, runtime);
 
 DEFINE_string(ycql_audit_included_users,
               "",
-              "Comma separated list of users to be included in the audit log");
+              "Comma separated list of users to be included in the audit log, "
+              "if none - includes all (non-excluded) users");
 TAG_FLAG(ycql_audit_included_users, runtime);
 
 DEFINE_string(ycql_audit_excluded_users,

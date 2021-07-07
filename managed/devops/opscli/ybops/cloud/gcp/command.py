@@ -10,14 +10,15 @@
 
 from ybops.cloud.common.command import InstanceCommand, QueryCommand, AccessCommand, \
     NetworkCommand
-from ybops.cloud.common.method import ConfigureInstancesMethod, DestroyInstancesMethod, \
+from ybops.cloud.common.method import ConfigureInstancesMethod, \
     ListInstancesMethod, AccessCreateVaultMethod, InitYSQLMethod, UpdateDiskMethod, \
-    CronCheckMethod, AccessEditVaultMethod
+    CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod
 from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstancesMethod, \
     GcpQueryRegionsMethod, GcpQueryZonesMethod, GcpQueryInstanceTypesMethod, \
     GcpQueryCurrentHostMethod, GcpQueryPreemptibleInstanceMethod, GcpDestroyInstancesMethod, \
     GcpAccessAddKeyMethod, GcpNetworkBootstrapMethod, GcpNetworkQueryMethod, \
-    GcpNetworkCleanupMethod, GcpQueryVpcMethod
+    GcpNetworkCleanupMethod, GcpQueryVpcMethod, GcpCreateRootVolumesMethod, \
+    GcpReplaceRootVolumeMethod, GcpChangeInstanceTypeMethod
 
 
 class GcpInstanceCommand(InstanceCommand):
@@ -29,12 +30,15 @@ class GcpInstanceCommand(InstanceCommand):
     def add_methods(self):
         self.add_method(GcpProvisionInstancesMethod(self))
         self.add_method(GcpCreateInstancesMethod(self))
+        self.add_method(GcpCreateRootVolumesMethod(self))
+        self.add_method(GcpReplaceRootVolumeMethod(self))
         self.add_method(GcpDestroyInstancesMethod(self))
         self.add_method(ListInstancesMethod(self))
         self.add_method(ConfigureInstancesMethod(self))
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
         self.add_method(CronCheckMethod(self))
+        self.add_method(GcpChangeInstanceTypeMethod(self))
 
 
 class GcpQueryCommand(QueryCommand):
@@ -58,6 +62,7 @@ class GcpAccessCommand(AccessCommand):
         self.add_method(GcpAccessAddKeyMethod(self))
         self.add_method(AccessCreateVaultMethod(self))
         self.add_method(AccessEditVaultMethod(self))
+        self.add_method(AccessDeleteKeyMethod(self))
 
 
 class GcpNetworkCommand(NetworkCommand):

@@ -55,6 +55,7 @@
 
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_forward_service.proxy.h"
 
 #include "yb/util/algorithm_util.h"
 #include "yb/util/flag_tags.h"
@@ -89,15 +90,16 @@ DEFINE_test_flag(bool, force_master_lookup_all_tablets, false,
                  "If set, force the client to go to the master for all tablet lookup "
                  "instead of reading from cache.");
 
-DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0.0,
+DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0,
                  "If set, mark an RPC as failed and force retry on the first attempt.");
+DEFINE_test_flag(double, simulate_lookup_partition_list_mismatch_probability, 0,
+                 "Probability for simulating the partition list mismatch error on tablet lookup.");
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
   server, dns_resolve_latency_during_init_proxy,
   "yb.client.MetaCache.InitProxy DNS Resolve",
   yb::MetricUnit::kMicroseconds,
-  "Microseconds spent resolving DNS requests during MetaCache::InitProxy",
-  60000000LU, 2);
+  "Microseconds spent resolving DNS requests during MetaCache::InitProxy");
 
 namespace yb {
 
@@ -113,6 +115,7 @@ using rpc::Rpc;
 using tablet::RaftGroupStatePB;
 using tserver::LocalTabletServer;
 using tserver::TabletServerServiceProxy;
+using tserver::TabletServerForwardServiceProxy;
 
 namespace client {
 
@@ -557,7 +560,7 @@ std::string RemoteTablet::ReplicasAsStringUnlocked() const {
 }
 
 std::string RemoteTablet::ToString() const {
-  return YB_CLASS_TO_STRING(tablet_id, partition, split_depth);
+  return YB_CLASS_TO_STRING(tablet_id, partition, partition_list_version, split_depth);
 }
 
 PartitionListVersion RemoteTablet::GetLastKnownPartitionListVersion() const {
@@ -570,6 +573,32 @@ void RemoteTablet::MakeLastKnownPartitionListVersionAtLeast(
   std::lock_guard<rw_spinlock> lock(mutex_);
   last_known_partition_list_version_ =
       std::max(last_known_partition_list_version_, partition_list_version);
+}
+
+void LookupCallbackVisitor::operator()(const LookupTabletCallback& tablet_callback) const {
+  if (error_status_) {
+    tablet_callback(*error_status_);
+    return;
+  }
+  auto remote_tablet = boost::get<RemoteTabletPtr>(param_);
+  if (remote_tablet == nullptr) {
+    static const Status error_status = STATUS(
+        TryAgain, "Tablet for requested partition is not yet running",
+        ClientError(ClientErrorCode::kTabletNotYetRunning));
+    tablet_callback(error_status);
+    return;
+  }
+  tablet_callback(remote_tablet);
+}
+
+void LookupCallbackVisitor::operator()(
+    const LookupTabletRangeCallback& tablet_range_callback) const {
+  if (error_status_) {
+    tablet_range_callback(*error_status_);
+    return;
+  }
+  auto result = boost::get<std::vector<RemoteTabletPtr>>(param_);
+  tablet_range_callback(result);
 }
 
 ////////////////////////////////////////////////////////////
@@ -1023,7 +1052,8 @@ Status MetaCache::ProcessTabletLocations(
           Partition partition;
           Partition::FromPB(loc.partition(), &partition);
           remote = new RemoteTablet(
-              tablet_id, partition, loc.split_depth(), loc.split_parent_tablet_id());
+              tablet_id, partition, table_partition_list_version, loc.split_depth(),
+              loc.split_parent_tablet_id());
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
           if (tablets_by_key) {
@@ -1586,8 +1616,7 @@ void MetaCache::LookupByKeyFailed(
     auto& table_data = it->second;
     const auto versions_formatter = [&] {
       return Format(
-          "MetaCache($0) table $1 partition list version: $2, stored in RPC call: $2, received: $3"
-          "refresh required",
+          "MetaCache($0) table $1 partition list version: $2, stored in RPC call: $2, received: $3",
           static_cast<void*>(this), table->id(), table_data.partition_list->version,
           partition_group_start.partition_list_version, AsString(response_partition_list_version));
     };
@@ -1835,7 +1864,10 @@ bool MetaCache::DoLookupTabletByKey(
     }
     table_data = &table_it->second;
 
-    if (table_data->partition_list->version != partitions->version) {
+    if (table_data->partition_list->version != partitions->version ||
+        (PREDICT_FALSE(RandomActWithProbability(
+            FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability)) &&
+         table->table_type() != YBTableType::TRANSACTION_STATUS_TABLE_TYPE)) {
       (*callback)(STATUS(
           TryAgain,
           Format(
@@ -1892,14 +1924,14 @@ template <class Lock>
 bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
                                    CoarseTimePoint deadline,
                                    LookupTabletRangeCallback* callback) {
-  LOG(INFO) << "DoLookupAllTablets()";
+  VLOG(3) << "DoLookupAllTablets() for table: " << table->ToString();
   int64_t request_no;
   {
     Lock lock(mutex_);
     if (PREDICT_TRUE(!FLAGS_TEST_force_master_lookup_all_tablets)) {
       auto tablets = FastLookupAllTabletsUnlocked(table);
       if (tablets.has_value()) {
-        LOG(INFO) << "tablets has value";
+        VLOG(4) << "tablets has value";
         (*callback)(*tablets);
         return true;
       }

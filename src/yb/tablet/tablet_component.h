@@ -30,9 +30,11 @@ class TabletComponent {
   }
 
  protected:
-  ScopedRWOperationPause PauseReadWriteOperations();
+  Result<Tablet::ScopedRWOperationPauses> StartShutdownRocksDBs(
+      DisableFlushOnShutdown disable_flush_on_shutdown);
 
-  CHECKED_STATUS ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
+  CHECKED_STATUS CompleteShutdownRocksDBs(
+      Destroy destroy, Tablet::ScopedRWOperationPauses* ops_pauses);
 
   CHECKED_STATUS OpenRocksDBs();
 
@@ -53,6 +55,8 @@ class TabletComponent {
   std::mutex& create_checkpoint_lock() const;
 
   rocksdb::Env& rocksdb_env() const;
+
+  void RefreshYBMetaDataCache();
 
  private:
   Tablet& tablet_;

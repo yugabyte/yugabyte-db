@@ -28,6 +28,8 @@
 
 DECLARE_bool(client_suppress_created_logs);
 
+DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
+             "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
@@ -66,6 +68,13 @@ YBCStatus ProcessYbctid(
   return ToYBCStatus(pgapi->ProcessYBTupleId(
       source,
       std::bind(processor, source.table_oid, std::placeholders::_1)));
+}
+
+Slice YbctidAsSlice(uint64_t ybctid) {
+  char* value = NULL;
+  int64_t bytes = 0;
+  pgapi->FindTypeEntity(kPgByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
+  return Slice(value, bytes);
 }
 
 } // anonymous namespace
@@ -123,6 +132,10 @@ YBCPgMemctx YBCPgCreateMemctx() {
 
 YBCStatus YBCPgDestroyMemctx(YBCPgMemctx memctx) {
   return ToYBCStatus(pgapi->DestroyMemctx(memctx));
+}
+
+void YBCPgResetCatalogReadTime() {
+  return pgapi->ResetCatalogReadTime();
 }
 
 YBCStatus YBCPgResetMemctx(YBCPgMemctx memctx) {
@@ -514,28 +527,6 @@ YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
   return ToYBCStatus(pgapi->NewDropIndex(index_id, if_exist, handle));
 }
 
-YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid,
-    const YBCPgOid index_oid,
-    const uint32_t target_index_permissions,
-    uint32_t *actual_index_permissions) {
-  const PgObjectId table_id(database_oid, table_oid);
-  const PgObjectId index_id(database_oid, index_oid);
-  IndexPermissions returned_index_permissions = IndexPermissions::INDEX_PERM_DELETE_ONLY;
-  YBCStatus s = ExtractValueFromResult(pgapi->WaitUntilIndexPermissionsAtLeast(
-        table_id,
-        index_id,
-        static_cast<IndexPermissions>(target_index_permissions)),
-      &returned_index_permissions);
-  if (s) {
-    // Bad status.
-    return s;
-  }
-  *actual_index_permissions = static_cast<uint32_t>(returned_index_permissions);
-  return YBCStatusOK();
-}
-
 YBCStatus YBCPgAsyncUpdateIndexPermissions(
     const YBCPgOid database_oid,
     const YBCPgOid indexed_table_oid) {
@@ -591,8 +582,8 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
-void YBCPgStartOperationsBuffering() {
-  pgapi->StartOperationsBuffering();
+YBCStatus YBCPgStartOperationsBuffering() {
+  return ToYBCStatus(pgapi->StartOperationsBuffering());
 }
 
 YBCStatus YBCPgStopOperationsBuffering() {
@@ -621,6 +612,17 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
     *ybctid = type_entity->yb_to_datum(yid.cdata(), yid.size(), nullptr /* type_attrs */);
     return Status::OK();
   });
+}
+
+YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
+                          const YBCPgOid table_oid,
+                          YBCPgStatement *handle) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->NewAnalyze(table_id, handle));
+}
+
+YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count) {
+  return ToYBCStatus(pgapi->ExecAnalyze(handle, rows_count));
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
@@ -836,12 +838,11 @@ YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor *so
 }
 
 void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid) {
-  char *value;
-  int64_t bytes;
+  pgapi->DeleteForeignKeyReference(table_oid, YbctidAsSlice(ybctid));
+}
 
-  const YBCPgTypeEntity *type_entity = pgapi->FindTypeEntity(kPgByteArrayOid);
-  type_entity->datum_to_yb(ybctid, &value, &bytes);
-  pgapi->DeleteForeignKeyReference(table_oid, Slice(value, bytes));
+void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid) {
+  pgapi->AddForeignKeyReference(table_oid, YbctidAsSlice(ybctid));
 }
 
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor *source, bool* res) {
@@ -925,25 +926,30 @@ bool YBCGetDisableIndexBackfill() {
   return FLAGS_ysql_disable_index_backfill;
 }
 
-int32_t YBCGetTestIndexStateFlagsUpdateDelayMs() {
-  return FLAGS_TEST_ysql_index_state_flags_update_delay_ms;
-}
-
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
 
 void YBCSetTimeout(int timeout_ms, void* extra) {
-  // We set the rpc timeouts as a min{STATEMENT_TIMEOUT, FLAGS_client_read_write_timeout_ms}.
+  const auto default_client_timeout_ms =
+      (FLAGS_ysql_client_read_write_timeout_ms < 0
+           ? std::max(FLAGS_client_read_write_timeout_ms, 600000)
+           : FLAGS_ysql_client_read_write_timeout_ms);
+  // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
+  // FLAGS(_ysql)?_client_read_write_timeout_ms}.
   if (timeout_ms <= 0) {
     // The timeout is not valid. Use the default GFLAG value.
     return;
   }
-  timeout_ms = std::min(timeout_ms, FLAGS_client_read_write_timeout_ms);
+  timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
 
-  // The statement timeout is lesser than FLAGS_client_read_write_timeout_ms, hence the rpcs would
+  // The statement timeout is lesser than default_client_timeout, hence the rpcs would
   // need to use a shorter timeout.
   pgapi->SetTimeout(timeout_ms);
+}
+
+void YBCGetTabletServerHosts(YBCServerDescriptor **servers, int * count) {
+  pgapi->ListTabletServers(servers, count);
 }
 
 //------------------------------------------------------------------------------------------------

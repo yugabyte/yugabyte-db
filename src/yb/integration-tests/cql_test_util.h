@@ -58,6 +58,8 @@ class CassandraValue {
     return result;
   }
 
+  bool IsNull() const;
+
   std::string ToString() const;
 
  private:
@@ -97,6 +99,8 @@ class CassandraRow {
 
   CassandraRowIterator CreateIterator() const;
 
+  std::string RenderToString(const std::string& separator = ",");
+
   void TakeIterator(CassIteratorPtr iterator);
 
  private:
@@ -126,6 +130,9 @@ class CassandraResult {
   explicit CassandraResult(const CassResult* result) : cass_result_(result) {}
 
   CassandraIterator CreateIterator() const;
+
+  std::string RenderToString(const std::string& line_separator = ";",
+                             const std::string& value_separator = ",") const;
 
  private:
   CassResultPtr cass_result_;
@@ -178,6 +185,8 @@ class CassandraStatement {
 
   explicit CassandraStatement(const std::string& query, size_t parameter_count = 0)
       : cass_statement_(cass_statement_new(query.c_str(), parameter_count)) {}
+
+  void SetKeyspace(const std::string& keyspace);
 
   void Bind(size_t index, const std::string& v);
   void Bind(size_t index, const cass_bool_t& v);
@@ -234,7 +243,14 @@ class CassandraSession {
 
   CHECKED_STATUS ExecuteQuery(const std::string& query);
 
+  template <class... Args>
+  CHECKED_STATUS ExecuteQueryFormat(const std::string& query, Args&&... args) {
+    return ExecuteQuery(Format(query, std::forward<Args>(args)...));
+  }
+
   Result<CassandraResult> ExecuteWithResult(const std::string& query);
+
+  Result<std::string> ExecuteAndRenderToString(const std::string& statement);
 
   template <class Action>
   CHECKED_STATUS ExecuteAndProcessOneRow(
@@ -257,12 +273,24 @@ class CassandraSession {
     return ExecuteAndProcessOneRow(CassandraStatement(query), action);
   }
 
+  template <class T>
+  Result<T> FetchValue(const std::string& query) {
+    T result = T();
+    RETURN_NOT_OK(ExecuteAndProcessOneRow(query, [&result](const CassandraRow& row) {
+      result = row.Value(0).As<T>();
+    }));
+    return result;
+  }
+
   CHECKED_STATUS ExecuteBatch(const CassandraBatch& batch);
 
   CassandraFuture SubmitBatch(const CassandraBatch& batch);
 
-  Result<CassandraPrepared> Prepare(
-      const std::string& prepare_query, MonoDelta timeout = MonoDelta::kZero);
+  // If 'local_keyspace' is not empty, creating temporary CassStatement and setting keyspace
+  // for this statement only. Result CassPrepared will be based on this temporary statement.
+  Result<CassandraPrepared> Prepare(const std::string& prepare_query,
+                                    MonoDelta timeout = MonoDelta::kZero,
+                                    const std::string& local_keyspace = std::string());
 
   void Reset();
 
@@ -270,10 +298,13 @@ class CassandraSession {
   CassSessionPtr cass_session_;
 };
 
+YB_STRONGLY_TYPED_BOOL(UsePartitionAwareRouting);
+
 class CppCassandraDriver {
  public:
   CppCassandraDriver(
-      const std::vector<std::string>& hosts, uint16_t port, bool use_partition_aware_routing);
+      const std::vector<std::string>& hosts, uint16_t port,
+      UsePartitionAwareRouting use_partition_aware_routing);
 
   ~CppCassandraDriver();
 

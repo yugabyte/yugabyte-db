@@ -39,6 +39,7 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
@@ -173,6 +174,9 @@ struct RaftGroupMetadataData {
   std::vector<SnapshotScheduleId> snapshot_schedules;
 };
 
+using RestorationCompleteTimeMap = std::unordered_map<
+    TxnSnapshotRestorationId, HybridTime, TxnSnapshotRestorationIdHash>;
+
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
 // Raft groups from this data.
@@ -270,7 +274,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return table_info->schema_version;
   }
 
-  const std::string& indexed_tablet_id(const TableId& table_id = "") const {
+  const std::string& indexed_table_id(const TableId& table_id = "") const {
     DCHECK_NE(state_, kNotLoadedYet);
     static const std::string kEmptyString = "";
     std::lock_guard<MutexType> lock(data_mutex_);
@@ -341,7 +345,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   int64_t cdc_min_replicated_index() const;
 
-  CHECKED_STATUS set_is_under_twodc_replication(bool is_under_twodc_replication);
+  CHECKED_STATUS SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
   bool is_under_twodc_replication() const;
 
@@ -358,6 +362,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   bool AddSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
     std::lock_guard<MutexType> lock(data_mutex_);
     return kv_store_.snapshot_schedules.insert(schedule_id).second;
+  }
+
+  bool RemoveSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.snapshot_schedules.erase(schedule_id) != 0;
   }
 
   std::vector<SnapshotScheduleId> SnapshotSchedules() const {
@@ -404,6 +413,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
 
+  void SetHidden(bool value);
+  bool hidden() const;
+
+  void SetRestorationHybridTime(HybridTime value);
+  HybridTime restoration_hybrid_time() const;
+
   CHECKED_STATUS Flush();
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
@@ -437,7 +452,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   FsManager *fs_manager() const { return fs_manager_; }
 
-  yb::OpId tombstone_last_logged_opid() const { return tombstone_last_logged_opid_; }
+  OpId tombstone_last_logged_opid() const;
 
   // Loads the currently-flushed superblock from disk into the given protobuf.
   CHECKED_STATUS ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* superblock) const;
@@ -469,10 +484,30 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return primary_table_info_unlocked();
   }
 
-  bool colocated() const { return colocated_; }
+  bool colocated() const;
+
+  Result<std::string> TopSnapshotsDir() const;
 
   // Return standard "T xxx P yyy" log prefix.
   std::string LogPrefix() const;
+
+  std::array<TabletId, kNumSplitParts> split_child_tablet_ids() const;
+
+  OpId split_op_id() const;
+
+  void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
+
+  bool has_active_restoration() const;
+
+  void RegisterRestoration(const TxnSnapshotRestorationId& restoration_id);
+  void UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id);
+
+  // Find whether some of active restorations complete. Returns max complete hybrid time of such
+  // restoration.
+  HybridTime CheckCompleteRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
+
+  // Removes all complete or unknown restorations.
+  bool CleanupRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
  private:
   typedef simple_spinlock MutexType;
@@ -503,7 +538,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   CHECKED_STATUS ReplaceSuperBlockUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
 
   // Requires 'data_mutex_'.
-  void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const;
+  void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const REQUIRES(data_mutex_);
 
   const TableInfoPtr primary_table_info_unlocked() const {
     const auto& tables = kv_store_.tables;
@@ -527,12 +562,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // If taken together with 'data_mutex_', must be acquired first.
   mutable Mutex flush_lock_;
 
-  RaftGroupId raft_group_id_;
-  std::shared_ptr<Partition> partition_;
+  RaftGroupId raft_group_id_ GUARDED_BY(data_mutex_);
+  std::shared_ptr<Partition> partition_ GUARDED_BY(data_mutex_);
 
   // The primary table id. Primary table is the first table this Raft group is created for.
   // Additional tables can be added to this Raft group to co-locate with this table.
-  TableId primary_table_id_;
+  TableId primary_table_id_ GUARDED_BY(data_mutex_);
 
   // KV-store for this Raft group.
   KvStoreInfo kv_store_;
@@ -540,22 +575,31 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   FsManager* const fs_manager_;
 
   // The directory where the write-ahead log for this Raft group is stored.
-  std::string wal_dir_;
+  std::string wal_dir_ GUARDED_BY(data_mutex_);
 
   // The current state of remote bootstrap for the tablet.
-  TabletDataState tablet_data_state_ = TABLET_DATA_UNKNOWN;
+  TabletDataState tablet_data_state_ GUARDED_BY(data_mutex_) = TABLET_DATA_UNKNOWN;
 
   // Record of the last opid logged by the tablet before it was last tombstoned. Has no meaning for
   // non-tombstoned tablets.
-  yb::OpId tombstone_last_logged_opid_;
+  OpId tombstone_last_logged_opid_ GUARDED_BY(data_mutex_);
 
   // True if the raft group is for a colocated tablet.
-  bool colocated_ = false;
+  bool colocated_ GUARDED_BY(data_mutex_) = false;
 
   // The minimum index that has been replicated by the cdc service.
-  int64_t cdc_min_replicated_index_ = std::numeric_limits<int64_t>::max();
+  int64_t cdc_min_replicated_index_ GUARDED_BY(data_mutex_) = std::numeric_limits<int64_t>::max();
 
-  bool is_under_twodc_replication_ = false;
+  bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
+
+  bool hidden_ GUARDED_BY(data_mutex_) = false;
+
+  HybridTime restoration_hybrid_time_ GUARDED_BY(data_mutex_) = HybridTime::kMin;
+
+  OpId split_op_id_ GUARDED_BY(data_mutex_);
+  std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
+
+  std::vector<TxnSnapshotRestorationId> active_restorations_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

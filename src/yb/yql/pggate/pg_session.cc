@@ -28,6 +28,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
@@ -35,6 +36,7 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_key.h"
@@ -50,8 +52,7 @@
 #include "yb/master/master.proxy.h"
 
 DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60 min.
-             "Timeout for WaitUntilIndexPermissionsAtLeast RPCs from client to master initiated "
-             "from YSQL layer.");
+             "DEPRECATED: use backfill_index_client_rpc_timeout_ms instead.");
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
@@ -79,24 +80,12 @@ using yb::master::MasterServiceProxy;
 
 using yb::tserver::TServerSharedObject;
 
-#if defined(__APPLE__) && !defined(NDEBUG)
-// We are experiencing more slowness in tests on macOS in debug mode.
-const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
-#else
-const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
-#endif
-
-DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
-             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
-
 namespace {
 //--------------------------------------------------------------------------------------------------
 // Constants used for the sequences data table.
 //--------------------------------------------------------------------------------------------------
 static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
 static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
-
-static const string kPgSequencesDataNamespaceId = GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
 // Columns names and ids.
 static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
@@ -324,20 +313,20 @@ bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
 //--------------------------------------------------------------------------------------------------
 
 PgSessionAsyncRunResult::PgSessionAsyncRunResult(PgsqlOpBuffer buffered_operations,
-                                                 std::future<Status> future_status,
+                                                 std::future<client::FlushStatus> future_status,
                                                  client::YBSessionPtr session)
     : buffered_operations_(std::move(buffered_operations)),
       future_status_(std::move(future_status)),
       session_(std::move(session)) {
 }
 
-Status PgSessionAsyncRunResult::GetStatus(const PgSession& pg_session) {
+Status PgSessionAsyncRunResult::GetStatus(PgSession* pg_session) {
   SCHECK(InProgress(), IllegalState, "Request must be in progress");
-  auto status = future_status_.get();
-  future_status_ = std::future<Status>();
-  RETURN_NOT_OK(CombineErrorsToStatus(session_->GetAndClearPendingErrors(), status));
+  const auto flush_status = future_status_.get();
+  future_status_ = std::future<client::FlushStatus>();
+  RETURN_NOT_OK(CombineErrorsToStatus(flush_status.errors, flush_status.status));
   for (const auto& bop : buffered_operations_) {
-    RETURN_NOT_OK(pg_session.HandleResponse(*bop.operation, bop.relation_id));
+    RETURN_NOT_OK(pg_session->HandleResponse(*bop.operation, bop.relation_id));
   }
   return Status::OK();
 }
@@ -352,7 +341,7 @@ bool PgSessionAsyncRunResult::InProgress() const {
 
 PgSession::RunHelper::RunHelper(const PgObjectId& relation_id,
                                 PgSession* pg_session,
-                                bool transactional)
+                                IsTransactionalSession transactional)
     : relation_id_(relation_id),
       pg_session_(*pg_session),
       transactional_(transactional),
@@ -418,17 +407,19 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
       read_only = read_only && pending_ops_.empty();
     }
   }
-  bool needs_pessimistic_locking = false;
+  bool pessimistic_lock_required = false;
   if (op->type() == YBOperation::Type::PGSQL_READ) {
     const PgsqlReadRequestPB& read_req = down_cast<client::YBPgsqlReadOp*>(op.get())->request();
     auto row_mark_type = GetRowMarkTypeFromPB(read_req);
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
-    needs_pessimistic_locking = RowMarkNeedsPessimisticLock(row_mark_type);
+    pessimistic_lock_required = RowMarkNeedsPessimisticLock(row_mark_type);
   }
 
-  auto session = VERIFY_RESULT(pg_session_.GetSession(transactional_,
-                                                      read_only,
-                                                      needs_pessimistic_locking));
+  auto session = VERIFY_RESULT(pg_session_.GetSession(
+      transactional_,
+      IsReadOnlyOperation(read_only),
+      IsPessimisticLockRequired(pessimistic_lock_required),
+      IsCatalogOperation(op->IsYsqlCatalogOp())));
   if (!yb_session_) {
     yb_session_ = session->shared_from_this();
     if (transactional_ && read_time) {
@@ -453,9 +444,7 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
 
 Result<PgSessionAsyncRunResult> PgSession::RunHelper::Flush() {
   if (yb_session_) {
-    auto future_status = MakeFuture<Status>([this](auto callback) {
-      yb_session_->FlushAsync([callback](const Status& status) { callback(status); });
-    });
+    auto future_status = yb_session_->FlushFuture();
     return PgSessionAsyncRunResult(
         std::move(pending_ops_), std::move(future_status), std::move(yb_session_));
   }
@@ -543,17 +532,12 @@ PgSession::PgSession(
     const tserver::TServerSharedObject* tserver_shared_object,
     const YBCPgCallbacks& pg_callbacks)
     : client_(client),
-      session_(client_->NewSession()),
+      session_(BuildSession(client_)),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
+      catalog_session_(BuildSession(client_, clock_)),
       tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
-
-  // Sets the timeout for each rpc as well as the whole operation to
-  // 'FLAGS_pg_yb_session_timeout_ms'.
-  session_->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
-
-  session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 PgSession::~PgSession() {
@@ -905,6 +889,10 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
   return s;
 }
 
+Result<master::AnalyzeTableResponsePB> PgSession::AnalyzeTable(const PgObjectId& table_id) {
+  return client_->AnalyzeTable(table_id.GetYBTableId());
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_id) {
@@ -938,14 +926,19 @@ void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
   table_cache_.erase(yb_table_id);
 }
 
-void PgSession::StartOperationsBuffering() {
-  DCHECK(!buffering_enabled_);
-  DCHECK(buffered_keys_.empty());
+Status PgSession::StartOperationsBuffering() {
+  SCHECK(!buffering_enabled_, IllegalState, "Buffering has been already started");
+  if (PREDICT_FALSE(!buffered_keys_.empty())) {
+    LOG(DFATAL) << "Buffering hasn't been started yet but "
+                << buffered_keys_.size()
+                << " buffered operations found";
+  }
   buffering_enabled_ = true;
+  return Status::OK();
 }
 
 Status PgSession::StopOperationsBuffering() {
-  DCHECK(buffering_enabled_);
+  SCHECK(buffering_enabled_, IllegalState, "Buffering hasn't been started");
   buffering_enabled_ = false;
   return FlushBufferedOperations();
 }
@@ -978,42 +971,57 @@ Status PgSession::FlushBufferedOperationsImpl(const Flusher& flusher) {
   buffered_ops_.clear();
   buffered_txn_ops_.clear();
   if (!ops.empty()) {
-    RETURN_NOT_OK(flusher(std::move(ops), false /* transactional */));
+    RETURN_NOT_OK(flusher(std::move(ops), IsTransactionalSession::kFalse));
   }
   if (!txn_ops.empty()) {
     SCHECK(!YBCIsInitDbModeEnvVarSet(),
            IllegalState,
            "No transactional operations are expected in the initdb mode");
-    RETURN_NOT_OK(flusher(std::move(txn_ops), true /* transactional */));
+    RETURN_NOT_OK(flusher(std::move(txn_ops), IsTransactionalSession::kTrue));
   }
   return Status::OK();
 }
 
-bool PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op) {
-  return op.IsTransactional() &&  !YBCIsInitDbModeEnvVarSet() &&
-         (!op.IsYsqlCatalogOp() || pg_txn_manager_->IsDdlMode() ||
-             // In this mode, used for some tests, we will execute direct statements on YSQL system
-             // catalog tables in the user-controlled transaction, as opposed to executing them
-             // non-transactionally.
-             FLAGS_ysql_enable_manual_sys_table_txn_ctl);
+Result<bool> PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op) {
+  if (!op.IsTransactional() || YBCIsInitDbModeEnvVarSet()) {
+    return false;
+  }
+  const auto has_non_ddl_txn = pg_txn_manager_->IsTxnInProgress();
+  if (!op.IsYsqlCatalogOp()) {
+    SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
+    return true;
+  }
+  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
+    return true;
+  }
+  if (op.type() == YBOperation::Type::PGSQL_WRITE) {
+    // For consistent read from catalog tables all write operations must be done in transaction.
+    return STATUS_FORMAT(IllegalState,
+                         "Transaction for catalog table write operation '$0' not found",
+                         op.table()->name().table_name());
+  }
+  return false;
 }
 
-Result<YBSession*> PgSession::GetSession(bool transactional,
-                                         bool read_only_op,
-                                         bool needs_pessimistic_locking) {
+Result<YBSession*> PgSession::GetSession(IsTransactionalSession transactional,
+                                         IsReadOnlyOperation read_only_op,
+                                         IsPessimisticLockRequired pessimistic_lock_required,
+                                         IsCatalogOperation is_catalog_op) {
   if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
     RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op,
-                                                                    needs_pessimistic_locking));
+                                                                    pessimistic_lock_required));
     VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session: "
             << txn_session;
     return txn_session;
   }
+  YBSession* non_txn_session = is_catalog_op && read_only_op && !YBCIsInitDbModeEnvVarSet()
+      ? catalog_session_.get() : session_.get();
   VLOG(2) << __PRETTY_FUNCTION__
           << ": read_only_op=" << read_only_op << ", returning non-transactional session "
-          << session_.get();
-  return session_.get();
+          << non_txn_session;
+  return non_txn_session;
 }
 
 Result<bool> PgSession::IsInitDbDone() {
@@ -1043,7 +1051,7 @@ Status PgSession::ApplyOperation(client::YBSession *session,
                                  bool transactional,
                                  const BufferableOperation& bop) {
   const auto& op = bop.operation;
-  SCHECK_EQ(ShouldHandleTransactionally(*op),
+  SCHECK_EQ(VERIFY_RESULT(ShouldHandleTransactionally(*op)),
             transactional,
             IllegalState,
             Format("Table name: $0, table is transactional: $1, initdb mode: $2",
@@ -1053,9 +1061,9 @@ Status PgSession::ApplyOperation(client::YBSession *session,
   return session->Apply(op);
 }
 
-Status PgSession::FlushOperations(PgsqlOpBuffer ops, bool transactional) {
+Status PgSession::FlushOperations(PgsqlOpBuffer ops, IsTransactionalSession transactional) {
   DCHECK(ops.size() > 0 && ops.size() <= FLAGS_ysql_session_max_batch_size);
-  auto session = VERIFY_RESULT(GetSession(transactional, false /* read_only_op */));
+  auto session = VERIFY_RESULT(GetSession(transactional, IsReadOnlyOperation::kFalse));
   if (session != session_.get()) {
     DCHECK(transactional);
     session->SetInTxnLimit(HybridTime(clock_->Now().ToUint64()));
@@ -1068,8 +1076,8 @@ Status PgSession::FlushOperations(PgsqlOpBuffer ops, bool transactional) {
   for (const auto& buffered_op : ops) {
     RETURN_NOT_OK(ApplyOperation(session, transactional, buffered_op));
   }
-  const auto status = session->FlushFuture().get();
-  RETURN_NOT_OK(CombineErrorsToStatus(session->GetAndClearPendingErrors(), status));
+  const auto flush_status = session->FlushFuture().get();
+  RETURN_NOT_OK(CombineErrorsToStatus(flush_status.errors, flush_status.status));
   for (const auto& buffered_op : ops) {
     RETURN_NOT_OK(HandleResponse(*buffered_op.operation, buffered_op.relation_id));
   }
@@ -1148,12 +1156,36 @@ void PgSession::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid
   }
 }
 
+void PgSession::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
+    fk_reference_cache_.emplace(table_id, ybctid.ToBuffer());
+  }
+}
+
 void PgSession::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   Erase(&fk_reference_cache_, table_id, ybctid);
 }
 
-Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id) const {
-    if (op.succeeded()) {
+Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id) {
+  if (op.succeeded()) {
+    if (op.type() == YBOperation::PGSQL_READ && op.IsYsqlCatalogOp()) {
+      const auto& pgsql_op = down_cast<const client::YBPgsqlReadOp&>(op);
+      if (pgsql_op.used_read_time()) {
+        // Non empty used_read_time field in catalog read operation means this is the very first
+        // catalog read operation after catalog read time resetting. read_time for the operation
+        // has been chosen by master. All further reads from catalog must use same read point.
+        auto catalog_read_point = pgsql_op.used_read_time();
+
+        // We set global limit to local limit to avoid read restart errors because they are
+        // disruptive to system catalog reads and it is not always possible to handle them there.
+        // This might lead to reading slightly outdated state of the system catalog if a recently
+        // committed DDL transaction used a transaction status tablet whose leader's clock is skewed
+        // and is in the future compared to the master leader's clock.
+        // TODO(dmitry) This situation will be handled in context of #7964.
+        catalog_read_point.global_limit = catalog_read_point.local_limit;
+        SetCatalogReadPoint(catalog_read_point);
+      }
+    }
     return Status::OK();
   }
   const auto& response = op.response();
@@ -1191,25 +1223,50 @@ Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool 
   return client_->TabletServerCount(tserver_count, primary_only, use_cache);
 }
 
+Status PgSession::ListTabletServers(YBCServerDescriptor **servers, int *numofservers) {
+  std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>> tablet_servers;
+  Status ret = client_->ListLiveTabletServers(&tablet_servers, false);
+  *numofservers = tablet_servers.size();
+  int cnt = *numofservers;
+  if (cnt > 0) {
+    for (int i = 0; i < cnt; i++) {
+      std::string host = tablet_servers.at(i)->hostname();
+      std::string cloud = tablet_servers.at(i)->cloud();
+      std::string region = tablet_servers.at(i)->region();
+      std::string zone = tablet_servers.at(i)->zone();
+      std::string publicIp = tablet_servers.at(i)->publicIp();
+      bool isPrimary = tablet_servers.at(i)->isPrimary();
+      const char *hostC = YBCPAllocStdString(host);
+      const char *cloudC = YBCPAllocStdString(cloud);
+      const char *regionC = YBCPAllocStdString(region);
+      const char *zoneC = YBCPAllocStdString(zone);
+      const char *publicIpC = YBCPAllocStdString(publicIp);
+      servers[i] = reinterpret_cast<YBCServerDescriptor *>(YBCPAlloc(sizeof(YBCServerDescriptor)));
+      servers[i]->host = hostC;
+      servers[i]->cloud = cloudC;
+      servers[i]->region = regionC;
+      servers[i]->zone = zoneC;
+      servers[i]->publicIp = publicIpC;
+      servers[i]->isPrimary = isPrimary;
+    }
+  }
+  return ret;
+}
+
 void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
 }
 
-Result<IndexPermissions> PgSession::WaitUntilIndexPermissionsAtLeast(
-    const PgObjectId& table_id,
-    const PgObjectId& index_id,
-    const IndexPermissions& target_index_permissions) {
-  auto deadline = CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(
-      FLAGS_ysql_wait_until_index_permissions_timeout_ms);
-  return client_->WaitUntilIndexPermissionsAtLeast(
-      table_id.GetYBTableId(),
-      index_id.GetYBTableId(),
-      target_index_permissions,
-      deadline);
-}
-
 Status PgSession::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
   return client_->AsyncUpdateIndexPermissions(indexed_table_id.GetYBTableId());
+}
+
+void PgSession::ResetCatalogReadPoint() {
+  catalog_session_->SetReadPoint(ReadHybridTime());
+}
+
+void PgSession::SetCatalogReadPoint(const ReadHybridTime& read_ht) {
+  catalog_session_->SetReadPoint(read_ht);
 }
 
 }  // namespace pggate

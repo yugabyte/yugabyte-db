@@ -40,7 +40,7 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
@@ -50,6 +50,7 @@
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/util/test_util.h"
 #include "yb/util/format.h"
 
@@ -75,6 +76,7 @@ using master::TabletReportUpdatesPB;
 using tablet::TabletPeer;
 using gflags::FlagSaver;
 
+static const char* const kTableId = "my-table-id";
 static const char* const kTabletId = "my-tablet-id";
 static const int kConsensusRunningWaitMs = 10000;
 
@@ -108,12 +110,6 @@ class TsTabletManagerTest : public YBTest {
     if (mini_server_) {
       mini_server_->Shutdown();
     }
-  }
-
-  Status CreateNewTablet(const std::string& tablet_id,
-                         const Schema& schema,
-                         std::shared_ptr<tablet::TabletPeer>* out_tablet_peer) {
-    return CreateNewTablet(tablet_id, tablet_id, schema, out_tablet_peer);
   }
 
   Status CreateNewTablet(const std::string& table_id,
@@ -152,7 +148,7 @@ class TsTabletManagerTest : public YBTest {
 TEST_F(TsTabletManagerTest, TestCreateTablet) {
   // Create a new tablet.
   std::shared_ptr<TabletPeer> peer;
-  ASSERT_OK(CreateNewTablet(kTabletId, schema_, &peer));
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
   ASSERT_EQ(kTabletId, peer->tablet()->tablet_id());
   peer.reset();
 
@@ -236,6 +232,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
       tablet::TABLET_DATA_TOMBSTONED,
       cas_config_opid_index_less_or_equal,
+      false,
       &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -249,6 +246,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
                                           tablet::TABLET_DATA_DELETED,
                                           cas_config_opid_index_less_or_equal,
+                                          false,
                                           &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -274,7 +272,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     std::shared_ptr<TabletPeer> peer;
     const auto tablet_id = Format("my-tablet-$0", i + 1);
     tablet_ids.emplace_back(tablet_id);
-    ASSERT_OK(CreateNewTablet(tablet_id, schema_, &peer));
+    ASSERT_OK(CreateNewTablet(kTableId, tablet_id, schema_, &peer));
     ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
 
     auto replicate_ptr = std::make_shared<ReplicateMsg>();
@@ -283,6 +281,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     ConsensusRoundPtr round(new ConsensusRound(peer->consensus(), std::move(replicate_ptr)));
     consensus_rounds.emplace_back(round);
     round->BindToTerm(peer->raft_consensus()->TEST_LeaderTerm());
+    round->SetCallback(consensus::MakeNonTrackedRoundCallback(round.get(), [](const Status&){}));
     ASSERT_OK(peer->consensus()->TEST_Replicate(round));
   }
 
@@ -294,7 +293,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     ASSERT_OK(mini_server_->Start());
     auto* tablet_manager = mini_server_->server()->tablet_manager();
     ASSERT_NE(nullptr, tablet_manager);
-    tablet_manager->MaybeFlushTablet();
+    tablet_manager->tablet_memory_manager()->FlushTabletIfLimitExceeded();
     ASSERT_OK(mini_server_->WaitStarted());
     for (auto& tablet_id : tablet_ids) {
       std::shared_ptr<TabletPeer> peer;
@@ -364,7 +363,7 @@ TEST_F(TsTabletManagerTest, TestTabletReports) {
   tablet_manager_->MarkTabletReportAcknowledged(seqno, updates);
 
   // Create a tablet and do another incremental report - should include the tablet.
-  ASSERT_OK(CreateNewTablet("tablet-1", schema_, nullptr));
+  ASSERT_OK(CreateNewTablet(kTableId, "tablet-1", schema_, nullptr));
   int updated_tablets = 0;
   while (updated_tablets != 1) {
     tablet_manager_->GenerateTabletReport(&report);
@@ -391,7 +390,7 @@ TEST_F(TsTabletManagerTest, TestTabletReports) {
   tablet_manager_->MarkTabletReportAcknowledged(seqno, updates);
 
   // Create a second tablet, and ensure the incremental report shows it.
-  ASSERT_OK(CreateNewTablet("tablet-2", schema_, nullptr));
+  ASSERT_OK(CreateNewTablet(kTableId, "tablet-2", schema_, nullptr));
 
   // Wait up to 10 seconds to get a tablet report from tablet-2.
   // TabletPeer does not mark tablets dirty until after it commits the
@@ -454,7 +453,7 @@ TEST_F(TsTabletManagerTest, TestTabletReportLimit) {
   std::set<std::string> tablet_ids, tablet_ids_full;
   for (int i = 0; i < total_tablets; ++i) {
     auto id = "tablet-" + std::to_string(i);
-    ASSERT_OK(CreateNewTablet(id, schema_, nullptr));
+    ASSERT_OK(CreateNewTablet(kTableId, id, schema_, nullptr));
     tablet_ids.insert(id);
     tablet_ids_full.insert(id);
     LOG(INFO) << "Adding " << id;

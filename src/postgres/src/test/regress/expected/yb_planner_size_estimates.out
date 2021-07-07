@@ -10,11 +10,13 @@ CREATE OR REPLACE PROCEDURE update_sizes(t_10000_size int, t_1000_size int, t_10
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    SET yb_non_ddl_txn_for_sys_tables_allowed=1;
     UPDATE pg_class SET reltuples=t_10000_size WHERE relname='t_10000';
     UPDATE pg_class SET reltuples=t_1000_size WHERE relname='t_1000';
     UPDATE pg_class SET reltuples=t_100_size WHERE relname='t_100';
     UPDATE pg_class SET reltuples=t_1000000_size WHERE relname='t_1000000';
     UPDATE pg_yb_catalog_version SET current_version=current_version+1 WHERE db_oid=1;
+    SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 END;
 $$;
 -- Updating table sizes enables the query planner to choose appropriate join orders. In other words,
@@ -183,14 +185,17 @@ EXPLAIN (COSTS false) SELECT * FROM t_1000000 t4 INNER JOIN t_100 t1 ON t4.id = 
 EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t2.id
                                                INNER JOIN t_100 t1 ON t2.val = t1.val
                                                WHERE t3.id < 10;
-                       QUERY PLAN
----------------------------------------------------------
- Hash Join
-   Hash Cond: (t2.val = t1.val)
-   ->  Nested Loop
-         ->  Seq Scan on t_1000 t2
-         ->  Index Scan using t_10000_pkey on t_10000 t3
-               Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Hash
+                          QUERY PLAN
+---------------------------------------------------------------
+ Merge Join
+   Merge Cond: (t2.val = t1.val)
+   ->  Sort
+         Sort Key: t2.val
+         ->  Nested Loop
+               ->  Seq Scan on t_1000 t2
+               ->  Index Scan using t_10000_pkey on t_10000 t3
+                     Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Sort
+         Sort Key: t1.val
          ->  Seq Scan on t_100 t1
-(8 rows)
+(11 rows)

@@ -32,11 +32,11 @@ public class HealthCheckTest extends FakeDBApplication {
     try {
       // The checkTime is created internally and part of the primary key
       Thread.sleep(10);
-    } catch(InterruptedException e) {
+    } catch (InterruptedException e) {
       // Ignore in test..
     }
-    HealthCheck check = HealthCheck.addAndPrune(
-        universeUUID, defaultCustomer.getCustomerId(), detailsJson);
+    HealthCheck check =
+        HealthCheck.addAndPrune(universeUUID, defaultCustomer.getCustomerId(), detailsJson);
     assertNotNull(check);
     return check;
   }
@@ -91,13 +91,10 @@ public class HealthCheckTest extends FakeDBApplication {
     HealthCheck noDetails = addCheck(universeUUID);
     assertFalse(noDetails.hasError());
 
-    HealthCheck trueError = addCheck(
-        universeUUID, "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": true}");
+    HealthCheck trueError = addCheck(universeUUID, "{\"" + "has_error" + "\": true}");
     assertTrue(trueError.hasError());
 
-    HealthCheck falseError = addCheck(
-        universeUUID,
-        "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": false}");
+    HealthCheck falseError = addCheck(universeUUID, "{\"" + "has_error" + "\": false}");
     assertFalse(falseError.hasError());
   }
 

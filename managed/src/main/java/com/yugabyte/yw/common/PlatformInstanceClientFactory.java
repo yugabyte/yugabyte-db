@@ -15,8 +15,7 @@ import com.google.inject.Singleton;
 
 @Singleton
 public class PlatformInstanceClientFactory {
-  @Inject
-  ApiHelper apiHelper;
+  @Inject ApiHelper apiHelper;
 
   public PlatformInstanceClient getClient(String clusterKey, String remoteAddress) {
     return new PlatformInstanceClient(this.apiHelper, clusterKey, remoteAddress);

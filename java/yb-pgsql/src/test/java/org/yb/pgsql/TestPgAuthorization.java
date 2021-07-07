@@ -19,9 +19,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.pgsql.cleaners.ClusterCleaner;
-import org.yb.pgsql.cleaners.DatabaseCleaner;
-import org.yb.pgsql.cleaners.RoleCleaner;
 import org.yb.util.MiscUtil.ThrowingRunnable;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
@@ -70,14 +67,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
     return flags;
-  }
-
-  @Override
-  protected List<ClusterCleaner> getCleaners() {
-    List<ClusterCleaner> cleaners = super.getCleaners();
-    cleaners.add(0, new DatabaseCleaner());
-    cleaners.add(1, new RoleCleaner());
-    return cleaners;
   }
 
   @Test

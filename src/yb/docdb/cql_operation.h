@@ -44,7 +44,7 @@ class QLWriteOperation :
     public DocExprExecutor {
  public:
   QLWriteOperation(std::shared_ptr<const Schema> schema,
-                   const IndexMap& index_map,
+                   std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContextOpt& txn_op_context);
 
@@ -132,7 +132,7 @@ class QLWriteOperation :
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
-  bool IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
+  Result<bool> IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
 
   CHECKED_STATUS UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
 
@@ -182,7 +182,9 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     const QLTableRow& new_row,
     const IndexInfo* index,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-    bool* has_index_key_changed = nullptr);
+    bool* has_index_key_changed = nullptr,
+    bool* index_pred_new_row = nullptr,
+    bool index_pred_existing_row = true);
 
 class QLReadOperation : public DocExprExecutor {
  public:

@@ -30,7 +30,6 @@ using namespace std::literals;
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
-DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
@@ -39,7 +38,6 @@ DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_bool(rocksdb_use_logging_iterator);
 
 namespace yb {
@@ -682,15 +680,13 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ForeignKeySnapshot)) {
 // A test performing manual transaction control on system tables.
 // ------------------------------------------------------------------------------------------------
 
-class PgMiniTestManualSysTableTxn : public PgMiniTest {
+class PgMiniTestNoSleepBeforeRetry : public PgMiniTest {
   virtual void BeforePgProcessStart() {
-    // Enable manual transaction control for operations on system tables. Otherwise, they would
-    // execute non-transactionally.
-    FLAGS_ysql_enable_manual_sys_table_txn_ctl = true;
+    FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
   }
 };
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestManualSysTableTxn) {
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestNoSleepBeforeRetry) {
 
   // Resolving conflicts between transactions on a system table.
   //
@@ -710,13 +706,16 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
 
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(conn2.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
 
   size_t commit1_fail_count = 0;
   size_t commit2_fail_count = 0;
   size_t insert2_fail_count = 0;
 
   const auto kStartTxnStatementStr = "START TRANSACTION ISOLATION LEVEL REPEATABLE READ";
-  for (int i = 1; i <= 100; ++i) {
+  const int iterations = 48;
+  for (int i = 1; i <= iterations; ++i) {
     std::string dictname = Format("contendedkey$0", i);
     const int dictnamespace = i;
     ASSERT_OK(conn1.Execute(kStartTxnStatementStr));
@@ -774,8 +773,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
             << EXPR_VALUE_FOR_LOG(commit1_fail_count) << ", "
             << EXPR_VALUE_FOR_LOG(insert2_fail_count) << ", "
             << EXPR_VALUE_FOR_LOG(commit2_fail_count);
-  ASSERT_GE(commit1_fail_count, 25);
-  ASSERT_GE(insert2_fail_count, 25);
+  ASSERT_GE(commit1_fail_count, iterations / 4);
+  ASSERT_GE(insert2_fail_count, iterations / 4);
   ASSERT_EQ(commit2_fail_count, 0);
 }
 
@@ -788,34 +787,34 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   std::array<int, 4> num_tables;
 
   {
-    SharedLock<master::CatalogManager::LockType> catalog_lock(catalog_manager->lock_);
+    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[0] = tablet_lock->data().pb.table_ids_size();
+    num_tables[0] = tablet_lock->pb.table_ids_size();
   }
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[1] = tablet_lock->data().pb.table_ids_size();
+    num_tables[1] = tablet_lock->pb.table_ids_size();
   }
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[2] = tablet_lock->data().pb.table_ids_size();
+    num_tables[2] = tablet_lock->pb.table_ids_size();
   }
   // Make sure that the system catalog tablet table_ids is persisted.
   ASSERT_OK(cluster_->RestartSync());
   {
     // Refresh stale local variables after RestartSync.
     catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
-    SharedLock<master::CatalogManager::LockType> catalog_lock(catalog_manager->lock_);
+    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[3] = tablet_lock->data().pb.table_ids_size();
+    num_tables[3] = tablet_lock->pb.table_ids_size();
   }
   ASSERT_LT(num_tables[0], num_tables[1]);
   ASSERT_EQ(num_tables[0], num_tables[2]);
@@ -859,12 +858,12 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   scoped_refptr<master::TabletInfo> sys_tablet;
 
   {
-    SharedLock<master::CatalogManager::LockType> catalog_lock(catalog_manager->lock_);
+    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables_before = tablet_lock->data().pb.table_ids_size();
+    num_tables_before = tablet_lock->pb.table_ids_size();
   }
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   {
@@ -887,13 +886,13 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   {
     // Refresh stale local variables after RestartSync.
     catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
-    SharedLock<master::CatalogManager::LockType> catalog_lock(catalog_manager->lock_);
+    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
   {
     auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables_after = tablet_lock->data().pb.table_ids_size();
+    num_tables_after = tablet_lock->pb.table_ids_size();
   }
   ASSERT_EQ(num_tables_before, num_tables_after);
 }
@@ -1325,6 +1324,17 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithRestart)) {
   TestBigInsert(/* restart= */ true);
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithDropTable)) {
+  constexpr int kNumRows = 10000;
+  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
+  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(id int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT generate_series(1, $0)", kNumRows));
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+}
+
 void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -1364,7 +1374,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWit
 
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
-TEST_F(PgMiniTest, NoRestartSecondRead) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
   FLAGS_max_clock_skew_usec = 1000000000LL * kTimeMultiplier;
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -1385,6 +1395,46 @@ TEST_F(PgMiniTest, NoRestartSecondRead) {
   res = ASSERT_RESULT(conn1.FetchValue<int32_t>("SELECT b FROM t WHERE a = 2"));
   ASSERT_EQ(res, 1);
   ASSERT_OK(conn1.CommitTransaction());
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(InOperatorLock), PgMiniTestNoSleepBeforeRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (h INT, r1 INT, r2 INT, PRIMARY KEY(h, r1 ASC, r2 ASC))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t VALUES (1, 11, 1),(1, 12, 1),(1, 13, 1),(2, 11, 2),(2, 12, 2),(2, 13, 2)"));
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  auto res = ASSERT_RESULT(conn.Fetch(
+      "SELECT * FROM t WHERE h = 1 AND r1 IN (11, 12) AND r2 = 1 FOR KEY SHARE"));
+
+  auto extra_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(extra_conn.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
+  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1"));
+  ASSERT_OK(extra_conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  res = ASSERT_RESULT(conn.Fetch(
+      "SELECT * FROM t WHERE h IN (1, 2) AND r1 = 11 FOR KEY SHARE"));
+
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
+  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 11 AND r2 = 1"));
+  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2"));
+  ASSERT_OK(extra_conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("COMMIT;"));
+  const auto count = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(4, count);
 }
 
 } // namespace pgwrapper

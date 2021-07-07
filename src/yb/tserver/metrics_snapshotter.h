@@ -11,14 +11,13 @@
 // under the License.
 //
 
-#ifndef CODE_YUGABYTE_SRC_YB_TSERVER_METRICS_SNAPSHOTTER_H
-#define CODE_YUGABYTE_SRC_YB_TSERVER_METRICS_SNAPSHOTTER_H
+#ifndef YB_TSERVER_METRICS_SNAPSHOTTER_H
+#define YB_TSERVER_METRICS_SNAPSHOTTER_H
 
 #include <memory>
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 #include "yb/util/net/net_util.h"
@@ -46,10 +45,11 @@ class MetricsSnapshotter {
 
  private:
   class Thread;
-  gscoped_ptr<Thread> thread_;
+  std::unique_ptr<Thread> thread_;
   DISALLOW_COPY_AND_ASSIGN(MetricsSnapshotter);
 };
 
 } // namespace tserver
 } // namespace yb
-#endif /* CODE_YUGABYTE_SRC_YB_TSERVER_METRICS_SNAPSHOTTER_H */
+
+#endif // YB_TSERVER_METRICS_SNAPSHOTTER_H

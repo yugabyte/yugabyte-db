@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tab, Row, Col } from 'react-bootstrap';
+import { Tab } from 'react-bootstrap';
 import { YBTabsPanel } from '../panels';
 import { LiveQueries } from './index';
 import { SlowQueries } from './SlowQueries';

@@ -2,26 +2,47 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.SdkClientException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Singleton;
+import com.google.auth.Credentials;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageOptions;
+import com.google.api.gax.paging.Page;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.StorageException;
+import com.yugabyte.yw.forms.PasswordPolicyFormData;
+import com.yugabyte.yw.models.CustomerConfig;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.UrlValidator;
+import play.libs.Json;
+import javax.inject.Inject;
+import javax.validation.ConstraintViolation;
+import javax.validation.Validator;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.AWSCredentials;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.UrlValidator;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Singleton;
-import com.yugabyte.yw.models.CustomerConfig;
-
-import play.libs.Json;
+import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
+import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
 
 @Singleton
 public class CustomerConfigValidator {
-
-  private static final String STORAGE_TYPE = "STORAGE";
 
   private static final String NAME_S3 = "S3";
 
@@ -31,43 +52,137 @@ public class CustomerConfigValidator {
 
   private static final String NAME_AZURE = "AZ";
 
-  private static final String[] S3_URL_SCHEMES = { "http", "https", "s3" };
+  private static final String[] S3_URL_SCHEMES = {"http", "https", "s3"};
 
-  private static final String[] GCS_URL_SCHEMES = { "http", "https", "gs" };
+  private static final String[] GCS_URL_SCHEMES = {"http", "https", "gs"};
 
-  private static final String[] AZ_URL_SCHEMES = { "http", "https" };
+  private static final String[] AZ_URL_SCHEMES = {"http", "https"};
 
   private static final String AWS_HOST_BASE_FIELDNAME = "AWS_HOST_BASE";
 
-  private static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
+  public static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
+
+  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+
+  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+
+  public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
 
-  public static abstract class ConfigValidator {
+  private final Validator validator;
 
-    private final String type;
+  public abstract static class ConfigValidator {
 
-    private final String name;
+    protected final String type;
 
-    protected final String fieldName;
+    protected final String name;
 
-    public ConfigValidator(String type, String name, String fieldName) {
+    public ConfigValidator(String type, String name) {
       this.type = type;
       this.name = name;
-      this.fieldName = fieldName;
     }
 
     public void validate(String type, String name, JsonNode data, ObjectNode errorsCollector) {
       if (this.type.equals(type) && this.name.equals(name)) {
-        JsonNode value = data.get(fieldName);
-        doValidate(value == null ? "" : value.asText(), errorsCollector);
+        doValidate(data, errorsCollector);
       }
+    }
+
+    protected abstract void doValidate(JsonNode data, ObjectNode errorsCollector);
+  }
+
+  public abstract static class ConfigFieldValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigFieldValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data, ObjectNode errorsCollector) {
+      JsonNode value = data.get(fieldName);
+      doValidate(value == null ? "" : value.asText(), errorsCollector);
     }
 
     protected abstract void doValidate(String value, ObjectNode errorsCollector);
   }
 
-  public static class ConfigValidatorRegEx extends ConfigValidator {
+  public static class ConfigS3PreflightCheckValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigS3PreflightCheckValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data, ObjectNode errorJson) {
+      if (this.name.equals("S3") && data.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
+        String s3UriPath = data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String s3Uri = s3UriPath;
+        // Assuming bucket name will always start with s3:// otherwise that will be invalid
+        if (s3UriPath.length() < 5 || !s3UriPath.startsWith("s3://")) {
+          errorJson.set(fieldName, Json.newArray().add("Invalid s3UriPath format: " + s3UriPath));
+        } else {
+          try {
+            s3UriPath = s3UriPath.substring(5);
+            String[] bucketSplit = s3UriPath.split("/", 2);
+            String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
+            String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
+            AmazonS3Client s3Client =
+                create(
+                    data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
+                    data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
+            ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
+            if (result.getKeyCount() == 0) {
+              errorJson.set(
+                  fieldName, Json.newArray().add("S3 URI path " + s3Uri + " doesn't exist"));
+            }
+          } catch (AmazonS3Exception s3Exception) {
+            String errMessage = s3Exception.getErrorMessage();
+            if (errMessage.contains("Denied") || errMessage.contains("bucket"))
+              errMessage += " " + s3Uri;
+            errorJson.set(fieldName, Json.newArray().add(errMessage));
+          } catch (SdkClientException e) {
+            errorJson.set(fieldName, Json.newArray().add(e.getMessage()));
+          }
+        }
+      }
+    }
+  }
+
+  public class ConfigObjectValidator<T> extends ConfigValidator {
+    private Class<T> configClass;
+
+    public ConfigObjectValidator(String type, String name, Class<T> configClass) {
+      super(type, name);
+      this.configClass = configClass;
+    }
+
+    @Override
+    protected void doValidate(JsonNode data, ObjectNode errorsCollector) {
+      ObjectMapper mapper = new ObjectMapper();
+      try {
+        T config = mapper.treeToValue(data, configClass);
+        Set<ConstraintViolation<T>> violations = validator.validate(config);
+        if (!violations.isEmpty()) {
+          ArrayNode errors = Json.newArray();
+          violations.stream().map(ConstraintViolation::getMessage).forEach(errors::add);
+          errorsCollector.set(name, errors);
+        }
+      } catch (RuntimeException | JsonProcessingException e) {
+        errorsCollector.set(
+            name,
+            Json.newArray().add("Invalid json for type '" + configClass.getSimpleName() + "'."));
+      }
+    }
+  }
+
+  public static class ConfigValidatorRegEx extends ConfigFieldValidator {
 
     private Pattern pattern;
 
@@ -84,7 +199,7 @@ public class CustomerConfigValidator {
     }
   }
 
-  public static class ConfigValidatorUrl extends ConfigValidator {
+  public static class ConfigValidatorUrl extends ConfigFieldValidator {
 
     private static final String DEFAULT_SCHEME = "https://";
 
@@ -92,8 +207,8 @@ public class CustomerConfigValidator {
 
     private final boolean emptyAllowed;
 
-    public ConfigValidatorUrl(String type, String name, String fieldName, String[] schemes,
-        boolean emptyAllowed) {
+    public ConfigValidatorUrl(
+        String type, String name, String fieldName, String[] schemes, boolean emptyAllowed) {
       super(type, name, fieldName);
       this.emptyAllowed = emptyAllowed;
       urlValidator = new UrlValidator(schemes, UrlValidator.ALLOW_LOCAL_URLS);
@@ -111,8 +226,9 @@ public class CustomerConfigValidator {
       boolean valid = false;
       try {
         URI uri = new URI(value);
-        valid = urlValidator
-            .isValid(StringUtils.isEmpty(uri.getScheme()) ? DEFAULT_SCHEME + value : value);
+        valid =
+            urlValidator.isValid(
+                StringUtils.isEmpty(uri.getScheme()) ? DEFAULT_SCHEME + value : value);
       } catch (URISyntaxException e) {
       }
 
@@ -122,19 +238,82 @@ public class CustomerConfigValidator {
     }
   }
 
+  public static class ConfigGCSPreflightCheckValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigGCSPreflightCheckValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data, ObjectNode errorJson) {
+      if (this.name.equals(NAME_GCS) && data.get(GCS_CREDENTIALS_JSON_FIELDNAME) != null) {
+        String gsUriPath = data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String gsUri = gsUriPath;
+        // Assuming bucket name will always start with gs:// otherwise that will be invalid
+        if (gsUriPath.length() < 5 || !gsUriPath.startsWith("gs://")) {
+          errorJson.set(fieldName, Json.newArray().add("Invalid gsUriPath format: " + gsUriPath));
+        } else {
+          gsUriPath = gsUriPath.substring(5);
+          String[] bucketSplit = gsUriPath.split("/", 2);
+          String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
+          String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
+          String gcpCredentials = data.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
+          try {
+            Credentials credentials =
+                GoogleCredentials.fromStream(
+                    new ByteArrayInputStream(gcpCredentials.getBytes("UTF-8")));
+            Storage storage =
+                StorageOptions.newBuilder().setCredentials(credentials).build().getService();
+            Page<Blob> blobs =
+                storage.list(
+                    bucketName,
+                    Storage.BlobListOption.prefix(prefix),
+                    Storage.BlobListOption.currentDirectory());
+            if (!blobs.getValues().iterator().hasNext()) {
+              errorJson.set(
+                  fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
+            }
+          } catch (StorageException exp) {
+            errorJson.set(
+                fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
+          } catch (Exception e) {
+            errorJson.set(fieldName, Json.newArray().add("Invalid GCP Credential Json."));
+          }
+        }
+      }
+    }
+  }
+
   private final List<ConfigValidator> validators = new ArrayList<>();
 
-  public CustomerConfigValidator() {
-    validators.add(new ConfigValidatorRegEx(STORAGE_TYPE, NAME_NFS, BACKUP_LOCATION_FIELDNAME,
-        NFS_PATH_REGEXP));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_S3, BACKUP_LOCATION_FIELDNAME,
-        S3_URL_SCHEMES, false));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_S3, AWS_HOST_BASE_FIELDNAME,
-        S3_URL_SCHEMES, true));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_GCS, BACKUP_LOCATION_FIELDNAME,
-        GCS_URL_SCHEMES, false));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_AZURE, BACKUP_LOCATION_FIELDNAME,
-        AZ_URL_SCHEMES, false));
+  @Inject
+  public CustomerConfigValidator(Validator validator) {
+    this.validator = validator;
+    validators.add(
+        new ConfigValidatorRegEx(
+            STORAGE.name(), NAME_NFS, BACKUP_LOCATION_FIELDNAME, NFS_PATH_REGEXP));
+    validators.add(
+        new ConfigValidatorUrl(
+            STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME, S3_URL_SCHEMES, false));
+    validators.add(
+        new ConfigValidatorUrl(
+            STORAGE.name(), NAME_S3, AWS_HOST_BASE_FIELDNAME, S3_URL_SCHEMES, true));
+    validators.add(
+        new ConfigValidatorUrl(
+            STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME, GCS_URL_SCHEMES, false));
+    validators.add(
+        new ConfigValidatorUrl(
+            STORAGE.name(), NAME_AZURE, BACKUP_LOCATION_FIELDNAME, AZ_URL_SCHEMES, false));
+    validators.add(
+        new ConfigObjectValidator<>(
+            PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
+    validators.add(
+        new ConfigS3PreflightCheckValidator(STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME));
+    validators.add(
+        new ConfigGCSPreflightCheckValidator(STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME));
   }
 
   public ObjectNode validateFormData(JsonNode formData) {
@@ -157,17 +336,15 @@ public class CustomerConfigValidator {
   }
 
   /**
-   * Validates data which is contained in formData.
-   * During the procedure it calls all the registered validators. Errors are collected and
-   * returned back as a result. Empty result object means no errors.
+   * Validates data which is contained in formData. During the procedure it calls all the registered
+   * validators. Errors are collected and returned back as a result. Empty result object means no
+   * errors.
    *
-   * Currently are checked:
-   *  - NFS - NFS Storage Path (against regexp NFS_PATH_REGEXP);
-   *  - S3/AWS - S3 Bucket, S3 Bucket Host Base (both as URLs);
-   *  - GCS - GCS Bucket (as URL);
-   *  - AZURE - Container URL (as URL).
+   * <p>Currently are checked: - NFS - NFS Storage Path (against regexp NFS_PATH_REGEXP); - S3/AWS -
+   * S3 Bucket, S3 Bucket Host Base (both as URLs); - GCS - GCS Bucket (as URL); - AZURE - Container
+   * URL (as URL).
    *
-   * The URLs validation allows empty scheme. In such case the check is made with DEFAULT_SCHEME
+   * <p>The URLs validation allows empty scheme. In such case the check is made with DEFAULT_SCHEME
    * added before the URL.
    *
    * @param formData
@@ -175,8 +352,19 @@ public class CustomerConfigValidator {
    */
   public ObjectNode validateDataContent(JsonNode formData) {
     ObjectNode errorJson = Json.newObject();
-    validators.forEach(v -> v.validate(formData.get("type").asText(), formData.get("name").asText(),
-        formData.get("data"), errorJson));
+    validators.forEach(
+        v ->
+            v.validate(
+                formData.get("type").asText(),
+                formData.get("name").asText(),
+                formData.get("data"),
+                errorJson));
     return errorJson;
+  }
+
+  // TODO: move this out to some common util file.
+  public static AmazonS3Client create(String key, String secret) {
+    AWSCredentials credentials = new BasicAWSCredentials(key, secret);
+    return new AmazonS3Client(credentials);
   }
 }

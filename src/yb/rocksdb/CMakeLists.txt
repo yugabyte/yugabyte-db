@@ -139,7 +139,6 @@ set(ROCKSDB_SRCS
     utilities/document/json_document_builder.cc
     utilities/document/json_document.cc
     utilities/env_mirror.cc
-    utilities/flashcache/flashcache.cc
     utilities/geodb/geodb_impl.cc
     utilities/leveldb_options/leveldb_options.cc
     utilities/memory/memory_util.cc
@@ -149,7 +148,6 @@ set(ROCKSDB_SRCS
     utilities/merge_operators/uint64add.cc
     utilities/options/options_util.cc
     utilities/redis/redis_lists.cc
-    utilities/spatialdb/spatial_db.cc
     utilities/table_properties_collectors/compact_on_deletion_collector.cc
     utilities/transactions/optimistic_transaction_impl.cc
     utilities/transactions/optimistic_transaction_db_impl.cc
@@ -204,7 +202,7 @@ if ("${YB_BUILD_TYPE}" STREQUAL "asan")
 endif()
 
 add_library(rocksdb ${ROCKSDB_SRCS})
-target_link_libraries(rocksdb gflags gutil snappy z yb_common yb_util opid_proto)
+target_link_libraries(rocksdb gflags gutil snappy z lz4 yb_common yb_util opid_proto)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc
@@ -298,7 +296,6 @@ ADD_YB_TEST(utilities/geodb/geodb_test)
 ADD_YB_TEST(utilities/merge_operators/string_append/stringappend_test)
 ADD_YB_TEST(utilities/options/options_util_test)
 ADD_YB_TEST(utilities/redis/redis_lists_test)
-ADD_YB_TEST(utilities/spatialdb/spatial_db_test)
 ADD_YB_TEST(utilities/table_properties_collectors/compact_on_deletion_collector_test)
 ADD_YB_TEST(utilities/transactions/optimistic_transaction_test)
 ADD_YB_TEST(utilities/ttl/ttl_test)

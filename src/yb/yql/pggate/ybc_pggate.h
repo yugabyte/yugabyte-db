@@ -272,13 +272,6 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
-YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid,
-    const YBCPgOid index_oid,
-    const uint32_t target_index_permissions,
-    uint32_t *actual_index_permissions);
-
 YBCStatus YBCPgAsyncUpdateIndexPermissions(
     const YBCPgOid database_oid,
     const YBCPgOid indexed_table_oid);
@@ -359,11 +352,17 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor* data, uint64_t *yb
 
 
 // Buffer write operations.
-void YBCPgStartOperationsBuffering();
+YBCStatus YBCPgStartOperationsBuffering();
 YBCStatus YBCPgStopOperationsBuffering();
 YBCStatus YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 void YBCPgDropBufferedOperations();
+
+YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
+                          const YBCPgOid table_oid,
+                          YBCPgStatement *handle);
+
+YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count);
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
@@ -467,6 +466,7 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
 // Referential Integrity Check Caching.
 void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
+void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor* descr);
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor* descr, bool* res);
 YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr);
@@ -494,9 +494,6 @@ int32_t YBCGetSequenceCacheMinval();
 // Retrieve value of ysql_disable_index_backfill gflag.
 bool YBCGetDisableIndexBackfill();
 
-// Retrieve value of TEST_ysql_index_state_flags_update_delay_ms gflag.
-int32_t YBCGetTestIndexStateFlagsUpdateDelayMs();
-
 bool YBCPgIsYugaByteEnabled();
 
 // Sets the specified timeout in the rpc service.
@@ -522,6 +519,10 @@ void* YBCPgGetThreadLocalJumpBuffer();
 void YBCPgSetThreadLocalErrMsg(const void* new_msg);
 
 const void* YBCPgGetThreadLocalErrMsg();
+
+void YBCPgResetCatalogReadTime();
+
+void YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -90,6 +90,10 @@ void YBOperation::SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet)
   tablet_ = tablet;
 }
 
+void YBOperation::ResetTablet() {
+  tablet_.reset();
+}
+
 void YBOperation::ResetTable(std::shared_ptr<YBTable> new_table) {
   table_.reset();
   table_ = new_table;
@@ -904,6 +908,10 @@ Result<QLRowBlock> YBPgsqlReadOp::MakeRowBlock() const {
 OpGroup YBPgsqlReadOp::group() {
   return yb_consistency_level_ == YBConsistencyLevel::CONSISTENT_PREFIX
       ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
+}
+
+void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
+  used_read_time_ = used_time;
 }
 
 ////////////////////////////////////////////////////////////

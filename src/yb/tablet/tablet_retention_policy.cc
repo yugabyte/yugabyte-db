@@ -24,7 +24,7 @@
 
 using namespace std::literals;
 
-DEFINE_int32(timestamp_history_retention_interval_sec, 120,
+DEFINE_int32(timestamp_history_retention_interval_sec, 900,
              "The time interval in seconds to retain DocDB history for. Point-in-time reads at a "
              "hybrid time further than this in the past might not be allowed after a compaction. "
              "Set this to be higher than the expected maximum duration of any single transaction "
@@ -44,7 +44,7 @@ using docdb::HistoryRetentionDirective;
 
 TabletRetentionPolicy::TabletRetentionPolicy(
     server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
-    const RaftGroupMetadata* metadata)
+    RaftGroupMetadata* metadata)
     : clock_(std::move(clock)), allowed_history_cutoff_provider_(allowed_history_cutoff_provider),
       metadata_(*metadata), log_prefix_(metadata->LogPrefix()) {
 }
@@ -126,13 +126,15 @@ HybridTime TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write
     return HybridTime();
   }
 
-  next_history_cutoff_propagation_ = now + FLAGS_history_cutoff_propagation_interval_ms * 1ms;
+  next_history_cutoff_propagation_ =
+      now + ANNOTATE_UNPROTECTED_READ(FLAGS_history_cutoff_propagation_interval_ms) * 1ms;
 
   return EffectiveHistoryCutoff();
 }
 
 HybridTime TabletRetentionPolicy::EffectiveHistoryCutoff() {
-  auto retention_delta = -FLAGS_timestamp_history_retention_interval_sec * 1s;
+  auto retention_delta =
+      -ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_history_retention_interval_sec) * 1s;
   // We try to garbage-collect history older than current time minus the configured retention
   // interval, but we might not be able to do so if there are still read operations reading at an
   // older snapshot.
@@ -151,7 +153,7 @@ HybridTime TabletRetentionPolicy::SanitizeHistoryCutoff(HybridTime proposed_cuto
 
   HybridTime provided_allowed_cutoff;
   if (allowed_history_cutoff_provider_) {
-    provided_allowed_cutoff = allowed_history_cutoff_provider_(metadata_);
+    provided_allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
     allowed_cutoff = std::min(provided_allowed_cutoff, allowed_cutoff);
   }
 

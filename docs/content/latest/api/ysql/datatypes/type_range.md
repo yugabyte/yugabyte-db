@@ -16,7 +16,7 @@ YSQL supports six built-in range data types. Each defines a range of values of a
 ## Synopsis
 
 Range data type | Underlying data type |
-----------|-------------|-------------
+----------|-------------|
 `int4range` | `integer` (a.k.a. `int`) |
 `int8range` | `bigint` |
 `numrange` | `numeric` |

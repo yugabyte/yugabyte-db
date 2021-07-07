@@ -47,20 +47,50 @@ regex_from_list() {
   echo "^($regex)$"
 }
 
+set_python_executable() {
+  PYTHON_EXECUTABLE=""
+  executables=( "${PYTHON3_EXECUTABLES[@]}" )
+  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
+    executables=( "${PYTHON2_EXECUTABLES[@]}" )
+  fi
+
+  if which python > /dev/null 2>&1; then
+    if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)';  then
+      if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
+        PYTHON_EXECUTABLE="python"
+        return
+      fi
+    elif [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "1" ]]; then
+      PYTHON_EXECUTABLE="python"
+      return
+    fi
+  fi
+
+  for py_executable in "${executables[@]}"; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      return
+    fi
+  done
+
+  fatal "Failed to find python executable."
+}
+
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
-DEFAULT_USE_PY3_VALUE="1"
-if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'; then
-  DEFAULT_USE_PY3_VALUE="0"
-fi
+readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
+readonly PYTHON3_EXECUTABLES=('python3' 'python3.6' 'python3.7' 'python3.8')
+PYTHON_EXECUTABLE=""
 
-readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-$DEFAULT_USE_PY3_VALUE}
+readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-1}
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 != "0" &&
       $YB_MANAGED_DEVOPS_USE_PYTHON3 != "1" ]]; then
   fatal "Invalid value of YB_MANAGED_DEVOPS_USE_PYTHON3: $YB_MANAGED_DEVOPS_USE_PYTHON3," \
         "expected 0 or 1"
 fi
+
+set_python_executable
 
 readonly yb_script_name=${0##*/}
 readonly yb_script_name_no_extension=${yb_script_name%.sh}
@@ -260,7 +290,7 @@ activate_virtualenv() {
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
-
+    set_python_executable
     if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
       pip_install "virtualenv<20"
     fi
@@ -269,10 +299,10 @@ activate_virtualenv() {
       set -x
       cd "${virtualenv_dir%/*}"
       if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-        python3 -m venv "$YB_VIRTUALENV_BASENAME"
+        $PYTHON_EXECUTABLE -m venv "$YB_VIRTUALENV_BASENAME"
       else
         # Assuming that the default python binary is pointing to Python 2.7.
-        python -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
+        $PYTHON_EXECUTABLE -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
       fi
     )
   elif "$is_linux"; then
@@ -294,22 +324,26 @@ activate_virtualenv() {
 create_pymodules_package() {
   rm -rf "$YB_PYTHON_MODULES_DIR"
   mkdir -p "$YB_PYTHON_MODULES_DIR"
+  extra_install_flags=""
+  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
+    extra_install_flags="setuptools<45"
+  fi
   # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
   # system-specific libraries.
   log "Downloading package scripts"
-  run_pip install "setuptools<45" -r "$FROZEN_REQUIREMENTS_FILE" --prefix="$YB_PYTHON_MODULES_DIR" \
-    --ignore-installed
-  run_pip install "setuptools<45" "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
-    --prefix="$YB_PYTHON_MODULES_DIR"
+  run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
+    --prefix="$YB_PYTHON_MODULES_DIR" --ignore-installed
+  run_pip install $extra_install_flags "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
+    --prefix="$YB_PYTHON_MODULES_DIR" --ignore-installed
   rm -rf "$YB_PYTHON_MODULES_DIR"/lib*
   # Download remaining libraries.
   log "Downloading package libraries"
-  run_pip install "setuptools<45" -r "$FROZEN_REQUIREMENTS_FILE" --target="$YB_PYTHON_MODULES_DIR" \
-    --ignore-installed
-  run_pip install "setuptools<45" "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
-    --target="$YB_PYTHON_MODULES_DIR"
+  run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
+    --target="$YB_PYTHON_MODULES_DIR" --ignore-installed
+  run_pip install $extra_install_flags "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
+    --target="$YB_PYTHON_MODULES_DIR" --ignore-installed
   # Change shebangs to be path-independent.
-  current_py_exec=$(which python)
+  current_py_exec=$(which $PYTHON_EXECUTABLE)
   LC_ALL=C find "$YB_PYTHON_MODULES_DIR"/bin ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
     -e "1s|${current_py_exec}|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
   tar -C $(dirname "$YB_PYTHON_MODULES_DIR") -czvf "$YB_PYTHON_MODULES_PACKAGE" \
@@ -391,9 +425,9 @@ verbose_mkdir_p() {
 
 run_pip() {
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-    pip3 "$@"
+    "$PYTHON_EXECUTABLE" -m pip "$@"
   else
-    python "$(which pip)" "$@"
+    $PYTHON_EXECUTABLE "$(which pip2.7)" "$@"
   fi
 }
 
@@ -422,7 +456,7 @@ pip_install() {
     (
       verbose_cmd run_pip install "$@"
     )
-  elif [[ -n $module_name && -n $( pip show "$module_name" ) ]]; then
+  elif [[ -n $module_name && -n $( run_pip show "$module_name" ) ]]; then
     log "Python module $module_name already installed, not upgrading."
   else
     log "Installing Python module(s) outside virtualenv, using --user."
@@ -491,8 +525,8 @@ install_ybops_package() {
   fi
   (
     cd "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME"
-    log "Using python: $( which python )"
-    python setup.py install $user_flag
+    log "Using python: $( which $PYTHON_EXECUTABLE )"
+    $PYTHON_EXECUTABLE setup.py install $user_flag
     rm -rf build dist "$YBOPS_PACKAGE_NAME.egg-info"
   )
   virtualenv_aware_log "Installed the ybops package"

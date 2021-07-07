@@ -38,6 +38,7 @@
 #include <string>
 
 #include <boost/lockfree/queue.hpp>
+#include <boost/optional.hpp>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/rpc/growable_buffer.h"
@@ -104,7 +105,7 @@ class ProxyContext {
 // likely to multiplex many Proxy objects on the same connection. Or, split the
 // requests sent over a single proxy across different connections to the server.
 //
-// When remote endpoint is blank (i.e. Endpoint()), the proxy will attempt to
+// When remote endpoint is blank (i.e. HostPort()), the proxy will attempt to
 // call the service locally in the messenger instead.
 //
 // Proxy objects are thread-safe after initialization only.
@@ -116,7 +117,8 @@ class Proxy {
  public:
   Proxy(ProxyContext* context,
         const HostPort& remote,
-        const Protocol* protocol = nullptr);
+        const Protocol* protocol = nullptr,
+        const boost::optional<MonoDelta>& resolve_cache_timeout = boost::none);
   ~Proxy();
 
   Proxy(const Proxy&) = delete;
@@ -208,7 +210,9 @@ class ProxyCache {
   explicit ProxyCache(ProxyContext* context)
       : context_(context) {}
 
-  std::shared_ptr<Proxy> Get(const HostPort& remote, const Protocol* protocol);
+  std::shared_ptr<Proxy> Get(const HostPort& remote,
+                             const Protocol* protocol,
+                             const boost::optional<MonoDelta>& resolve_cache_timeout);
 
  private:
   typedef std::pair<HostPort, const Protocol*> ProxyKey;

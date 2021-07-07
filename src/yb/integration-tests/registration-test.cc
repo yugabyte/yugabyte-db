@@ -38,7 +38,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
@@ -88,7 +87,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     YBMiniClusterTestBase::SetUp();
 
-    cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+    cluster_.reset(new MiniCluster(MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
   }
 
@@ -120,8 +119,13 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     MiniTabletServer* ts = cluster_->mini_tablet_server(0);
 
     auto GetCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
-      auto metrics = cluster_->mini_master()->master()->catalog_manager()->sys_catalog()
-          ->tablet_peer()->shared_tablet()->GetMetricEntity();
+      auto metrics = cluster_->mini_master()
+                         ->master()
+                         ->catalog_manager()
+                         ->sys_catalog()
+                         ->tablet_peer()
+                         ->shared_tablet()
+                         ->GetTabletMetricsEntity();
       return prototype.Instantiate(metrics)->value();
     };
     int before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);

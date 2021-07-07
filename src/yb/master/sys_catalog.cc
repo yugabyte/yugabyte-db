@@ -70,6 +70,7 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 
+#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/flag_tags.h"
@@ -106,12 +107,11 @@ DEFINE_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
   server, dns_resolve_latency_during_sys_catalog_setup,
   "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
-  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
-  60000000LU, 2);
+  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig");
 METRIC_DEFINE_counter(
   server, sys_catalog_peer_write_count,
   "yb.master.SysCatalogTable Count of Writes",
@@ -128,6 +128,8 @@ DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
 
 namespace yb {
 namespace master {
+
+constexpr int32_t kDefaultMasterBlockCacheSizePercentage = 25;
 
 std::string SysCatalogTable::schema_column_type() { return kSysCatalogTableColType; }
 
@@ -157,14 +159,19 @@ SysCatalogTable::~SysCatalogTable() {
 }
 
 void SysCatalogTable::StartShutdown() {
-  if (tablet_peer()) {
-    CHECK(std::atomic_load(&tablet_peer_)->StartShutdown());
+  if (mem_manager_) {
+    mem_manager_->Shutdown();
+  }
+  auto peer = tablet_peer();
+  if (peer) {
+    CHECK(peer->StartShutdown());
   }
 }
 
 void SysCatalogTable::CompleteShutdown() {
-  if (tablet_peer()) {
-    std::atomic_load(&tablet_peer_)->CompleteShutdown();
+  auto peer = tablet_peer();
+  if (peer) {
+    peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
@@ -512,13 +519,25 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   consensus::ConsensusBootstrapInfo consensus_info;
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
+
+  // Returns a vector that includes the tablet peer associated with master.
+  const auto get_peers_lambda = [this]() -> std::vector<tablet::TabletPeerPtr> {
+    return { tablet_peer() };
+  };
+
+  mem_manager_ = std::make_shared<tserver::TabletMemoryManager>(
+      &tablet_options,
+      master_->mem_tracker(),
+      kDefaultMasterBlockCacheSizePercentage,
+      GetMetricEntity(),
+      get_peers_lambda);
+
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
       .client_future = master_->async_client_initializer().get_client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
       .parent_mem_tracker = master_->mem_tracker(),
-      .block_based_table_mem_tracker =
-          MemTracker::FindOrCreateTracker("BlockBasedTable", master_->mem_tracker()),
+      .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
       .metric_registry = metric_registry_,
       .log_anchor_registry = tablet_peer()->log_anchor_registry(),
       .tablet_options = tablet_options,
@@ -556,11 +575,11 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           master_->messenger(),
           &master_->proxy_cache(),
           log,
-          tablet->GetMetricEntity(),
+          tablet->GetTableMetricsEntity(),
+          tablet->GetTabletMetricsEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests */,
-          consensus::SplitOpInfo()),
+          nullptr /* retryable_requests */),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),
@@ -571,6 +590,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   if (!tablet->schema()->Equals(schema_)) {
     return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
   }
+  RETURN_NOT_OK(mem_manager_->Init());
+
   return Status::OK();
 }
 
@@ -619,13 +640,14 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   }
 
   auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &writer->req(), resp.get());
-  operation_state->set_completion_callback(
+  auto operation = std::make_unique<tablet::WriteOperation>(
+      writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
+      tablet_peer()->tablet(), resp.get());
+  *operation->AllocateRequest() = writer->req();
+  operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
-  tablet_peer()->WriteAsync(
-      std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
+  tablet_peer()->WriteAsync(std::move(operation));
   peer_write_count->Increment();
 
   {
@@ -636,12 +658,11 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     while (!latch->WaitUntil(std::min(deadline, time + kWarningInterval))) {
       ++num_iterations;
       const auto waited_so_far = num_iterations * kWarningInterval;
-      LOG(WARNING) << "Waited for "
-                   << waited_so_far << " for synchronous write to complete. "
-                   << "Continuing to wait.";
+      LOG(WARNING) << "Waited for " << AsString(waited_so_far) << " for synchronous write to "
+                   << "complete. Continuing to wait.";
       time = CoarseMonoClock::now();
       if (time >= deadline) {
-        LOG(ERROR) << "Already waited for a total of " << waited_so_far << ". "
+        LOG(ERROR) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
                    << "Returning a timeout from SyncWrite.";
         return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
       }
@@ -740,13 +761,12 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                                uint64_t *catalog_version,
                                                uint64_t *last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
   const auto* meta = tablet->metadata();
   const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
       VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
   const Schema& schema = ysql_catalog_table_info->schema;
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
-                                                   boost::none /* transaction_id */,
                                                    {} /* read_hybrid_time */,
                                                    ysql_catalog_table_id));
   QLTableRow source_row;
@@ -789,13 +809,12 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTablespaceInfo() {
   TRACE_EVENT0("master", "ReadPgTablespaceInfo");
 
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
   const auto& pg_tablespace_info =
       VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
   const Schema& schema = pg_tablespace_info->schema;
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
-                                                   boost::none /* transaction_id */,
                                                    {} /* read_hybrid_time */,
                                                    kPgTablespaceTableId));
   QLTableRow source_row;
@@ -869,7 +888,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     return STATUS(InternalError, "table_to_tablespace_map not initialized");
   }
 
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   const auto& table_info = VERIFY_RESULT(
@@ -883,8 +902,22 @@ Status SysCatalogTable::ReadPgClassInfo(
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-    projection.CopyWithoutColumnIds(), boost::none /* transaction_id */,
-    {} /* read_hybrid_time */, pg_table_id));
+    projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(oid_col_id);
+    cond.set_op(QL_OP_GREATER_THAN_EQUAL);
+    // All rows in pg_class table with oid less than kPgFirstNormalObjectId correspond to system
+    // catalog tables. They can be skipped, as tablespace information is relevant only for user
+    // created tables.
+    cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
+    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
 
   QLTableRow row;
   // Pg_class table contains a row for every database object (tables/indexes/
@@ -895,21 +928,14 @@ Status SysCatalogTable::ReadPgClassInfo(
   while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&row));
 
-    // First process the oid of the object corresponding to the current row.
+    // Process the oid of this table/index.
     const auto& oid_col = row.GetValue(oid_col_id);
     if (!oid_col) {
       return STATUS(Corruption, "Could not read oid column from pg_class");
     }
-
     const uint32_t oid = oid_col->uint32_value();
-    if (oid < kPgFirstNormalObjectId) {
-      // This is some system level object. We are interested only in user created
-      // tables and indexes whose oids are always higher than kPgFirstNormalObjectId.
-      // Skip this row and move onto the next row in pg_class table.
-      continue;
-    }
 
-    // Now look at the relkind of the database object.
+    // Skip rows that pertain to relation types that do not have use for tablespaces.
     const auto& relkind_col = row.GetValue(relkind_col_id);
     if (!relkind_col) {
       return STATUS(Corruption, "Could not read relkind column from pg_class for oid " +
@@ -926,7 +952,7 @@ Status SysCatalogTable::ReadPgClassInfo(
       continue;
     }
 
-    // Now process the tablespace oid for this database object.
+    // Process the tablespace oid for this table/index.
     const auto& tablespace_oid_col = row.GetValue(tablespace_col_id);
     if (!tablespace_oid_col) {
       return STATUS(Corruption, "Could not read tablespace column from pg_class");
@@ -1054,19 +1080,19 @@ Status SysCatalogTable::CopyPgsqlTables(
       "size mismatch between source tables and target tables");
 
   int batch_count = 0, total_count = 0, total_bytes = 0;
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const auto* meta = tablet->metadata();
   for (int i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
     auto& target_table_id = target_table_ids[i];
 
-    const auto* tablet = tablet_peer()->tablet();
-    const auto* meta = tablet->metadata();
     const std::shared_ptr<tablet::TableInfo> source_table_info =
         VERIFY_RESULT(meta->GetTableInfo(source_table_id));
     const std::shared_ptr<tablet::TableInfo> target_table_info =
         VERIFY_RESULT(meta->GetTableInfo(target_table_id));
     const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
     std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
-        tablet->NewRowIterator(source_projection, boost::none, {}, source_table_id));
+        tablet->NewRowIterator(source_projection, {}, source_table_id));
     QLTableRow source_row;
 
     while (VERIFY_RESULT(iter->HasNext())) {
@@ -1121,6 +1147,19 @@ Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
 
 const Schema& SysCatalogTable::schema() {
   return schema_;
+}
+
+Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries) {
+  auto tablet = tablet_peer()->shared_tablet();
+  if (!tablet) {
+    return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
+  }
+
+  return EnumerateSysCatalog(tablet.get(), schema_, SysRowEntry::DDL_LOG_ENTRY,
+                             [entries](const Slice& id, const Slice& data) -> Status {
+    *entries->Add() = VERIFY_RESULT(pb_util::ParseFromSlice<DdlLogEntryPB>(data));
+    return Status::OK();
+  });
 }
 
 } // namespace master

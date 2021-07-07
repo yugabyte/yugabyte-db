@@ -65,6 +65,8 @@ DEFINE_int32(max_message_length, 254_MB,
 DEFINE_bool(cql_server_always_send_events, false,
             "All CQL connections automatically subscribed for all CQL events.");
 
+DECLARE_int32(client_read_write_timeout_ms);
+
 namespace yb {
 namespace cqlserver {
 
@@ -144,7 +146,8 @@ CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
                                CallProcessedListener call_processed_listener,
                                ql::QLSession::SharedPtr ql_session)
     : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)),
-      ql_session_(std::move(ql_session)) {
+      ql_session_(std::move(ql_session)),
+      deadline_(CoarseMonoClock::now() + FLAGS_client_read_write_timeout_ms * 1ms) {
 }
 
 Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data) {
@@ -333,8 +336,7 @@ bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
 }
 
 CoarseTimePoint CQLInboundCall::GetClientDeadline() const {
-  // TODO(Robert) - fill in CQL timeout
-  return CoarseTimePoint::max();
+  return deadline_;
 }
 
 } // namespace cqlserver

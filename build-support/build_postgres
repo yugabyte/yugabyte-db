@@ -26,5 +26,5 @@ handle_predefined_build_root
 activate_virtualenv
 set_sanitizer_runtime_options
 
-export PYTHONPATH=$YB_SRC_ROOT/python:${PYTHONPATH:-}
+set_pythonpath
 "$YB_SRC_ROOT"/python/yb/build_postgres.py "$@"

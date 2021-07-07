@@ -1867,7 +1867,11 @@ YBStartTransaction(TransactionState s)
 	s->ybDataSent             = false;
 	s->YBPostponedDdlOps      = NULL;
 
-	YBInitializeTransaction();
+	if (IsYugaByteEnabled())
+	{
+		YBResetOperationsBuffering();
+		YBInitializeTransaction();
+	}
 }
 
 void
@@ -1875,10 +1879,10 @@ YBInitializeTransaction(void)
 {
 	if (YBTransactionsEnabled())
 	{
-		YBCPgBeginTransaction();
-		YBCPgSetTransactionIsolationLevel(XactIsoLevel);
-		YBCPgSetTransactionReadOnly(XactReadOnly);
-		YBCPgSetTransactionDeferrable(XactDeferrable);
+		HandleYBStatus(YBCPgBeginTransaction());
+		HandleYBStatus(YBCPgSetTransactionIsolationLevel(XactIsoLevel));
+		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
+		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
 	}
 }
 
@@ -2920,7 +2924,15 @@ void
 SetTxnWithPGRel(void)
 {
 	TransactionState s = CurrentTransactionState;
-	s->isYBTxnWithPostgresRel = true;
+	/*
+	 * YB doesn't support subtransactions for now and only top level transaction is committed.
+	 * So the isYBTxnWithPostgresRel flag must be set on current and all top level transactions.
+	 */
+	while (s != NULL && !s->isYBTxnWithPostgresRel)
+	{
+		s->isYBTxnWithPostgresRel = true;
+		s = s->parent;
+	}
 }
 
 bool

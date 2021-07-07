@@ -49,9 +49,10 @@ class YBError;
 
 namespace internal {
 
-class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
+class ErrorCollector {
  public:
   ErrorCollector();
+  ~ErrorCollector();
 
   void AddError(std::unique_ptr<YBError> error);
 
@@ -70,9 +71,6 @@ class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
   Status GetSingleErrorStatus();
 
  private:
-  friend class RefCountedThreadSafe<ErrorCollector>;
-  ~ErrorCollector();
-
   mutable simple_spinlock mutex_;
   CollectedErrors errors_ GUARDED_BY(mutex_);
 

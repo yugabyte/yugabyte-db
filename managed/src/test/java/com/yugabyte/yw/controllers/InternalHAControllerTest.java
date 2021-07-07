@@ -14,10 +14,10 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformInstanceClient;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -40,7 +40,10 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 
@@ -54,17 +57,18 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
 public class InternalHAControllerTest extends FakeDBApplication {
-  public static final String UPLOAD_ENDPOINT = "/api/settings/ha/internal/upload";
+  private static final String UPLOAD_ENDPOINT = "/api/settings/ha/internal/upload";
+  private static final String SYNC_ENDPOINT = "/api/settings/ha/internal/config/sync/";
+  private static final String DEMOTE_ENDPOINT = "/api/settings/ha/internal/config/demote/";
+  private static final String GET_CONFIG_ENDPOINT = "/api/settings/ha/internal/config";
 
-  Customer customer;
-  Users user;
+  private Users user;
 
-  @Rule
-  public TemporaryFolder folder = new TemporaryFolder();
+  @Rule public TemporaryFolder folder = new TemporaryFolder();
 
   @Before
   public void setup() {
-    customer = ModelFactory.testCustomer();
+    Customer customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
   }
 
@@ -72,7 +76,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
   public void tearDown() throws IOException {
     String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
     File replicationDir =
-      Paths.get(storagePath, PlatformReplicationHelper.REPLICATION_DIR).toFile();
+        Paths.get(storagePath, PlatformReplicationHelper.REPLICATION_DIR).toFile();
     FileUtils.deleteDirectory(replicationDir);
   }
 
@@ -90,8 +94,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
 
   private String createClusterKey() {
     String authToken = user.createAuthToken();
-    Result createClusterKeyResult = FakeApiHelper
-      .doRequestWithAuthToken("GET", "/api/settings/ha/generate_key", authToken);
+    Result createClusterKeyResult =
+        FakeApiHelper.doRequestWithAuthToken("GET", "/api/settings/ha/generate_key", authToken);
     assertOk(createClusterKeyResult);
 
     return Json.parse(contentAsString(createClusterKeyResult)).get("cluster_key").asText();
@@ -102,8 +106,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String uri = "/api/settings/ha/config";
     String clusterKey = createClusterKey();
     JsonNode body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
     assertOk(createResult);
 
     return Json.parse(contentAsString(createResult));
@@ -120,12 +123,12 @@ public class InternalHAControllerTest extends FakeDBApplication {
   private JsonNode createPlatformInstance(UUID configUUID, boolean isLocal, boolean isLeader) {
     String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString() + "/instance";
-    JsonNode body = Json.newObject()
-      .put("address", "http://abc.com")
-      .put("is_local", isLocal)
-      .put("is_leader", isLeader);
-    Result createResult =
-      FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    JsonNode body =
+        Json.newObject()
+            .put("address", "http://abc.com")
+            .put("is_local", isLocal)
+            .put("is_leader", isLeader);
+    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
     assertOk(createResult);
 
     return Json.parse(contentAsString(createResult));
@@ -133,28 +136,27 @@ public class InternalHAControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetHAConfigNoneExist() {
-    String uri = "/api/settings/ha/internal/config";
     String clusterKey = createClusterKey();
-    Result getResult = FakeApiHelper.doRequestWithHAToken("GET", uri, clusterKey);
+    Result getResult = FakeApiHelper.doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, clusterKey);
     assertEquals(BAD_REQUEST, getResult.status());
     assertEquals(contentAsString(getResult), "Unable to authenticate request");
   }
 
   @Test
   public void testGetHAConfigInvalidClusterKey() {
-    String uri = "/api/settings/ha/internal/config";
     createHAConfig();
     String incorrectClusterKey = createClusterKey();
-    Result getResult = FakeApiHelper.doRequestWithHAToken("GET", uri, incorrectClusterKey);
+    Result getResult =
+        FakeApiHelper.doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, incorrectClusterKey);
     assertEquals(BAD_REQUEST, getResult.status());
     assertEquals(contentAsString(getResult), "Unable to authenticate request");
   }
 
   @Test
   public void testGetHAConfigValidClusterKey() {
-    String uri = "/api/settings/ha/internal/config";
     String correctClusterKey = createHAConfig().get("cluster_key").asText("");
-    Result getResult = FakeApiHelper.doRequestWithHAToken("GET", uri, correctClusterKey);
+    Result getResult =
+        FakeApiHelper.doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, correctClusterKey);
     assertOk(getResult);
     JsonNode getResponse = Json.parse(contentAsString(getResult));
     String getClusterKey = getResponse.get("cluster_key").asText();
@@ -165,9 +167,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
   public void testSyncInstancesNoLocalInstances() {
     JsonNode haConfigJson = createHAConfig();
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    String uri = "/api/settings/ha/internal/config/sync/" + new Date().getTime();
+    String uri = SYNC_ENDPOINT + new Date().getTime();
     Result syncResult =
-      FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
+        FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
     assertBadRequest(syncResult, "No local instance configured");
   }
 
@@ -179,9 +181,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     createPlatformInstance(config.getUUID(), true, true);
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    String uri = "/api/settings/ha/internal/config/sync/" + config.getLastFailover().getTime();
+    String uri = SYNC_ENDPOINT + config.getLastFailover().getTime();
     Result syncResult =
-      FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
+        FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
     assertBadRequest(syncResult, "Cannot import instances for a leader");
   }
 
@@ -191,9 +193,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
     createPlatformInstance(config.getUUID(), true, false);
-    String uri = "/api/settings/ha/internal/config/sync/" + new Date().getTime();
+    String uri = SYNC_ENDPOINT + new Date().getTime();
     Result syncResult =
-      FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
+        FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
     assertInternalServerError(syncResult, "Error importing platform instances");
   }
 
@@ -203,11 +205,41 @@ public class InternalHAControllerTest extends FakeDBApplication {
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
     createPlatformInstance(config.getUUID(), true, false);
-    String uri = "/api/settings/ha/internal/config/sync/" + new Date().getTime();
+    String uri = SYNC_ENDPOINT + new Date().getTime();
     ArrayNode body = Json.newArray();
-    Result syncResult =
-      FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
+    Result syncResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertOk(syncResult);
+  }
+
+  @Test
+  public void testSyncInstancesLeaderAlreadyExists() {
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    String clusterKey = haConfigJson.get("cluster_key").asText();
+    JsonNode localInstanceJson = createPlatformInstance(config.getUUID(), true, false);
+    PlatformInstance localInstance = Json.fromJson(localInstanceJson, PlatformInstance.class);
+    PlatformInstance previousLeader =
+        PlatformInstance.create(config, "http://ghi.com", true, false);
+    PlatformInstance newLeader = PlatformInstance.create(config, "http://jkl.com", false, false);
+    previousLeader.setIsLeader(false);
+    newLeader.setIsLeader(true);
+    List<PlatformInstance> instancesToImport = new ArrayList<>();
+    instancesToImport.add(newLeader);
+    instancesToImport.add(previousLeader);
+    instancesToImport.add(localInstance);
+    JsonNode body = Json.toJson(instancesToImport);
+    String uri = SYNC_ENDPOINT + new Date().getTime();
+    Result syncResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
+    assertOk(syncResult);
+    Result getResult = FakeApiHelper.doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, clusterKey);
+    assertOk(getResult);
+    JsonNode getResponse = Json.parse(contentAsString(getResult));
+    ArrayNode instancesJson = (ArrayNode) getResponse.get("instances");
+    assertEquals(instancesJson.size(), 3);
+    config = Json.fromJson(getResponse, HighAvailabilityConfig.class);
+    Optional<PlatformInstance> leader = config.getLeader();
+    assertTrue(leader.isPresent());
+    assertEquals(leader.get().getAddress(), "http://jkl.com");
   }
 
   @Test
@@ -215,9 +247,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode haConfigJson = createHAConfig();
     String leaderAddr = "http://abcdef.com";
     String clusterKey = createInstances(haConfigJson, leaderAddr);
-    String uri;
-    uri = "/api/settings/ha/internal/config";
-    Result getResult = FakeApiHelper.doRequestWithHAToken("GET", uri, clusterKey);
+    Result getResult = FakeApiHelper.doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, clusterKey);
     assertOk(getResult);
     JsonNode getResponse = Json.parse(contentAsString(getResult));
     ArrayNode instancesJson = (ArrayNode) getResponse.get("instances");
@@ -246,9 +276,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
     i1.setIsLocal(false);
     body.add(Json.toJson(i1));
     body.add(localInstance);
-    String uri = "/api/settings/ha/internal/config/sync/" + new Date().getTime();
-    Result syncResult =
-      FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
+    String uri = SYNC_ENDPOINT + new Date().getTime();
+    Result syncResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertOk(syncResult);
     return clusterKey;
   }
@@ -265,11 +294,13 @@ public class InternalHAControllerTest extends FakeDBApplication {
     assertOk(result);
 
     String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
-    File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationHelper.REPLICATION_DIR,
-      new URL(leaderAddr).getHost(),
-      fakeDump.getName()
-    ).toFile();
+    File uploadedFile =
+        Paths.get(
+                storagePath,
+                PlatformReplicationHelper.REPLICATION_DIR,
+                new URL(leaderAddr).getHost(),
+                fakeDump.getName())
+            .toFile();
     assertTrue(uploadedFile.exists());
     assertTrue(FileUtils.contentEquals(uploadedFile, fakeDump));
   }
@@ -281,27 +312,34 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String clusterKey = createInstances(haConfigJson, knownLeaderAddr);
     File fakeDump = createFakeDump();
     String requestFromLeader = "http://different.leader";
-    Result result = sendBackupSyncRequest(clusterKey, requestFromLeader, fakeDump,
-      requestFromLeader);
+    Result result =
+        sendBackupSyncRequest(clusterKey, requestFromLeader, fakeDump, requestFromLeader);
     assertOk(result);
 
     String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
-    File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationHelper.REPLICATION_DIR,
-      new URL(requestFromLeader).getHost(),
-      fakeDump.getName()
-    ).toFile();
+    File uploadedFile =
+        Paths.get(
+                storagePath,
+                PlatformReplicationHelper.REPLICATION_DIR,
+                new URL(requestFromLeader).getHost(),
+                fakeDump.getName())
+            .toFile();
     assertTrue(uploadedFile.getAbsolutePath(), uploadedFile.exists());
 
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result listResult = FakeApiHelper.doRequestWithAuthToken("GET",
-      "/api/settings/ha/config/" + configUUID + "/backup/list", user.createAuthToken());
+    Result listResult =
+        FakeApiHelper.doRequestWithAuthToken(
+            "GET",
+            "/api/settings/ha/config/" + configUUID + "/backup/list",
+            user.createAuthToken());
     JsonNode jsonNode = Json.parse(contentAsString(listResult));
     assertEquals(0, jsonNode.size());
 
-    listResult = FakeApiHelper.doRequestWithAuthToken("GET",
-      "/api/settings/ha/config/" + configUUID + "/backup/list?leader=" + requestFromLeader,
-      user.createAuthToken());
+    listResult =
+        FakeApiHelper.doRequestWithAuthToken(
+            "GET",
+            "/api/settings/ha/config/" + configUUID + "/backup/list?leader=" + requestFromLeader,
+            user.createAuthToken());
     jsonNode = Json.parse(contentAsString(listResult));
     assertEquals(1, jsonNode.size());
     assertEquals(fakeDump.getName(), jsonNode.get(0).asText());
@@ -317,17 +355,22 @@ public class InternalHAControllerTest extends FakeDBApplication {
     assertOk(result);
 
     String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
-    File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationHelper.REPLICATION_DIR,
-      new URL(leaderAddr).getHost(),
-      fakeDump.getName()
-    ).toFile();
+    File uploadedFile =
+        Paths.get(
+                storagePath,
+                PlatformReplicationHelper.REPLICATION_DIR,
+                new URL(leaderAddr).getHost(),
+                fakeDump.getName())
+            .toFile();
     assertTrue(uploadedFile.exists());
     assertTrue(FileUtils.contentEquals(uploadedFile, fakeDump));
 
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result listResult = FakeApiHelper.doRequestWithAuthToken("GET",
-      "/api/settings/ha/config/" + configUUID + "/backup/list", user.createAuthToken());
+    Result listResult =
+        FakeApiHelper.doRequestWithAuthToken(
+            "GET",
+            "/api/settings/ha/config/" + configUUID + "/backup/list",
+            user.createAuthToken());
     JsonNode jsonNode = Json.parse(contentAsString(listResult));
     assertEquals(1, jsonNode.size());
     assertEquals(fakeDump.getName(), jsonNode.get(0).asText());
@@ -339,40 +382,36 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String leaderAddr = "http://leader.yw.com";
     String clusterKey = createInstances(haConfigJson, leaderAddr);
     File fakeDump = createFakeDump();
-    Result result = sendBackupSyncRequest(
-      clusterKey,
-      leaderAddr,
-      fakeDump,
-      "http://different.sender"
-    );
+    Result result =
+        sendBackupSyncRequest(clusterKey, leaderAddr, fakeDump, "http://different.sender");
     assertBadRequest(
-      result,
-      "Sender: http://different.sender does not match leader: http://leader.yw.com"
-    );
+        result, "Sender: http://different.sender does not match leader: http://leader.yw.com");
 
     String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
-    File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationHelper.REPLICATION_DIR,
-      leaderAddr,
-      fakeDump.getName()
-    ).toFile();
+    File uploadedFile =
+        Paths.get(
+                storagePath,
+                PlatformReplicationHelper.REPLICATION_DIR,
+                leaderAddr,
+                fakeDump.getName())
+            .toFile();
     assertFalse(uploadedFile.getAbsolutePath(), uploadedFile.exists());
   }
 
-  private Result sendBackupSyncRequest(String clusterKey, String leaderAddr, File file,
-                                       String senderAddr) {
+  private Result sendBackupSyncRequest(
+      String clusterKey, String leaderAddr, File file, String senderAddr) {
 
-    return Helpers.route(app,
-      fakeRequest()
-        .method("POST")
-        .uri(UPLOAD_ENDPOINT)
-        .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey)
-        .bodyMultipart(
-          PlatformInstanceClient.buildPartsList(
-            file,
-            ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)),
-          singletonTemporaryFileCreator(),
-          mat));
+    return Helpers.route(
+        app,
+        fakeRequest()
+            .method("POST")
+            .uri(UPLOAD_ENDPOINT)
+            .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey)
+            .bodyMultipart(
+                PlatformInstanceClient.buildPartsList(
+                    file, ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)),
+                singletonTemporaryFileCreator(),
+                mat));
   }
 
   @Test
@@ -392,9 +431,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
     i1.setIsLocal(false);
     body.add(Json.toJson(i1));
     body.add(localInstance);
-    String uri = "/api/settings/ha/internal/config/sync/" + 0;
-    Result syncResult =
-      FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
+    String uri = SYNC_ENDPOINT + 0;
+    Result syncResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertBadRequest(syncResult, "Cannot import instances from stale leader");
   }
 
@@ -408,7 +446,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     assertTrue(config.isLocalLeader());
-    String uri = "/api/settings/ha/internal/config/demote/" + new Date().getTime();
+    String uri = DEMOTE_ENDPOINT + new Date().getTime();
     JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
     Result demoteResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertOk(demoteResult);
@@ -428,7 +466,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     assertTrue(config.isLocalLeader());
-    String uri = "/api/settings/ha/internal/config/demote/" + staleFailover.getTime();
+    String uri = DEMOTE_ENDPOINT + staleFailover.getTime();
     JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
     Result demoteResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertBadRequest(demoteResult, "Rejecting demote request from stale leader");
@@ -447,7 +485,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     assertFalse(config.isLocalLeader());
-    String uri = "/api/settings/ha/internal/config/demote/" + new Date().getTime();
+    String uri = DEMOTE_ENDPOINT + new Date().getTime();
     JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
     Result demoteResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertOk(demoteResult);

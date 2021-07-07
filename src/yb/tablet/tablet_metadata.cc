@@ -54,6 +54,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/metadata.h"
+#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -349,7 +350,7 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const std::string& 
 }
 
 Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
-                                           const yb::OpId& last_logged_opid) {
+                                           const OpId& last_logged_opid) {
   CHECK(delete_type == TABLET_DATA_DELETED ||
         delete_type == TABLET_DATA_TOMBSTONED)
       << "DeleteTabletData() called with unsupported delete_type on tablet "
@@ -527,12 +528,34 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     tablet_data_state_ = superblock.tablet_data_state();
 
     if (superblock.has_tombstone_last_logged_opid()) {
-      tombstone_last_logged_opid_ = yb::OpId::FromPB(superblock.tombstone_last_logged_opid());
+      tombstone_last_logged_opid_ = OpId::FromPB(superblock.tombstone_last_logged_opid());
     } else {
       tombstone_last_logged_opid_ = OpId();
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
+    hidden_ = superblock.hidden();
+    auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
+    if (restoration_hybrid_time) {
+      restoration_hybrid_time_ = restoration_hybrid_time;
+    }
+
+    if (superblock.has_split_op_id()) {
+      split_op_id_ = OpId::FromPB(superblock.split_op_id());
+
+      SCHECK_EQ(superblock.split_child_tablet_ids().size(), split_child_tablet_ids_.size(),
+                Corruption, "Expected exact number of child tablet ids");
+      for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
+        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(i);
+      }
+    }
+
+    if (!superblock.active_restorations().empty()) {
+      active_restorations_.reserve(superblock.active_restorations().size());
+      for (const auto& id : superblock.active_restorations()) {
+        active_restorations_.push_back(VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(id)));
+      }
+    }
   }
 
   return Status::OK();
@@ -599,7 +622,6 @@ void RaftGroupMetadata::ToSuperBlock(RaftGroupReplicaSuperBlockPB* superblock) c
 }
 
 void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const {
-  DCHECK(data_mutex_.is_locked());
   // Convert to protobuf.
   RaftGroupReplicaSuperBlockPB pb;
   pb.set_raft_group_id(raft_group_id_);
@@ -617,6 +639,27 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_colocated(colocated_);
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   pb.set_is_under_twodc_replication(is_under_twodc_replication_);
+  pb.set_hidden(hidden_);
+  if (restoration_hybrid_time_) {
+    pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
+  }
+
+  if (!split_op_id_.empty()) {
+    split_op_id_.ToPB(pb.mutable_split_op_id());
+    auto& split_child_table_ids = *pb.mutable_split_child_tablet_ids();
+    split_child_table_ids.Reserve(split_child_tablet_ids_.size());
+    for (const auto& split_child_tablet_id : split_child_tablet_ids_) {
+      *split_child_table_ids.Add() = split_child_tablet_id;
+    }
+  }
+
+  if (!active_restorations_.empty()) {
+    auto& active_restorations = *pb.mutable_active_restorations();
+    active_restorations.Reserve(active_restorations_.size());
+    for (const auto& id : active_restorations_) {
+      active_restorations.Add()->assign(id.AsSlice().cdata(), id.size());
+    }
+  }
 
   superblock->Swap(&pb);
 }
@@ -739,15 +782,17 @@ string RaftGroupMetadata::data_root_dir() const {
 }
 
 string RaftGroupMetadata::wal_root_dir() const {
-  if (wal_dir_.empty()) {
+  std::string wal_dir = this->wal_dir();
+
+  if (wal_dir.empty()) {
     return "";
-  } else {
-    auto wal_root_dir = DirName(wal_dir_);
-    if (strcmp(BaseName(wal_root_dir).c_str(), FsManager::kWalDirName) != 0) {
-      wal_root_dir = DirName(wal_root_dir);
-    }
-    return wal_root_dir;
   }
+
+  auto wal_root_dir = DirName(wal_dir);
+  if (strcmp(BaseName(wal_root_dir).c_str(), FsManager::kWalDirName) != 0) {
+    wal_root_dir = DirName(wal_root_dir);
+  }
+  return wal_root_dir;
 }
 
 void RaftGroupMetadata::set_wal_retention_secs(uint32 wal_retention_secs) {
@@ -785,7 +830,7 @@ int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
   return cdc_min_replicated_index_;
 }
 
-Status RaftGroupMetadata::set_is_under_twodc_replication(bool is_under_twodc_replication) {
+Status RaftGroupMetadata::SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication) {
   {
     std::lock_guard<MutexType> lock(data_mutex_);
     is_under_twodc_replication_ = is_under_twodc_replication;
@@ -798,6 +843,26 @@ bool RaftGroupMetadata::is_under_twodc_replication() const {
   return is_under_twodc_replication_;
 }
 
+void RaftGroupMetadata::SetHidden(bool value) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  hidden_ = value;
+}
+
+bool RaftGroupMetadata::hidden() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return hidden_;
+}
+
+void RaftGroupMetadata::SetRestorationHybridTime(HybridTime value) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  restoration_hybrid_time_ = std::max(restoration_hybrid_time_, value);
+}
+
+HybridTime RaftGroupMetadata::restoration_hybrid_time() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return restoration_hybrid_time_;
+}
+
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
   std::lock_guard<MutexType> lock(data_mutex_);
   tablet_data_state_ = state;
@@ -807,9 +872,81 @@ string RaftGroupMetadata::LogPrefix() const {
   return consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid());
 }
 
+OpId RaftGroupMetadata::tombstone_last_logged_opid() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return tombstone_last_logged_opid_;
+}
+
+bool RaftGroupMetadata::colocated() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return colocated_;
+}
+
 TabletDataState RaftGroupMetadata::tablet_data_state() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return tablet_data_state_;
+}
+
+std::array<TabletId, kNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return split_child_tablet_ids_;
+}
+
+OpId RaftGroupMetadata::split_op_id() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return split_op_id_;
+}
+
+void RaftGroupMetadata::SetSplitDone(
+    const OpId& op_id, const TabletId& child1, const TabletId& child2) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+  split_child_tablet_ids_[0] = child1;
+  split_child_tablet_ids_[1] = child2;
+}
+
+bool RaftGroupMetadata::has_active_restoration() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return !active_restorations_.empty();
+}
+
+void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  active_restorations_.push_back(restoration_id);
+}
+
+void RaftGroupMetadata::UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  Erase(restoration_id, &active_restorations_);
+}
+
+HybridTime RaftGroupMetadata::CheckCompleteRestorations(
+    const RestorationCompleteTimeMap& restoration_complete_time) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  auto result = HybridTime::kMin;
+  for (const auto& restoration_id : active_restorations_) {
+    auto it = restoration_complete_time.find(restoration_id);
+    if (it != restoration_complete_time.end() && it->second) {
+      result = std::max(result, it->second);
+    }
+  }
+  return result;
+}
+
+bool RaftGroupMetadata::CleanupRestorations(
+    const RestorationCompleteTimeMap& restoration_complete_time) {
+  bool result = false;
+  std::lock_guard<MutexType> lock(data_mutex_);
+  for (auto it = active_restorations_.begin(); it != active_restorations_.end();) {
+    auto known_restoration_it = restoration_complete_time.find(*it);
+    if (known_restoration_it == restoration_complete_time.end() || known_restoration_it->second) {
+      it = active_restorations_.erase(it);
+      result = true;
+    } else {
+      ++it;
+    }
+  }
+  return result;
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
@@ -820,9 +957,11 @@ std::string RaftGroupMetadata::GetSubRaftGroupDataDir(const RaftGroupId& raft_gr
   return JoinPathSegments(DirName(kv_store_.rocksdb_dir), MakeTabletDirName(raft_group_id));
 }
 
+// We directly init fields of a new metadata, so have to use NO_THREAD_SAFETY_ANALYSIS here.
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
     const RaftGroupId& raft_group_id, const Partition& partition,
-    const std::string& lower_bound_key, const std::string& upper_bound_key) const {
+    const std::string& lower_bound_key, const std::string& upper_bound_key)
+    const NO_THREAD_SAFETY_ANALYSIS {
   RaftGroupReplicaSuperBlockPB superblock;
   ToSuperBlock(&superblock);
 
@@ -836,11 +975,18 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.has_been_fully_compacted = false;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
-  metadata->tablet_data_state_ = TABLET_DATA_UNKNOWN;
+  metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
 }
 
+Result<std::string> RaftGroupMetadata::TopSnapshotsDir() const {
+  auto result = snapshots_dir();
+  RETURN_NOT_OK_PREPEND(
+      fs_manager()->CreateDirIfMissingAndSync(result),
+      Format("Unable to create snapshots directory $0", result));
+  return result;
+}
 
 namespace {
 // MigrateSuperblockForDXXXX functions are only needed for backward compatibility with

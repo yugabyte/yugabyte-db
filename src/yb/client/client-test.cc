@@ -178,7 +178,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
@@ -467,7 +467,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   YBSchema schema_;
 
-  gscoped_ptr<MiniCluster> cluster_;
+  std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
   TableHandle client_table_;
   TableHandle client_table2_;
@@ -680,12 +680,16 @@ TEST_F(ClientTest, TestListTabletServers) {
   ASSERT_EQ(expected_ts_hostnames, actual_ts_hostnames);
 }
 
+bool TableNotFound(const Status& status) {
+  return status.IsNotFound()
+         && (master::MasterError(status) == master::MasterErrorPB::OBJECT_NOT_FOUND);
+}
+
 TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
   Status s = client_->OpenTable(
       YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "xxx-does-not-exist"), &t);
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(false), "Not found: The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 // Test that, if the master is down, we experience a network error talking
@@ -1000,12 +1004,9 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   }
 }
 
-static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
-  CHECK_EQ(1, session->CountPendingErrors());
-  CollectedErrors errors = session->GetAndClearPendingErrors();
-  CHECK_EQ(1, errors.size());
-  std::unique_ptr<YBError> result = std::move(errors.front());
-  return result;
+static YBError* GetSingleErrorFromFlushStatus(const FlushStatus& flush_status) {
+  CHECK_EQ(1, flush_status.errors.size());
+  return flush_status.errors.front().get();
 }
 
 // Simplest case of inserting through the client API: a single row
@@ -1013,7 +1014,7 @@ static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
 // TODO Actually we need to check that hash columns present during insert. But it is not done yet.
 TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   auto session = CreateSession();
-  ASSERT_FALSE(session->HasPendingOperations());
+  ASSERT_FALSE(session->TEST_HasPendingOperations());
 
   auto insert = client_table_.NewInsertOp();
   // Try inserting without specifying a key: should fail.
@@ -1025,7 +1026,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   // Retry
   QLAddInt32HashValue(insert->mutable_request(), 12345);
   ASSERT_OK(session->Apply(insert));
-  ASSERT_TRUE(session->HasPendingOperations()) << "Should be pending until we Flush";
+  ASSERT_TRUE(session->TEST_HasPendingOperations()) << "Should be pending until we Flush";
 
   FlushSessionOrDie(session, { insert });
 }
@@ -1077,9 +1078,10 @@ TEST_F(ClientTest, TestWriteTimeout) {
     FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
     session->SetTimeout(100ms);
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-    Status s = session->Flush();
-    ASSERT_TRUE(s.IsIOError()) << "unexpected status: " << s.ToString();
-    auto error = GetSingleErrorFromSession(session.get());
+    const auto flush_status = session->FlushAndGetOpsErrors();
+    ASSERT_TRUE(flush_status.status.IsIOError())
+        << "unexpected status: " << flush_status.status.ToString();
+    auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(),
         strings::Substitute("GetTableLocations($0, hash_code: NaN, 0, 1) failed: "
@@ -1094,9 +1096,9 @@ TEST_F(ClientTest, TestWriteTimeout) {
     SetAtomicFlag(0, &FLAGS_log_inject_latency_ms_stddev);
 
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-    Status s = session->Flush();
-    ASSERT_TRUE(s.IsIOError()) << s;
-    auto error = GetSingleErrorFromSession(session.get());
+    const auto flush_status = session->FlushAndGetOpsErrors();
+    ASSERT_TRUE(flush_status.status.IsIOError()) << AsString(flush_status.status.ToString());
+    auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
   }
 }
@@ -1106,20 +1108,20 @@ TEST_F(ClientTest, TestWriteTimeout) {
 TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-  Synchronizer s;
-  session->FlushAsync(s.AsStatusFunctor());
+  auto flush_future = session->FlushFuture();
   session.reset();
-  ASSERT_OK(s.Wait());
+  ASSERT_OK(flush_future.get().status);
 
   // Try again, this time should not have an error response (to re-insert the same row).
-  s.Reset();
   session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-  ASSERT_EQ(1, session->CountBufferedOperations());
-  session->FlushAsync(s.AsStatusFunctor());
-  ASSERT_EQ(0, session->CountBufferedOperations());
+  ASSERT_EQ(1, session->TEST_CountBufferedOperations());
+  ASSERT_EQ(1, session->GetAddedNotFlushedOperationsCount());
+  flush_future = session->FlushFuture();
+  ASSERT_EQ(0, session->TEST_CountBufferedOperations());
+  ASSERT_EQ(0, session->GetAddedNotFlushedOperationsCount());
   session.reset();
-  ASSERT_OK(s.Wait());
+  ASSERT_OK(flush_future.get().status);
 }
 
 TEST_F(ClientTest, TestSessionClose) {
@@ -1152,9 +1154,10 @@ TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
                          row_key, row_key * 10, "hello world"));
       row_key++;
     }
-    ASSERT_TRUE(session->HasPendingOperations()) << "Should be pending until we Flush";
+    ASSERT_TRUE(session->TEST_HasPendingOperations()) << "Should be pending until we Flush";
     FlushSessionOrDie(session);
-    ASSERT_FALSE(session->HasPendingOperations()) << "Should have no more pending ops after flush";
+    ASSERT_FALSE(session->TEST_HasPendingOperations())
+        << "Should have no more pending ops after flush";
   }
 
   const int kNumRowsPerTablet = kNumBatches * kRowsPerBatch / 2;
@@ -1216,10 +1219,10 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
 
   // Try a write.
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "x"));
-  Status s = session->Flush();
-  ASSERT_TRUE(s.IsIOError()) << s.ToString();
+  const auto flush_status = session->FlushAndGetOpsErrors();
+  ASSERT_TRUE(flush_status.status.IsIOError()) << flush_status.status.ToString();
 
-  auto error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromFlushStatus(flush_status);
   switch (which) {
     case DEAD_MASTER:
       // Only one master, so no retry for finding the new leader master.
@@ -1481,8 +1484,7 @@ TEST_F(ClientTest, TestDeleteTable) {
 
   // Try to open the deleted table
   Status s = client_table_.Open(kTableName, client_.get());
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 
   // Create a new table with the same name. This is to ensure that the client
   // doesn't cache anything inappropriately by table name (see KUDU-1055).
@@ -1503,8 +1505,7 @@ TEST_F(ClientTest, TestGetTableSchema) {
   // Verify that a get schema request for a missing table throws not found
   Status s = client_->GetTableSchema(
       YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "MissingTableName"), &schema, &partition_schema);
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestGetTableSchemaByIdAsync) {
@@ -1522,38 +1523,29 @@ TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
   auto table_info = std::make_shared<YBTableInfo>();
   ASSERT_OK(client_->GetTableSchemaById("MissingTableId", table_info, sync.AsStatusCallback()));
   Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
-}
-
-void CreateCDCStreamCallbackSuccess(Synchronizer* sync, const Result<CDCStreamId>& stream) {
-  ASSERT_TRUE(stream.ok());
-  ASSERT_FALSE(stream->empty());
-  sync->StatusCB(Status::OK());
-}
-
-void CreateCDCStreamCallbackFailure(Synchronizer* sync, const Result<CDCStreamId>& stream) {
-  ASSERT_FALSE(stream.ok());
-  sync->StatusCB(stream.status());
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamAsync) {
-  Synchronizer sync;
+  std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       client_table_.table()->id(), options,
-      std::bind(&CreateCDCStreamCallbackSuccess, &sync, std::placeholders::_1));
-  ASSERT_OK(sync.Wait());
+      [&promise](const auto& stream) { promise.set_value(stream); });
+  auto stream = promise.get_future().get();
+  ASSERT_OK(stream);
+  ASSERT_FALSE(stream->empty());
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
-  Synchronizer sync;
+  std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       "MissingTableId", options,
-      std::bind(&CreateCDCStreamCallbackFailure, &sync, std::placeholders::_1));
-  Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
+      [&promise](const auto& stream) { promise.set_value(stream); });
+  auto stream = promise.get_future().get();
+  ASSERT_NOK(stream);
+  ASSERT_TRUE(TableNotFound(stream.status())) << stream.status();
 }
 
 TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
@@ -1572,7 +1564,7 @@ TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
   Synchronizer sync;
   client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
   Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestStaleLocations) {
@@ -1933,8 +1925,8 @@ class DeadlockSimulationCallback {
  public:
   explicit DeadlockSimulationCallback(Atomic32* i) : i_(i) {}
 
-  void operator()(const Status& s) const {
-    CHECK_OK(s);
+  void operator()(FlushStatus* flush_status) const {
+    CHECK_OK(flush_status->status);
     NoBarrier_AtomicIncrement(i_, 1);
   }
  private:
@@ -2068,7 +2060,7 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
   MiniClusterOptions options;
   options.num_tablet_servers = 0;
   // Start minicluster with only master (to simulate tserver not yet heartbeating).
-  cluster_.reset(new MiniCluster(env_.get(), options));
+  cluster_.reset(new MiniCluster(options));
   ASSERT_OK(cluster_->Start());
 
   // Connect to the cluster.

@@ -4,10 +4,14 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Provider;
+
+import org.pac4j.oidc.client.KeycloakOidcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,19 +23,22 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static play.mvc.Http.Status.*;
 
 @Singleton
 public class AccessManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
 
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
   private static final String PEM_PERMISSIONS = "r--------";
@@ -47,7 +54,7 @@ public class AccessManager extends DevopsBase {
     PRIVATE;
 
     public String getExtension() {
-      switch(this) {
+      switch (this) {
         case PUBLIC:
           return ".pub";
         case PRIVATE:
@@ -62,10 +69,10 @@ public class AccessManager extends DevopsBase {
     File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
-    synchronized(this) {
+    synchronized (this) {
       if (!keyBasePathName.exists() && !keyBasePathName.mkdirs() && !keyBasePathName.exists()) {
-        throw new RuntimeException("Key path " +
-            keyBasePathName.getAbsolutePath() + " doesn't exist.");
+        throw new RuntimeException(
+            "Key path " + keyBasePathName.getAbsolutePath() + " doesn't exist.");
       }
     }
 
@@ -81,10 +88,10 @@ public class AccessManager extends DevopsBase {
     File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
-    synchronized(this) {
+    synchronized (this) {
       if (!keyBasePathName.exists() && !keyBasePathName.mkdirs() && !keyBasePathName.exists()) {
-        throw new RuntimeException("Key path " +
-            keyBasePathName.getAbsolutePath() + " doesn't exist.");
+        throw new RuntimeException(
+            "Key path " + keyBasePathName.getAbsolutePath() + " doesn't exist.");
       }
     }
 
@@ -97,38 +104,41 @@ public class AccessManager extends DevopsBase {
   }
 
   // This method would upload the provided key file to the provider key file path.
-  public AccessKey uploadKeyFile(UUID regionUUID, File uploadedFile,
-                                 String keyCode, KeyType keyType,
-                                 String sshUser, Integer sshPort,
-                                 boolean airGapInstall, boolean skipProvisioning) {
+  public AccessKey uploadKeyFile(
+      UUID regionUUID,
+      File uploadedFile,
+      String keyCode,
+      KeyType keyType,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning)
+      throws IOException {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     // Removing paths from keyCode.
     keyCode = Util.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
-      throw new RuntimeException("Duplicate Access KeyCode: " + keyCode);
+      throw new YWServiceException(BAD_REQUEST, "Duplicate Access KeyCode: " + keyCode);
     }
     Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
     if (!Files.exists(source)) {
-      throw new RuntimeException("Key file " + source.getFileName() + " not found.");
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Key file " + source.getFileName() + " not found.");
     }
-    if (Files.exists(destination) ) {
-      throw new RuntimeException("File " + destination.getFileName() + " already exists.");
+    if (Files.exists(destination)) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "File " + destination.getFileName() + " already exists.");
     }
 
-    try {
-      Files.move(source, destination);
-      Set<PosixFilePermission> permissions = PosixFilePermissions.fromString(PEM_PERMISSIONS);
-      if (keyType == AccessManager.KeyType.PUBLIC) {
-        permissions = PosixFilePermissions.fromString(PUB_PERMISSIONS);
-      }
-      Files.setPosixFilePermissions(destination, permissions);
-    } catch (IOException e) {
-      LOG.error(e.getMessage(), e);
-      throw new RuntimeException("Unable to upload key file " + source.getFileName());
+    Files.move(source, destination);
+    Set<PosixFilePermission> permissions = PosixFilePermissions.fromString(PEM_PERMISSIONS);
+    if (keyType == AccessManager.KeyType.PUBLIC) {
+      permissions = PosixFilePermissions.fromString(PUB_PERMISSIONS);
     }
+    Files.setPosixFilePermissions(destination, permissions);
 
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     if (keyType == AccessManager.KeyType.PUBLIC) {
@@ -138,7 +148,9 @@ public class AccessManager extends DevopsBase {
     }
     JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
     if (vaultResponse.has("error")) {
-      throw new RuntimeException(vaultResponse.get("error").asText());
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Vault Creation failed with : " + vaultResponse.get("error").asText());
     }
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
@@ -149,21 +161,82 @@ public class AccessManager extends DevopsBase {
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
+  public AccessKey saveAndAddKey(
+      UUID regionUUID,
+      String keyContents,
+      String keyCode,
+      KeyType keyType,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning) {
+    AccessKey key = null;
+    Path tempFile = null;
+
+    try {
+      tempFile = Files.createTempFile(keyCode, keyType.getExtension());
+      Files.write(tempFile, keyContents.getBytes());
+
+      key =
+          uploadKeyFile(
+              regionUUID,
+              tempFile.toFile(),
+              keyCode,
+              keyType,
+              sshUser,
+              sshPort,
+              airGapInstall,
+              skipProvisioning);
+
+      File pemFile = new File(key.getKeyInfo().privateKey);
+      key = addKey(regionUUID, keyCode, pemFile, sshUser, sshPort, airGapInstall, skipProvisioning);
+    } catch (NoSuchFileException ioe) {
+      LOG.error(ioe.getMessage(), ioe);
+    } catch (IOException ioe) {
+      LOG.error(ioe.getMessage(), ioe);
+      throw new RuntimeException("Could not create AccessKey", ioe);
+    } finally {
+      try {
+        if (tempFile != null) {
+          Files.delete(tempFile);
+        }
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+      }
+    }
+
+    return key;
+  }
   // This method would create a public/private key file and upload that to
   // the provider cloud account. And store the credentials file in the keyFilePath
   // and return the file names. It will also create the vault file.
-  public AccessKey addKey(UUID regionUUID, String keyCode, Integer sshPort, boolean airGapInstall,
-                          boolean skipProvisioning) {
+  public AccessKey addKey(
+      UUID regionUUID,
+      String keyCode,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning) {
     return addKey(regionUUID, keyCode, null, null, sshPort, airGapInstall, skipProvisioning);
   }
 
-  public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser,
-      Integer sshPort, boolean airGapInstall) {
+  public AccessKey addKey(
+      UUID regionUUID,
+      String keyCode,
+      File privateKeyFile,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall) {
     return addKey(regionUUID, keyCode, privateKeyFile, sshUser, sshPort, airGapInstall, false);
   }
 
-  public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser,
-      Integer sshPort, boolean airGapInstall, boolean skipProvisioning) {
+  public AccessKey addKey(
+      UUID regionUUID,
+      String keyCode,
+      File privateKeyFile,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -188,7 +261,9 @@ public class AccessManager extends DevopsBase {
 
     JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
     if (response.has("error")) {
-      throw new RuntimeException(response.get("error").asText());
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Parsing of Region failed with : " + response.get("error").asText());
     }
 
     if (accessKey == null) {
@@ -197,7 +272,9 @@ public class AccessManager extends DevopsBase {
       keyInfo.privateKey = response.get("private_key").asText();
       JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
       if (response.has("error")) {
-        throw new RuntimeException(response.get("error").asText());
+        throw new YWServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Vault Creation failed with : " + response.get("error").asText());
       }
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
@@ -228,40 +305,66 @@ public class AccessManager extends DevopsBase {
   }
 
   public JsonNode deleteKey(UUID regionUUID, String keyCode) {
-    List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     if (region == null) {
       throw new RuntimeException("Invalid Region UUID: " + regionUUID);
     }
 
-    switch(Common.CloudType.valueOf(region.provider.code)) {
+    switch (Common.CloudType.valueOf(region.provider.code)) {
       case aws:
       case azu:
-        String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
-
-        commandArgs.add("--key_pair_name");
-        commandArgs.add(keyCode);
-        commandArgs.add("--key_file_path");
-        commandArgs.add(keyFilePath);
-        JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
-        if (response.has("error")) {
-          throw new RuntimeException(response.get("error").asText());
-        }
-        return response;
+      case gcp:
+      case onprem:
+        return deleteKey(region.provider.uuid, region.uuid, keyCode);
       default:
         return null;
     }
   }
 
-  public String createCredentialsFile(UUID providerUUID, JsonNode credentials)
-      throws IOException {
+  public JsonNode deleteKeyByProvider(Provider provider, String keyCode) {
+    List<Region> regions = Region.getByProvider(provider.uuid);
+    if (regions == null || regions.isEmpty()) {
+      return null;
+    }
+
+    if (Common.CloudType.valueOf(provider.code) == Common.CloudType.aws) {
+      ObjectMapper mapper = play.libs.Json.newDefaultMapper();
+      ArrayNode ret = mapper.getNodeFactory().arrayNode();
+      regions
+          .stream()
+          .map(r -> deleteKey(provider.uuid, r.uuid, keyCode))
+          .collect(Collectors.toList())
+          .forEach(ret::add);
+      return ret;
+    } else {
+      return deleteKey(provider.uuid, regions.get(0).uuid, keyCode);
+    }
+  }
+
+  private JsonNode deleteKey(UUID providerUUID, UUID regionUUID, String keyCode) {
+    List<String> commandArgs = new ArrayList<String>();
+    String keyFilePath = getOrCreateKeyFilePath(providerUUID);
+
+    commandArgs.add("--key_pair_name");
+    commandArgs.add(keyCode);
+    commandArgs.add("--key_file_path");
+    commandArgs.add(keyFilePath);
+    JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
+    if (response.has("error")) {
+      throw new RuntimeException(response.get("error").asText());
+    }
+    return response;
+  }
+
+  public String createCredentialsFile(UUID providerUUID, JsonNode credentials) throws IOException {
     ObjectMapper mapper = new ObjectMapper();
     String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
     mapper.writeValue(new File(credentialsFilePath), credentials);
     return credentialsFilePath;
   }
 
-  public String createKubernetesConfig(String path, Map<String, String> config, boolean edit) throws IOException {
+  public String createKubernetesConfig(String path, Map<String, String> config, boolean edit)
+      throws IOException {
     // Grab the kubernetes config file name and file content and create the physical file.
     String configFileName = config.remove("KUBECONFIG_NAME");
     String configFileContent = config.remove("KUBECONFIG_CONTENT");
@@ -286,14 +389,17 @@ public class AccessManager extends DevopsBase {
     return configFile.toAbsolutePath().toString();
   }
 
-  public String createPullSecret(UUID providerUUID, Map<String, String> config, boolean edit) throws IOException {
+  public String createPullSecret(UUID providerUUID, Map<String, String> config, boolean edit)
+      throws IOException {
     // Grab the kubernetes config file name and file content and create the physical file.
     String pullSecretFileName = config.remove("KUBECONFIG_PULL_SECRET_NAME");
     String pullSecretFileContent = config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
     if (pullSecretFileName == null) {
-      throw new RuntimeException("Missing KUBECONFIG_PULL_SECRET_NAME data in the provider config.");
+      throw new RuntimeException(
+          "Missing KUBECONFIG_PULL_SECRET_NAME data in the provider config.");
     } else if (pullSecretFileContent == null) {
-      throw new RuntimeException("Missing KUBECONFIG_PULL_SECRET_CONTENT data in the provider config.");
+      throw new RuntimeException(
+          "Missing KUBECONFIG_PULL_SECRET_CONTENT data in the provider config.");
     }
     String pullSecretFilePath = getOrCreateKeyFilePath(providerUUID);
     Path pullSecretFile = Paths.get(pullSecretFilePath, Util.getFileName(pullSecretFileName));

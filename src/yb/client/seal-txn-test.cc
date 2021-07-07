@@ -117,7 +117,7 @@ TEST_F(SealTxnTest, Simple) {
   ASSERT_OK(WriteRows(session, /* transaction = */ 0, WriteOpType::INSERT, Flush::kFalse));
   auto flush_future = session->FlushFuture();
   auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
-  ASSERT_OK(flush_future.get());
+  ASSERT_OK(flush_future.get().status);
   LOG(INFO) << "Flushed: " << txn->id();
   ASSERT_OK(commit_future.get());
   LOG(INFO) << "Committed: " << txn->id();
@@ -135,7 +135,7 @@ TEST_F(SealTxnTest, Update) {
   ASSERT_OK(WriteRows(session, /* transaction = */ 0, WriteOpType::UPDATE, Flush::kFalse));
   auto flush_future = session->FlushFuture();
   auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
-  ASSERT_OK(flush_future.get());
+  ASSERT_OK(flush_future.get().status);
   LOG(INFO) << "Flushed: " << txn->id();
   ASSERT_OK(commit_future.get());
   LOG(INFO) << "Committed: " << txn->id();

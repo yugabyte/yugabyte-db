@@ -40,7 +40,7 @@ void PgMiniTestBase::DoTearDown() {
 void PgMiniTestBase::SetUp() {
   HybridTime::TEST_SetPrettyToString(true);
 
-  FLAGS_client_read_write_timeout_ms = 120000;
+  FLAGS_client_read_write_timeout_ms = 120000 * kTimeMultiplier;
   FLAGS_enable_ysql = true;
   FLAGS_hide_pg_catalog_table_creation_logs = true;
   FLAGS_master_auto_run_initdb = true;
@@ -52,8 +52,13 @@ void PgMiniTestBase::SetUp() {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   YBMiniClusterTestBase::SetUp();
 
-  MiniClusterOptions mini_cluster_opt(NumMasters(), NumTabletServers());
-  cluster_ = std::make_unique<MiniCluster>(env_.get(), mini_cluster_opt);
+  MiniClusterOptions mini_cluster_opt = MiniClusterOptions {
+      .num_masters = NumMasters(),
+      .num_tablet_servers = NumTabletServers(),
+      .num_drives = 1,
+      .master_env = env_.get()
+  };
+  cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
   ASSERT_OK(cluster_->Start());
 
   ASSERT_OK(WaitForInitDb(cluster_.get()));

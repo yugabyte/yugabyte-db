@@ -17,10 +17,12 @@
 #include "yb/master/master_service_base-internal.h"
 
 #define YB_MASTER_BACKUP_SERVICE_FORWARD_METHOD(r, data, method) \
-  void MasterBackupServiceImpl::method(const BOOST_PP_CAT(method, RequestPB)* req, \
-                                       BOOST_PP_CAT(method, ResponsePB)* resp, \
-                                       rpc::RpcContext rpc) { \
-    HandleIn(req, resp, &rpc, &enterprise::CatalogManager::method); \
+  void MasterBackupServiceImpl::method( \
+      const BOOST_PP_CAT(method, RequestPB)* req, \
+      BOOST_PP_CAT(method, ResponsePB)* resp, \
+      rpc::RpcContext rpc) { \
+    HandleIn(req, resp, &rpc, &enterprise::CatalogManager::method, \
+             __FILE__, __LINE__, __func__, HoldCatalogLock::kTrue); \
   }
 
 namespace yb {

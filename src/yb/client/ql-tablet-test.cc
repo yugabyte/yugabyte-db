@@ -325,10 +325,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   scoped_refptr<master::TableInfo> GetTableInfo(const YBTableName& table_name) {
     auto* catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
-    std::vector<scoped_refptr<master::TableInfo>> all_tables;
-    catalog_manager->GetAllTables(&all_tables);
-    scoped_refptr<master::TableInfo> table_info;
-    for (auto& table : all_tables) {
+    auto all_tables = catalog_manager->GetTables(master::GetTablesMode::kAll);
+    for (const auto& table : all_tables) {
       if (table->name() == table_name.table_name()) {
         return table;
       }
@@ -800,7 +798,7 @@ TEST_F(QLTabletTest, LeaderChange) {
     }
   }
 
-  ASSERT_OK(flush_future.get());
+  ASSERT_OK(flush_future.get().status);
   ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, write_op->response().status());
 
   ASSERT_EQ(GetValue(session, kKey, table), kValue3);
@@ -856,8 +854,8 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
     }
     auto future_del = session1->FlushFuture();
     auto future_update = session2->FlushFuture();
-    ASSERT_OK(future_del.get());
-    ASSERT_OK(future_update.get());
+    ASSERT_OK(future_del.get().status);
+    ASSERT_OK(future_update.get().status);
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op_del->response().status());
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op_update->response().status());
 
@@ -1004,7 +1002,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
       if (future.wait_for(kWaitInterval) == std::future_status::ready) {
         LOG(INFO) << "Value written";
         deadline = std::chrono::steady_clock::now() + 3s;
-        ASSERT_OK(future.get());
+        ASSERT_OK(future.get().status);
         ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
       }
     } else if (deadline < std::chrono::steady_clock::now() || tracked_by_log_cache) {
@@ -1016,6 +1014,42 @@ TEST_F(QLTabletTest, OperationMemTracking) {
 
   ASSERT_TRUE(tracked_by_tablets);
   ASSERT_TRUE(tracked_by_log_cache);
+}
+
+// Checks the existance of the BlockBasedTable memtracker and verifies that its size is greater
+// than zero after creating a table and flushing it.  Then deletes the table, and verifies that
+// the memtracker is removed.
+TEST_F(QLTabletTest, BlockCacheMemTracking) {
+  const auto kSleepTime = NonTsanVsTsan(5s, 1s);
+  constexpr size_t kTotalRows = 10000;
+  const string kBlockTrackerName = "BlockBasedTable";
+
+  TableHandle table;
+  CreateTable(kTable1Name, &table, 1);
+  FillTable(0, kTotalRows, table);
+
+  auto server_tracker = MemTracker::GetRootTracker()->FindChild("server 1");
+  auto block_cache_tracker = server_tracker->FindChild(kBlockTrackerName);
+  ASSERT_TRUE(block_cache_tracker);
+
+  std::this_thread::sleep_for(kSleepTime);
+  LOG(INFO) << "Flushing tablets";
+  ASSERT_OK(cluster_->FlushTablets());
+  std::this_thread::sleep_for(kSleepTime);
+
+  auto block_cache_children = block_cache_tracker->ListChildren();
+  // check that there is exactly one child memtracker
+  ASSERT_EQ(block_cache_children.size(), 1);
+  // check that the child memtracker has a consumption greater than zero
+  ASSERT_GT(block_cache_children[0]->consumption(), 0);
+
+  LOG(INFO) << "Deleting table";
+  ASSERT_OK(client_->DeleteTable(kTable1Name, true));
+  std::this_thread::sleep_for(kSleepTime);
+
+  // after table deletion, assert that there is no longer a block cache memtracker
+  block_cache_tracker = server_tracker->FindChild(kBlockTrackerName);
+  ASSERT_FALSE(block_cache_tracker);
 }
 
 // Checks history cutoff for cluster against previous state.

@@ -27,19 +27,22 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class HealthManagerTest extends FakeDBApplication {
-  @Mock
-  private ShellProcessHandler shellProcessHandler;
+  @Mock private ShellProcessHandler shellProcessHandler;
 
-  @InjectMocks
-  private HealthManager healthManager;
+  @InjectMocks private HealthManager healthManager;
 
-  @Mock
-  private play.Configuration appConfig;
+  @Mock private play.Configuration appConfig;
+
+  private static final String[] providers = {"aws", "gcp", "onprem", "kubernetes"};
 
   private List<String> healthCheckCommand(
-      Provider provider, List<HealthManager.ClusterInfo> clusters,
-      String customerTag, String destination, long startTimeMs,
-      boolean shouldSendStatusUpdate, boolean reportOnlyErrors) {
+      Provider provider,
+      List<HealthManager.ClusterInfo> clusters,
+      String customerTag,
+      String destination,
+      long startTimeMs,
+      boolean shouldSendStatusUpdate,
+      boolean reportOnlyErrors) {
     List<String> expectedCommand = new ArrayList<>();
 
     expectedCommand.add(DevopsBase.PY_WRAPPER);
@@ -51,7 +54,7 @@ public class HealthManagerTest extends FakeDBApplication {
       expectedCommand.add("--start_time_ms");
       expectedCommand.add(String.valueOf(startTimeMs));
     }
-    if (!provider.code.equals("onprem")) {
+    if (!provider.code.equals("onprem") && !provider.code.equals("kubernetes")) {
       expectedCommand.add("--check_clock");
     }
     return expectedCommand;
@@ -61,8 +64,8 @@ public class HealthManagerTest extends FakeDBApplication {
   public void testHealthManager() {
     HashMap<String, String> baseConfig = new HashMap<>();
     baseConfig.put("testKey", "testVal");
-    Provider provider = ModelFactory.newProvider(
-        ModelFactory.testCustomer(), Common.CloudType.aws, baseConfig);
+    Provider provider =
+        ModelFactory.newProvider(ModelFactory.testCustomer(), Common.CloudType.aws, baseConfig);
     // Setup the cluster.
     HealthManager.ClusterInfo cluster = new HealthManager.ClusterInfo();
     cluster.sshPort = 22;
@@ -86,7 +89,6 @@ public class HealthManagerTest extends FakeDBApplication {
     // --start_time_ms options.
     List<Long> startTimeOptions = ImmutableList.of(0L, 1000L);
     // --check_clock options.
-    List<Boolean> isOnPremOptions = ImmutableList.of(true, false);
     List<String> envVarOptions = new ArrayList<>();
     envVarOptions.add("testing");
     envVarOptions.add(null);
@@ -96,20 +98,24 @@ public class HealthManagerTest extends FakeDBApplication {
         for (Long startTime : startTimeOptions) {
           for (String envVal : envVarOptions) {
             for (Boolean reportOnlyErrors : reportOnlyErrorOptions) {
-              for (Boolean isOnPrem : isOnPremOptions) {
-                provider.code = isOnPrem ? "onprem" : "aws";
+              for (String providerCode : providers) {
+                provider.code = providerCode;
                 when(appConfig.getString("yb.health.ses_email_username")).thenReturn(envVal);
                 when(appConfig.getString("yb.health.ses_email_password")).thenReturn(envVal);
                 when(appConfig.getString("yb.health.default_email")).thenReturn(envVal);
-                List<String> expectedCommand = healthCheckCommand(provider,
-                    ImmutableList.of(cluster), customerTag, d, startTime, sendStatus,
-                    reportOnlyErrors);
-                System.out.println("running, reportOnlyErrors = " + reportOnlyErrors.toString());
+                List<String> expectedCommand =
+                    healthCheckCommand(
+                        provider,
+                        ImmutableList.of(cluster),
+                        customerTag,
+                        d,
+                        startTime,
+                        sendStatus,
+                        reportOnlyErrors);
                 healthManager.runCommand(provider, ImmutableList.of(cluster), startTime);
                 HashMap extraEnvVars = new HashMap<>(provider.getConfig());
-                System.out.println("verifying");
-                verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(extraEnvVars),
-                    eq(false), anyString());
+                verify(shellProcessHandler, times(1))
+                    .run(eq(expectedCommand), eq(extraEnvVars), eq(false), anyString());
 
                 reset(shellProcessHandler);
               }

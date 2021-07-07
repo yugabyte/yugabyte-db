@@ -138,6 +138,10 @@ YB_DEFINE_ENUM(UsePrivateIpMode, (cloud)(region)(zone)(never));
 // Returns mode for selecting between private and public IP.
 Result<UsePrivateIpMode> GetPrivateIpMode();
 
+// Pick node's public host and port
+// registration - node registration information
+const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration);
+
 // Pick host and port that should be used to connect node
 // broadcast_addresses - node public host ports
 // private_host_ports - node private host ports
