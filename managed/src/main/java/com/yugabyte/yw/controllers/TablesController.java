@@ -60,7 +60,10 @@ public class TablesController extends AuthenticatedController {
     this.ybService = service;
   }
 
-  @ApiOperation(value = "Create table in Yugabyte DB", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "Create table in Yugabyte DB",
+      response = YWResults.YWTask.class,
+      nickname = "createTable")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Table",

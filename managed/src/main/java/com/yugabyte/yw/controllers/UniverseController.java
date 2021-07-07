@@ -77,7 +77,10 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the universe create operation.
    */
-  @ApiOperation(value = "Create a YugaByte Universe", response = UniverseResp.class)
+  @ApiOperation(
+      value = "Create a YugaByte Universe",
+      response = UniverseResp.class,
+      nickname = "createUniverse")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "univ_def",
@@ -102,7 +105,10 @@ public class UniverseController extends AuthenticatedController {
    *
    * @return result of the universe update operation.
    */
-  @ApiOperation(value = "updateUniverse", response = UniverseResp.class)
+  @ApiOperation(
+      value = "updateUniverse",
+      response = UniverseResp.class,
+      nickname = "updateUniverse")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "univ_def",
@@ -122,7 +128,11 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /** List the universes for a given customer. */
-  @ApiOperation(value = "List Universes", response = UniverseResp.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List Universes",
+      response = UniverseResp.class,
+      responseContainer = "List",
+      nickname = "getListOfUniverses")
   public Result list(UUID customerUUID, String name) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Verify the customer is present.
@@ -141,7 +151,10 @@ public class UniverseController extends AuthenticatedController {
         UniverseResp.create(universe, null, runtimeConfigFactory.globalRuntimeConf()));
   }
 
-  @ApiOperation(value = "Destroy the universe", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "Destroy the universe",
+      response = YWResults.YWTask.class,
+      nickname = "deleteUniverse")
   public Result destroy(
       UUID customerUUID, UUID universeUUID, boolean isForceDelete, boolean isDeleteBackups) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

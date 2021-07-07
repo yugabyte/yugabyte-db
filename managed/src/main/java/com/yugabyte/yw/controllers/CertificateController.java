@@ -11,8 +11,7 @@ import com.yugabyte.yw.forms.ClientCertParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -23,7 +22,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
-@Api
+@Api(
+    value = "Certificate",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
@@ -121,16 +122,19 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.withRawData(result);
   }
 
+  @ApiOperation(value = "getListOfCertificate", nickname = "getListOfCertificate")
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
     return YWResults.withData(certs);
   }
 
+  @ApiOperation(value = "getListOfCertificate", nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
     return YWResults.withData(cert.uuid);
   }
 
+  @ApiOperation(value = "deleteCertificate", nickname = "deleteCertificate")
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
     CertificateInfo.delete(reqCertUUID, customerUUID);
     auditService().createAuditEntry(ctx(), request());

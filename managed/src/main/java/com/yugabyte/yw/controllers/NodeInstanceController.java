@@ -43,7 +43,10 @@ public class NodeInstanceController extends AuthenticatedController {
    * @param nodeUuid the node UUID
    * @return JSON response with Node data
    */
-  @ApiOperation(value = "Get node instance by UUID", response = NodeInstance.class)
+  @ApiOperation(
+      value = "Get node instance by UUID",
+      response = NodeInstance.class,
+      nickname = "getNodeInstance")
   public Result get(UUID customerUuid, UUID nodeUuid) {
     Customer.getOrBadRequest(customerUuid);
     NodeInstance node = NodeInstance.getOrBadRequest(nodeUuid);
@@ -97,7 +100,8 @@ public class NodeInstanceController extends AuthenticatedController {
   @ApiOperation(
       value = "Create node instance",
       response = NodeInstance.class,
-      responseContainer = "Map")
+      responseContainer = "Map",
+      nickname = "createNodeInstance")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Node instance",

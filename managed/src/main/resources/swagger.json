@@ -34,6 +34,8 @@
   }, {
     "name" : "Encryption At Rest"
   }, {
+    "name" : "Certificate"
+  }, {
     "name" : "Customer Config"
   }, {
     "name" : "Region"
@@ -364,6 +366,46 @@
         } ]
       }
     },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
+      "put" : {
+        "tags" : [ "Provider" ],
+        "summary" : "editProvider",
+        "description" : "",
+        "operationId" : "editProvider",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "EditProviderFormData",
+          "description" : "edit provider form data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/EditProviderRequest"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Provider"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/bootstrap" : {
       "post" : {
         "tags" : [ "Provider" ],
@@ -396,7 +438,7 @@
         "tags" : [ "Provider1" ],
         "summary" : "listProvider",
         "description" : "",
-        "operationId" : "list",
+        "operationId" : "getListOfProviders",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -421,7 +463,9 @@
       },
       "post" : {
         "tags" : [ "Provider" ],
-        "operationId" : "create",
+        "summary" : "createCloudProvider",
+        "description" : "",
+        "operationId" : "createCloudProvider",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -461,46 +505,6 @@
         "responses" : {
           "default" : {
             "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
-      "put" : {
-        "tags" : [ "Provider" ],
-        "summary" : "editProvider",
-        "description" : "",
-        "operationId" : "edit",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "EditProviderFormData",
-          "description" : "edit provider form data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/EditProviderRequest"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Provider"
-            }
           }
         },
         "security" : [ {
@@ -595,7 +599,7 @@
         "tags" : [ "Node Instances" ],
         "summary" : "Get node instance by UUID",
         "description" : "",
-        "operationId" : "get",
+        "operationId" : "getNodeInstance",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -627,7 +631,7 @@
         "tags" : [ "Node Instances" ],
         "summary" : "Create node instance",
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "createNodeInstance",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -819,7 +823,7 @@
         "tags" : [ "Alert" ],
         "summary" : "listAlerts",
         "description" : "",
-        "operationId" : "list",
+        "operationId" : "listOfAlerts",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1432,7 +1436,7 @@
         "tags" : [ "AvailabilityZone" ],
         "summary" : "deleteAZ",
         "description" : "",
-        "operationId" : "delete",
+        "operationId" : "deleteAZ",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1476,7 +1480,7 @@
         "tags" : [ "AvailabilityZone" ],
         "summary" : "listAZ",
         "description" : "",
-        "operationId" : "list",
+        "operationId" : "listOfAZ",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1515,7 +1519,7 @@
         "tags" : [ "AvailabilityZone" ],
         "summary" : "createAZ",
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "createAZ",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1557,23 +1561,6 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/features" : {
-      "put" : {
-        "operationId" : "upsertFeatures",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
       }
     },
     "/api/v1/customers/{cUUID}" : {
@@ -1644,6 +1631,23 @@
         }
       }
     },
+    "/api/v1/customers/{cUUID}/features" : {
+      "put" : {
+        "operationId" : "upsertFeatures",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
     "/api/v1/customers/{cUUID}/metrics" : {
       "post" : {
         "operationId" : "metrics",
@@ -1683,7 +1687,7 @@
         "tags" : [ "Provider1" ],
         "summary" : "createProvider",
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "createProviders",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1703,6 +1707,32 @@
             "description" : "successful operation",
             "schema" : {
               "$ref" : "#/definitions/YWTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universe_configure" : {
+      "post" : {
+        "tags" : [ "Universe" ],
+        "summary" : "configure the universe parameters",
+        "description" : "This API builds the new universe definition task parameters by merging the input UserIntent with the current taskParams and returns the resulting task parameters in a serialized form",
+        "operationId" : "configure",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Universe task"
             }
           }
         },
@@ -1786,7 +1816,7 @@
         "tags" : [ "Universe" ],
         "summary" : "updateUniverse",
         "description" : "",
-        "operationId" : "update",
+        "operationId" : "updateUniverse",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1824,7 +1854,7 @@
         "tags" : [ "Universe" ],
         "summary" : "Destroy the universe",
         "description" : "",
-        "operationId" : "destroy",
+        "operationId" : "deleteUniverse",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1895,7 +1925,7 @@
         "tags" : [ "Universe" ],
         "summary" : "List Universes",
         "description" : "",
-        "operationId" : "list",
+        "operationId" : "getListOfUniverses",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1928,7 +1958,7 @@
         "tags" : [ "Universe" ],
         "summary" : "Create a YugaByte Universe",
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "createUniverse",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -1949,32 +1979,6 @@
             "description" : "successful operation",
             "schema" : {
               "$ref" : "#/definitions/UniverseResp"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universe_configure" : {
-      "post" : {
-        "tags" : [ "Universe" ],
-        "summary" : "configure the universe parameters",
-        "description" : "This API builds the new universe definition task parameters by merging the input UserIntent with the current taskParams and returns the resulting task parameters in a serialized form",
-        "operationId" : "configure",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Universe task"
             }
           }
         },
@@ -2375,7 +2379,10 @@
     },
     "/api/v1/customers/{cUUID}/certificates/{name}" : {
       "get" : {
-        "operationId" : "get",
+        "tags" : [ "Certificate" ],
+        "summary" : "getListOfCertificate",
+        "description" : "",
+        "operationId" : "getCertificate",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2392,11 +2399,15 @@
           "default" : {
             "description" : "successful operation"
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       }
     },
     "/api/v1/customers/{cUUID}/certificates/{rUUID}" : {
       "post" : {
+        "tags" : [ "Certificate" ],
         "summary" : "TODO",
         "description" : "",
         "operationId" : "getClientCert",
@@ -2417,10 +2428,16 @@
           "default" : {
             "description" : "successful operation"
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       },
       "delete" : {
-        "operationId" : "delete",
+        "tags" : [ "Certificate" ],
+        "summary" : "deleteCertificate",
+        "description" : "",
+        "operationId" : "deleteCertificate",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2438,12 +2455,18 @@
           "default" : {
             "description" : "successful operation"
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       }
     },
     "/api/v1/customers/{cUUID}/certificates" : {
       "get" : {
-        "operationId" : "list",
+        "tags" : [ "Certificate" ],
+        "summary" : "getListOfCertificate",
+        "description" : "",
+        "operationId" : "getListOfCertificate",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2455,9 +2478,13 @@
           "default" : {
             "description" : "successful operation"
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       },
       "post" : {
+        "tags" : [ "Certificate" ],
         "summary" : "upload",
         "description" : "",
         "operationId" : "upload",
@@ -2476,11 +2503,15 @@
               "format" : "uuid"
             }
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       }
     },
     "/api/v1/customers/{cUUID}/certificates/{rUUID}/download" : {
       "get" : {
+        "tags" : [ "Certificate" ],
         "operationId" : "getRootCert",
         "parameters" : [ {
           "name" : "cUUID",
@@ -2499,11 +2530,15 @@
           "default" : {
             "description" : "successful operation"
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       }
     },
     "/api/v1/customers/{cUUID}/certificates/{rUUID}/update_empty_cert" : {
       "post" : {
+        "tags" : [ "Certificate" ],
         "summary" : "update empty certs",
         "description" : "",
         "operationId" : "updateEmptyCustomCert",
@@ -2527,7 +2562,10 @@
               "$ref" : "#/definitions/CertificateInfo"
             }
           }
-        }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
       }
     },
     "/api/v1/customers/{cUUID}/configs/{configUUID}" : {
@@ -2535,7 +2573,7 @@
         "tags" : [ "Customer Config" ],
         "summary" : "List of customer configuration",
         "description" : "",
-        "operationId" : "edit",
+        "operationId" : "getCustomerConfig",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2573,7 +2611,7 @@
         "tags" : [ "Customer Config" ],
         "summary" : "Delete customer configuration",
         "description" : "",
-        "operationId" : "delete",
+        "operationId" : "deleteCustomerConfig",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2605,7 +2643,7 @@
         "tags" : [ "Customer Config" ],
         "summary" : "List of customer configuration",
         "description" : "",
-        "operationId" : "list",
+        "operationId" : "getListOfCustomerConfig",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2632,7 +2670,7 @@
         "tags" : [ "Customer Config" ],
         "summary" : "Create customer configuration",
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "createCustomerConfig",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2666,7 +2704,7 @@
         "tags" : [ "Region" ],
         "summary" : "delete",
         "description" : "",
-        "operationId" : "delete",
+        "operationId" : "deleteRegion",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2704,7 +2742,7 @@
         "tags" : [ "Region" ],
         "summary" : "list Regions for a specific provider",
         "description" : "",
-        "operationId" : "list",
+        "operationId" : "getRegion",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2743,7 +2781,7 @@
         "tags" : [ "Region" ],
         "summary" : "create new region",
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "createRegion",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2834,7 +2872,7 @@
         "tags" : [ "Release" ],
         "summary" : "Update release",
         "description" : "",
-        "operationId" : "update",
+        "operationId" : "updateRelease",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -2873,7 +2911,7 @@
         "tags" : [ "Release" ],
         "summary" : "Get list of releases",
         "description" : "",
-        "operationId" : "list",
+        "operationId" : "getReleases",
         "parameters" : [ {
           "name" : "cUUID",
           "in" : "path",
@@ -3072,6 +3110,79 @@
         } ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables" : {
+      "get" : {
+        "tags" : [ "Tables" ],
+        "summary" : "List of tables",
+        "description" : "",
+        "operationId" : "listTables",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/TableInfo"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      },
+      "post" : {
+        "tags" : [ "Tables" ],
+        "summary" : "Create table in Yugabyte DB",
+        "description" : "",
+        "operationId" : "createTable",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "Table",
+          "description" : "Table Definition to be created",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Universe task"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables/{tableUUID}/bulk_import" : {
       "put" : {
         "tags" : [ "Tables" ],
@@ -3164,79 +3275,6 @@
         } ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables" : {
-      "get" : {
-        "tags" : [ "Tables" ],
-        "summary" : "List of tables",
-        "description" : "",
-        "operationId" : "listTables",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "$ref" : "#/definitions/TableInfo"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      },
-      "post" : {
-        "tags" : [ "Tables" ],
-        "summary" : "Create table in Yugabyte DB",
-        "description" : "",
-        "operationId" : "create",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "Table",
-          "description" : "Table Definition to be created",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/Universe task"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YWTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/multi_table_backup" : {
       "put" : {
         "tags" : [ "Tables" ],
@@ -3292,6 +3330,29 @@
               "items" : {
                 "type" : "string",
                 "enum" : [ "TINYINT", "SMALLINT", "INT", "BIGINT", "VARCHAR", "BOOLEAN", "FLOAT", "DOUBLE_PRECISION", "BLOB", "TIMESTAMP", "DECIMAL", "VARINT", "INET", "LIST", "MAP", "SET", "UUID", "TIMEUUID", "FROZEN", "DATE", "TIME", "JSONB", "USER_DEFINED_TYPE" ]
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/runtime_config/mutable_keys" : {
+      "get" : {
+        "tags" : [ "RuntimeConfig" ],
+        "summary" : "list Mutable keys",
+        "description" : "List all the mutable runtime config keys",
+        "operationId" : "listKeys",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
               }
             }
           }
@@ -3447,29 +3508,6 @@
         } ]
       }
     },
-    "/api/v1/runtime_config/mutable_keys" : {
-      "get" : {
-        "tags" : [ "RuntimeConfig" ],
-        "summary" : "list Mutable keys",
-        "description" : "List all the mutable runtime config keys",
-        "operationId" : "listKeys",
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "type" : "string"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
     "/api/v1/customers/{cUUID}/runtime_config/scopes" : {
       "get" : {
         "tags" : [ "RuntimeConfig" ],
@@ -3500,28 +3538,6 @@
       "post" : {
         "operationId" : "register",
         "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
-    "/universes/{uniUUID}/proxy/{proxyUrl}" : {
-      "get" : {
-        "operationId" : "proxyRequest",
-        "parameters" : [ {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "proxyUrl",
-          "in" : "path",
-          "required" : true,
-          "type" : "string"
-        } ],
         "responses" : {
           "default" : {
             "description" : "successful operation"
@@ -3680,6 +3696,28 @@
         }
       }
     },
+    "/universes/{uniUUID}/proxy/{proxyUrl}" : {
+      "get" : {
+        "operationId" : "proxyRequest",
+        "parameters" : [ {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "proxyUrl",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
     "/api/v1/logout" : {
       "get" : {
         "operationId" : "logout",
@@ -3689,38 +3727,6 @@
             "description" : "successful operation"
           }
         }
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/setup_universe_2dc" : {
-      "put" : {
-        "tags" : [ "Universe Actions" ],
-        "summary" : "resetVersion",
-        "description" : "",
-        "operationId" : "resetVersion",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/resume" : {
@@ -3747,6 +3753,38 @@
             "description" : "successful operation",
             "schema" : {
               "$ref" : "#/definitions/YWTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/setup_universe_2dc" : {
+      "put" : {
+        "tags" : [ "Universe Actions" ],
+        "summary" : "resetVersion",
+        "description" : "",
+        "operationId" : "resetVersion",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWSuccess"
             }
           }
         },
@@ -4239,10 +4277,10 @@
           "type" : "string",
           "description" : "Transient property - only present in mutate API request"
         },
-        "hostedZoneName" : {
+        "hostedZoneId" : {
           "type" : "string"
         },
-        "hostedZoneId" : {
+        "hostedZoneName" : {
           "type" : "string"
         },
         "config" : {
@@ -5059,22 +5097,16 @@
         "object" : {
           "type" : "boolean"
         },
-        "array" : {
-          "type" : "boolean"
-        },
-        "null" : {
-          "type" : "boolean"
-        },
         "valueNode" : {
           "type" : "boolean"
         },
         "containerNode" : {
           "type" : "boolean"
         },
-        "pojo" : {
+        "missingNode" : {
           "type" : "boolean"
         },
-        "missingNode" : {
+        "pojo" : {
           "type" : "boolean"
         },
         "number" : {
@@ -5111,6 +5143,12 @@
           "type" : "boolean"
         },
         "binary" : {
+          "type" : "boolean"
+        },
+        "array" : {
+          "type" : "boolean"
+        },
+        "null" : {
           "type" : "boolean"
         },
         "float" : {
@@ -6073,19 +6111,16 @@
         "object" : {
           "type" : "boolean"
         },
-        "null" : {
-          "type" : "boolean"
-        },
         "valueNode" : {
           "type" : "boolean"
         },
         "containerNode" : {
           "type" : "boolean"
         },
-        "pojo" : {
+        "missingNode" : {
           "type" : "boolean"
         },
-        "missingNode" : {
+        "pojo" : {
           "type" : "boolean"
         },
         "number" : {
@@ -6122,6 +6157,9 @@
           "type" : "boolean"
         },
         "binary" : {
+          "type" : "boolean"
+        },
+        "null" : {
           "type" : "boolean"
         },
         "float" : {
@@ -6168,11 +6206,11 @@
         "customCertInfo" : {
           "$ref" : "#/definitions/CustomCertInfo"
         },
-        "inUse" : {
-          "type" : "boolean"
-        },
         "universeDetails" : {
           "$ref" : "#/definitions/ArrayNode"
+        },
+        "inUse" : {
+          "type" : "boolean"
         },
         "customServerCertInfo" : {
           "$ref" : "#/definitions/CustomServerCertInfo"
@@ -6249,14 +6287,14 @@
           "description" : "Configuration data",
           "$ref" : "#/definitions/JsonNode"
         },
-        "inUse" : {
-          "type" : "boolean",
-          "description" : "True if there is an in use reference to the object"
-        },
         "universeDetails" : {
           "example" : "{\"name\": \"jd-aws-21-6-21-test4\"}",
           "description" : "Universe details",
           "$ref" : "#/definitions/ArrayNode"
+        },
+        "inUse" : {
+          "type" : "boolean",
+          "description" : "True if there is an in use reference to the object"
         }
       },
       "description" : "Customers Configuration"
