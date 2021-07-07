@@ -591,7 +591,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         new Alert()
             .setCustomerUUID(defaultCustomer.uuid)
             .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .setType(KnownAlertTypes.Warning)
+            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
             .setMessage("Test 1")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels())
             .setState(State.ACTIVE);
@@ -601,7 +601,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         new Alert()
             .setCustomerUUID(defaultCustomer.uuid)
             .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .setType(KnownAlertTypes.Warning)
+            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
             .setMessage("Test 2")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
     alert2 = alertService.save(alert2);
@@ -610,7 +610,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         new Alert()
             .setCustomerUUID(defaultCustomer.uuid)
             .setErrCode(KnownAlertCodes.TASK_FAILURE)
-            .setType(KnownAlertTypes.Warning)
+            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
             .setMessage("Test 3")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
     alert3 = alertService.save(alert3);

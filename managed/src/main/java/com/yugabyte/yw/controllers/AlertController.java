@@ -16,7 +16,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.YWServiceException;
@@ -24,12 +24,19 @@ import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.forms.AlertReceiverFormData;
 import com.yugabyte.yw.forms.AlertRouteFormData;
 import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.filters.AlertApiFilter;
+import com.yugabyte.yw.forms.filters.AlertDefinitionGroupApiFilter;
+import com.yugabyte.yw.forms.filters.AlertDefinitionTemplateApiFilter;
+import com.yugabyte.yw.forms.paging.AlertDefinitionGroupPagedApiQuery;
+import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionTemplateFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedQuery;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedResponse;
+import com.yugabyte.yw.models.paging.AlertPagedQuery;
+import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import io.swagger.annotations.*;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -53,9 +60,8 @@ public class AlertController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    ArrayNode alerts = Json.newArray();
     AlertFilter filter = AlertFilter.builder().customerUuid(customerUUID).build();
-    alertService.list(filter).forEach(alert -> alerts.add(Json.toJson(alert)));
+    List<Alert> alerts = alertService.list(filter);
     return YWResults.withData(alerts);
   }
 
@@ -63,10 +69,47 @@ public class AlertController extends AuthenticatedController {
   public Result listActive(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    ArrayNode alerts = Json.newArray();
     AlertFilter filter = AlertFilter.builder().customerUuid(customerUUID).build();
-    alertService.listNotResolved(filter).forEach(alert -> alerts.add(Json.toJson(alert)));
+    List<Alert> alerts = alertService.listNotResolved(filter);
     return YWResults.withData(alerts);
+  }
+
+  @ApiOperation(value = "pageAlerts", response = AlertPagedResponse.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PageAlertsRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.paging.AlertPagedApiQuery",
+          required = true))
+  public Result pageAlerts(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertPagedApiQuery apiQuery =
+        Json.fromJson(request().body().asJson(), AlertPagedApiQuery.class);
+    AlertApiFilter apiFilter = apiQuery.getFilter();
+    AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
+    AlertPagedQuery query = apiQuery.copyWithFilter(filter, AlertPagedQuery.class);
+
+    AlertPagedResponse alerts = alertService.pagedList(query);
+
+    return YWResults.withData(alerts);
+  }
+
+  @ApiOperation(value = "acknowledgeAlerts", response = Alert.class, responseContainer = "List")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "AcknowledgeAlertsRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
+          required = true))
+  public Result acknowledge(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertApiFilter apiFilter = Json.fromJson(request().body().asJson(), AlertApiFilter.class);
+    AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
+
+    alertService.acknowledge(filter);
+    return YWResults.YWSuccess.empty();
   }
 
   @ApiOperation(value = "getDefinitionGroup", response = AlertDefinitionGroup.class)
@@ -86,13 +129,14 @@ public class AlertController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "ListTemplatesRequest",
           paramType = "body",
-          dataType = "com.yugabyte.yw.models.filters.AlertDefinitionTemplateFilter",
+          dataType = "com.yugabyte.yw.forms.filters.AlertDefinitionTemplateApiFilter",
           required = true))
   public Result listDefinitionGroupTemplates(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinitionTemplateFilter filter =
-        Json.fromJson(request().body().asJson(), AlertDefinitionTemplateFilter.class);
+    AlertDefinitionTemplateApiFilter apiFilter =
+        Json.fromJson(request().body().asJson(), AlertDefinitionTemplateApiFilter.class);
+    AlertDefinitionTemplateFilter filter = apiFilter.toFilter();
 
     List<AlertDefinitionGroup> groups =
         Arrays.stream(AlertDefinitionTemplate.values())
@@ -109,14 +153,18 @@ public class AlertController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "PageDefinitionGroupsRequest",
           paramType = "body",
-          dataType = "com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedQuery",
+          dataType = "com.yugabyte.yw.forms.paging.AlertDefinitionGroupPagedApiQuery",
           required = true))
   public Result pageDefinitionGroups(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
+    AlertDefinitionGroupPagedApiQuery apiQuery =
+        Json.fromJson(request().body().asJson(), AlertDefinitionGroupPagedApiQuery.class);
+    AlertDefinitionGroupApiFilter apiFilter = apiQuery.getFilter();
+    AlertDefinitionGroupFilter filter =
+        apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
     AlertDefinitionGroupPagedQuery query =
-        Json.fromJson(request().body().asJson(), AlertDefinitionGroupPagedQuery.class);
-    query.setFilter(query.getFilter().toBuilder().customerUuid(customerUUID).build());
+        apiQuery.copyWithFilter(filter, AlertDefinitionGroupPagedQuery.class);
 
     AlertDefinitionGroupPagedResponse groups = alertDefinitionGroupService.pagedList(query);
 
@@ -131,13 +179,15 @@ public class AlertController extends AuthenticatedController {
       @ApiImplicitParam(
           name = "ListGroupsRequest",
           paramType = "body",
-          dataType = "com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter",
+          dataType = "com.yugabyte.yw.forms.filters.AlertDefinitionGroupApiFilter",
           required = true))
   public Result listDefinitionGroups(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
+    AlertDefinitionGroupApiFilter apiFilter =
+        Json.fromJson(request().body().asJson(), AlertDefinitionGroupApiFilter.class);
     AlertDefinitionGroupFilter filter =
-        Json.fromJson(request().body().asJson(), AlertDefinitionGroupFilter.class);
+        apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
     List<AlertDefinitionGroup> groups = alertDefinitionGroupService.list(filter);
 
@@ -442,5 +492,15 @@ public class AlertController extends AuthenticatedController {
   public Result listAlertRoutes(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return YWResults.withData(AlertRoute.listByCustomer(customerUUID));
+  }
+
+  @VisibleForTesting
+  void setAlertDefinitionGroupService(AlertDefinitionGroupService alertDefinitionGroupService) {
+    this.alertDefinitionGroupService = alertDefinitionGroupService;
+  }
+
+  @VisibleForTesting
+  void setAlertService(AlertService alertService) {
+    this.alertService = alertService;
   }
 }

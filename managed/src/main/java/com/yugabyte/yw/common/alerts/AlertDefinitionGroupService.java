@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.yugabyte.yw.models.AlertDefinitionGroup.createQueryByFilter;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
@@ -84,6 +85,7 @@ public class AlertDefinitionGroupService {
 
     if (toCreateAndUpdate.containsKey(CREATE)) {
       List<AlertDefinitionGroup> toCreate = toCreateAndUpdate.get(CREATE);
+      toCreate.forEach(group -> group.setCreateTime(nowWithoutMillis()));
       toCreate.forEach(AlertDefinitionGroup::generateUUID);
       AlertDefinitionGroup.db().saveAll(toCreate);
     }
@@ -106,7 +108,7 @@ public class AlertDefinitionGroupService {
 
   public AlertDefinitionGroup get(UUID uuid) {
     if (uuid == null) {
-      throw new IllegalArgumentException("Can't get Alert Definition Group by null uuid");
+      throw new YWServiceException(BAD_REQUEST, "Can't get Alert Definition Group by null uuid");
     }
     return list(AlertDefinitionGroupFilter.builder().uuid(uuid).build())
         .stream()
@@ -171,42 +173,51 @@ public class AlertDefinitionGroupService {
 
   private void validate(AlertDefinitionGroup group, AlertDefinitionGroup before) {
     if (group.getCustomerUUID() == null) {
-      throw new IllegalArgumentException("Customer UUID field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
     if (StringUtils.isEmpty(group.getName())) {
-      throw new IllegalArgumentException("Name field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Name field is mandatory");
     }
     if (group.getTargetType() == null) {
-      throw new IllegalArgumentException("Target type field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Target type field is mandatory");
     }
     if (group.getTarget() == null) {
-      throw new IllegalArgumentException("Target field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Target field is mandatory");
     }
     AlertDefinitionGroupTarget target = group.getTarget();
     if (target.isAll() != CollectionUtils.isEmpty(target.getUuids())) {
-      throw new IllegalArgumentException(
-          "Should select either all entries or particular UUIDs as target");
+      throw new YWServiceException(
+          BAD_REQUEST, "Should select either all entries or particular UUIDs as target");
     }
     if (group.getTemplate() == null) {
-      throw new IllegalArgumentException("Template field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Template field is mandatory");
     }
     if (MapUtils.isEmpty(group.getThresholds())) {
-      throw new IllegalArgumentException("Query thresholds are mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Query thresholds are mandatory");
     }
     if (group.getRouteUUID() != null
         && AlertRoute.get(group.getCustomerUUID(), group.getRouteUUID()) == null) {
-      throw new IllegalArgumentException("Alert route " + group.getRouteUUID() + " is missing");
+      throw new YWServiceException(
+          BAD_REQUEST, "Alert route " + group.getRouteUUID() + " is missing");
+    }
+    if (group.getThresholdUnit() == null) {
+      throw new YWServiceException(BAD_REQUEST, "Threshold unit is mandatory");
+    }
+    if (group.getThresholdUnit() != group.getTemplate().getDefaultThresholdUnit()) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Can't set threshold unit incompatible with alert definition template");
     }
     if (before != null) {
       if (!group.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new IllegalArgumentException(
-            "Can't change customer UUID for group " + group.getUuid());
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change customer UUID for group " + group.getUuid());
       }
       if (!group.getTargetType().equals(before.getTargetType())) {
-        throw new IllegalArgumentException("Can't change target type for group " + group.getUuid());
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change target type for group " + group.getUuid());
       }
     } else if (!group.isNew()) {
-      throw new IllegalArgumentException("Can't update missing group " + group.getUuid());
+      throw new YWServiceException(BAD_REQUEST, "Can't update missing group " + group.getUuid());
     }
   }
 
@@ -346,6 +357,7 @@ public class AlertDefinitionGroupService {
                                     runtimeConfigFactory
                                         .globalRuntimeConf()
                                         .getDouble(e.getValue())))))
+        .setThresholdUnit(template.getDefaultThresholdUnit())
         .setTemplate(template)
         .setDurationSec(template.getDefaultDurationSec());
   }
