@@ -35,19 +35,20 @@ public class AuditController extends AuthenticatedController {
     return YWResults.withData(auditList);
   }
 
-  /**
-   * GET endpoint for getting the user associated with a task.
-   *
-   * @return JSON response with the corresponding audit entry.
-   */
-  @ApiOperation(value = "get", response = Audit.class, responseContainer = "List")
+ 
+  @ApiOperation(value = "get", response = Audit.class)
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
     return YWResults.withData(entry);
   }
 
-  @ApiOperation(value = "get user from task", response = Audit.class, responseContainer = "List")
+  /**
+   * GET endpoint for getting the user associated with a task.
+   *
+   * @return JSON response with the corresponding audit entry.
+   */
+  @ApiOperation(value = "get user from task", response = Audit.class)
   public Result getUserFromTask(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);

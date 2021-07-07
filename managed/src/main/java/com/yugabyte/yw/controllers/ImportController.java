@@ -249,7 +249,7 @@ public class ImportController extends AuthenticatedController {
           addServersToUniverse(
               userMasterIpPorts, taskParams, provider, region, zone, true /*isMaster*/);
       results.checks.put("create_db_entry", "OK");
-      results.universeUUID = universe.universeUUID.toString();
+      results.universeUUID = universe.universeUUID;
     } catch (Exception e) {
       results.checks.put("create_db_entry", "FAILURE");
       results.error = e.getMessage();
@@ -274,7 +274,7 @@ public class ImportController extends AuthenticatedController {
     setImportedState(universe, ImportedState.MASTERS_ADDED);
 
     log.info("Done importing masters " + masterAddresses);
-    results.state = State.IMPORTED_MASTERS.toString();
+    results.state = State.IMPORTED_MASTERS;
     results.universeName = universeName;
     results.masterAddresses = masterAddresses;
 
@@ -299,7 +299,7 @@ public class ImportController extends AuthenticatedController {
     String masterAddresses = importForm.masterAddresses;
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
       results.error = "Valid universe uuid needs to be set instead of " + importForm.universeUUID;
-      throw new YWServiceException(BAD_REQUEST, results.error);
+      throw new YWServiceException(BAD_REQUEST, Json.toJson(results));
     }
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
@@ -312,12 +312,12 @@ public class ImportController extends AuthenticatedController {
               + curState.name()
               + " expecteed "
               + ImportedState.MASTERS_ADDED.name();
-      throw new YWServiceException(BAD_REQUEST, results.error);
+      throw new YWServiceException(BAD_REQUEST, Json.toJson(results));
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     // TODO: move this into a common location.
-    results.universeUUID = universe.universeUUID.toString();
+    results.universeUUID = universe.universeUUID;
 
     // ---------------------------------------------------------------------------------------------
     // Verify tservers count and list.
@@ -325,7 +325,7 @@ public class ImportController extends AuthenticatedController {
     Map<String, Integer> tservers_list = getTServers(masterAddresses, results);
     if (tservers_list.isEmpty()) {
       results.error = "No tservers known to the master leader in " + masterAddresses;
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results.error);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     // Record the count of the tservers.
@@ -349,7 +349,7 @@ public class ImportController extends AuthenticatedController {
           String.format(
               "Providers for the customer: %s and type: %s" + " are not present",
               customer.uuid, importForm.providerType);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results.error);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     Region region = Region.getByCode(provider, importForm.regionCode);
@@ -377,14 +377,14 @@ public class ImportController extends AuthenticatedController {
     waitForTserverHBs.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(waitForTserverHBs, "check_tserver_heartbeats", results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results.error);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     log.info("Verified " + tservers_list.size() + " tservers present and imported them.");
 
     setImportedState(universe, ImportedState.TSERVERS_ADDED);
 
-    results.state = State.IMPORTED_TSERVERS.toString();
+    results.state = State.IMPORTED_TSERVERS;
     results.masterAddresses = masterAddresses;
     results.universeName = importForm.universeName;
 
@@ -417,7 +417,7 @@ public class ImportController extends AuthenticatedController {
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     // TODO: move to common location.
-    results.universeUUID = universe.universeUUID.toString();
+    results.universeUUID = universe.universeUUID;
 
     // ---------------------------------------------------------------------------------------------
     // Configure metrics.
@@ -430,7 +430,7 @@ public class ImportController extends AuthenticatedController {
     createPrometheusSwamperConfig.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(createPrometheusSwamperConfig, "create_prometheus_config", results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results.error);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -474,7 +474,7 @@ public class ImportController extends AuthenticatedController {
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
 
-    results.state = State.FINISHED.toString();
+    results.state = State.FINISHED;
 
     log.info("Completed " + universe.universeUUID + " import.");
 

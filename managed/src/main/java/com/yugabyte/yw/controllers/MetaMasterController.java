@@ -41,8 +41,7 @@ public class MetaMasterController extends Controller {
 
   @ApiOperation(
       value = "get masters list",
-      response = MastersList.class,
-      responseContainer = "List")
+      response = MastersList.class)
   public Result get(UUID universeUUID) {
     // Lookup the entry for the instanceUUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -71,13 +70,11 @@ public class MetaMasterController extends Controller {
 
   @ApiOperation(
       value = "get redis server address",
-      response = String.class,
-      responseContainer = "List")
+      response = String.class)
   public Result getRedisServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.REDISSERVER);
   }
 
-  @ApiOperation(value = "get server address according to the server type", response = String.class)
   private Result getServerAddresses(UUID customerUUID, UUID universeUUID, ServerType type) {
     // Verify the customer with this universe is present.
     Customer.getOrBadRequest(customerUUID);

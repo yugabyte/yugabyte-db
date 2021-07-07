@@ -1,18 +1,21 @@
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
-import play.libs.Json;
+import com.yugabyte.yw.forms.ImportUniverseFormData.State;
 
 public class ImportUniverseResponseData {
 
-  public String state;
+  public State state;
   public String masterAddresses;
   public String universeName;
-  public ObjectNode checks = Json.newObject();
+  public Map<String,String> checks = new HashMap<>();
   public String error;
-  public String universeUUID;
+  public UUID universeUUID;
+  @Deprecated
   public int tservers_count;
-  public ArrayNode tservers_list = Json.newArray();
+  public  List<String> tservers_list;
 }

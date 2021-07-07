@@ -39,7 +39,7 @@ public class CertificateController extends AuthenticatedController {
 
   @Inject ValidatingFormFactory formFactory;
 
-  @ApiOperation(value = "restore Backups", response = UUID.class, responseContainer = "Restore")
+  @ApiOperation(value = "restore Backups", response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "certificate",

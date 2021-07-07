@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.YWResults;
@@ -146,8 +147,8 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "create Instance type",
-      response = YWResults.class,
-      responseContainer = "Map")
+      response = InstanceType.class
+    )
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "instance type",
@@ -198,8 +199,8 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "get instance type through instance type code.",
-      response = YWResults.class,
-      responseContainer = "Map")
+      response = InstanceType.class
+     )
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
@@ -216,13 +217,11 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of EBS volumes.
    */
-  @ApiOperation(value = "get EBS types", response = Result.class, responseContainer = "List")
+  @ApiOperation(value = "get EBS types", response = StorageType.class, responseContainer = "List")
   public Result getEBSTypes() {
-    return ok(
-        Json.toJson(
-            Arrays.stream(PublicCloudConstants.StorageType.values())
+                return YWResults.withData(Arrays.stream(PublicCloudConstants.StorageType.values())
                 .filter(name -> name.getCloudType().equals(Common.CloudType.aws))
-                .toArray()));
+                .toArray());
   }
 
   /**
@@ -230,13 +229,12 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of GCP disks.
    */
-  @ApiOperation(value = "get GCP types", response = Result.class, responseContainer = "List")
+  @ApiOperation(value = "get GCP types", response = StorageType.class, responseContainer = "List")
   public Result getGCPTypes() {
-    return ok(
-        Json.toJson(
-            Arrays.stream(PublicCloudConstants.StorageType.values())
+
+    return YWResults.withData(Arrays.stream(PublicCloudConstants.StorageType.values())
                 .filter(name -> name.getCloudType().equals(Common.CloudType.gcp))
-                .toArray()));
+                .toArray());
   }
 
   /**
@@ -244,12 +242,11 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of AZU disks.
    */
-  @ApiOperation(value = "get AZU types", response = Result.class, responseContainer = "List")
+  @ApiOperation(value = "get AZU types", response = StorageType.class, responseContainer = "List")
   public Result getAZUTypes() {
-    return ok(
-        Json.toJson(
+    return YWResults.withData(
             Arrays.stream(PublicCloudConstants.StorageType.values())
                 .filter(name -> name.getCloudType().equals(Common.CloudType.azu))
-                .toArray()));
+                .toArray());
   }
 }

@@ -83,7 +83,7 @@ public class Audit extends Model {
 
   @ApiModelProperty(
       value = "Api call",
-      example = "/api/v1/customers/<UUID>/providers",
+      example = "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
       accessMode = READ_ONLY)
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
