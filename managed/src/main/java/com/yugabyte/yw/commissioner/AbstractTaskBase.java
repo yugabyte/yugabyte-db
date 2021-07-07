@@ -21,7 +21,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -219,7 +218,7 @@ public abstract class AbstractTaskBase implements ITask {
         new Alert()
             .setCustomerUUID(customer.getUuid())
             .setErrCode(KnownAlertCodes.TASK_FAILURE)
-            .setType(KnownAlertTypes.Error)
+            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage(content)
             .setSendEmail(true)
             .setLabels(labelsBuilder.getAlertLabels());

@@ -10,6 +10,7 @@
 package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -17,19 +18,20 @@ import lombok.*;
 
 import java.util.*;
 
-@Data
+@Value
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class AlertFilter {
-  private Set<UUID> uuids;
-  private Set<UUID> excludeUuids;
-  private UUID customerUuid;
-  private String errorCode;
-  private Set<Alert.State> states;
-  private Set<Alert.State> targetStates;
-  private Set<UUID> definitionUuids;
-  private AlertLabel label;
+  Set<UUID> uuids;
+  Set<UUID> excludeUuids;
+  UUID customerUuid;
+  String errorCode;
+  Set<Alert.State> states;
+  Set<Alert.State> targetStates;
+  Set<UUID> definitionUuids;
+  UUID groupUuid;
+  AlertDefinitionGroup.Severity severity;
+  AlertDefinitionGroup.TargetType groupType;
+  AlertLabel label;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -58,6 +60,15 @@ public class AlertFilter {
     }
     if (definitionUuids != null) {
       result.definitionUuids(definitionUuids);
+    }
+    if (groupUuid != null) {
+      result.groupUuid(groupUuid);
+    }
+    if (severity != null) {
+      result.severity(severity);
+    }
+    if (groupType != null) {
+      result.groupType(groupType);
     }
     return result;
   }
@@ -146,6 +157,16 @@ public class AlertFilter {
 
     public AlertFilterBuilder definitionUuids(Collection<UUID> definitionUuids) {
       this.definitionUuids = new HashSet<>(definitionUuids);
+      return this;
+    }
+
+    public AlertFilterBuilder severity(@NonNull AlertDefinitionGroup.Severity severity) {
+      this.severity = severity;
+      return this;
+    }
+
+    public AlertFilterBuilder groupType(@NonNull AlertDefinitionGroup.TargetType groupType) {
+      this.groupType = groupType;
       return this;
     }
   }

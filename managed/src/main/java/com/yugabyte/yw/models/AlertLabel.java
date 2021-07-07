@@ -22,8 +22,8 @@ import java.util.Objects;
 
 @Entity
 @Data
-@EqualsAndHashCode(exclude = "alert", callSuper = false)
-@ToString(exclude = "alert")
+@EqualsAndHashCode(callSuper = false)
+@ToString
 public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> {
 
   @EmbeddedId private AlertLabelKey key;
@@ -34,6 +34,8 @@ public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> 
   @ManyToOne
   @MapsId("alert")
   @JsonIgnore
+  @EqualsAndHashCode.Exclude
+  @ToString.Exclude
   private Alert alert;
 
   public AlertLabel() {

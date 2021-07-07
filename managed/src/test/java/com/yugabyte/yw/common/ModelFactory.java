@@ -15,8 +15,8 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import play.libs.Json;
@@ -273,6 +273,7 @@ public class ModelFactory {
                     new AlertDefinitionGroupThreshold()
                         .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
                         .setThreshold(1)))
+            .setThresholdUnit(Unit.PERCENT)
             .generateUUID();
     modifier.accept(group);
     group.save();
@@ -320,14 +321,16 @@ public class ModelFactory {
         new Alert()
             .setCustomerUUID(customer.getUuid())
             .setErrCode(code)
-            .setType(KnownAlertTypes.Error)
+            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .setSendEmail(true)
             .generateUUID();
     if (definition != null) {
       AlertDefinitionGroup group =
           AlertDefinitionGroup.db().find(AlertDefinitionGroup.class, definition.getGroupUUID());
-      alert.setDefinitionUUID(definition.getUuid());
+      alert.setGroupUuid(definition.getGroupUUID());
+      alert.setGroupType(group.getTargetType());
+      alert.setDefinitionUuid(definition.getUuid());
       List<AlertLabel> labels =
           definition
               .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)

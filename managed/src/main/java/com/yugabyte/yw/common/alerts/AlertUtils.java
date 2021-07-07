@@ -58,7 +58,7 @@ public class AlertUtils {
   public static String getNotificationText(Alert alert, AlertReceiver receiver) {
     String template = receiver.getParams().textTemplate;
     if (StringUtils.isEmpty(template)) {
-      if (alert.getDefinitionUUID() == null) {
+      if (alert.getDefinitionUuid() == null) {
         return getDefaultNotificationText(alert);
       }
       template = DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;

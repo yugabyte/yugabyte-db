@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Rule;
@@ -240,7 +239,8 @@ public class QueryAlertsTest extends FakeDBApplication {
         createAlert(raisedTime, true)
             .setUuid(alert.getUuid())
             .setState(Alert.State.RESOLVED)
-            .setTargetState(Alert.State.RESOLVED);
+            .setTargetState(Alert.State.RESOLVED)
+            .setResolvedTime(alerts.get(0).getResolvedTime());
     assertThat(alerts, contains(expectedAlert));
   }
 
@@ -249,18 +249,21 @@ public class QueryAlertsTest extends FakeDBApplication {
         new Alert()
             .setCreateTime(Date.from(raisedTime.toInstant()))
             .setCustomerUUID(customer.getUuid())
-            .setDefinitionUUID(definition.getUuid())
+            .setDefinitionUuid(definition.getUuid())
             .setErrCode(KnownAlertCodes.CUSTOMER_ALERT)
-            .setType(KnownAlertTypes.Error)
+            .setGroupUuid(definition.getGroupUUID())
+            .setGroupType(AlertDefinitionGroup.TargetType.UNIVERSE)
+            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage("Clock Skew Alert for universe Test is firing")
             .setSendEmail(true)
             .setState(Alert.State.ACTIVE)
             .setTargetState(Alert.State.ACTIVE)
             .setLabel(KnownAlertLabels.CUSTOMER_UUID, customer.getUuid().toString())
             .setLabel(KnownAlertLabels.DEFINITION_UUID, definition.getUuid().toString())
+            .setLabel(KnownAlertLabels.GROUP_UUID, definition.getGroupUUID().toString())
+            .setLabel(KnownAlertLabels.GROUP_TYPE, AlertDefinitionGroup.TargetType.UNIVERSE.name())
             .setLabel(KnownAlertLabels.DEFINITION_NAME, "Clock Skew Alert")
             .setLabel(KnownAlertLabels.ERROR_CODE, KnownAlertCodes.CUSTOMER_ALERT.name())
-            .setLabel(KnownAlertLabels.ALERT_TYPE, KnownAlertTypes.Error.name())
             .setLabel(KnownAlertLabels.SEVERITY, AlertDefinitionGroup.Severity.SEVERE.name());
     if (!defaults) {
       expectedAlert.setLabel(KnownAlertLabels.DEFINITION_ACTIVE, "true");
@@ -277,12 +280,13 @@ public class QueryAlertsTest extends FakeDBApplication {
     Map<String, String> labels = new HashMap<>();
     labels.put("customer_uuid", customer.getUuid().toString());
     labels.put("definition_uuid", definition.getUuid().toString());
+    labels.put("group_uuid", definition.getGroupUUID().toString());
+    labels.put("group_type", "UNIVERSE");
     labels.put("definition_name", "Clock Skew Alert");
     labels.put("severity", severity.name());
     if (!defaults) {
       labels.put("definition_active", "true");
       labels.put("error_code", KnownAlertCodes.CUSTOMER_ALERT.name());
-      labels.put("alert_type", KnownAlertTypes.Error.name());
     }
     return AlertData.builder()
         .activeAt(raisedTime.withZoneSameInstant(ZoneId.of("UTC")))

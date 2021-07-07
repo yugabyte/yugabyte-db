@@ -12,18 +12,13 @@ package com.yugabyte.yw.models.filters;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
-@Data
+@Value
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class AlertDefinitionTemplateFilter {
-  private String name;
-  private AlertDefinitionGroup.TargetType targetType;
+  String name;
+  AlertDefinitionGroup.TargetType targetType;
 
   @JsonIgnore
   public boolean matches(AlertDefinitionTemplate template) {

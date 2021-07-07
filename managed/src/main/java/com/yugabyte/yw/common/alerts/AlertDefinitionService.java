@@ -88,7 +88,7 @@ public class AlertDefinitionService {
 
   public AlertDefinition get(UUID uuid) {
     if (uuid == null) {
-      throw new IllegalArgumentException("Can't get alert definition by null uuid");
+      throw new YWServiceException(BAD_REQUEST, "Can't get alert definition by null uuid");
     }
     return list(AlertDefinitionFilter.builder().uuid(uuid).build())
         .stream()
@@ -139,21 +139,22 @@ public class AlertDefinitionService {
 
   private void validate(AlertDefinition definition, AlertDefinition before) {
     if (definition.getCustomerUUID() == null) {
-      throw new IllegalArgumentException("Customer UUID field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
     if (definition.getGroupUUID() == null) {
-      throw new IllegalArgumentException("Group UUID field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Group UUID field is mandatory");
     }
     if (StringUtils.isEmpty(definition.getQuery())) {
-      throw new IllegalArgumentException("Query field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Query field is mandatory");
     }
     if (before != null) {
       if (!definition.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new IllegalArgumentException(
-            "Can't change customer UUID for definition " + definition.getUuid());
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change customer UUID for definition " + definition.getUuid());
       }
     } else if (!definition.isNew()) {
-      throw new IllegalArgumentException("Can't update missing definition " + definition.getUuid());
+      throw new YWServiceException(
+          BAD_REQUEST, "Can't update missing definition " + definition.getUuid());
     }
   }
 }

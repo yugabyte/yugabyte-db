@@ -6,12 +6,12 @@ groups:
         for: 15s
         labels:
           group_uuid: <group_uuid>
+          group_type: UNIVERSE
           definition_uuid: <definition_uuid>
           definition_name: alertDefinitionGroup
           definition_active: true
           customer_uuid: <customer_uuid>
           error_code: CUSTOMER_ALERT
-          alert_type: Error
           severity: SEVERE
           universe_uuid: <universe_uuid>
           universe_name: Test Universe

@@ -18,16 +18,14 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-@Data
+@Value
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class AlertDefinitionFilter {
-  private Set<UUID> uuids;
-  private UUID customerUuid;
-  private Set<UUID> groupUuids;
-  private AlertDefinitionLabel label;
-  private Boolean configWritten;
+  Set<UUID> uuids;
+  UUID customerUuid;
+  Set<UUID> groupUuids;
+  AlertDefinitionLabel label;
+  Boolean configWritten;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.

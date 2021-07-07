@@ -5,10 +5,13 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
+import com.yugabyte.yw.models.common.Unit;
+import lombok.Getter;
 
 import java.util.EnumSet;
 import java.util.Map;
 
+@Getter
 public enum AlertDefinitionTemplate {
 
   // @formatter:off
@@ -24,7 +27,8 @@ public enum AlertDefinitionTemplate {
       EnumSet.noneOf(DefinitionSettings.class),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, "yb.alert.replication_lag_ms"),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN),
+      AlertDefinitionGroupThreshold.Condition.GREATER_THAN,
+      Unit.MILLISECOND),
 
   CLOCK_SKEW(
       "Clock Skew",
@@ -36,7 +40,8 @@ public enum AlertDefinitionTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, "yb.alert.max_clock_skew_ms"),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN),
+      AlertDefinitionGroupThreshold.Condition.GREATER_THAN,
+      Unit.MILLISECOND),
 
   MEMORY_CONSUMPTION(
       "Memory Consumption",
@@ -58,7 +63,8 @@ public enum AlertDefinitionTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, "yb.alert.max_memory_cons_pct"),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN);
+      AlertDefinitionGroupThreshold.Condition.GREATER_THAN,
+      Unit.PERCENT);
   // @formatter:on
 
   enum DefinitionSettings {
@@ -81,6 +87,8 @@ public enum AlertDefinitionTemplate {
 
   private final AlertDefinitionGroupThreshold.Condition defaultThresholdCondition;
 
+  private final Unit defaultThresholdUnit;
+
   /**
    * Prepares the template for further usage. Does a substitution for parameter '__nodePrefix__'.
    *
@@ -99,7 +107,8 @@ public enum AlertDefinitionTemplate {
       EnumSet<DefinitionSettings> settings,
       Map<AlertDefinitionGroup.Severity, String> defaultThresholdParamMap,
       AlertDefinitionGroup.TargetType targetType,
-      AlertDefinitionGroupThreshold.Condition defaultThresholdCondition) {
+      AlertDefinitionGroupThreshold.Condition defaultThresholdCondition,
+      Unit defaultThresholdUnit) {
     this.name = name;
     this.description = description;
     this.template = template;
@@ -108,37 +117,10 @@ public enum AlertDefinitionTemplate {
     this.defaultThresholdParamMap = defaultThresholdParamMap;
     this.targetType = targetType;
     this.defaultThresholdCondition = defaultThresholdCondition;
+    this.defaultThresholdUnit = defaultThresholdUnit;
   }
 
   public boolean isCreateForNewCustomer() {
     return settings.contains(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER);
-  }
-
-  public String getName() {
-    return name;
-  }
-
-  public String getDescription() {
-    return description;
-  }
-
-  public Map<AlertDefinitionGroup.Severity, String> getDefaultThresholdParamMap() {
-    return defaultThresholdParamMap;
-  }
-
-  public String getTemplate() {
-    return template;
-  }
-
-  public AlertDefinitionGroup.TargetType getTargetType() {
-    return targetType;
-  }
-
-  public AlertDefinitionGroupThreshold.Condition getDefaultThresholdCondition() {
-    return defaultThresholdCondition;
-  }
-
-  public int getDefaultDurationSec() {
-    return defaultDurationSec;
   }
 }

@@ -15,14 +15,12 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
-
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.*;
-import org.apache.commons.collections.CollectionUtils;
 
 @Singleton
 @Slf4j
@@ -125,7 +123,7 @@ public class AlertManager {
         createOrUpdateAlertForCustomer(
             customer,
             "Unable to notify about alert(s), there is no default route specified.",
-            KnownAlertTypes.Error);
+            AlertDefinitionGroup.Severity.SEVERE);
         return;
       }
       resolveAlert(customer, customer.getUuid());
@@ -139,7 +137,7 @@ public class AlertManager {
             customer,
             "Unable to notify about alert(s) using default route, "
                 + "there are no recipients configured in the customer's profile.",
-            KnownAlertTypes.Warning);
+            AlertDefinitionGroup.Severity.WARNING);
         return;
       }
 
@@ -156,7 +154,10 @@ public class AlertManager {
         }
         report.failReceiver(receiver.getUuid());
         createOrUpdateAlertForReceiver(
-            customer, receiver, "Misconfigured alert receiver: " + e, KnownAlertTypes.Error);
+            customer,
+            receiver,
+            "Misconfigured alert receiver: " + e,
+            AlertDefinitionGroup.Severity.SEVERE);
         continue;
       }
 
@@ -172,7 +173,10 @@ public class AlertManager {
         }
         report.failReceiver(receiver.getUuid());
         createOrUpdateAlertForReceiver(
-            customer, receiver, "Error sending notification: " + e, KnownAlertTypes.Error);
+            customer,
+            receiver,
+            "Error sending notification: " + e,
+            AlertDefinitionGroup.Severity.SEVERE);
       }
     }
     if (!atLeastOneSucceeded) {
@@ -181,23 +185,23 @@ public class AlertManager {
   }
 
   private void createOrUpdateAlertForReceiver(
-      Customer c, AlertReceiver receiver, String details, KnownAlertTypes errorType) {
+      Customer c, AlertReceiver receiver, String details, AlertDefinitionGroup.Severity severity) {
     createOrUpdateAlert(
         c,
         receiver.getUuid(),
         details,
         AlertDefinitionLabelsBuilder.create().appendTarget(receiver).getAlertLabels(),
-        errorType);
+        severity);
   }
 
   private void createOrUpdateAlertForCustomer(
-      Customer c, String details, KnownAlertTypes errorType) {
+      Customer c, String details, AlertDefinitionGroup.Severity severity) {
     createOrUpdateAlert(
         c,
         c.getUuid(),
         details,
         AlertDefinitionLabelsBuilder.create().appendTarget(c).getAlertLabels(),
-        errorType);
+        severity);
   }
 
   private void createOrUpdateAlert(
@@ -205,7 +209,7 @@ public class AlertManager {
       UUID targetUUID,
       String details,
       List<AlertLabel> labels,
-      KnownAlertTypes errorType) {
+      AlertDefinitionGroup.Severity severity) {
     AlertFilter filter =
         AlertFilter.builder()
             .customerUuid(c.getUuid())
@@ -221,7 +225,7 @@ public class AlertManager {
                 new Alert()
                     .setCustomerUUID(c.getUuid())
                     .setErrCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-                    .setType(errorType));
+                    .setSeverity(severity));
     alert.setMessage(details).setLabels(labels);
     alertService.save(alert);
   }

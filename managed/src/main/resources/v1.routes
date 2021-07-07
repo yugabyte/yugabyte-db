@@ -119,6 +119,8 @@ POST    /customers/:cUUID/certificates/:rUUID/update_empty_cert                c
 # Alerts API
 GET     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alerts/active                                        com.yugabyte.yw.controllers.AlertController.listActive(cUUID: java.util.UUID)
+POST    /customers/:cUUID/alerts/page                                          com.yugabyte.yw.controllers.AlertController.pageAlerts(cUUID: java.util.UUID)
+POST    /customers/:cUUID/alerts/acknowledge                                   com.yugabyte.yw.controllers.AlertController.acknowledge(cUUID: java.util.UUID)
 POST    /customers/:cUUID/alert_definition_templates                           com.yugabyte.yw.controllers.AlertController.listDefinitionGroupTemplates(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_definition_groups/:groupUUID                   com.yugabyte.yw.controllers.AlertController.getDefinitionGroup(cUUID: java.util.UUID, groupUUID: java.util.UUID)
 POST    /customers/:cUUID/alert_definition_groups/page                         com.yugabyte.yw.controllers.AlertController.pageDefinitionGroups(cUUID: java.util.UUID)

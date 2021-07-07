@@ -14,7 +14,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -102,6 +101,8 @@ public class AlertDefinition extends Model {
     effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.GROUP_UUID, group.getUuid().toString()));
     effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.GROUP_TYPE, group.getTargetType().name()));
+    effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_UUID, uuid.toString()));
     effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, group.getName()));
@@ -113,8 +114,6 @@ public class AlertDefinition extends Model {
     effectiveLabels.add(
         new AlertDefinitionLabel(
             this, KnownAlertLabels.ERROR_CODE, KnownAlertCodes.CUSTOMER_ALERT.name()));
-    effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.ALERT_TYPE, KnownAlertTypes.Error.name()));
     effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.SEVERITY, severity.name()));
     effectiveLabels.addAll(labels);
     return effectiveLabels;
