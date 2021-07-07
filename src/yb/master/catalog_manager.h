@@ -805,7 +805,7 @@ class CatalogManager :
 
   void CheckTableDeleted(const TableInfoPtr& table);
 
-  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) const override;
+  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) override;
 
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
@@ -1279,6 +1279,11 @@ class CatalogManager :
   // Respect leader affinity with master sys catalog tablet by stepping down if we don't match
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
+
+  virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
+    // Default value.
+    return false;
+  }
 
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntry::Type type) {

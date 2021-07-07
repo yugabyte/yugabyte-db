@@ -50,7 +50,7 @@ int32 GetCandidateQueueLimit() {
 } // namespace
 
 TabletSplitManager::TabletSplitManager(
-    const TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver):
+    TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver):
     filter_(filter),
     driver_(driver) {}
 

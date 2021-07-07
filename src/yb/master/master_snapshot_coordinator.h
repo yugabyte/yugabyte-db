@@ -109,6 +109,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntry::Type type);
 
+  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
+
   void Start();
 
   void Shutdown();

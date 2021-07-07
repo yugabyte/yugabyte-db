@@ -32,7 +32,7 @@ namespace master {
 
 class TabletSplitManager {
  public:
-  TabletSplitManager(const TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver);
+  TabletSplitManager(TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver);
 
   CHECKED_STATUS ScheduleSplitIfNeeded(
       const TabletInfo& tablet_info, const TabletServerId& drive_info_ts_uuid,
@@ -45,7 +45,7 @@ class TabletSplitManager {
  private:
   void ProcessQueuedSplitItems();
 
-  const TabletSplitCandidateFilterIf* filter_;
+  TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;
 
   std::mutex mutex_;

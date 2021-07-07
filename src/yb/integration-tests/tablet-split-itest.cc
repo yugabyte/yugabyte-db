@@ -20,6 +20,7 @@
 #include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/session.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
 
@@ -287,6 +288,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
 
 class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
  public:
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
   void SetUp() override {
     FLAGS_cleanup_split_tablets_interval_sec = 1;
     FLAGS_enable_automatic_tablet_splitting = false;
@@ -306,6 +308,9 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
     // based on flushed SST files size.
     FLAGS_db_write_buffer_size = 100_KB;
     TabletSplitITestBase<MiniCluster>::SetUp();
+    snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
+    snapshot_util_->SetProxy(&client_->proxy_cache());
+    snapshot_util_->SetCluster(cluster_.get());
   }
 
   Result<TabletId> CreateSingleTabletAndSplit(size_t num_rows) {
@@ -1426,6 +1431,29 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
 
   rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table2));
   ASSERT_EQ(rows_count, kNumRows);
+}
+
+TEST_F(TabletSplitITest, SplittingWithPitr) {
+  FLAGS_TEST_validate_all_tablet_candidates = false;
+  constexpr auto kNumRows = 500;
+
+  CreateSingleTablet();
+  LOG(INFO) << "Created a single tablet";
+
+  // Schedule snapshots on this namespace.
+  auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+
+  LOG(INFO) << "Scheduled a snapshot for table "
+            << table_.name().table_name() << " with schedule id "
+            << id;
+
+  // Try splitting this tablet.
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  LOG(INFO) << "Wrote 500 rows to table "
+            << table_.name().table_name();
+  const auto s = SplitTabletAndValidate(split_hash_code, kNumRows);
+  ASSERT_NOK(s);
+  EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
 }
 
 class TabletSplitYedisTableTest : public integration_tests::RedisTableTestBase {

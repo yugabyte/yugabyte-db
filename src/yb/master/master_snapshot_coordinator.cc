@@ -26,6 +26,7 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_schedule_state.h"
@@ -546,6 +547,23 @@ class MasterSnapshotCoordinator::Impl {
       std::sort(ids.begin(), ids.end());
     }
     return result;
+  }
+
+  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) {
+    auto lock = table_info.LockForRead();
+    {
+      std::lock_guard<std::mutex> l(mutex_);
+      for (const auto& schedule : schedules_) {
+        for (const auto& table_identifier : schedule->options().filter().tables().tables()) {
+          if (VERIFY_RESULT(TableMatchesIdentifier(table_info.id(),
+                                                   lock->pb,
+                                                   table_identifier))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   void Start() {
@@ -1234,6 +1252,11 @@ Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* r
 Result<SnapshotSchedulesToObjectIdsMap>
     MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::Type type) {
   return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
+}
+
+Result<bool> MasterSnapshotCoordinator::IsTableCoveredBySomeSnapshotSchedule(
+    const TableInfo& table_info) {
+  return impl_->IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
 
 void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t term) {

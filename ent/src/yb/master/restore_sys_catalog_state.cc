@@ -21,6 +21,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/util/pb_util.h"
@@ -153,42 +154,6 @@ Status RestoreSysCatalogState::DetermineEntries(
   return Status::OK();
 }
 
-Result<bool> RestoreSysCatalogState::Objects::TableMatchesIdentifier(
-    const TableId& id, const SysTablesEntryPB& table,
-    const TableIdentifierPB& table_identifier) const {
-  VLOG_WITH_FUNC(4) << "id: " << id << ", table: " << table.ShortDebugString()
-                    << ", table_identifier: " << table_identifier.ShortDebugString();
-
-  if (table_identifier.has_table_id()) {
-    return id == table_identifier.table_id();
-  }
-  if (!table_identifier.table_name().empty() && table_identifier.table_name() != table.name()) {
-    return false;
-  }
-  if (table_identifier.has_namespace_()) {
-    auto namespace_it = namespaces.find(table.namespace_id());
-    if (namespace_it == namespaces.end()) {
-      return STATUS_FORMAT(Corruption, "Namespace $0 was not loaded", table.namespace_id());
-    }
-
-    const auto& ns = table_identifier.namespace_();
-    if (ns.has_id()) {
-      return table.namespace_id() == ns.id();
-    }
-    if (ns.has_database_type() && ns.database_type() != namespace_it->second.database_type()) {
-      return false;
-    }
-    if (ns.has_name()) {
-      return table.namespace_name() == ns.name();
-    }
-
-    return STATUS_FORMAT(
-      InvalidArgument, "Wrong namespace identifier format: $0", ns);
-  }
-  return STATUS_FORMAT(
-    InvalidArgument, "Wrong table identifier format: $0", table_identifier);
-}
-
 std::string RestoreSysCatalogState::Objects::SizesToString() const {
   return Format("{ tablets: $0 tables: $1 namespaces: $2 }",
                 tablets.size(), tables.size(), namespaces.size());
@@ -204,7 +169,7 @@ Result<bool> RestoreSysCatalogState::Objects::MatchTable(
     return false;
   }
   for (const auto& table_identifier : filter.tables().tables()) {
-    if (VERIFY_RESULT(TableMatchesIdentifier(id, table, table_identifier))) {
+    if (VERIFY_RESULT(master::TableMatchesIdentifier(id, table, table_identifier))) {
       return true;
     }
   }
