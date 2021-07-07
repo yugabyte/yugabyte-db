@@ -119,6 +119,56 @@ DEFINE_int32(priority_thread_pool_size, -1,
              "If -1 and max_background_compactions is specified - use max_background_compactions. "
              "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
+DEFINE_string(compression_type, "Snappy",
+              "On-disk compression type to use in RocksDB."
+              "By default, Snappy is used if supported.");
+
+namespace yb {
+namespace {
+
+Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string& flag_value) {
+  if (!FLAGS_enable_ondisk_compression) {
+    return rocksdb::kNoCompression;
+  }
+  const std::vector<rocksdb::CompressionType> kValidRocksDBCompressionTypes = {
+    rocksdb::kNoCompression,
+    rocksdb::kSnappyCompression,
+    rocksdb::kLZ4Compression
+  };
+  for (const auto& compression_type : kValidRocksDBCompressionTypes) {
+    if (flag_value == rocksdb::CompressionTypeToString(compression_type)) {
+      if (rocksdb::CompressionTypeSupported(compression_type)) {
+        return compression_type;
+      }
+      return STATUS_FORMAT(
+          InvalidArgument, "Configured compression type $0 is not supported.", flag_value);
+    }
+  }
+  return STATUS_FORMAT(
+      InvalidArgument, "Configured compression type $0 is not valid.", flag_value);
+}
+
+} // namespace
+} // namespace yb
+
+namespace {
+
+bool CompressionTypeValidator(const char* flagname, const std::string& flag_compression_type) {
+  auto res = yb::GetConfiguredCompressionType(flag_compression_type);
+  if (!res.ok()) {
+    // Below we CHECK_RESULT on the same value returned here, and validating the result here ensures
+    // that CHECK_RESULT will never fail once the process is running.
+    LOG(ERROR) << res.status().ToString();
+    return false;
+  }
+  return true;
+}
+
+} // namespace
+
+__attribute__((unused))
+DEFINE_validator(compression_type, &CompressionTypeValidator);
+
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -462,8 +512,9 @@ void InitRocksDBOptions(
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
   }
 
-  options->compression = rocksdb::Snappy_Supported() && FLAGS_enable_ondisk_compression
-      ? rocksdb::kSnappyCompression : rocksdb::kNoCompression;
+  // Since the flag validator for FLAGS_compression_type will fail if the result of this call is not
+  // OK, this CHECK_RESULT should never fail and is safe.
+  options->compression = CHECK_RESULT(GetConfiguredCompressionType(FLAGS_compression_type));
 
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),

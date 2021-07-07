@@ -8,19 +8,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.*;
-import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AlertReceiver.TargetType;
-import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -31,15 +26,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
@@ -47,10 +37,6 @@ import static play.test.Helpers.contentAsString;
 public class AlertControllerTest extends FakeDBApplication {
 
   private static final String ALERT_DEFINITION_NAME = "alertDefinition";
-
-  private static final String ALERT_RECEIVER_NAME = "Test AlertReceiver";
-
-  private static final String ALERT_ROUTE_NAME = "Test AlertRoute";
 
   private Customer customer;
 
@@ -62,11 +48,13 @@ public class AlertControllerTest extends FakeDBApplication {
 
   @Mock private ValidatingFormFactory formFactory;
 
-  @Spy private AlertDefinitionService alertDefinitionService;
-
   @InjectMocks private AlertController controller;
 
   private SmtpData defaultSmtp = EmailFixtures.createSmtpData();
+
+  private int alertReceiverIndex;
+
+  private int alertRouteIndex;
 
   @Before
   public void setUp() {
@@ -75,123 +63,6 @@ public class AlertControllerTest extends FakeDBApplication {
     authToken = user.createAuthToken();
 
     universe = ModelFactory.createUniverse();
-  }
-
-  @Test
-  public void testCreateDefinition_OkResult() {
-    AlertDefinitionFormData data = new AlertDefinitionFormData();
-    data.alertDefinitionUUID = UUID.randomUUID();
-    data.template = AlertDefinitionTemplate.CLOCK_SKEW;
-    data.name = ALERT_DEFINITION_NAME;
-    data.value = 1;
-    data.active = true;
-
-    Form<AlertDefinitionFormData> form = mock(Form.class);
-    when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
-    when(form.get()).thenReturn(data);
-
-    Result result = controller.createDefinition(customer.uuid, universe.universeUUID);
-    assertOk(result);
-
-    List<AlertDefinition> definitions =
-        alertDefinitionService.list(
-            AlertDefinitionFilter.builder()
-                .customerUuid(customer.uuid)
-                .name(data.name)
-                .label(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString())
-                .build());
-    assertThat(definitions, hasSize(1));
-
-    AlertDefinition definition = definitions.get(0);
-    assertThat(definition.getName(), equalTo(ALERT_DEFINITION_NAME));
-    assertThat(definition.isActive(), equalTo(true));
-    assertThat(definition.getQueryThreshold(), equalTo(1.0));
-  }
-
-  @Test
-  public void testCreateDefinition_ErrorResult() {
-    UUID customerUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> controller.createDefinition(customerUUID, UUID.randomUUID()));
-    AssertHelper.assertBadRequest(result, "Invalid Customer UUID:" + customerUUID);
-
-    Form<AlertDefinitionFormData> form = mock(Form.class);
-    when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
-    result = assertYWSE(() -> controller.createDefinition(customer.uuid, UUID.randomUUID()));
-    assertEquals(BAD_REQUEST, result.status());
-  }
-
-  @Test
-  public void testGetAlertDefinition_OkResult() {
-    AlertDefinition definition = ModelFactory.createAlertDefinition(customer, universe);
-    Result result =
-        controller.getAlertDefinition(customer.uuid, universe.universeUUID, ALERT_DEFINITION_NAME);
-    assertOk(result);
-
-    JsonNode definitionJson = Json.parse(contentAsString(result));
-    assertThat(definitionJson, notNullValue());
-    assertValue(definitionJson, "uuid", definition.getUuid().toString());
-    assertValue(definitionJson, "name", ALERT_DEFINITION_NAME);
-    assertValue(definitionJson, "query", "query < {{ query_threshold }}");
-  }
-
-  @Test
-  public void testGetAlertDefinition_ErrorResult() {
-    UUID customerUUID = UUID.randomUUID();
-    Result result =
-        assertYWSE(
-            () ->
-                controller.getAlertDefinition(
-                    customerUUID, UUID.randomUUID(), ALERT_DEFINITION_NAME));
-    AssertHelper.assertBadRequest(result, "Invalid Customer UUID:" + customerUUID);
-    result =
-        assertYWSE(
-            () ->
-                controller.getAlertDefinition(
-                    customer.uuid, universe.universeUUID, ALERT_DEFINITION_NAME));
-    AssertHelper.assertBadRequest(
-        result,
-        ALERT_DEFINITION_NAME
-            + " alert definition for customer "
-            + customer.uuid
-            + " and universe "
-            + universe.universeUUID
-            + " not found");
-  }
-
-  @Test
-  public void testUpdateAlertDefinition_OkResult() {
-    AlertDefinition definition = ModelFactory.createAlertDefinition(customer, universe);
-
-    // For FormData we are setting only used fields. This could be changed later.
-    AlertDefinitionFormData data = new AlertDefinitionFormData();
-    data.template = AlertDefinitionTemplate.CLOCK_SKEW;
-    data.value = 2;
-    data.active = false;
-
-    Form<AlertDefinitionFormData> form = mock(Form.class);
-    when(formFactory.getFormDataOrBadRequest(AlertDefinitionFormData.class)).thenReturn(form);
-    when(form.get()).thenReturn(data);
-
-    Result result = controller.updateAlertDefinition(customer.uuid, definition.getUuid());
-    assertOk(result);
-
-    definition = alertDefinitionService.get(definition.getUuid());
-    assertThat(definition, notNullValue());
-
-    assertThat(definition.isActive(), equalTo(false));
-    assertThat(definition.getQueryThreshold(), equalTo(2.0));
-  }
-
-  @Test
-  public void testUpdateAlertDefinition_ErrorResult() {
-    UUID definitionUUID = UUID.randomUUID();
-    UUID customerUUID = UUID.randomUUID();
-    Result result =
-        assertYWSE(() -> controller.updateAlertDefinition(customerUUID, definitionUUID));
-    AssertHelper.assertBadRequest(result, "Invalid Customer UUID:" + customerUUID);
-
-    result = assertYWSE(() -> controller.updateAlertDefinition(customer.uuid, definitionUUID));
-    AssertHelper.assertBadRequest(result, "Invalid Alert Definition UUID: " + definitionUUID);
   }
 
   private void checkEmptyAnswer(String url) {
@@ -209,7 +80,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private ObjectNode getAlertReceiverJson() {
     ObjectNode data = Json.newObject();
-    data.put("name", ALERT_RECEIVER_NAME);
+    data.put("name", getAlertReceiverName());
     data.put("params", Json.toJson(getAlertReceiverParamsForTests()));
     return data;
   }
@@ -270,7 +141,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     data));
 
     AssertHelper.assertBadRequest(
-        result, "Unable to create alert receiver: Email parameters: destinations are empty.");
+        result, "Email parameters: only one of defaultRecipients and recipients[] should be set.");
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_receivers");
   }
 
@@ -316,7 +187,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
     ObjectNode data = Json.newObject();
     data.put("alertReceiverUUID", createdReceiver.getUuid().toString())
-        .put("name", ALERT_RECEIVER_NAME)
+        .put("name", createdReceiver.getName())
         .put("params", Json.toJson(createdReceiver.getParams()));
 
     Result result =
@@ -344,7 +215,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
     ObjectNode data = Json.newObject();
     data.put("alertReceiverUUID", createdReceiver.getUuid().toString())
-        .put("name", ALERT_RECEIVER_NAME)
+        .put("name", createdReceiver.getName())
         .put("params", Json.toJson(createdReceiver.getParams()));
 
     Result result =
@@ -395,16 +266,71 @@ public class AlertControllerTest extends FakeDBApplication {
     AssertHelper.assertBadRequest(result, "Invalid Alert Receiver UUID: " + uuid.toString());
   }
 
-  private ObjectNode getAlertRouteJson() {
+  @Test
+  public void testDeleteAlertReceiver_LastReceiverInRoute_ErrorResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_receivers");
+
+    AlertRoute firstRoute = createAlertRoute(false);
+    assertNotNull(firstRoute.getUuid());
+
+    AlertRoute secondRoute = createAlertRoute(false);
+    assertNotNull(secondRoute.getUuid());
+
+    // Updating second route to have the same routes.
+    List<AlertReceiver> receivers = firstRoute.getReceiversList();
+    secondRoute.setReceiversList(receivers);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/" + customer.uuid + "/alert_routes/" + secondRoute.getUuid().toString(),
+            authToken,
+            Json.toJson(secondRoute));
+    assertEquals(OK, result.status());
+
+    result =
+        doRequestWithAuthToken(
+            "DELETE",
+            "/api/customers/"
+                + customer.uuid
+                + "/alert_receivers/"
+                + receivers.get(0).getUuid().toString(),
+            authToken);
+    assertEquals(OK, result.status());
+
+    result =
+        assertYWSE(
+            () ->
+                doRequestWithAuthToken(
+                    "DELETE",
+                    "/api/customers/"
+                        + customer.uuid
+                        + "/alert_receivers/"
+                        + receivers.get(1).getUuid().toString(),
+                    authToken));
+
+    AssertHelper.assertBadRequest(
+        result,
+        String.format(
+            "Unable to delete alert receiver: %s. 2 alert routes have it as a last receiver."
+                + " Examples: [%s, %s]",
+            receivers.get(1).getUuid(), firstRoute.getName(), secondRoute.getName()));
+  }
+
+  private ObjectNode getAlertRouteJson(boolean isDefault) {
     AlertReceiver receiver1 =
         AlertReceiver.create(
-            customer.uuid, ALERT_RECEIVER_NAME, AlertUtils.createParamsInstance(TargetType.Email));
+            customer.uuid,
+            getAlertReceiverName(),
+            AlertUtils.createParamsInstance(TargetType.Email));
     AlertReceiver receiver2 =
         AlertReceiver.create(
-            customer.uuid, ALERT_RECEIVER_NAME, AlertUtils.createParamsInstance(TargetType.Slack));
+            customer.uuid,
+            getAlertReceiverName(),
+            AlertUtils.createParamsInstance(TargetType.Slack));
 
     ObjectNode data = Json.newObject();
-    data.put("name", ALERT_ROUTE_NAME)
+    data.put("name", getAlertRouteName())
+        .put("defaultRoute", Boolean.valueOf(isDefault))
         .putArray("receivers")
         .add(receiver1.getUuid().toString())
         .add(receiver2.getUuid().toString());
@@ -424,17 +350,19 @@ public class AlertControllerTest extends FakeDBApplication {
               .collect(Collectors.toList());
 
       AlertRoute route = new AlertRoute();
-      route.setUUID(UUID.fromString(json.get("uuid").asText()));
+      route.setUuid(UUID.fromString(json.get("uuid").asText()));
       route.setName(json.get("name").asText());
+      route.setCustomerUUID(UUID.fromString(json.get("customerUUID").asText()));
       route.setReceiversList(receivers);
+      route.setDefaultRoute(json.get("defaultRoute").asBoolean());
       return route;
     } catch (IOException e) {
       return null;
     }
   }
 
-  private AlertRoute createAlertRoute() {
-    ObjectNode routeFormDataJson = getAlertRouteJson();
+  private AlertRoute createAlertRoute(boolean isDefault) {
+    ObjectNode routeFormDataJson = getAlertRouteJson(isDefault);
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
@@ -449,7 +377,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testCreateAlertRoute_OkResult() {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
 
-    AlertRoute createdRoute = createAlertRoute();
+    AlertRoute createdRoute = createAlertRoute(false);
     assertNotNull(createdRoute.getUuid());
 
     Result result =
@@ -466,7 +394,10 @@ public class AlertControllerTest extends FakeDBApplication {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
     ObjectNode data = Json.newObject();
     String alertReceiverUUID = UUID.randomUUID().toString();
-    data.put("name", ALERT_ROUTE_NAME).putArray("receivers").add(alertReceiverUUID);
+    data.put("name", getAlertRouteName())
+        .put("defaultRoute", Boolean.FALSE)
+        .putArray("receivers")
+        .add(alertReceiverUUID);
     Result result =
         assertYWSE(
             () ->
@@ -478,8 +409,21 @@ public class AlertControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateAlertRouteWithDefaultChange() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+
+    AlertRoute firstRoute = createAlertRoute(true);
+    assertNotNull(firstRoute.getUuid());
+    assertEquals(firstRoute, AlertRoute.getDefaultRoute(customer.uuid));
+
+    AlertRoute secondRoute = createAlertRoute(true);
+    assertNotNull(secondRoute.getUuid());
+    assertEquals(secondRoute, AlertRoute.getDefaultRoute(customer.uuid));
+  }
+
+  @Test
   public void testGetAlertRoute_OkResult() {
-    AlertRoute createdRoute = createAlertRoute();
+    AlertRoute createdRoute = createAlertRoute(false);
     assertNotNull(createdRoute.getUuid());
 
     Result result =
@@ -508,10 +452,65 @@ public class AlertControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpdateAlertRoute_AnotherDefaultRoute() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+
+    AlertRoute firstRoute = createAlertRoute(true);
+    assertNotNull(firstRoute.getUuid());
+    assertEquals(firstRoute, AlertRoute.getDefaultRoute(customer.uuid));
+
+    AlertRoute secondRoute = createAlertRoute(false);
+    assertNotNull(secondRoute.getUuid());
+    // To be sure the default route hasn't been changed.
+    assertEquals(firstRoute, AlertRoute.getDefaultRoute(customer.uuid));
+
+    secondRoute.setDefaultRoute(true);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/" + customer.uuid + "/alert_routes/" + secondRoute.getUuid().toString(),
+            authToken,
+            Json.toJson(secondRoute));
+    assertEquals(OK, result.status());
+    AlertRoute receivedRoute = routeFromJson(Json.parse(contentAsString(result)));
+
+    assertTrue(receivedRoute.isDefaultRoute());
+    assertEquals(secondRoute, AlertRoute.getDefaultRoute(customer.uuid));
+  }
+
+  @Test
+  public void testUpdateAlertRoute_ChangeDefaultFlag_ErrorResult() {
+    checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
+
+    AlertRoute route = createAlertRoute(true);
+    assertNotNull(route.getUuid());
+    assertEquals(route, AlertRoute.getDefaultRoute(customer.uuid));
+
+    route.setDefaultRoute(false);
+    Result result =
+        assertYWSE(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT",
+                    "/api/customers/"
+                        + customer.uuid
+                        + "/alert_routes/"
+                        + route.getUuid().toString(),
+                    authToken,
+                    Json.toJson(route)));
+    AssertHelper.assertBadRequest(
+        result,
+        "Can't set the alert route as non-default. Make another route as default at first.");
+    route.setDefaultRoute(true);
+    assertEquals(route, AlertRoute.getDefaultRoute(customer.uuid));
+  }
+
+  @Test
   public void testDeleteAlertRoute_OkResult() {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
 
-    AlertRoute createdRoute = createAlertRoute();
+    AlertRoute createdRoute = createAlertRoute(false);
     assertNotNull(createdRoute.getUuid());
 
     Result result =
@@ -528,7 +527,7 @@ public class AlertControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteAlertRoute_ErrorResult() {
+  public void testDeleteAlertRoute_InvalidUUID_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
         assertYWSE(
@@ -541,11 +540,30 @@ public class AlertControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteAlertRoute_DefaultRoute_ErrorResult() {
+    AlertRoute createdRoute = createAlertRoute(true);
+    String routeUUID = createdRoute.getUuid().toString();
+
+    Result result =
+        assertYWSE(
+            () ->
+                doRequestWithAuthToken(
+                    "DELETE",
+                    "/api/customers/" + customer.uuid + "/alert_routes/" + routeUUID,
+                    authToken));
+    AssertHelper.assertBadRequest(
+        result,
+        "Unable to delete default alert route "
+            + routeUUID
+            + ", make another route default at first.");
+  }
+
+  @Test
   public void testListAlertRoutes_OkResult() {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
 
-    AlertRoute createdRoute1 = createAlertRoute();
-    AlertRoute createdRoute2 = createAlertRoute();
+    AlertRoute createdRoute1 = createAlertRoute(false);
+    AlertRoute createdRoute2 = createAlertRoute(false);
 
     Result result =
         doRequestWithAuthToken(
@@ -559,5 +577,13 @@ public class AlertControllerTest extends FakeDBApplication {
     assertFalse(listedRoute1.equals(listedRoute2));
     assertTrue(listedRoute1.equals(createdRoute1) || listedRoute1.equals(createdRoute2));
     assertTrue(listedRoute2.equals(createdRoute1) || listedRoute2.equals(createdRoute2));
+  }
+
+  private String getAlertReceiverName() {
+    return "Test AlertReceiver " + (alertReceiverIndex++);
+  }
+
+  private String getAlertRouteName() {
+    return "Test AlertRoute " + (alertRouteIndex++);
   }
 }

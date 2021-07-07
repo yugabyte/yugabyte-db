@@ -233,6 +233,10 @@ DEFINE_test_flag(int32, transactional_read_delay_ms, 0,
 
 DEFINE_test_flag(int32, alter_schema_delay_ms, 0, "Delay before processing AlterSchema.");
 
+DEFINE_test_flag(bool, disable_post_split_tablet_rbs_check, false,
+                 "If true, bypass any checks made to reject remote boostrap requests for post "
+                 "split tablets whose parent tablets are still present.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -2506,7 +2510,7 @@ void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* r
   Status s = scope->StartElection(consensus::LeaderElectionData {
     .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
     .pending_commit = req->has_committed_index(),
-    .must_be_committed_opid = req->committed_index(),
+    .must_be_committed_opid = OpId::FromPB(req->committed_index()),
     .originator_uuid = req->has_originator_uuid() ? req->originator_uuid() : std::string(),
     .suppress_vote_request = consensus::TEST_SuppressVoteRequest(req->suppress_vote_request()),
     .initial_election = req->initial_election() });
@@ -2614,6 +2618,25 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
   if (!CheckUuidMatchOrRespond(tablet_manager_, "StartRemoteBootstrap", req, resp, &context)) {
     return;
   }
+  if (req->has_split_parent_tablet_id()
+      && !PREDICT_FALSE(FLAGS_TEST_disable_post_split_tablet_rbs_check)) {
+    // For any tablet that was the result of a split, the raft group leader will always send the
+    // split_parent_tablet_id. However, our local tablet manager should only know about the parent
+    // if it was part of the raft group which committed the split to the parent, and if the parent
+    // tablet has yet to be deleted across the cluster.
+    TabletPeerTablet result;
+    if (tablet_manager_->GetTabletPeer(req->split_parent_tablet_id(), &result.tablet_peer).ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30)
+          << "Start remote bootstrap rejected: parent tablet not yet split.";
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS(Incomplete, "Rejecting bootstrap request while parent tablet is present."),
+          TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE,
+          &context);
+      return;
+    }
+  }
+
   Status s = tablet_manager_->StartRemoteBootstrap(*req);
   if (!s.ok()) {
     // Using Status::AlreadyPresent for a remote bootstrap operation that is already in progress.
@@ -2713,7 +2736,7 @@ namespace {
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
   const shared_ptr<Schema> schema = tablet->metadata()->schema();
   auto client_schema = schema->CopyWithoutColumnIds();
-  auto iter = tablet->NewRowIterator(client_schema, boost::none, {}, "", deadline);
+  auto iter = tablet->NewRowIterator(client_schema, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
   QLTableRow value_map;

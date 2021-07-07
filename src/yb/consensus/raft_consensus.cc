@@ -415,7 +415,9 @@ RaftConsensus::RaftConsensus(
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
-          METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(table_metric_entity)) {
+          METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(table_metric_entity)),
+      split_parent_tablet_id_(
+          cmeta->has_split_parent_tablet_id() ? cmeta->split_parent_tablet_id() : "") {
   DCHECK_NOTNULL(log_.get());
 
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests_seconds > 0)) {
@@ -540,7 +542,7 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
   TRACE_EVENT2("consensus", "RaftConsensus::StartElection",
                "peer", peer_uuid(),
                "tablet", tablet_id());
-  VLOG(1) << "RaftConsensus::StartElection for tablet id " << tablet_id() << " " << data.ToString();
+  VLOG_WITH_PREFIX_AND_FUNC(1) << data.ToString();
   if (FLAGS_TEST_do_not_start_election_test_only) {
     LOG(INFO) << "Election start skipped as TEST_do_not_start_election_test_only flag "
                  "is set to true.";
@@ -576,6 +578,7 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
       return Status::OK();
     }
     if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
+      VLOG_WITH_PREFIX(1) << "Not starting " << election_name << " -- non participant";
       // Avoid excessive election noise while in this state.
       SnoozeFailureDetector(DO_NOT_LOG);
       return STATUS_FORMAT(
@@ -590,28 +593,25 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
     // has jumped before we can start.
     bool start_now = true;
     if (data.pending_commit) {
-      const auto required_id =
-          data.must_be_committed_opid.IsInitialized() ? data.must_be_committed_opid
-                                                      : state_->GetPendingElectionOpIdUnlocked();
+      const auto required_id = !data.must_be_committed_opid
+          ? state_->GetPendingElectionOpIdUnlocked() : data.must_be_committed_opid;
       const Status advance_committed_index_status = ResultToStatus(
-          state_->AdvanceCommittedOpIdUnlocked(yb::OpId::FromPB(required_id), CouldStop::kFalse));
+          state_->AdvanceCommittedOpIdUnlocked(required_id, CouldStop::kFalse));
       if (!advance_committed_index_status.ok()) {
         LOG(WARNING) << "Starting an " << election_name << " but the latest committed OpId is not "
                         "present in this peer's log: "
-                     << required_id.ShortDebugString() << ". "
-                     << "Status: " << advance_committed_index_status.ToString();
+                     << required_id << ". " << "Status: " << advance_committed_index_status;
       }
-      start_now = required_id.index() <= state_->GetCommittedOpIdUnlocked().index;
+      start_now = required_id.index <= state_->GetCommittedOpIdUnlocked().index;
     }
 
     if (start_now) {
       if (state_->HasLeaderUnlocked()) {
-        LOG_WITH_PREFIX(INFO)
-            << "Fail of leader " << state_->GetLeaderUuidUnlocked()
-            << " detected. Triggering leader " << election_name << ", mode=" << data.mode;
+        LOG_WITH_PREFIX(INFO) << "Fail of leader " << state_->GetLeaderUuidUnlocked()
+                              << " detected. Triggering leader " << election_name
+                              << ", mode=" << data.mode;
       } else {
-        LOG_WITH_PREFIX(INFO)
-            << "Triggering leader " << election_name << ", mode=" << data.mode;
+        LOG_WITH_PREFIX(INFO) << "Triggering leader " << election_name << ", mode=" << data.mode;
       }
 
       // Snooze to avoid the election timer firing again as much as possible.
@@ -619,13 +619,15 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
       MonoDelta timeout = LeaderElectionExpBackoffDeltaUnlocked();
       SnoozeFailureDetector(ALLOW_LOGGING, timeout);
 
-      election = VERIFY_RESULT(CreateElectionUnlocked(
-          data, timeout, PreElection(preelection)));
-    } else if (data.pending_commit && data.must_be_committed_opid.IsInitialized()) {
+      election = VERIFY_RESULT(CreateElectionUnlocked(data, timeout, PreElection(preelection)));
+    } else if (data.pending_commit && !data.must_be_committed_opid.empty()) {
       // Queue up the pending op id if specified.
       state_->SetPendingElectionOpIdUnlocked(data.must_be_committed_opid);
-      LOG(INFO) << "Leader " << election_name << " is pending upon log commitment of OpId "
-                << data.must_be_committed_opid.ShortDebugString();
+      LOG_WITH_PREFIX(INFO)
+          << "Leader " << election_name << " is pending upon log commitment of OpId "
+          << data.must_be_committed_opid;
+    } else {
+      LOG_WITH_PREFIX(INFO) << "Ignore " << __func__ << " existing wait on op id";
     }
   }
 
@@ -736,7 +738,6 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
   election_state->req.set_dest_uuid(peer.permanent_uuid());
   election_state->req.set_tablet_id(state_->GetOptions().tablet_id);
   election_state->rpc.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
-  state_->GetCommittedOpIdUnlocked().ToPB(election_state->req.mutable_committed_index());
   election_state->proxy->RunLeaderElectionAsync(
       &election_state->req, &election_state->resp, &election_state->rpc,
       std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, this,
@@ -963,14 +964,14 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
     shared_ptr<RunLeaderElectionState> election_state) {
   // Check for RPC errors.
   if (!election_state->rpc.status().ok()) {
-    LOG(WARNING) << "RPC error from RunLeaderElection() call to peer "
-                 << election_state->req.dest_uuid() << ": "
-                 << election_state->rpc.status().ToString();
+    LOG_WITH_PREFIX(WARNING) << "RPC error from RunLeaderElection() call to peer "
+                             << election_state->req.dest_uuid() << ": "
+                             << election_state->rpc.status();
   // Check for tablet errors.
   } else if (election_state->resp.has_error()) {
-    LOG(WARNING) << "Tablet error from RunLeaderElection() call to peer "
-                 << election_state->req.dest_uuid() << ": "
-                 << StatusFromPB(election_state->resp.error().status()).ToString();
+    LOG_WITH_PREFIX(WARNING) << "Tablet error from RunLeaderElection() call to peer "
+                             << election_state->req.dest_uuid() << ": "
+                             << StatusFromPB(election_state->resp.error().status());
   }
 }
 
@@ -1974,8 +1975,8 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   // Check if there is an election pending and the op id pending upon has just been committed.
   const auto& pending_election_op_id = state_->GetPendingElectionOpIdUnlocked();
   result.start_election =
-      pending_election_op_id.IsInitialized() &&
-      pending_election_op_id.index() <= state_->GetCommittedOpIdUnlocked().index;
+      !pending_election_op_id.empty() &&
+      pending_election_op_id.index <= state_->GetCommittedOpIdUnlocked().index;
 
   if (!deduped_req.messages.empty()) {
     result.wait_for_op_id = state_->GetLastReceivedOpIdUnlocked();
@@ -2939,6 +2940,10 @@ string RaftConsensus::peer_uuid() const {
 
 string RaftConsensus::tablet_id() const {
   return state_->GetOptions().tablet_id;
+}
+
+const TabletId& RaftConsensus::split_parent_tablet_id() const {
+  return split_parent_tablet_id_;
 }
 
 ConsensusStatePB RaftConsensus::ConsensusState(
