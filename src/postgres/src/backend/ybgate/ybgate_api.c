@@ -126,10 +126,10 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			}
 
 			FmgrInfo *flinfo = palloc0(sizeof(FmgrInfo));
-			FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(args->length));
+			FunctionCallInfoData fcinfo;
 
 			fmgr_info(funcid, flinfo);
-			InitFunctionCallInfoData(*fcinfo,
+			InitFunctionCallInfoData(fcinfo,
 			                         flinfo,
 			                         args->length,
 			                         InvalidOid,
@@ -139,19 +139,19 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			foreach(lc, args)
 			{
 				Expr *arg = (Expr *) lfirst(lc);
-				fcinfo->args[i].value = evalExpr(ctx, arg, &fcinfo->args[i].isnull);
+				fcinfo.arg[i] = evalExpr(ctx, arg, &fcinfo.argnull[i]);
 				/*
 				 * Strict functions are guaranteed to return NULL if any of
 				 * their arguments are NULL.
 				 */
-				if (flinfo->fn_strict && fcinfo->args[i].isnull) {
+				if (flinfo->fn_strict && fcinfo.argnull[i]) {
 					*is_null = true;
 					return (Datum) 0;
 				}
 				i++;
 			}
-			Datum result = FunctionCallInvoke(fcinfo);
-			*is_null = fcinfo->isnull;
+			Datum result = FunctionCallInvoke(&fcinfo);
+			*is_null = fcinfo.isnull;
 			return result;
 		}
 		case T_RelabelType:

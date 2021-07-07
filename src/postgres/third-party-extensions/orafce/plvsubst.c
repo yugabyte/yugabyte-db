@@ -195,7 +195,8 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 	Datum		r;
 	ArrayType  *array;
 
-	LOCAL_FCINFO(locfcinfo, 2);
+	FunctionCallInfoData fcinfo_data;
+	FunctionCallInfo locfcinfo = &fcinfo_data;
 
 	Oid		collation = PG_GET_COLLATION();
 
@@ -210,10 +211,10 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 
 	InitFunctionCallInfoData(*locfcinfo, fcinfo->flinfo, 2, collation, NULL, NULL);
 
-	locfcinfo->args[0].value = PG_GETARG_DATUM(1);
-	locfcinfo->args[1].value = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));
-	locfcinfo->args[0].isnull = false;
-	locfcinfo->args[1].isnull = false;
+	locfcinfo->arg[0] = PG_GETARG_DATUM(1);
+	locfcinfo->arg[1] = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));
+	locfcinfo->argnull[0] = false;
+	locfcinfo->argnull[1] = false;
 
 	r = text_to_array(locfcinfo);
 

@@ -996,7 +996,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 				/* Set up the primary fmgr lookup information */
 				finfo = palloc0(sizeof(FmgrInfo));
-				fcinfo = palloc0(SizeForFunctionCallInfo(2));
+				fcinfo = palloc0(sizeof(FunctionCallInfoData));
 				fmgr_info(opexpr->opfuncid, finfo);
 				fmgr_info_set_expr((Node *) node, finfo);
 				InitFunctionCallInfoData(*fcinfo, finfo, 2,
@@ -1004,7 +1004,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 				/* Evaluate scalar directly into left function argument */
 				ExecInitExprRec(scalararg, state,
-								&fcinfo->args[0].value, &fcinfo->args[0].isnull);
+								&fcinfo->arg[0], &fcinfo->argnull[0]);
 
 				/*
 				 * Evaluate array argument into our return value.  There's no
@@ -1293,7 +1293,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 				/* lookup the source type's output function */
 				scratch.d.iocoerce.finfo_out = palloc0(sizeof(FmgrInfo));
-				scratch.d.iocoerce.fcinfo_data_out = palloc0(SizeForFunctionCallInfo(1));
+				scratch.d.iocoerce.fcinfo_data_out = palloc0(sizeof(FunctionCallInfoData));
 
 				getTypeOutputInfo(exprType((Node *) iocoerce->arg),
 								  &iofunc, &typisvarlena);
@@ -1305,7 +1305,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 				/* lookup the result type's input function */
 				scratch.d.iocoerce.finfo_in = palloc0(sizeof(FmgrInfo));
-				scratch.d.iocoerce.fcinfo_data_in = palloc0(SizeForFunctionCallInfo(3));
+				scratch.d.iocoerce.fcinfo_data_in = palloc0(sizeof(FunctionCallInfoData));
 
 				getTypeInputInfo(iocoerce->resulttype,
 								 &iofunc, &typioparam);
@@ -1320,10 +1320,10 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				 * function, since they're constants.
 				 */
 				fcinfo_in = scratch.d.iocoerce.fcinfo_data_in;
-				fcinfo_in->args[1].value = ObjectIdGetDatum(typioparam);
-				fcinfo_in->args[1].isnull = false;
-				fcinfo_in->args[2].value = Int32GetDatum(-1);
-				fcinfo_in->args[2].isnull = false;
+				fcinfo_in->arg[1] = ObjectIdGetDatum(typioparam);
+				fcinfo_in->argnull[1] = false;
+				fcinfo_in->arg[2] = Int32GetDatum(-1);
+				fcinfo_in->argnull[2] = false;
 
 				ExprEvalPushStep(state, &scratch);
 				break;
@@ -1772,7 +1772,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 					/* Set up the primary fmgr lookup information */
 					finfo = palloc0(sizeof(FmgrInfo));
-					fcinfo = palloc0(SizeForFunctionCallInfo(2));
+					fcinfo = palloc0(sizeof(FunctionCallInfoData));
 					fmgr_info(proc, finfo);
 					fmgr_info_set_expr((Node *) node, finfo);
 					InitFunctionCallInfoData(*fcinfo, finfo, 2,
@@ -1787,9 +1787,9 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 					/* evaluate left and right args directly into fcinfo */
 					ExecInitExprRec(left_expr, state,
-									&fcinfo->args[0].value, &fcinfo->args[0].isnull);
+									&fcinfo->arg[0], &fcinfo->argnull[0]);
 					ExecInitExprRec(right_expr, state,
-									&fcinfo->args[1].value, &fcinfo->args[1].isnull);
+									&fcinfo->arg[1], &fcinfo->argnull[1]);
 
 					scratch.opcode = EEOP_ROWCOMPARE_STEP;
 					scratch.d.rowcompare_step.finfo = finfo;
@@ -1915,7 +1915,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 				/* Perform function lookup */
 				finfo = palloc0(sizeof(FmgrInfo));
-				fcinfo = palloc0(SizeForFunctionCallInfo(2));
+				fcinfo = palloc0(sizeof(FunctionCallInfoData));
 				fmgr_info(typentry->cmp_proc, finfo);
 				fmgr_info_set_expr((Node *) node, finfo);
 				InitFunctionCallInfoData(*fcinfo, finfo, 2,
@@ -2224,7 +2224,7 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 
 	/* Allocate function lookup data and parameter workspace for this call */
 	scratch->d.func.finfo = palloc0(sizeof(FmgrInfo));
-	scratch->d.func.fcinfo_data = palloc0(SizeForFunctionCallInfo(nargs));
+	scratch->d.func.fcinfo_data = palloc0(sizeof(FunctionCallInfoData));
 	flinfo = scratch->d.func.finfo;
 	fcinfo = scratch->d.func.fcinfo_data;
 
@@ -2263,14 +2263,13 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 			 */
 			Const	   *con = (Const *) arg;
 
-			fcinfo->args[argno].value = con->constvalue;
-			fcinfo->args[argno].isnull = con->constisnull;
+			fcinfo->arg[argno] = con->constvalue;
+			fcinfo->argnull[argno] = con->constisnull;
 		}
 		else
 		{
 			ExecInitExprRec(arg, state,
-							&fcinfo->args[argno].value,
-							&fcinfo->args[argno].isnull);
+							&fcinfo->arg[argno], &fcinfo->argnull[argno]);
 		}
 		argno++;
 	}
@@ -2902,11 +2901,10 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 		AggStatePerTrans pertrans = &aggstate->pertrans[transno];
 		int			argno;
 		int			setno;
-		FunctionCallInfo trans_fcinfo = pertrans->transfn_fcinfo;
+		FunctionCallInfo trans_fcinfo = &pertrans->transfn_fcinfo;
 		ListCell   *arg;
 		ListCell   *bail;
 		List	   *adjust_bailout = NIL;
-		NullableDatum *strictargs = NULL;
 		bool	   *strictnulls = NULL;
 
 		/*
@@ -2944,7 +2942,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 			Assert(pertrans->numSortCols == 0);
 			Assert(list_length(pertrans->aggref->args) == 1);
 
-			strictargs = trans_fcinfo->args + 1;
+			strictnulls = trans_fcinfo->argnull + 1;
 			source_tle = (TargetEntry *) linitial(pertrans->aggref->args);
 
 			/*
@@ -2958,21 +2956,21 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 				 * value
 				 */
 				ExecInitExprRec(source_tle->expr, state,
-								&trans_fcinfo->args[argno + 1].value,
-								&trans_fcinfo->args[argno + 1].isnull);
+								&trans_fcinfo->arg[argno + 1],
+								&trans_fcinfo->argnull[argno + 1]);
 			}
 			else
 			{
-				FunctionCallInfo ds_fcinfo = pertrans->deserialfn_fcinfo;
+				FunctionCallInfo ds_fcinfo = &pertrans->deserialfn_fcinfo;
 
 				/* evaluate argument */
 				ExecInitExprRec(source_tle->expr, state,
-								&ds_fcinfo->args[0].value,
-								&ds_fcinfo->args[0].isnull);
+								&ds_fcinfo->arg[0],
+								&ds_fcinfo->argnull[0]);
 
 				/* Dummy second argument for type-safety reasons */
-				ds_fcinfo->args[1].value = PointerGetDatum(NULL);
-				ds_fcinfo->args[1].isnull = false;
+				ds_fcinfo->arg[1] = PointerGetDatum(NULL);
+				ds_fcinfo->argnull[1] = false;
 
 				/*
 				 * Don't call a strict deserialization function with NULL
@@ -2986,8 +2984,8 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 				scratch.d.agg_deserialize.aggstate = aggstate;
 				scratch.d.agg_deserialize.fcinfo_data = ds_fcinfo;
 				scratch.d.agg_deserialize.jumpnull = -1;	/* adjust later */
-				scratch.resvalue = &trans_fcinfo->args[argno + 1].value;
-				scratch.resnull = &trans_fcinfo->args[argno + 1].isnull;
+				scratch.resvalue = &trans_fcinfo->arg[argno + 1];
+				scratch.resnull = &trans_fcinfo->argnull[argno + 1];
 
 				ExprEvalPushStep(state, &scratch);
 				adjust_bailout = lappend_int(adjust_bailout,
@@ -3004,7 +3002,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 			/*
 			 * Normal transition function without ORDER BY / DISTINCT.
 			 */
-			strictargs = trans_fcinfo->args + 1;
+			strictnulls = trans_fcinfo->argnull + 1;
 
 			foreach(arg, pertrans->aggref->args)
 			{
@@ -3015,8 +3013,8 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 				 * value
 				 */
 				ExecInitExprRec(source_tle->expr, state,
-								&trans_fcinfo->args[argno + 1].value,
-								&trans_fcinfo->args[argno + 1].isnull);
+								&trans_fcinfo->arg[argno + 1],
+								&trans_fcinfo->argnull[argno + 1]);
 				argno++;
 			}
 		}
@@ -3064,12 +3062,8 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 		 */
 		if (trans_fcinfo->flinfo->fn_strict && pertrans->numTransInputs > 0)
 		{
-			if (strictnulls)
-				scratch.opcode = EEOP_AGG_STRICT_INPUT_CHECK_NULLS;
-			else
-				scratch.opcode = EEOP_AGG_STRICT_INPUT_CHECK_ARGS;
+			scratch.opcode = EEOP_AGG_STRICT_INPUT_CHECK;
 			scratch.d.agg_strict_input_check.nulls = strictnulls;
-			scratch.d.agg_strict_input_check.args = strictargs;
 			scratch.d.agg_strict_input_check.jumpnull = -1; /* adjust later */
 			scratch.d.agg_strict_input_check.nargs = pertrans->numTransInputs;
 			ExprEvalPushStep(state, &scratch);
@@ -3123,8 +3117,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 				Assert(as->d.jump.jumpdone == -1);
 				as->d.jump.jumpdone = state->steps_len;
 			}
-			else if (as->opcode == EEOP_AGG_STRICT_INPUT_CHECK_ARGS ||
-					 as->opcode == EEOP_AGG_STRICT_INPUT_CHECK_NULLS)
+			else if (as->opcode == EEOP_AGG_STRICT_INPUT_CHECK)
 			{
 				Assert(as->d.agg_strict_input_check.jumpnull == -1);
 				as->d.agg_strict_input_check.jumpnull = state->steps_len;
@@ -3329,7 +3322,7 @@ ExecBuildGroupingEqual(TupleDesc ldesc, TupleDesc rdesc,
 
 		/* Set up the primary fmgr lookup information */
 		finfo = palloc0(sizeof(FmgrInfo));
-		fcinfo = palloc0(SizeForFunctionCallInfo(2));
+		fcinfo = palloc0(sizeof(FunctionCallInfoData));
 		fmgr_info(foid, finfo);
 		fmgr_info_set_expr(NULL, finfo);
 		InitFunctionCallInfoData(*fcinfo, finfo, 2,
@@ -3339,16 +3332,16 @@ ExecBuildGroupingEqual(TupleDesc ldesc, TupleDesc rdesc,
 		scratch.opcode = EEOP_INNER_VAR;
 		scratch.d.var.attnum = attno - 1;
 		scratch.d.var.vartype = latt->atttypid;
-		scratch.resvalue = &fcinfo->args[0].value;
-		scratch.resnull = &fcinfo->args[0].isnull;
+		scratch.resvalue = &fcinfo->arg[0];
+		scratch.resnull = &fcinfo->argnull[0];
 		ExprEvalPushStep(state, &scratch);
 
 		/* right arg */
 		scratch.opcode = EEOP_OUTER_VAR;
 		scratch.d.var.attnum = attno - 1;
 		scratch.d.var.vartype = ratt->atttypid;
-		scratch.resvalue = &fcinfo->args[1].value;
-		scratch.resnull = &fcinfo->args[1].isnull;
+		scratch.resvalue = &fcinfo->arg[1];
+		scratch.resnull = &fcinfo->argnull[1];
 		ExprEvalPushStep(state, &scratch);
 
 		/* evaluate distinctness */

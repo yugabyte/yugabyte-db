@@ -4678,8 +4678,8 @@ jsonb_set_lax(PG_FUNCTION_ARGS)
 
 		newval = DirectFunctionCall1(jsonb_in, CStringGetDatum("null"));
 
-		fcinfo->args[2].value = newval;
-		fcinfo->args[2].isnull = false;
+		fcinfo->arg[2] = newval;
+		fcinfo->argnull[2] = false;
 		return jsonb_set(fcinfo);
 	}
 	else if (strcmp(handle_val, "delete_key") == 0)
@@ -5602,8 +5602,8 @@ get_json_array_element(text *json, int index)
 int get_json_array_length(text *json)
 {
 	/* Create a dummy fcinfo to invoke json_array_length */
-	FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(1));
-	fcinfo->args[0].value = PointerGetDatum(json);
+	FunctionCallInfo fcinfo = palloc0(sizeof(FunctionCallInfoData));
+	fcinfo->arg[0] = PointerGetDatum(json);
 	Datum result = json_array_length(fcinfo);
 	return DatumGetInt32(result);
 }

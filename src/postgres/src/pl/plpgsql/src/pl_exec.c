@@ -490,8 +490,8 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 					PLpgSQL_var *var = (PLpgSQL_var *) estate.datums[n];
 
 					assign_simple_var(&estate, var,
-									  fcinfo->args[i].value,
-									  fcinfo->args[i].isnull,
+									  fcinfo->arg[i],
+									  fcinfo->argnull[i],
 									  false);
 
 					/*
@@ -542,12 +542,12 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 				{
 					PLpgSQL_rec *rec = (PLpgSQL_rec *) estate.datums[n];
 
-					if (!fcinfo->args[i].isnull)
+					if (!fcinfo->argnull[i])
 					{
 						/* Assign row value from composite datum */
 						exec_move_row_from_datum(&estate,
 												 (PLpgSQL_variable *) rec,
-												 fcinfo->args[i].value);
+												 fcinfo->arg[i]);
 					}
 					else
 					{

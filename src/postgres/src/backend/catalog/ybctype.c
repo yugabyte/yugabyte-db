@@ -299,7 +299,8 @@ Datum YBCBPCharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type
 	}
 
 	/* Convert YugaByte cstring to Postgres internal representation */
-	LOCAL_FCINFO(fcinfo, 3);
+	FunctionCallInfoData fargs;
+	FunctionCallInfo fcinfo = &fargs;
 	PG_GETARG_DATUM(0) = CStringGetDatum(data);
 	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
 	return bpcharin(fcinfo);
@@ -318,7 +319,8 @@ Datum YBCVarcharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *typ
 	}
 
 	/* Convert YugaByte cstring to Postgres internal representation */
-	LOCAL_FCINFO(fcinfo, 3);
+	FunctionCallInfoData fargs;
+	FunctionCallInfo fcinfo = &fargs;
 	PG_GETARG_DATUM(0) = CStringGetDatum(data);
 	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
 	return varcharin(fcinfo);
@@ -366,7 +368,8 @@ Datum YBCCStrToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_a
 	}
 
 	/* Convert YugaByte cstring to Postgres internal representation */
-	LOCAL_FCINFO(fcinfo, 1);
+	FunctionCallInfoData fargs;
+	FunctionCallInfo fcinfo = &fargs;
 	PG_GETARG_DATUM(0) = CStringGetDatum(data);
 	return cstring_in(fcinfo);
 }
@@ -511,7 +514,8 @@ void YBCDatumToDecimalText(Datum datum, char *plaintext[], int64 *bytes) {
 }
 
 Datum YBCDecimalTextToDatum(const char plaintext[], int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-	LOCAL_FCINFO(fcinfo, 3);
+	FunctionCallInfoData fargs;
+	FunctionCallInfo fcinfo = &fargs;
 	PG_GETARG_DATUM(0) = CStringGetDatum(plaintext);
 	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
 	return numeric_in(fcinfo);
