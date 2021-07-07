@@ -103,10 +103,6 @@ class RestoreSysCatalogState {
         const SnapshotScheduleFilterPB& filter, const TableId& id,
         const SysTablesEntryPB& table) const;
 
-    Result<bool> TableMatchesIdentifier(
-        const TableId& id, const SysTablesEntryPB& table,
-        const TableIdentifierPB& table_identifier) const;
-
     std::string SizesToString() const;
   };
 
