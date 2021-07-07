@@ -25,6 +25,7 @@ import json
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
+from datetime import timedelta
 from multiprocessing.pool import ThreadPool
 
 import os
@@ -114,6 +115,39 @@ def quote_cmd_line_for_bash(cmd_line):
     if not isinstance(cmd_line, list) and not isinstance(cmd_line, tuple):
         raise BackupException("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
     return ' '.join([pipes.quote(str(arg)) for arg in cmd_line])
+
+
+class BackupTimer:
+    def __init__(self):
+        # Store the start time as phase 0.
+        self.logged_times = [time.time()]
+        self.phases = ["START"]
+        self.num_phases = 0
+
+    def log_new_phase(self, msg=""):
+        self.logged_times.append(time.time())
+        self.phases.append(msg)
+        # Print completed time of last stage.
+        if self.num_phases > 0:  # Don't print for phase 0 as that is just the start-up.
+            time_taken = self.logged_times[self.num_phases] - self.logged_times[self.num_phases - 1]
+            logging.info("Completed phase {}: {} [Time taken for phase: {}]".format(
+                    self.num_phases,
+                    self.phases[self.num_phases],
+                    str(timedelta(seconds=time_taken))))
+        self.num_phases += 1
+        logging.info("Starting phase {}: {}".format(self.num_phases, msg))
+
+    def print_summary(self):
+        log_str = "Summary of run:\n"
+        # Print info for each phase.
+        for i in range(1, self.num_phases + 1):
+            t = self.logged_times[i] - self.logged_times[i - 1]
+            log_str += "{} : PHASE {} : {}\n".format(str(timedelta(seconds=t)), i, self.phases[i])
+        # Also print info for total runtime.
+        log_str += "Total runtime: {}".format(
+                str(timedelta(seconds=time.time() - self.logged_times[0])))
+        # Add [app] for YW platform filter.
+        logging.info("[app] " + log_str)
 
 
 class SingleArgParallelCmd:
@@ -552,6 +586,7 @@ class YBBackup:
         self.tmp_dir_name = ''
         self.server_ips_with_uploaded_cloud_cfg = {}
         self.k8s_namespace_to_cfg = {}
+        self.timer = BackupTimer()
         self.parse_arguments()
 
     def sleep_or_raise(self, num_retry, timeout, ex):
@@ -1883,8 +1918,11 @@ class YBBackup:
 
             snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
 
+        self.timer.log_new_phase("Create and upload snapshot metadata")
         snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
+        self.timer.log_new_phase("Find tablet leaders")
         tablet_leaders = self.find_tablet_leaders()
+        self.timer.log_new_phase("Upload snapshot directories")
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
             '[app] Backed up tables %s to %s successfully!' %
@@ -2091,6 +2129,7 @@ class YBBackup:
                                       snapshot_id, table_ids):
         pool = ThreadPool(self.args.parallelism)
 
+        self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
         tserver_ips = list(tablets_by_tserver_to_download.keys())
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
@@ -2106,6 +2145,7 @@ class YBBackup:
             deleted_tablets = tserver_to_deleted_tablets[tserver_ip]
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
+        self.timer.log_new_phase("Download data")
         parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
         self.prepare_cloud_ssh_cmds(
             parallel_downloads, tserver_to_tablet_to_snapshot_dirs, self.args.backup_location,
@@ -2137,8 +2177,10 @@ class YBBackup:
 
         (metadata_file_path, dump_file_path) = self.download_metadata_file()
         if dump_file_path:
+            self.timer.log_new_phase("Create tables via YSQLDump")
             self.import_ysql_dump(dump_file_path)
 
+        self.timer.log_new_phase("Import snapshot")
         snapshot_metadata = self.import_snapshot(metadata_file_path)
         snapshot_id = snapshot_metadata['snapshot_id']['new']
         table_ids = list(snapshot_metadata['table'].keys())
@@ -2149,6 +2191,7 @@ class YBBackup:
             logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
             atexit.register(self.delete_created_snapshot, snapshot_id)
 
+        self.timer.log_new_phase("Generate list of tservers for every tablet")
         all_tablets_by_tserver = self.find_tablet_replicas(snapshot_metadata)
         tablets_by_tserver_to_download = all_tablets_by_tserver
 
@@ -2171,6 +2214,7 @@ class YBBackup:
                 deleted_tablets = tserver_to_deleted_tablets[tserver_ip]
                 all_tablets_by_tserver[tserver_ip] -= deleted_tablets
 
+            self.timer.log_new_phase("Regenerate list of tservers for every tablet")
             tablets_by_tserver_new = self.find_tablet_replicas(snapshot_metadata)
             # Calculate the new downloading list as a subtraction of sets:
             #     downloading_list = NEW_all_tablet_replicas - OLD_all_tablet_replicas
@@ -2184,6 +2228,7 @@ class YBBackup:
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
 
+        self.timer.log_new_phase("Restore the snapshot")
         output = self.run_yb_admin(['restore_snapshot', snapshot_id])
         # Transaction-aware snapshots use special restaration id with final state RESTORED,
         # while previous implementation uses snapshot id and it's state COMPLETE.
@@ -2270,6 +2315,8 @@ class YBBackup:
             print(json.dumps({"error": "Exception: {}".format(str(ex))}))
             traceback.print_exc()
             traceback.print_stack()
+        finally:
+            self.timer.print_summary()
 
 
 if __name__ == "__main__":
