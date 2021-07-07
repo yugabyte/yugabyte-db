@@ -73,7 +73,7 @@ export const AlertDestionations = (props) => {
     const channels = row.receivers.map((channel) => {
       return {
         value: channel,
-        label: 'Email'
+        label: 'Email' // This needs to be changed as per the API object.
       };
     });
 

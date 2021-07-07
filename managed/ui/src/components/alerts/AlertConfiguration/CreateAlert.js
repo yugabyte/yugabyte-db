@@ -24,7 +24,13 @@ import AlertsPolicy from './AlertsPolicy';
 const required = (value) => (value ? undefined : 'This field is required.');
 
 const CreateAlert = (props) => {
-  const { onCreateCancel, handleSubmit, alertDestionations, universes } = props;
+  const {
+    enablePlatformAlert,
+    onCreateCancel,
+    handleSubmit,
+    alertDestionations,
+    universes
+  } = props;
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
   const [alertDestionation, setAlertDesionation] = useState([]);
   const [alertUniverseList, setAlertUniverseList] = useState([]);
@@ -64,7 +70,7 @@ const CreateAlert = (props) => {
    */
   const handleTargetTypeChange = (event) => {
     const value = event.target?.value;
-    if (value === 'allCluster') {
+    if (value === 'allUniverses') {
       setIsAllUniversesDisabled(true);
       props.updateField('alertConfigForm', 'ALERT_UNIVERSE_LIST', []);
     } else {
@@ -80,7 +86,7 @@ const CreateAlert = (props) => {
     console.log(values);
   };
   return (
-    <Formik initialValues={{ ALERT_TARGET_TYPE: 'allCluster' }}>
+    <Formik initialValues={{ ALERT_TARGET_TYPE: 'allUniverses' }}>
       <form name="alertConfigForm" onSubmit={handleSubmit(handleOnSubmit)}>
         <Row className="config-section-header">
           <Row>
@@ -105,27 +111,29 @@ const CreateAlert = (props) => {
               />
             </Col>
           </Row>
-          <Row>
-            <Col md={6}>
-              <div className="form-item-custom-label">Target</div>
-              <YBRadioButtonGroup
-                name={'ALERT_TARGET_TYPE'}
-                options={[
-                  { label: 'All Cluster', value: 'allCluster' },
-                  { label: 'Selected Cluster', value: 'selectedCluster' }
-                ]}
-                onClick={handleTargetTypeChange}
-              />
-              <Field
-                name="ALERT_UNIVERSE_LIST"
-                component={YBMultiSelectWithLabel}
-                options={alertUniverseList}
-                hideSelectedOptions={false}
-                isMulti={true}
-                isDisabled={isAllUniversesDisabled}
-              />
-            </Col>
-          </Row>
+          {!enablePlatformAlert && (
+            <Row>
+              <Col md={6}>
+                <div className="form-item-custom-label">Target</div>
+                <YBRadioButtonGroup
+                  name={'ALERT_TARGET_TYPE'}
+                  options={[
+                    { label: 'All Universes', value: 'allUniverses' },
+                    { label: 'Selected Universes', value: 'selectedUniverses' }
+                  ]}
+                  onClick={handleTargetTypeChange}
+                />
+                <Field
+                  name="ALERT_UNIVERSE_LIST"
+                  component={YBMultiSelectWithLabel}
+                  options={alertUniverseList}
+                  hideSelectedOptions={false}
+                  isMulti={true}
+                  isDisabled={isAllUniversesDisabled}
+                />
+              </Col>
+            </Row>
+          )}
           <hr />
           <Row>
             <Col md={12}>
