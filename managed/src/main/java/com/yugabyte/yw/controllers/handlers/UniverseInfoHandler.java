@@ -25,6 +25,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.queries.QueryHelper;
 import lombok.extern.slf4j.Slf4j;
@@ -107,12 +108,12 @@ public class UniverseInfoHandler {
     return result;
   }
 
-  public List<String> healthCheck(UUID universeUUID) {
-    List<String> detailsList = new ArrayList<>();
+  public List<Details> healthCheck(UUID universeUUID) {
+    List<Details> detailsList = new ArrayList<>();
     try {
       List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
       for (HealthCheck check : checks) {
-        detailsList.add(Json.stringify(Json.parse(check.detailsJson)));
+        detailsList.add(check.detailsJson);
       }
     } catch (RuntimeException e) {
       // TODO(API) dig deeper and find root cause of RuntimeException
