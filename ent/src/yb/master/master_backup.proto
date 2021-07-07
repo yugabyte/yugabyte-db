@@ -59,8 +59,11 @@ message SysSnapshotEntryPB {
 
 message BackupRowEntryPB {
   optional SysRowEntry entry = 1;
+
   // Other per-object backup related properties.
-  // E.g.:  optional bytes pg_schema_name = 2; // For 'entry.type' == TABLE only.
+
+  // Used to disambiguate in case YSQL tables in different schema have same name.
+  optional bytes pg_schema_name = 2; // For 'entry.type' == TABLE only.
 }
 
 ////////////////////////////////////////////////////////////

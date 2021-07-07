@@ -200,6 +200,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     TableId old_table_id;
     TableId new_table_id;
     SysTablesEntryPB table_entry_pb;
+    std::string pg_schema_name;
     int num_tablets;
     typedef std::pair<std::string, std::string> PartitionKeys;
     typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;

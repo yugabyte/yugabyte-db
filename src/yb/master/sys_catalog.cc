@@ -881,7 +881,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
 
 Status SysCatalogTable::ReadPgClassInfo(
     const uint32_t database_oid,
-    TableToTablespaceIdMap *const table_to_tablespace_map) {
+    TableToTablespaceIdMap* table_to_tablespace_map) {
 
   TRACE_EVENT0("master", "ReadPgClass");
 
@@ -921,7 +921,7 @@ Status SysCatalogTable::ReadPgClassInfo(
   }
 
   QLTableRow row;
-  // Pg_class table contains a row for every database object (tables/indexes/
+  // pg_class table contains a row for every database object (tables/indexes/
   // composite types etc). Each such row contains a lot of information about the
   // database object itself. But here, we are trying to fetch table->tablespace
   // information. We iterate through every row in the catalog table and try to build
@@ -960,7 +960,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     }
 
     const uint32 tablespace_oid = tablespace_oid_col->uint32_value();
-    VLOG(5) << "Table oid: " << oid << " Tablespace oid: " << tablespace_oid;
+    VLOG(1) << "Table oid: " << oid << " Tablespace oid: " << tablespace_oid;
 
     boost::optional<TablespaceId> tablespace_id = boost::none;
     // If the tablespace oid is kInvalidOid then it means this table was created
@@ -975,7 +975,116 @@ Status SysCatalogTable::ReadPgClassInfo(
     DCHECK(ret.second);
   }
   return Status::OK();
+}
 
+Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t database_oid,
+                                                          const uint32_t table_oid) {
+  TRACE_EVENT0("master", "ReadPgClassRelnamespace");
+
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+
+  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
+  const Schema& schema = table_info->schema;
+
+  Schema projection;
+  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "relnamespace"}, &projection,
+                schema.num_key_columns()));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto relnamespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("relnamespace")).rep();
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(oid_col_id);
+    cond.set_op(QL_OP_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
+    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
+
+  // pg_class table contains a row for every database object (tables/indexes/
+  // composite types etc). Each such row contains a lot of information about the
+  // database object itself. But here, we are trying to fetch table->relnamespace
+  // information only.
+  uint32 oid = kInvalidOid;
+  if (VERIFY_RESULT(iter->HasNext())) {
+    QLTableRow row;
+    RETURN_NOT_OK(iter->NextRow(&row));
+
+    // Process the relnamespace oid for this table/index.
+    const auto& relnamespace_oid_col = row.GetValue(relnamespace_col_id);
+    if (!relnamespace_oid_col) {
+      return STATUS(Corruption, "Could not read relnamespace column from pg_class");
+    }
+
+    oid = relnamespace_oid_col->uint32_value();
+    VLOG(1) << "Table oid: " << table_oid << " relnamespace oid: " << oid;
+  }
+
+  if (oid == kInvalidOid) {
+    return STATUS(Corruption, "Not found or invalid relnamespace oid for table oid " +
+        std::to_string(table_oid));
+  }
+
+  return oid;
+}
+
+Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_oid,
+                                                       const uint32_t relnamespace_oid) {
+  TRACE_EVENT0("master", "ReadPgNamespaceNspname");
+
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+
+  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgNamespaceTableOid);
+  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
+  const Schema& schema = table_info->schema;
+
+  Schema projection;
+  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "nspname"}, &projection,
+                schema.num_key_columns()));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto nspname_col_id = VERIFY_RESULT(projection.ColumnIdByName("nspname")).rep();
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(oid_col_id);
+    cond.set_op(QL_OP_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(relnamespace_oid);
+    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
+
+  string name;
+  if (VERIFY_RESULT(iter->HasNext())) {
+    QLTableRow row;
+    RETURN_NOT_OK(iter->NextRow(&row));
+
+    // Process the relnamespace oid for this table/index.
+    const auto& nspname_col = row.GetValue(nspname_col_id);
+    if (!nspname_col) {
+      return STATUS(Corruption, "Could not read nspname column from pg_namespace");
+    }
+
+    name = nspname_col->string_value();
+    VLOG(1) << "relnamespace oid: " << relnamespace_oid << " nspname: " << name;
+  }
+
+  if (name.empty()) {
+    return STATUS(Corruption, "Not found or empty nspname for relnamespace oid " +
+        std::to_string(relnamespace_oid));
+  }
+
+  return name;
 }
 
 Result<boost::optional<ReplicationInfoPB>> SysCatalogTable::ParseReplicationInfo(

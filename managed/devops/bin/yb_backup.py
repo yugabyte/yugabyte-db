@@ -1045,6 +1045,7 @@ class YBBackup:
         snapshot_done = False
         snapshot_tables = []
         snapshot_keyspaces = []
+        snapshot_table_uuids = []
 
         yb_admin_args = ['list_snapshots']
         if update_table_list:
@@ -1084,6 +1085,7 @@ class YBBackup:
                     elif object_type == 'TABLE':
                         snapshot_keyspaces.append(keyspaces[data['namespace_id']])
                         snapshot_tables.append(data['name'])
+                        snapshot_table_uuids.append(object_id)
 
             if not snapshot_done:
                 logging.info('Waiting for snapshot %s to complete...' % (op))
@@ -1103,6 +1105,7 @@ class YBBackup:
 
             self.args.keyspace = snapshot_keyspaces
             self.args.table = snapshot_tables
+            self.args.table_uuid = snapshot_table_uuids
             logging.info('Updated list of processing tables: ' + self.table_names_str())
 
         logging.info('Snapshot id %s %s completed successfully' % (snapshot_id, op))
@@ -1118,8 +1121,13 @@ class YBBackup:
             # Don't call list_tablets on a parent colocated table.
             if is_parent_colocated_table_name(self.args.table[i]):
                 continue
-            output = self.run_yb_admin(
-                ['list_tablets', self.args.keyspace[i], self.args.table[i], '0'])
+
+            if self.args.table_uuid:
+                yb_admin_args = ['list_tablets', 'tableid.' + self.args.table_uuid[i], '0']
+            else:
+                yb_admin_args = ['list_tablets', self.args.keyspace[i], self.args.table[i], '0']
+
+            output = self.run_yb_admin(yb_admin_args)
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
                     fields = split_by_tab(line)
@@ -1812,6 +1820,7 @@ class YBBackup:
 
         stored_keyspaces = self.args.keyspace
         stored_tables = self.args.table
+        stored_table_uuids = self.args.table_uuid
         num_retry = CREATE_METAFILES_MAX_RETRIES
 
         while num_retry > 0:
@@ -1856,6 +1865,7 @@ class YBBackup:
                     # wait_for_snapshot() can update the variables - restore them back.
                     self.args.keyspace = stored_keyspaces
                     self.args.table = stored_tables
+                    self.args.table_uuid = stored_table_uuids
 
                     start_version = final_version
                     logging.info('[app] Retry creating metafiles ({} retries left)'.format(
