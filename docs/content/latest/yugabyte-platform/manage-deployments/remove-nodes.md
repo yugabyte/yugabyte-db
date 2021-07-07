@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: remove-nodes
     parent: manage-deployments
-    weight: 50
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

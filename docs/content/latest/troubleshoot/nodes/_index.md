@@ -56,7 +56,7 @@ menu:
         <div class="title">Disk failure</div>
       </div>
       <div class="body">
-        How to recover a YB-TServer from disk failure
+        How to recover a YB-TServer from disk failure.
       </div>
     </a>
   </div>
