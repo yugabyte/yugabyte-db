@@ -5255,7 +5255,7 @@
     },
     "UniverseDefinitionTaskParamsResp" : {
       "type" : "object",
-      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
+      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected", "targetAsyncReplicationRelationships", "sourceAsyncReplicationRelationships" ],
       "properties" : {
         "errorString" : {
           "type" : "string",
@@ -5372,6 +5372,41 @@
         "capability" : {
           "type" : "string",
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ]
+        },
+        "targetAsyncReplicationRelationships" : {
+          "type" : "array",
+          "items": {
+            "$ref": "#/definitions/AsyncReplicationConfig"
+          }
+        },
+        "sourceAsyncReplicationRelationships" : {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AsyncReplicationConfig"
+          }
+        }
+      }
+    },
+    "AsyncReplicationConfig" : {
+      "type" : "object",
+      "required" : [ "sourceTableID", "sourceUniverseUUID", "targetTableID", "targetUniverseUUID", "active" ],
+      "properties": {
+        "sourceTableID" : {
+          "type" : "string"
+        },
+        "sourceUniverseUUID" : {
+          "type" : "string",
+          "format": "uuid"
+        },
+        "targetTableID" : {
+          "type" : "string"
+        },
+        "targetUniverseUUID" : {
+          "type" : "string",
+          "format": "uuid"
+        },
+        "active" : {
+          "type" : "boolean"
         }
       }
     },
