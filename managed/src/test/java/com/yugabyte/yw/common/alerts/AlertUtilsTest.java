@@ -36,7 +36,6 @@ public class AlertUtilsTest extends FakeDBApplication {
 
   private AlertReceiver createEmailReceiver() {
     AlertReceiverEmailParams params = new AlertReceiverEmailParams();
-    params.continueSend = true;
     params.recipients = Arrays.asList("test@test.com", "me@google.com");
     params.textTemplate = TEXT_TEMPLATE;
     params.titleTemplate = TITLE_TEMPLATE;
@@ -65,7 +64,6 @@ public class AlertUtilsTest extends FakeDBApplication {
   @Test
   public void testFromDB_Slack() {
     AlertReceiverSlackParams params = new AlertReceiverSlackParams();
-    params.continueSend = true;
     params.textTemplate = TEXT_TEMPLATE;
     params.titleTemplate = TITLE_TEMPLATE;
 
@@ -93,7 +91,7 @@ public class AlertUtilsTest extends FakeDBApplication {
     AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
-    alert.setDefinitionUUID(definition.getUuid());
+    alert.setDefinitionUuid(definition.getUuid());
     AlertReceiver receiver = createEmailReceiver();
 
     assertEquals(
@@ -140,7 +138,7 @@ public class AlertUtilsTest extends FakeDBApplication {
         ModelFactory.createAlertDefinition(defaultCustomer, universe, group);
 
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
-    alert.setDefinitionUUID(definition.getUuid());
+    alert.setDefinitionUuid(definition.getUuid());
 
     List<AlertLabel> labels =
         definition

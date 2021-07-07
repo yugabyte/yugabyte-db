@@ -8,18 +8,20 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import play.libs.Json;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -271,6 +273,7 @@ public class ModelFactory {
                     new AlertDefinitionGroupThreshold()
                         .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
                         .setThreshold(1)))
+            .setThresholdUnit(Unit.PERCENT)
             .generateUUID();
     modifier.accept(group);
     group.save();
@@ -318,14 +321,16 @@ public class ModelFactory {
         new Alert()
             .setCustomerUUID(customer.getUuid())
             .setErrCode(code)
-            .setType(KnownAlertTypes.Error)
+            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .setSendEmail(true)
             .generateUUID();
     if (definition != null) {
       AlertDefinitionGroup group =
           AlertDefinitionGroup.db().find(AlertDefinitionGroup.class, definition.getGroupUUID());
-      alert.setDefinitionUUID(definition.getUuid());
+      alert.setGroupUuid(definition.getGroupUUID());
+      alert.setGroupType(group.getTargetType());
+      alert.setDefinitionUuid(definition.getUuid());
       List<AlertLabel> labels =
           definition
               .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
@@ -345,6 +350,14 @@ public class ModelFactory {
     alert.save();
     return alert;
   }
+
+  public static AlertReceiver createEmailReceiver(Customer customer, String name) {
+    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
+    params.recipients = Collections.singletonList("test@test.com");
+    params.smtpData = EmailFixtures.createSmtpData();
+    return AlertReceiver.create(customer.uuid, name, params);
+  }
+
   /*
    * KMS Configuration creation helpers.
    */

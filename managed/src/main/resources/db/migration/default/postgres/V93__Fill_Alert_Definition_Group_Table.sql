@@ -18,8 +18,15 @@ $$
   END;
 $$;
 
-drop extension if exists pgcrypto cascade;
-create extension pgcrypto cascade;
+CREATE OR REPLACE FUNCTION gen_random_uuid()
+ RETURNS uuid
+ language plpgsql
+ as
+$$
+  BEGIN
+    RETURN md5(random()::text || clock_timestamp()::text)::uuid;
+  END;
+$$;
 
 insert into alert_definition_group
   (uuid, customer_uuid, name, description, create_time, target_type, target, thresholds, template, active)

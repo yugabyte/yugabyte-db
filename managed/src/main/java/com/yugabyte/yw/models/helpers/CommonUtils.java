@@ -19,6 +19,8 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.BiFunction;
@@ -303,18 +305,23 @@ public class CommonUtils {
     query.setFirstRow(pagedQuery.getOffset());
     query.setMaxRows(pagedQuery.getLimit() + 1);
     PagedList<E> pagedList = query.findPagedList();
+    R response;
     try {
-      R response = responseClass.newInstance();
-      response.setEntities(pagedList.getList().subList(0, pagedQuery.getLimit()));
-      response.setHasPrev(pagedList.hasPrev());
-      response.setHasNext(pagedList.getList().size() > pagedQuery.getLimit());
-      if (pagedQuery.isNeedTotalCount()) {
-        response.setTotalCount(pagedList.getTotalCount());
-      }
-      return response;
+      response = responseClass.newInstance();
     } catch (Exception e) {
       throw new IllegalStateException(
           "Failed to create " + responseClass.getSimpleName() + " instance", e);
     }
+    response.setEntities(pagedList.getList().subList(0, pagedQuery.getLimit()));
+    response.setHasPrev(pagedList.hasPrev());
+    response.setHasNext(pagedList.getList().size() > pagedQuery.getLimit());
+    if (pagedQuery.isNeedTotalCount()) {
+      response.setTotalCount(pagedList.getTotalCount());
+    }
+    return response;
+  }
+
+  public static Date nowWithoutMillis() {
+    return Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));
   }
 }

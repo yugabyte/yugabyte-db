@@ -129,7 +129,12 @@ public class UniverseInfoHandler {
     // Get and return Leader IP
     try {
       client = ybService.getClient(hostPorts, certificate);
-      return client.getLeaderMasterHostAndPort();
+      HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
+      if (leaderMasterHostAndPort == null) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Leader master not found for universe " + universe.universeUUID);
+      }
+      return leaderMasterHostAndPort;
     } catch (RuntimeException e) {
       throw new YWServiceException(BAD_REQUEST, e.getMessage());
     } finally {
