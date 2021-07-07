@@ -423,6 +423,11 @@ DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
                  " conforming to the table placement policy during CreateTable API call.");
 TAG_FLAG(TEST_skip_placement_validation_createtable_api, runtime);
 
+DEFINE_bool(enable_tablet_split_of_pitr_tables, false,
+            "When set, it enables automatic tablet splitting of tables covered by "
+            "Point In Time Restore schedules.");
+TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
+
 namespace yb {
 namespace master {
 
@@ -2118,9 +2123,21 @@ Status CatalogManager::TEST_SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
-Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) const {
+Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
+  }
+  // Check if this tablet is covered by an PITR schedule.
+  if (!FLAGS_enable_tablet_split_of_pitr_tables &&
+      VERIFY_RESULT(IsTablePartOfSomeSnapshotSchedule(*tablet_info.table().get()))) {
+    VLOG(1) << Substitute("Tablet splitting is not supported for tables that are a part of"
+                          " some active PITR schedule, tablet_id: $0",
+                          tablet_info.tablet_id());
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " some active PITR schedule, tablet_id: $0",
+        tablet_info.tablet_id());
   }
   if (tablet_info.table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
     return STATUS_FORMAT(
