@@ -2,6 +2,8 @@
 package com.yugabyte.yw.models;
 
 import io.ebean.*;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 
 import com.yugabyte.yw.common.YWServiceException;
@@ -20,16 +22,23 @@ import org.slf4j.LoggerFactory;
 
 import play.libs.Json;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @Entity
+@ApiModel(description = "Node instance attched to provider and zones")
 public class NodeInstance extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(NodeInstance.class);
 
-  @Id public UUID nodeUuid;
+  @Id
+  @ApiModelProperty(value = "Node instance UUID", accessMode = READ_ONLY)
+  public UUID nodeUuid;
 
-  @Column public String instanceTypeCode;
+  @Column
+  @ApiModelProperty(value = "Node instance type code", example = "c5large")
+  public String instanceTypeCode;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Node instance node name", example = "India node")
   private String nodeName;
 
   public String getNodeName() {
@@ -45,18 +54,23 @@ public class NodeInstance extends Model {
   }
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Node instance instance name", example = "Mumbai instance")
   public String instanceName;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Node instance zone UUID")
   public UUID zoneUuid;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Node instance is in used or not")
   public boolean inUse;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Node instance node details")
   private String nodeDetailsJson;
 
   // Preserving the details into a structured class.
+  @ApiModelProperty(value = "Node details")
   private NodeInstanceData nodeDetails;
 
   public void setDetails(NodeInstanceData details) {
@@ -77,6 +91,7 @@ public class NodeInstance extends Model {
     this.save();
   }
 
+  @ApiModelProperty(value = "Node details", example = "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}")
   public String getDetailsJson() {
     return nodeDetailsJson;
   }

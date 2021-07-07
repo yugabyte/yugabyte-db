@@ -322,6 +322,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createPersistResizeNodeTask(String instanceType) {
+    return createPersistResizeNodeTask(instanceType, null);
+  }
+
+  /** Create a task to persist changes by ResizeNode task */
+  public SubTaskGroup createPersistResizeNodeTask(String instanceType, Integer volumeSize) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("PersistResizeNode", executor);
+    PersistResizeNode.Params params = new PersistResizeNode.Params();
+
+    params.universeUUID = taskParams().universeUUID;
+    params.instanceType = instanceType;
+    params.volumeSize = volumeSize;
+    PersistResizeNode task = createTask(PersistResizeNode.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Create a task to mark the updated cert on a universe. */
   public SubTaskGroup createUnivSetCertTask(UUID certUUID) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
@@ -1301,6 +1321,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
 
     SubTaskGroup subTaskGroup = new SubTaskGroup("LoadBalancerStateChange", executor);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createAsyncReplicationPlatformSyncTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AsyncReplicationPlatformSync", executor);
+    AsyncReplicationPlatformSync task = createTask(AsyncReplicationPlatformSync.class);
+    task.initialize(taskParams());
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createResetUniverseVersionTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ResetUniverseVersion", executor);
+    ResetUniverseVersion task = createTask(ResetUniverseVersion.class);
+    task.initialize(taskParams());
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;

@@ -33,7 +33,7 @@ It's useful, therefore, to join these two projections as the _extended_timezone_
 ## Create the 'extended_timezone_names' view
 
 {{< tip title="Download the data and code to create the extended_timezone_names view." >}}
-See [Download the _.zip_ file to create the reusable code that the overall _date-time_ major section describes](../../#download). This includes the code and data that creates the _extended_timezone_names_ view. For example, it creates the  user-defined function _[jan_and_jul_tz_abbrevs_and_offsets()](../catalog-views/#the-jan-and-jul-tz-abbrevs-and-offsets-table-function)_ that the _extended_timezone_names_ view depends upon. It also creates the views that are used to produce the tables that this page's child pages show.
+See [Download the _.zip_ file to create the reusable code that the overall _date-time_ major section describes](../../intro/#download). This includes the code and data that creates the _extended_timezone_names_ view. For example, it creates the  user-defined function _[jan_and_jul_tz_abbrevs_and_offsets()](../catalog-views/#the-jan-and-jul-tz-abbrevs-and-offsets-table-function)_ that creating the _extended_timezone_names_ view depends upon. It also creates the views that are used to produce the lists that this page's child pages show.
 {{< /tip >}}
 
 {{< note title="Note." >}}
@@ -116,4 +116,4 @@ status          | Canonical
 
 Notice that the abbreviation _PST_ has two different meanings, as was emphasized in the section [The columns _pg_timezone_names.abbrev_ and _pg_timezone_abbrevs.abbrev_ record different kinds of facts](../#the-columns-pg-timezone-names-abbrev-and-pg-timezone-abbrevs-abbrev-record-different-kinds-of-facts).
 
-The installation of the code kit finishes by spooling the _Markdown_ source snippets that define the tables that are presented on this page's child pages.
+The installation of the code kit finishes by spooling the _Markdown_ source snippets that define the lists that are presented on this page's child pages.

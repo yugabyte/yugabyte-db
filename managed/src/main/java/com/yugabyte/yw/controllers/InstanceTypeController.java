@@ -8,7 +8,6 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.forms.YWResults.YWError;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -42,15 +41,12 @@ public class InstanceTypeController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
   private final Config config;
-  private final ValidatingFormFactory formFactory;
   private final CloudAPI.Factory cloudAPIFactory;
 
   // TODO: Remove this when we have HelperMethod in place to get Config details
   @Inject
-  public InstanceTypeController(
-      Config config, ValidatingFormFactory formFactory, CloudAPI.Factory cloudAPIFactory) {
+  public InstanceTypeController(Config config, CloudAPI.Factory cloudAPIFactory) {
     this.config = config;
-    this.formFactory = formFactory;
     this.cloudAPIFactory = cloudAPIFactory;
   }
 
@@ -145,10 +141,7 @@ public class InstanceTypeController extends AuthenticatedController {
    * @param providerUUID, UUID of provider
    * @return JSON response of newly created instance type
    */
-  @ApiOperation(
-      value = "create Instance type",
-      response = InstanceType.class
-    )
+  @ApiOperation(value = "create Instance type", response = InstanceType.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "instance type",
@@ -199,8 +192,7 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "get instance type through instance type code.",
-      response = InstanceType.class
-     )
+      response = InstanceType.class)
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
@@ -219,9 +211,10 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   @ApiOperation(value = "get EBS types", response = StorageType.class, responseContainer = "List")
   public Result getEBSTypes() {
-                return YWResults.withData(Arrays.stream(PublicCloudConstants.StorageType.values())
-                .filter(name -> name.getCloudType().equals(Common.CloudType.aws))
-                .toArray());
+    return YWResults.withData(
+        Arrays.stream(PublicCloudConstants.StorageType.values())
+            .filter(name -> name.getCloudType().equals(Common.CloudType.aws))
+            .toArray());
   }
 
   /**
@@ -232,9 +225,10 @@ public class InstanceTypeController extends AuthenticatedController {
   @ApiOperation(value = "get GCP types", response = StorageType.class, responseContainer = "List")
   public Result getGCPTypes() {
 
-    return YWResults.withData(Arrays.stream(PublicCloudConstants.StorageType.values())
-                .filter(name -> name.getCloudType().equals(Common.CloudType.gcp))
-                .toArray());
+    return YWResults.withData(
+        Arrays.stream(PublicCloudConstants.StorageType.values())
+            .filter(name -> name.getCloudType().equals(Common.CloudType.gcp))
+            .toArray());
   }
 
   /**
@@ -245,8 +239,8 @@ public class InstanceTypeController extends AuthenticatedController {
   @ApiOperation(value = "get AZU types", response = StorageType.class, responseContainer = "List")
   public Result getAZUTypes() {
     return YWResults.withData(
-            Arrays.stream(PublicCloudConstants.StorageType.values())
-                .filter(name -> name.getCloudType().equals(Common.CloudType.azu))
-                .toArray());
+        Arrays.stream(PublicCloudConstants.StorageType.values())
+            .filter(name -> name.getCloudType().equals(Common.CloudType.azu))
+            .toArray());
   }
 }

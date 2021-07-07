@@ -35,7 +35,6 @@ public class AuditController extends AuthenticatedController {
     return YWResults.withData(auditList);
   }
 
- 
   @ApiOperation(value = "get", response = Audit.class)
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);

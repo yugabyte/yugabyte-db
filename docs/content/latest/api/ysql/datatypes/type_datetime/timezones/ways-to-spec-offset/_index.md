@@ -13,10 +13,10 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The  _UTC offset_ is, ultimately, expressed as an [_interval_](../../date-time-data-types-semantics/type-interval/) value. It can be specified in various ways different ways as this page explains.
+The  _UTC offset_ is, ultimately, expressed as an [_interval_](../../date-time-data-types-semantics/type-interval/) value. It can be specified in various different ways as this page explains.
 
 {{< tip title="Yugabyte recommends using only a timezone name or an explicit 'interval' value to specify the 'UTC offset'." >}}
-See the section [Recommended practice for specifying the UTC offset](../recommendation/). It presents a sufficient way to achieve all the functionality that you could need while protecting you from the many opportunities to go wrong brought by using the native functionality with no constraints.
+See the section [Recommended practice for specifying the _UTC offset_](../recommendation/). It presents a sufficient way to achieve all the functionality that you could need while protecting you from the many opportunities to go wrong brought by using the native functionality with no constraints.
 {{< /tip >}}
 
 ### Directly as an interval value
@@ -62,7 +62,7 @@ The same rule applies if you use the _make_timestamptz()_ built-in function. Its
 
 ### Directly using POSIX syntax
 
-The syntax is described in the PostgreSQL documentation in the appendix [B.5. POSIX Time Zone Specifications](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html). This allows you to specify the two _UTC offset_ values, one for Standard Time and one for Summer Time, along with the "spring forward" and "fall back" moments. It's exceedingly unlikely that you will need to use this because everywhere on the planet falls within a canonically-named timezone that keys to the currently-understood rules for Daylight Savings Time from the indefinite past through the indefinite future. The rules are accessible to the PostgreSQL and YugabyteDB servers. (The source is the so-called _[tz&nbsp;database](https://en.wikipedia.org/wiki/Tz_database)_.) If a committee decision changes any rules, then the _tz&nbsp;database_ is updated and the new rules are thence adopted into the configuration data for PostgreSQL and YugabyteDB. Look at the tables on these two pages: [Real timezones that observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-with-dst/); and [Real timezones that do not observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-no-dst/).
+The syntax is described in the PostgreSQL documentation in the appendix [B.5. POSIX Time Zone Specifications](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html). This allows you to specify the two _UTC offset_ values, one for Standard Time and one for Summer Time, along with the "spring forward" and "fall back" moments. It's exceedingly unlikely that you will need to use this because, these days, everywhere on the planet falls within a canonically-named timezone that keys to the currently-understood rules for Daylight Savings Time from the indefinite past through the indefinite future. The rules are accessible to the PostgreSQL and YugabyteDB servers. (The source is the so-called _[tz&nbsp;database](https://en.wikipedia.org/wiki/Tz_database)_.) If a committee decision changes any rules, then the _tz&nbsp;database_ is updated and the new rules are thence adopted into the configuration data for PostgreSQL and YugabyteDB. Look at the tables on these two pages: [Real timezones that observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-with-dst/); and [Real timezones that do not observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-no-dst/).
 
 Executing _show timezone_ after it has been set to an explicit _interval_ value reports back using POSIX syntax—albeit a simple form that doesn't specify Daylight Savings Time transitions. Try this:
 
@@ -101,7 +101,7 @@ You can easily confirm that _FOOBAR5_ is not found in any of the columns (_pg_ti
 
 
 
-Now see what effect this has like this:
+Now see what effect this has, like this:
 
 ```plpgsql
 \set bare_date_time '\'2021-04-15 12:00:00\''
@@ -114,7 +114,7 @@ This is the result:
  2021-04-15 12:00:00-05
 ```
 
-POSIX takes positive numbers to mean west of the Greenwich Meridian. And yet the PostgreSQL convention for displaying such a _UTC offset_ is to show it as a _negative_ value. (see [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601).) This seems to be the overwhelmingly more common convention. Internet searches seem always to show timezones for places west of Greenwich with negative _UTC offset_ values. Try this:
+POSIX takes positive numbers to mean west of the Greenwich Meridian. And yet the PostgreSQL convention for displaying such a _UTC offset_ is to show it as a _negative_ value. (See [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601).) This seems to be the overwhelmingly more common convention. Internet searches seem always to show timezones for places west of Greenwich with negative _UTC offset_ values. Try this:
 
 ```plpgsql
 set time zone interval '-5 hours';
@@ -140,9 +140,9 @@ What? With the timezone set to _FooBar5_, the result of casting _2021-04-15 12:0
 
 ### Indirectly using a timezone name
 
-This is overwhelmingly the preferred approach because it's this, and only this, that brings you the beneficial automatic mapping to the _UTC offset_ value that reigns at the moment of execution of a sensitive operation according to the rules for Daylight Savings Time that the name keys to in the internal representation of the [_tz database_](https://en.wikipedia.org/wiki/Tz_database).  (See the section [Scenarios that are sensitive to the UTC offset and possibly, additionally, to the timezone](../timezone-sensitive-operations/).) The names are automatically looked up in the _pg_timezone_names_ catalog view. See the section [Rules for resolving a string that's intended to identify a UTC offset](./name-res-rules/)
+This is overwhelmingly the preferred approach because it's this, and only this, that brings you the beneficial automatic mapping to the _UTC offset_ value that reigns at the moment of execution of a sensitive operation according to the rules for Daylight Savings Time that the name keys to in the internal representation of the [_tz database_](https://en.wikipedia.org/wiki/Tz_database).  (See the section [Scenarios that are sensitive to the _UTC offset_ and possibly, additionally, to the timezone](../timezone-sensitive-operations/).) The names are automatically looked up in the _pg_timezone_names_ catalog view. See the section [Rules for resolving a string that's intended to identify a _UTC offset_](./name-res-rules/)
 
 ### Indirectly using a timezone abbreviation
 
-Though the is possible, Yugabyte strongly recommends that you avoid this approach. The best that it can do for you is to bring you a fix value for the _UTC offset_ that's independent of the moment of lookup. But this is an exceedingly rare use case. If this is what you want, you can do it in a self-documenting way by specifying the _UTC offset_ [Directly as an interval value](#directly-as-an-interval-value)  as was explained above. Moreover, there are other risks brought by the attempt to use a timezone abbreviation to specify a _UTC offset_. See the section [Rules for resolving a string that's intended to identify a UTC offset](./name-res-rules/).
+Though this is possible, Yugabyte strongly recommends that you avoid this approach. The best that it can do for you is to bring you a fix value for the _UTC offset_ that's independent of the moment of lookup. But this is an exceedingly rare use case. If this is what you want, you can do it in a self-documenting way by specifying the _UTC offset_ [Directly as an interval value](#directly-as-an-interval-value)  as was explained above. Moreover, there are other risks brought by the attempt to use a timezone abbreviation to specify a _UTC offset_. See the section [Rules for resolving a string that's intended to identify a _UTC offset_](./name-res-rules/).
 

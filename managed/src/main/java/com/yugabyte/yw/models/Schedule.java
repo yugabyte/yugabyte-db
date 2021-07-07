@@ -6,7 +6,6 @@ import io.ebean.*;
 import io.ebean.annotation.*;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -32,8 +31,10 @@ import java.util.stream.Collectors;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-@ApiModel(description = "Schedule with a status, frequency and task type")
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 @Entity
+@ApiModel(description = "Scheduled backup")
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
@@ -51,8 +52,8 @@ public class Schedule extends Model {
 
   private static final int MAX_FAIL_COUNT = 3;
 
-  @ApiModelProperty(value = "Schedule uuid", accessMode = READ_ONLY)
   @Id
+  @ApiModelProperty(value = "Schedule UUID", accessMode = READ_ONLY)
   public UUID scheduleUUID;
 
   public UUID getScheduleUUID() {
@@ -67,7 +68,7 @@ public class Schedule extends Model {
     return customerUUID;
   }
 
-  @ApiModelProperty(value = "Failure count", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Number of failed schedule", accessMode = READ_ONLY)
   @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
 
@@ -110,7 +111,9 @@ public class Schedule extends Model {
     return status;
   }
 
-  @Column private String cronExpression;
+  @Column
+  @ApiModelProperty(value = "Cron expression for schedule")
+  private String cronExpression;
 
   public String getCronExpression() {
     return cronExpression;

@@ -9,14 +9,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -25,10 +23,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.*;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
@@ -47,6 +42,9 @@ import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import play.libs.Json;
+
+import io.ebean.SqlUpdate;
+import io.ebean.Ebean;
 
 import java.io.File;
 import java.io.IOException;
@@ -366,6 +364,32 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
           TaskType.SetFlagInMemory,
+          TaskType.SetNodeState);
+
+  List<TaskType> RESIZE_NODE_UPGRADE_TASK_SEQUENCE_NO_MASTER =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.ChangeInstanceType,
+          TaskType.UpdateNodeDetails,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState);
+
+  List<TaskType> RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForMasterLeader,
+          TaskType.ChangeMasterConfig,
+          TaskType.ChangeInstanceType,
+          TaskType.UpdateNodeDetails,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.ChangeMasterConfig,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
           TaskType.SetNodeState);
 
   private int assertRollingRestartSequence(
@@ -866,6 +890,181 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     TaskType taskType = tasks.get(0).getTaskType();
     assertEquals(expectedTaskType, taskType);
     return taskType;
+  }
+
+  @Test
+  public void testResizeNodeUpgrade() {
+    String intendedInstanceType = "c5.2xlarge";
+    int intendedVolumeSize = 300;
+
+    // Seed the database to have the intended type since we cannot mock static methods
+    String updateQuery =
+        "INSERT INTO instance_type ("
+            + "provider_uuid, instance_type_code, active, num_cores, mem_size_gb,"
+            + "instance_type_details_json )"
+            + "VALUES ("
+            + ":providerUUID, :typeCode, true, :numCores, :memSize, :details)";
+    SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
+    update.setParameter("providerUUID", defaultProvider.uuid);
+    update.setParameter("typeCode", intendedInstanceType);
+    update.setParameter("numCores", 8);
+    update.setParameter("memSize", 16);
+    update.setParameter("details", "{\"volumeDetailsList\":[],\"tenancy\":\"Shared\"}");
+    int modifiedCount = Ebean.execute(update);
+    assertEquals(modifiedCount, 1);
+
+    Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone az4 = AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
+
+    Universe.UniverseUpdater updater =
+        new Universe.UniverseUpdater() {
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            Cluster primaryCluster = universeDetails.getPrimaryCluster();
+            UserIntent userIntent = primaryCluster.userIntent;
+            userIntent.providerType = Common.CloudType.aws;
+            userIntent.provider = defaultProvider.uuid.toString();
+            userIntent.instanceType = "c5.large";
+            DeviceInfo deviceInfo = new DeviceInfo();
+            deviceInfo.volumeSize = 250;
+            deviceInfo.numVolumes = 1;
+            userIntent.deviceInfo = deviceInfo;
+
+            for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
+              NodeDetails node = new NodeDetails();
+              node.nodeIdx = idx;
+              node.placementUuid = primaryCluster.uuid;
+              node.nodeName = "host-n" + idx;
+              node.isMaster = false;
+              node.isTserver = true;
+              node.cloudInfo = new CloudSpecificInfo();
+              node.cloudInfo.instance_type = userIntent.instanceType;
+              node.cloudInfo.private_ip = "1.2.3." + idx;
+              universeDetails.nodeDetailsSet.add(node);
+            }
+
+            for (NodeDetails node : universeDetails.nodeDetailsSet) {
+              node.nodeUuid = UUID.randomUUID();
+            }
+
+            userIntent.numNodes += 2;
+
+            universe.setUniverseDetails(universeDetails);
+          }
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID, updater);
+
+    UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
+    taskParams.upgradeOption = UpgradeParams.UpgradeOption.ROLLING_UPGRADE;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskParams.forceResizeNode = false;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = intendedVolumeSize;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo = deviceInfo;
+    taskParams.getPrimaryCluster().userIntent.instanceType = intendedInstanceType;
+    TaskInfo taskInfo =
+        submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ResizeNode, defaultUniverse.version);
+    verify(mockNodeManager, times(26)).nodeCommand(any(), any());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+
+    int position = 0;
+    List<TaskInfo> changeDiskSize = subTasksByPosition.get(position++);
+    assertEquals(
+        changeDiskSize.size(),
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes);
+    assertTaskType(changeDiskSize, TaskType.InstanceActions);
+
+    changeDiskSize.forEach(
+        task -> {
+          JsonNode details = task.getTaskDetails();
+          assertEquals(details.get("deviceInfo").get("volumeSize").asInt(), intendedVolumeSize);
+          assertEquals(details.get("deviceInfo").get("numVolumes").asInt(), 1);
+          assertNotNull(details.get("instanceType"));
+        });
+
+    List<TaskInfo> persistChangeDiskSize = subTasksByPosition.get(position++);
+    assertEquals(persistChangeDiskSize.size(), 1);
+    assertTaskType(persistChangeDiskSize, TaskType.PersistResizeNode);
+
+    // Find start position of each node's subtasks
+    // nodeName to startPosition
+    Map<String, Integer> nodeTasksStartPosition = new HashMap<>();
+    String lastNode = null;
+    for (int j = position; j < subTasksByPosition.size(); j++) {
+      List<TaskInfo> tasks = subTasksByPosition.get(j);
+      assertEquals(1, tasks.size());
+
+      JsonNode nodeNameJson = tasks.get(0).getTaskDetails().get("nodeName");
+      if (nodeNameJson == null) {
+        continue;
+      }
+      String nodeName = nodeNameJson.asText("NoNodeName");
+      if (lastNode == null || !lastNode.equals(nodeName)) {
+        nodeTasksStartPosition.put(nodeName, j);
+        if (nodeTasksStartPosition.size()
+            == defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes) {
+          break;
+        }
+        lastNode = nodeName;
+      }
+    }
+
+    for (NodeDetails node : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      String nodeName = node.nodeName;
+
+      int tmpPosition = nodeTasksStartPosition.get(nodeName);
+
+      if (node.isMaster) {
+        for (int j = 0;
+            j < RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.size()
+                && tmpPosition < subTasksByPosition.size();
+            j++) {
+          List<TaskInfo> tasks = subTasksByPosition.get(tmpPosition++);
+          assertEquals(1, tasks.size());
+          TaskInfo task = tasks.get(0);
+          TaskType taskType = task.getTaskType();
+          assertEquals(RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j), taskType);
+          if (taskType == TaskType.ChangeInstanceType) {
+            JsonNode details = task.getTaskDetails();
+            assertNotNull(details.get("instanceType").asText().equals(intendedInstanceType));
+          }
+
+          if (position < tmpPosition) {
+            position = tmpPosition;
+          }
+        }
+      } else {
+        for (int j = 0;
+            j < RESIZE_NODE_UPGRADE_TASK_SEQUENCE_NO_MASTER.size()
+                && tmpPosition < subTasksByPosition.size();
+            j++) {
+          List<TaskInfo> tasks = subTasksByPosition.get(tmpPosition++);
+          assertEquals(1, tasks.size());
+          TaskInfo task = tasks.get(0);
+          TaskType taskType = task.getTaskType();
+          assertEquals(RESIZE_NODE_UPGRADE_TASK_SEQUENCE_NO_MASTER.get(j), taskType);
+          if (taskType == TaskType.ChangeInstanceType) {
+            JsonNode details = task.getTaskDetails();
+            assertNotNull(details.get("instanceType").asText().equals(intendedInstanceType));
+          }
+
+          if (position < tmpPosition) {
+            position = tmpPosition;
+          }
+        }
+      }
+    }
+
+    List<TaskInfo> persistChangeInstanceType = subTasksByPosition.get(position);
+    assertEquals(persistChangeInstanceType.size(), 1);
+    assertTaskType(persistChangeInstanceType, TaskType.PersistResizeNode);
+
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
 
   @Test

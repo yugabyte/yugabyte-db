@@ -50,11 +50,7 @@ public class AlertDefinitionLabelsBuilder {
   public AlertDefinitionLabelsBuilder appendTarget(AlertReceiver receiver) {
     labels.add(
         new AlertDefinitionLabel(KnownAlertLabels.TARGET_UUID, receiver.getUuid().toString()));
-    // TODO - may want to have receiver name - even to display a list of receivers.
-    // Also, for some reason, we're not storing receiver type as receiver field - need to fix that
-    // as well.
-    labels.add(
-        new AlertDefinitionLabel(KnownAlertLabels.TARGET_NAME, receiver.getUuid().toString()));
+    labels.add(new AlertDefinitionLabel(KnownAlertLabels.TARGET_NAME, receiver.getName()));
     labels.add(new AlertDefinitionLabel(KnownAlertLabels.TARGET_TYPE, "alert receiver"));
     return this;
   }

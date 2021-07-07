@@ -851,57 +851,6 @@ const Status DBImpl::CreateArchivalDirectory() {
   return Status::OK();
 }
 
-void DBImpl::PrintStatistics() {
-  auto dbstats = db_options_.statistics.get();
-  if (dbstats) {
-    RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
-        "STATISTICS:\n %s",
-        dbstats->ToString().c_str());
-  }
-}
-
-void DBImpl::MaybeDumpStats() {
-  if (db_options_.stats_dump_period_sec == 0) return;
-
-  const uint64_t now_micros = env_->NowMicros();
-
-  if (last_stats_dump_time_microsec_ +
-      db_options_.stats_dump_period_sec * 1000000
-      <= now_micros) {
-    // Multiple threads could race in here simultaneously.
-    // However, the last one will update last_stats_dump_time_microsec_
-    // atomically. We could see more than one dump during one dump
-    // period in rare cases.
-    last_stats_dump_time_microsec_ = now_micros;
-
-#ifndef ROCKSDB_LITE
-    const DBPropertyInfo* cf_property_info =
-        GetPropertyInfo(DB::Properties::kCFStats);
-    assert(cf_property_info != nullptr);
-    const DBPropertyInfo* db_property_info =
-        GetPropertyInfo(DB::Properties::kDBStats);
-    assert(db_property_info != nullptr);
-
-    std::string stats;
-    {
-      InstrumentedMutexLock l(&mutex_);
-      for (auto cfd : *versions_->GetColumnFamilySet()) {
-        cfd->internal_stats()->GetStringProperty(
-            *cf_property_info, DB::Properties::kCFStats, &stats);
-      }
-      default_cf_internal_stats_->GetStringProperty(
-          *db_property_info, DB::Properties::kDBStats, &stats);
-    }
-    RLOG(InfoLogLevel::WARN_LEVEL,
-        db_options_.info_log, "------- DUMPING STATS -------");
-    RLOG(InfoLogLevel::WARN_LEVEL,
-        db_options_.info_log, "%s", stats.c_str());
-#endif  // !ROCKSDB_LITE
-
-    PrintStatistics();
-  }
-}
-
 // * Returns the list of live files in 'sst_live'
 // If it's doing full scan:
 // * Returns the list of all files in the filesystem in
@@ -3376,7 +3325,6 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
                                       CompactionTask* compaction_task) {
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
-  MaybeDumpStats();
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
 
   InstrumentedMutexLock l(&mutex_);

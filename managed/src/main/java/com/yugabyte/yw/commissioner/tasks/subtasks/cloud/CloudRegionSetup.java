@@ -25,7 +25,7 @@ import play.api.Play;
 import play.libs.Json;
 
 import javax.inject.Inject;
-import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -85,7 +85,7 @@ public class CloudRegionSetup extends CloudTaskBase {
       region.save();
     }
 
-    JsonNode zoneInfo = null;
+    JsonNode zoneInfo;
     switch (Common.CloudType.valueOf(provider.code)) {
       case aws:
         // Setup subnets.
@@ -101,7 +101,7 @@ public class CloudRegionSetup extends CloudTaskBase {
           }
           zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
-        region.zones = new HashSet<>();
+        region.zones = new ArrayList<>();
         zoneSubnets.forEach(
             (zone, subnet) ->
                 region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
@@ -110,7 +110,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         Map<String, String> zoneNets = taskParams().metadata.azToSubnetIds;
         String vnet = taskParams().metadata.vpcId;
         if (vnet == null || vnet.isEmpty()) {
-          vnet = queryHelper.getVnet(region);
+          vnet = queryHelper.getVnetOrFail(region);
         }
         region.setVnetName(vnet);
         region.save();
@@ -123,7 +123,7 @@ public class CloudRegionSetup extends CloudTaskBase {
           }
           zoneNets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
-        region.zones = new HashSet<>();
+        region.zones = new ArrayList<>();
         zoneNets.forEach(
             (zone, subnet) ->
                 region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
@@ -154,11 +154,9 @@ public class CloudRegionSetup extends CloudTaskBase {
           subnetId = subnetworks.get(0);
         }
         final String subnet = subnetId;
-        region.zones = new HashSet<>();
+        region.zones = new ArrayList<>();
         zones.forEach(
-            zone -> {
-              region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet));
-            });
+            zone -> region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
         break;
       default:
         throw new RuntimeException(

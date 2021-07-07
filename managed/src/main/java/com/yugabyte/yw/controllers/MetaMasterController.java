@@ -39,9 +39,7 @@ public class MetaMasterController extends Controller {
 
   @Inject KubernetesManager kubernetesManager;
 
-  @ApiOperation(
-      value = "get masters list",
-      response = MastersList.class)
+  @ApiOperation(value = "get masters list", response = MastersList.class)
   public Result get(UUID universeUUID) {
     // Lookup the entry for the instanceUUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -68,9 +66,7 @@ public class MetaMasterController extends Controller {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YSQLSERVER);
   }
 
-  @ApiOperation(
-      value = "get redis server address",
-      response = String.class)
+  @ApiOperation(value = "get redis server address", response = String.class)
   public Result getRedisServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.REDISSERVER);
   }

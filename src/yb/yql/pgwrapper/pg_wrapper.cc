@@ -174,6 +174,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   while (std::getline(conf_file, line)) {
     lines.push_back(line);
   }
+  conf_file.close();
 
   if (!FLAGS_ysql_pg_conf_csv.empty()) {
     RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &lines));
@@ -577,8 +578,25 @@ CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
       LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
       // If process does not exist, system may return "process does not exist" or
       // "operation not permitted" error. Ignore those errors.
-      if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
-        return STATUS(RuntimeError, "Unable to kill", Errno(errno));
+      postmaster_pid_file.close();
+      bool postgres_found = true;
+      string cmdline = "";
+#ifdef __linux__
+      string cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
+      std::ifstream postmaster_cmd_file;
+      postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
+      if (postmaster_cmd_file.good()) {
+        postmaster_cmd_file >> cmdline;
+        postgres_found = cmdline.find("/postgres") != std::string::npos;
+        postmaster_cmd_file.close();
+      }
+#endif
+      if (postgres_found) {
+        if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
+          return STATUS(RuntimeError, "Unable to kill", Errno(errno));
+        }
+      } else {
+        LOG(WARNING) << "Didn't find postgres in " << cmdline;
       }
     }
     ignore_result(Env::Default()->DeleteFile(postmaster_pid_filename));

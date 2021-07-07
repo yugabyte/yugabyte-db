@@ -3,9 +3,10 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.CertificateDetails;
 import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
 import com.yugabyte.yw.forms.YWResults.YWError;
@@ -34,10 +35,7 @@ import java.util.UUID;
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
-
-  @Inject play.Configuration appConfig;
-
-  @Inject ValidatingFormFactory formFactory;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(value = "restore Backups", response = UUID.class)
   @ApiImplicitParams(
@@ -100,7 +98,7 @@ public class CertificateController extends AuthenticatedController {
         CertificateHelper.uploadRootCA(
             label,
             customerUUID,
-            appConfig.getString("yb.storage.path"),
+            runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
             certContent,
             keyContent,
             certStart,
@@ -112,20 +110,20 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.withData(certUUID);
   }
 
-  @ApiOperation(value = "post certificate info", response = JsonNode.class)
+  @ApiOperation(value = "post certificate info", response = CertificateDetails.class)
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
     Customer.getOrBadRequest(customerUUID);
-    Long certTimeMillis = formData.get().certStart;
-    Long certExpiryMillis = formData.get().certExpiry;
+    long certTimeMillis = formData.get().certStart;
+    long certExpiryMillis = formData.get().certExpiry;
     Date certStart = certTimeMillis != 0L ? new Date(certTimeMillis) : null;
     Date certExpiry = certExpiryMillis != 0L ? new Date(certExpiryMillis) : null;
 
-    JsonNode result =
+    CertificateDetails result =
         CertificateHelper.createClientCertificate(
             rootCA, null, formData.get().username, certStart, certExpiry);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return YWResults.withRawData(result);
+    return YWResults.withData(result);
   }
 
   @ApiOperation(value = "get root certificate", response = JsonNode.class)

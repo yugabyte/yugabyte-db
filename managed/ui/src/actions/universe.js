@@ -709,21 +709,27 @@ export function resetSlowQueries(universeUUID) {
   return axios.delete(endpoint);
 }
 
-export function createAlertDefinition(universeUUID, data) {
+export function getAlertDefinitionTemplates(filter) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/alert_definitions`;
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definition_templates`;
+  return axios.post(endpoint, filter).then(resp => resp.data);
+}
+
+export function getAlertDefinitionGroups(filter) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definition_groups/list`;
+  return axios.post(endpoint, filter).then(resp => resp.data);
+}
+
+export function createAlertDefinitionGroup(data) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definition_groups`;
   return axios.post(endpoint, data);
 }
 
-export function getAlertDefinition(universeUUID, alertName) {
+export function updateAlertDefinitionGroup(data) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${universeUUID}/${alertName}`;
-  return axios.get(endpoint).then(resp => resp.data);
-}
-
-export function updateAlertDefinition(alertDefinitionUUID, data) {
-  const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${alertDefinitionUUID}`;
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definition_groups/${data.uuid}`;
   return axios.put(endpoint, data);
 }
 
