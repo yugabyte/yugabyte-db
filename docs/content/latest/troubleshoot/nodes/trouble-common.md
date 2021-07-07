@@ -6,7 +6,7 @@ description: How to understand and recover from common error messages
 menu:
   latest:
     parent: troubleshoot-nodes
-    weight: 800
+    weight: 50
 isTocNested: true
 showAsideToc: true
 ---
