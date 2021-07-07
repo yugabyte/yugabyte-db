@@ -721,6 +721,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
+  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info);
+
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
   }
