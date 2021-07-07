@@ -143,14 +143,13 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Tablet successfully reported on " <<
               locs.replicas(0).ts_info().permanent_uuid();
 
-    // TODO(bogdan): why do namespaces/tables report 2 writes?
     // Check that we inserted the right number of rows for the first table:
-    // - 3 for the namespace
+    // - 2 for the namespace
     // - 2 for the table
-    // - 4 * FLAGS_yb_num_shards_per_tserver for the tablets:
-    //    CREATING, PREPARING, first heartbeat, leader election heartbeat
+    // - 3 * FLAGS_yb_num_shards_per_tserver for the tablets:
+    //    PREPARING, first heartbeat, leader election heartbeat
     int after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
-    int expected_rows = 3 + 2 + FLAGS_yb_num_shards_per_tserver * 4;
+    int expected_rows = 2 + 2 + FLAGS_yb_num_shards_per_tserver * 3;
     EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted)
         << "Expected 2 writes for the table and 4 per each tablet";
 
@@ -170,9 +169,10 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     auto sleep_duration_sec = MonoDelta::FromSeconds(RegularBuildVsSanitizers(2, 5));
     SleepFor(sleep_duration_sec);
     after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
-    // For a normal table, we expect 4 writes per tablet.
+    // For a normal table, we expect 3 writes per tablet.
     // For a copartitioned table, we expect just 1 write per tablet.
-    expected_rows = 2 + FLAGS_yb_num_shards_per_tserver * (co_partition ? 1 : 4);
+    expected_rows = (co_partition ? 1 : 2) +
+                    FLAGS_yb_num_shards_per_tserver * (co_partition ? 1 : 3);
     EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 

@@ -301,7 +301,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
 
     // Change table properties in the sys catalog. We do this after updating tablet metadata, so
     // that if a restart happens before this step succeeds, we'll retry updating both next time.
-    RETURN_NOT_OK(sys_catalog->UpdateItem(&table_info, term));
+    RETURN_NOT_OK(sys_catalog->Upsert(term, &table_info));
     table_lock.Commit();
   }
 
@@ -315,7 +315,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     auto* ysql_catalog_config_pb =
         ysql_catalog_lock.mutable_data()->pb.mutable_ysql_catalog_config();
     ysql_catalog_config_pb->set_transactional_sys_catalog_enabled(true);
-    RETURN_NOT_OK(sys_catalog->UpdateItem(ysql_catalog_config, term));
+    RETURN_NOT_OK(sys_catalog->Upsert(term, ysql_catalog_config));
     ysql_catalog_lock.Commit();
   }
 

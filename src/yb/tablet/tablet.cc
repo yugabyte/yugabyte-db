@@ -1071,7 +1071,7 @@ Status Tablet::ApplyRowOperations(
           : *operation->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
-    metrics_->rows_inserted->IncrementBy(write_request.write_batch().write_pairs().size());
+    metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
   }
 
   return ApplyOperation(

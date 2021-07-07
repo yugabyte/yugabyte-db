@@ -65,64 +65,21 @@ class Visitor : public VisitorBase {
 };
 
 // Template method defintions must go into a header file.
-template <class Item>
-CHECKED_STATUS SysCatalogTable::AddItem(Item* item, int64_t leader_term) {
-  TRACE_EVENT1("master", "SysCatalogTable::Add",
-               "table", item->ToString());
-  return AddItems(std::vector<Item*>({ item }), leader_term);
+template <class... Items>
+CHECKED_STATUS SysCatalogTable::Upsert(int64_t leader_term, Items&&... items) {
+  return Mutate(QLWriteRequestPB::QL_STMT_UPDATE, leader_term, std::forward<Items>(items)...);
 }
 
-template <class Item>
-CHECKED_STATUS SysCatalogTable::AddItems(const vector<Item>& items, int64_t leader_term) {
-  return MutateItems(items, QLWriteRequestPB::QL_STMT_INSERT, leader_term);
+template <class... Items>
+CHECKED_STATUS SysCatalogTable::Delete(int64_t leader_term, Items&&... items) {
+  return Mutate(QLWriteRequestPB::QL_STMT_DELETE, leader_term, std::forward<Items>(items)...);
 }
 
-template <class Items1, class Items2>
-CHECKED_STATUS SysCatalogTable::AddAndUpdateItems(
-    const Items1& added_items,
-    const Items2& updated_items,
-    int64_t leader_term) {
+template <class... Items>
+CHECKED_STATUS SysCatalogTable::Mutate(
+      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items) {
   auto w = NewWriter(leader_term);
-  for (const auto& item : added_items) {
-    RETURN_NOT_OK(w->MutateItem(item, QLWriteRequestPB::QL_STMT_INSERT));
-  }
-  for (const auto& item : updated_items) {
-    RETURN_NOT_OK(w->MutateItem(item, QLWriteRequestPB::QL_STMT_UPDATE));
-  }
-  return SyncWrite(w.get());
-}
-
-template <class Item>
-CHECKED_STATUS SysCatalogTable::UpdateItem(Item* item, int64_t leader_term) {
-  TRACE_EVENT1("master", "SysCatalogTable::Update",
-               "table", item->ToString());
-  return UpdateItems(std::vector<Item*>({ item }), leader_term);
-}
-
-template <class Item>
-CHECKED_STATUS SysCatalogTable::UpdateItems(const vector<Item>& items, int64_t leader_term) {
-  return MutateItems(items, QLWriteRequestPB::QL_STMT_UPDATE, leader_term);
-}
-
-template <class Item>
-CHECKED_STATUS SysCatalogTable::DeleteItem(Item* item, int64_t leader_term) {
-  TRACE_EVENT1("master", "SysCatalogTable::Delete",
-               "table", item->ToString());
-  return DeleteItems(std::vector<Item*>({ item }), leader_term);
-}
-
-template <class Item>
-CHECKED_STATUS SysCatalogTable::DeleteItems(const vector<Item>& items, int64_t leader_term) {
-  return MutateItems(items, QLWriteRequestPB::QL_STMT_DELETE, leader_term);
-}
-
-template <class Item>
-CHECKED_STATUS SysCatalogTable::MutateItems(
-    const vector<Item>& items, const QLWriteRequestPB::QLStmtType& op_type, int64_t leader_term) {
-  auto w = NewWriter(leader_term);
-  for (const auto& item : items) {
-    RETURN_NOT_OK(w->MutateItem(item, op_type));
-  }
+  RETURN_NOT_OK(w->Mutate(op_type, std::forward<Items>(items)...));
   return SyncWrite(w.get());
 }
 

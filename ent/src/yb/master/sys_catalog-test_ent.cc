@@ -82,7 +82,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
     auto l = stream->LockForWrite();
     l.mutable_data()->pb.set_table_id("test_table");
     // Add the CDC stream.
-    ASSERT_OK(sys_catalog->AddItem(stream.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, stream));
     l.Commit();
   }
 
@@ -93,7 +93,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   ASSERT_METADATA_EQ(stream.get(), loader->streams[0]);
 
   // 2. CHECK DELETE_CDCSTREAM.
-  ASSERT_OK(sys_catalog->DeleteItem(stream.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, stream));
 
   // Verify the result.
   loader->Reset();
@@ -114,7 +114,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
     auto l = universe->LockForWrite();
     l.mutable_data()->pb.add_tables("producer_table_id");
     // Add the universe replication info.
-    ASSERT_OK(sys_catalog->AddItem(universe.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, universe));
     l.Commit();
   }
 
@@ -125,7 +125,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
   ASSERT_METADATA_EQ(universe.get(), loader->universes[0]);
 
   // 2. CHECK DELETE_UNIVERSE_REPLICATION.
-  ASSERT_OK(sys_catalog->DeleteItem(universe.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, universe));
 
   // Verify the result.
   loader->Reset();

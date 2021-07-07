@@ -103,30 +103,15 @@ class SysCatalogTable {
   // ==================================================================
   // Templated CRUD methods for items in sys.catalog.
   // ==================================================================
-  template <class Item>
-  CHECKED_STATUS AddItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS AddItems(const vector<Item>& items, int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Upsert(int64_t leader_term, Items&&... items);
 
-  template <class Item>
-  CHECKED_STATUS UpdateItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS UpdateItems(const vector<Item>& items, int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Delete(int64_t leader_term, Items&&... items);
 
-  template <class Items1, class Items2>
-  CHECKED_STATUS AddAndUpdateItems(const Items1& added_items,
-                                   const Items2& updated_items,
-                                   int64_t leader_term);
-
-  template <class Item>
-  CHECKED_STATUS DeleteItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS DeleteItems(const vector<Item>& items, int64_t leader_term);
-
-  template <class Item>
-  CHECKED_STATUS MutateItems(const vector<Item>& items,
-                             const QLWriteRequestPB::QLStmtType& op_type,
-                             int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Mutate(
+      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items);
 
   // ==================================================================
   // Static schema related methods.
@@ -139,7 +124,7 @@ class SysCatalogTable {
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
 
-  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
+  std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
     return std::atomic_load(&tablet_peer_);
   }
 
