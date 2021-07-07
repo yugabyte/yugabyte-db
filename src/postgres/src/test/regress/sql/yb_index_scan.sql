@@ -217,6 +217,14 @@ update test set col6=5554 where pk=5;
 EXPLAIN SELECT * FROM test WHERE col6 = 5554;
 SELECT * FROM test WHERE col6 = 5554;
 
+-- test index only scan with non-target column refs in qual (github issue #9176)
+-- baseline, col5 is in target columns
+EXPLAIN SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+-- same lines are expected without col5 in the target list
+EXPLAIN SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+
 -- testing update on primary key
 update test set pk=17 where pk=1;
 update test set pk=25, col4=777 where pk=2;
