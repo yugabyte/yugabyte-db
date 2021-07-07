@@ -13,6 +13,7 @@ import {
   createAlertDestinationResponse,
   createAlertReceiver,
   createAlertReceiverResponse,
+  deleteAlertConfig,
   deleteAlertDestination,
   getAlertReceivers,
   setInitialValues,
@@ -42,7 +43,14 @@ const mapStateToProps = (state) => {
 const mapDispatchToProps = (dispatch) => {
   return {
     alertConfigs: () => {
-      return dispatch(alertConfigs());
+      return dispatch(alertConfigs()).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+          return;
+        }
+        return response.payload.data;
+      });
     },
     alertDestionations: () => {
       return dispatch(alertDestionations()).then((response) => {
@@ -111,6 +119,16 @@ const mapDispatchToProps = (dispatch) => {
     },
     deleteAlertDestination: (uuid) => {
       return dispatch(deleteAlertDestination(uuid)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+          return;
+        }
+        return response.payload.data;
+      });
+    },
+    deleteAlertConfig: (uuid) => {
+      return dispatch(deleteAlertConfig(uuid)).then((response) => {
         if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);

@@ -5,7 +5,7 @@
 // This file will hold all the alert configuration tabs along
 // with their respective components.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Tab } from 'react-bootstrap';
 import { isDisabled } from '../../../utils/LayoutUtils';
 import { YBTabsPanel } from '../../panels';
@@ -16,12 +16,12 @@ import { AlertsList } from './AlertsList';
 import CreateAlert from './CreateAlert';
 
 export const AlertConfiguration = (props) => {
-  const [alertList, setAlertList] = useState([]);
   const [profileStatus, setProfileStatus] = useState({
     statusUpdated: true,
     updateStatus: ''
   });
   const [listView, setListView] = useState(false);
+  const [enablePlatformAlert, setPlatformAlert] = useState(false);
   const [alertDestinationListView, setAlertDestinationListView] = useState(false);
   const { activeTab, defaultTab, routePrefix, customerProfile, apiToken, customer } = props;
 
@@ -31,10 +31,6 @@ export const AlertConfiguration = (props) => {
       updateStatus: status
     });
   };
-
-  useEffect(() => {
-    setAlertList(props.alertConfigs());
-  }, []);
 
   return (
     <div className="provider-config-container">
@@ -56,9 +52,9 @@ export const AlertConfiguration = (props) => {
           unmountOnExit
         >
           {listView ? (
-            <CreateAlert onCreateCancel={setListView} {...props} />
+            <CreateAlert onCreateCancel={setListView} enablePlatformAlert={enablePlatformAlert} {...props} />
           ) : (
-            <AlertsList data={alertList} onCreateAlert={setListView} />
+            <AlertsList onCreateAlert={setListView} enablePlatformAlert={setPlatformAlert} {...props} />
           )}
         </Tab>
 

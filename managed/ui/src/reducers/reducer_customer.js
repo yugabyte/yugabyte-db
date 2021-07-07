@@ -72,11 +72,13 @@ import {
   CREATE_ALERT_RECEIVER_RESPONSE,
   GET_ALERT_RECEIVERS,
   GET_ALERT_DESTIONATIONS,
+  GET_ALERT_CONFIGS,
   CREATE_ALERT_DESTINATION,
   CREATE_ALERT_DESTINATION_RESPONSE,
   UPDATE_ALERT_DESTINATION,
   UPDATE_ALERT_DESTINATION_RESPONSE,
-  DELETE_ALERT_DESTINATION
+  DELETE_ALERT_DESTINATION,
+  DELETE_ALERT_CONFIG
 } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -103,7 +105,9 @@ const INITIAL_STATE = {
   },
   alertReceivers: getInitialState([]),
   alertDestinations: getInitialState([]),
+  alertConfigs: getInitialState([]),
   deleteDestination: getInitialState([]),
+  deleteAlertConfig: getInitialState([]),
   hostInfo: null,
   customerCount: {},
   yugawareVersion: getInitialState({}),
@@ -239,8 +243,12 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'alertReceivers', []);
     case GET_ALERT_DESTIONATIONS:
       return setLoadingState(state, 'alertDestinations', []);
+    case GET_ALERT_CONFIGS:
+      return setLoadingState(state, 'alertConfigs', []);
     case DELETE_ALERT_DESTINATION:
       return setLoadingState(state, 'deleteDestination', []);
+    case DELETE_ALERT_CONFIG:
+      return setLoadingState(state, 'deleteAlertConfig', []);
     case CREATE_ALERT_RECEIVER:
       return setLoadingState(state, 'createAlertReceiver', {});
     case CREATE_ALERT_RECEIVER_RESPONSE:

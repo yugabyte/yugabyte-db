@@ -61,6 +61,7 @@ export const UPDATE_ALERT_DESTINATION = 'UPDATE_ALERT_DESTINATION';
 export const UPDATE_ALERT_DESTINATION_RESPONSE = 'UPDATE_ALERT_DESTINATION_RESPONSE';
 
 export const DELETE_ALERT_DESTINATION = 'DELETE_ALERT_DESTINATION';
+export const DELETE_ALERT_CONFIG = 'DELETE_ALERT_CONFIG';
 
 export const GET_ALERT_RECEIVERS = 'GET_ALERT_RECEIVERS';
 export const GET_ALERT_RECEIVERS_SUCCESS = 'GET_ALERT_RECEIVERS_SUCCESS';
@@ -507,6 +508,15 @@ export function deleteAlertDestination(uuid) {
   };
 }
 
+export function deleteAlertConfig(uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_definition_groups/${uuid}`);
+  return {
+    type:   DELETE_ALERT_CONFIG,
+    payload: request
+  };
+}
+
 export function getAlertReceivers() {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_receivers`);
@@ -530,18 +540,20 @@ export function getAlertReceiversFaliure(response) {
   };
 }
 
-export function alertConfigs() {
-  return {
-    type: GET_ALERT_CONFIGS,
-    payload: alertListMockData
-  }
-}
-
 export function alertDestionations() {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_routes`);
   return {
     type: GET_ALERT_DESTIONATIONS,
+    payload: request
+  }
+}
+
+export function alertConfigs() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_definition_groups`);
+  return {
+    type: GET_ALERT_CONFIGS,
     payload: request
   }
 }

@@ -4,16 +4,17 @@
 //
 // This file will hold all the configuration list of alerts.
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
+import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
 
 /**
  * This is the header for YB Panel Item.
  */
-const header = (onCreateAlert) => (
+const header = (onCreateAlert, enablePlatformAlert) => (
   <>
     <h2 className="table-container-title pull-left">Alert Configurations</h2>
     <FlexContainer className="pull-right">
@@ -24,11 +25,23 @@ const header = (onCreateAlert) => (
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem className="alert-config-list" onClick={() => onCreateAlert(true)}>
+          <MenuItem
+            className="alert-config-list"
+            onClick={() => {
+              onCreateAlert(true);
+              enablePlatformAlert(false);
+            }}
+          >
             <i className="fa fa-globe"></i> Universe Alert
           </MenuItem>
 
-          <MenuItem className="alert-config-list">
+          <MenuItem
+            className="alert-config-list"
+            onClick={() => {
+              onCreateAlert(true);
+              enablePlatformAlert(true);
+            }}
+          >
             <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
           </MenuItem>
         </DropdownButton>
@@ -38,10 +51,50 @@ const header = (onCreateAlert) => (
 );
 
 export const AlertsList = (props) => {
+  const [alertList, setAlertList] = useState([]);
   const {
-    data: { payload },
-    onCreateAlert
+    alertConfigs,
+    closeModal,
+    enablePlatformAlert,
+    deleteAlertConfig,
+    modal: { visibleModal },
+    onCreateAlert,
+    showDeleteModal
   } = props;
+
+  useEffect(() => {
+    alertConfigs().then((res) => {
+      console.log(res, '******** response');
+      setAlertList(res);
+    });
+  }, []);
+
+  /**
+   * This method will help us to edit the details for a respective row.
+   * 
+   * @param {object} row Respective row object.
+   */
+  const onEditAlertConfig = (row) => {
+    console.log(row, '******* row on edit..')
+
+    // const initialVal = {};
+
+    // setInitialValues(initialVal);
+    // onCreateAlert(true);
+  }
+
+  /**
+   * This method will help us to delete the respective row record.
+   *
+   * @param {object} row Respective row data.
+   */
+  const onDeleteConfig = (row) => {
+    deleteAlertConfig(row.uuid).then(() => {
+      alertConfigs().then((res) => {
+        setAlertList(res);
+      });
+    });
+  };
 
   // This method will handle all the required actions for the particular row.
   const formatConfigActions = (cell, row) => {
@@ -53,13 +106,26 @@ export const AlertsList = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem>
+          <MenuItem onClick={() => onEditAlertConfig(row)}>
             <i className="fa fa-pencil"></i> Edit Alert
           </MenuItem>
 
-          <MenuItem>
+          <MenuItem onClick={() => showDeleteModal(row.name)}>
             <i className="fa fa-trash"></i> Delete Alert
           </MenuItem>
+
+          {
+            <YBConfirmModal
+              name="delete-alert-config"
+              title="Confirm Delete"
+              onConfirm={() => onDeleteConfig(row)}
+              currentModal={row.name}
+              visibleModal={visibleModal}
+              hideConfirmModal={closeModal}
+            >
+              Are you sure you want to delete {row.name} Alert Config?
+            </YBConfirmModal>
+          }
         </DropdownButton>
       </>
     );
@@ -69,10 +135,10 @@ export const AlertsList = (props) => {
   // For now, we're dealing with the mock data.
   return (
     <YBPanelItem
-      header={header(onCreateAlert)}
+      header={header(onCreateAlert, enablePlatformAlert)}
       body={
         <>
-          <BootstrapTable className="backup-list-table middle-aligned-table" data={payload}>
+          <BootstrapTable className="backup-list-table middle-aligned-table" data={alertList}>
             <TableHeaderColumn dataField="configUUID" isKey={true} hidden={true} />
             <TableHeaderColumn
               dataField="configName"
