@@ -9,6 +9,7 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 import javax.persistence.*;
+import java.util.List;
 import java.util.UUID;
 
 @Table(
@@ -88,6 +89,16 @@ public class AsyncReplicationRelationship extends Model {
         .eq("target_universe_uuid", targetUniverseUUID)
         .eq("target_table_id", targetTableID)
         .findOne();
+  }
+
+  public static List<AsyncReplicationRelationship> getByTargetUniverseUUID(
+      UUID targetUniverseUUID) {
+    return find.query().where().eq("target_universe_uuid", targetUniverseUUID).findList();
+  }
+
+  public static List<AsyncReplicationRelationship> getBySourceUniverseUUID(
+      UUID sourceUniverseUUID) {
+    return find.query().where().eq("source_universe_uuid", sourceUniverseUUID).findList();
   }
 
   public static boolean delete(UUID asyncReplicationRelationshipUUID) {
