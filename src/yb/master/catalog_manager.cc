@@ -2094,8 +2094,9 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
     const TabletInfo& tablet_info, const std::string& split_partition_key) {
   const auto& source_partition = tablet_info.LockForRead()->pb.partition();
 
-  if (source_partition.partition_key_start() == split_partition_key ||
-      source_partition.partition_key_end() == split_partition_key) {
+  if (split_partition_key <= source_partition.partition_key_start() ||
+      (!source_partition.partition_key_end().empty() &&
+       split_partition_key >= source_partition.partition_key_end())) {
     return STATUS_FORMAT(
         InvalidArgument,
         "Can't split tablet $0 (partition_key_start: $1 partition_key_end: $2) by partition "
@@ -2241,7 +2242,8 @@ Status CatalogManager::DoSplitTablet(
         source_tablet_info->tablet_id());
   }
 
-  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
+  LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
+            << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
@@ -2303,6 +2305,8 @@ void CatalogManager::SplitTabletWithKey(
 }
 
 Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
+  LOG(INFO) << "Got tablet to split: " << tablet_id;
+
   const auto tablet = VERIFY_RESULT(GetTabletInfo(tablet_id));
 
   VLOG(2) << "Scheduling GetSplitKey request to leader tserver for source tablet ID: "

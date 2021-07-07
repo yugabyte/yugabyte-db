@@ -32,8 +32,9 @@
 
 #include <algorithm>
 #include <functional>
-#include <thread>
+#include <regex>
 #include <set>
+#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -537,7 +538,7 @@ class ClientTestForceMasterLookup :
   }
 
 
-  void PerformManyLookups(const std::shared_ptr<const YBTable>& table, bool point_lookup) {
+  void PerformManyLookups(const std::shared_ptr<YBTable>& table, bool point_lookup) {
     for (int i = 0; i < kNumIterations; i++) {
       if (point_lookup) {
           auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
@@ -1083,9 +1084,10 @@ TEST_F(ClientTest, TestWriteTimeout) {
         << "unexpected status: " << flush_status.status.ToString();
     auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
-    ASSERT_STR_CONTAINS(error->status().ToString(),
-        strings::Substitute("GetTableLocations($0, hash_code: NaN, 0, 1) failed: "
-            "timed out after deadline expired", client_table_->name().ToString()));
+    ASSERT_TRUE(std::regex_match(
+        error->status().ToString(),
+        std::regex(".*GetTableLocations \\{.*\\} failed: timed out after deadline expired.*")))
+        << error->status().ToString();
   }
 
   LOG(INFO) << "Time out the actual write on the tablet server";

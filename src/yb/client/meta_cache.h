@@ -454,6 +454,7 @@ struct LookupDataGroup {
   int64_t max_completed_request_number = 0;
 
   void Finished(int64_t request_no, const ToStringable& id, bool allow_absence = false);
+  ~LookupDataGroup();
 };
 
 struct TableData {
@@ -527,13 +528,13 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   //
   // NOTE: the memory referenced by 'table' must remain valid until 'callback'
   // is invoked.
-  void LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
+  void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const PartitionKey& partition_key,
                          CoarseTimePoint deadline,
                          LookupTabletCallback callback);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
-      const std::shared_ptr<const YBTable>& table,
+      const std::shared_ptr<YBTable>& table,
       const PartitionKey& partition_key,
       CoarseTimePoint deadline) {
     return MakeFuture<Result<internal::RemoteTabletPtr>>([&](auto callback) {
@@ -585,6 +586,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc);
 
   void InvalidateTableCache(const YBTable& table);
+
+  const std::string& LogPrefix() const { return log_prefix_; }
 
  private:
   friend class LookupRpc;
@@ -708,6 +711,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   Semaphore master_lookup_sem_;
 
   rpc::Rpcs rpcs_;
+
+  const std::string log_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(MetaCache);
 };

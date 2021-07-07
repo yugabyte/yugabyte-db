@@ -19,6 +19,7 @@
 using namespace std::literals;  // NOLINT
 
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_filter_block_size_bytes);
@@ -26,6 +27,7 @@ DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_int32(max_queued_split_candidates);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
@@ -38,22 +40,94 @@ DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
 
 namespace yb {
 
+namespace {
+
+size_t GetNumActiveTablets(MiniCluster* cluster) {
+  return ListTabletPeers(
+             cluster,
+             [](const std::shared_ptr<tablet::TabletPeer>& peer) -> bool {
+               const auto tablet_meta = peer->tablet_metadata();
+               const auto consensus = peer->shared_consensus();
+               return tablet_meta && consensus &&
+                      tablet_meta->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE &&
+                      tablet_meta->tablet_data_state() !=
+                          tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
+                      consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+             })
+      .size();
+}
+
+} // namespace
+
 class CqlTabletSplitTest : public CqlTestBase {
+ protected:
   void SetUp() override {
     FLAGS_yb_num_shards_per_tserver = 1;
     FLAGS_enable_automatic_tablet_splitting = true;
+
+    // Setting this very low will just cause to include metrics in every heartbeat, no overhead on
+    // setting it lower than FLAGS_heartbeat_interval_ms.
+    FLAGS_tserver_heartbeat_metrics_interval_ms = 1;
+    // Split as soon as we get tablet to split on master.
+    FLAGS_process_split_tablet_candidates_interval_msec = 1;
+    FLAGS_heartbeat_interval_ms = 1000;
+
     FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
     FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
     FLAGS_max_queued_split_candidates = 10;
     FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
     FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
-    FLAGS_tablet_force_split_threshold_bytes = 30_KB;
-    FLAGS_db_write_buffer_size = FLAGS_tablet_force_split_threshold_bytes / 4;
+    FLAGS_tablet_force_split_threshold_bytes = 64_KB;
+    FLAGS_db_write_buffer_size = FLAGS_tablet_force_split_threshold_bytes;
     FLAGS_db_block_size_bytes = 2_KB;
     FLAGS_db_filter_block_size_bytes = 2_KB;
     FLAGS_db_index_block_size_bytes = 2_KB;
     CqlTestBase::SetUp();
   }
+
+  void WaitUntilAllCommittedOpsApplied(const MonoDelta timeout) {
+    const auto splits_completion_deadline = MonoTime::Now() + timeout;
+    for (auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+      auto consensus = peer->shared_consensus();
+      if (consensus) {
+        ASSERT_OK(Wait([consensus]() -> Result<bool> {
+          return consensus->GetLastAppliedOpId() >= consensus->GetLastCommittedOpId();
+        }, splits_completion_deadline, "Waiting for all committed ops to be applied"));
+      }
+    }
+  }
+
+  // Disable splitting and wait for pending splits to complete.
+  void StopSplitsAndWait() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    // Give time to leaders for applying split ops that has been already scheduled.
+    std::this_thread::sleep_for(1s * kTimeMultiplier);
+    // Wait until followers also apply those split ops.
+    ASSERT_NO_FATALS(WaitUntilAllCommittedOpsApplied(15s * kTimeMultiplier));
+    LOG(INFO) << "Number of active tablets: " << GetNumActiveTablets(cluster_.get());
+  }
+
+  void DoTearDown() override {
+    // TODO(tsplit): remove this workaround after
+    // https://github.com/yugabyte/yugabyte-db/issues/8222 is fixed.
+    StopSplitsAndWait();
+    CqlTestBase::DoTearDown();
+  }
+
+  void StartSecondaryIndexTest();
+  void CompleteSecondaryIndexTest(int num_splits, MonoDelta timeout);
+
+  int writer_threads_ = 2;
+  int reader_threads_ = 4;
+  int value_size_bytes_ = 128;
+  int max_write_errors_ = 100;
+  int max_read_errors_ = 100;
+  CassandraSession session_;
+  std::atomic<bool> stop_requested_{false};
+  std::unique_ptr<load_generator::SessionFactory> load_session_factory_;
+  std::unique_ptr<load_generator::MultiThreadedWriter> writer_;
+  std::unique_ptr<load_generator::MultiThreadedReader> reader_;
+  int start_num_active_tablets_;
 };
 
 class CqlSecondaryIndexWriter : public load_generator::SingleThreadedWriter {
@@ -178,94 +252,97 @@ class CqlSecondaryIndexSessionFactory : public load_generator::SessionFactory {
   CppCassandraDriver* driver_;
 };
 
-namespace {
-
-size_t GetNumActiveTablets(MiniCluster* cluster) {
-  return ListTabletPeers(
-             cluster,
-             [](const std::shared_ptr<tablet::TabletPeer>& peer) -> bool {
-               const auto tablet_meta = peer->tablet_metadata();
-               const auto consensus = peer->shared_consensus();
-               return tablet_meta && consensus &&
-                      tablet_meta->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE &&
-                      tablet_meta->tablet_data_state() !=
-                          tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
-                      consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
-             })
-      .size();
-}
-
-} // namespace
-
-TEST_F(CqlTabletSplitTest, SecondaryIndex) {
+void CqlTabletSplitTest::StartSecondaryIndexTest() {
   const auto kNumRows = std::numeric_limits<int64_t>::max();
-  const auto kWriterThreads = 2;
-  const auto kReaderThreads = 4;
-  const auto kValueSizeBytes = 128;
-  const auto kMaxWriteErrors = 100;
-  const auto kMaxReadErrors = 100;
-  const auto kNumSplits = 10;
 
-  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
-  ASSERT_OK(
-      session.ExecuteQuery("CREATE TABLE t (k varchar PRIMARY KEY, v varchar) WITH transactions = "
-                           "{ 'enabled' : true }"));
-  ASSERT_OK(session.ExecuteQuery(
+  session_ = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session_.ExecuteQuery(
+      "CREATE TABLE t (k varchar PRIMARY KEY, v varchar) WITH transactions = "
+      "{ 'enabled' : true }"));
+  ASSERT_OK(session_.ExecuteQuery(
       "CREATE INDEX t_by_value ON t(v) WITH transactions = { 'enabled' : true }"));
 
-  const auto start_num_active_tablets = GetNumActiveTablets(cluster_.get());
-  LOG(INFO) << "Number of active tablets at workload start: " << start_num_active_tablets;
+  start_num_active_tablets_ = GetNumActiveTablets(cluster_.get());
+  LOG(INFO) << "Number of active tablets at workload start: " << start_num_active_tablets_;
 
-  CqlSecondaryIndexSessionFactory load_session_factory(driver_.get());
-  std::atomic<bool> stop_requested{false};
+  load_session_factory_ = std::make_unique<CqlSecondaryIndexSessionFactory>(driver_.get());
+  stop_requested_ = false;
 
-  load_generator::MultiThreadedWriter writer(
-      kNumRows, /* start_key = */ 0, kWriterThreads, &load_session_factory, &stop_requested,
-      kValueSizeBytes, kMaxWriteErrors);
-  load_generator::MultiThreadedReader reader(
-      kNumRows, kReaderThreads, &load_session_factory, writer.InsertionPoint(),
-      writer.InsertedKeys(), writer.FailedKeys(), &stop_requested,
-      kValueSizeBytes, kMaxReadErrors);
+  writer_ = std::make_unique<load_generator::MultiThreadedWriter>(
+      kNumRows, /* start_key = */ 0, writer_threads_, load_session_factory_.get(), &stop_requested_,
+      value_size_bytes_, max_write_errors_);
+  reader_ = std::make_unique<load_generator::MultiThreadedReader>(
+      kNumRows, reader_threads_, load_session_factory_.get(), writer_->InsertionPoint(),
+      writer_->InsertedKeys(), writer_->FailedKeys(), &stop_requested_, value_size_bytes_,
+      max_read_errors_);
 
   LOG(INFO) << "Started workload";
-  writer.Start();
-  reader.Start();
-  FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability = 0.5;
-  size_t num_active_tablets = start_num_active_tablets;
-  while (writer.IsRunning() && num_active_tablets < start_num_active_tablets + kNumSplits) {
-    num_active_tablets = GetNumActiveTablets(cluster_.get());
-    LOG(INFO) << "Number of active tablets: " << num_active_tablets;
-    std::this_thread::sleep_for(3s);
-  }
-  writer.Stop();
-  reader.Stop();
-  writer.WaitForCompletion();
-  reader.WaitForCompletion();
+  writer_->Start();
+  reader_->Start();
+}
 
-  LOG(INFO) << "Workload complete, num_writes: " << writer.num_writes()
-            << ", num_write_errors: " << writer.num_write_errors()
-            << ", num_reads: " << reader.num_reads()
-            << ", num_read_errors:" << reader.num_read_errors();
-  ASSERT_EQ(reader.read_status_stopped(), load_generator::ReadStatus::kOk)
-      << " reader stopped due to: " << AsString(reader.read_status_stopped());
-  ASSERT_LE(writer.num_write_errors(), kMaxWriteErrors);
+void CqlTabletSplitTest::CompleteSecondaryIndexTest(const int num_splits, const MonoDelta timeout) {
+  const auto num_wait_for_active_tablets = start_num_active_tablets_ + num_splits;
+  size_t num_active_tablets;
 
-  // Disable splitting and wait for pending splits to finish before shutdown.
-  // TODO(tsplit): remove this workaround after https://github.com/yugabyte/yugabyte-db/issues/8222
-  // is fixed.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_split_tablet_candidate_processing) = true;
-  std::this_thread::sleep_for(FLAGS_heartbeat_interval_ms * 1ms);
-  const auto splits_completion_deadline = MonoTime::Now() + 15s * kTimeMultiplier;
-  for (auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto consensus = peer->shared_consensus();
-    if (consensus) {
-      ASSERT_OK(Wait([consensus]() -> Result<bool> {
-        return consensus->GetLastAppliedOpId() >= consensus->GetLastCommittedOpId();
-      }, splits_completion_deadline, "Complete pending tablet splits"));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() {
+        num_active_tablets = GetNumActiveTablets(cluster_.get());
+        YB_LOG_EVERY_N_SECS(INFO, 5) << "Number of active tablets: " << num_active_tablets;
+        if (!writer_->IsRunning()) {
+          return true;
+        }
+        if (num_active_tablets > num_wait_for_active_tablets) {
+          return true;
+        }
+        return false;
+      },
+      timeout,
+      Format("Waiting for $0 active tablets or writer stopped", num_wait_for_active_tablets)));
+  LOG(INFO) << "Number of active tablets: " << num_active_tablets;
+
+  writer_->Stop();
+  reader_->Stop();
+  writer_->WaitForCompletion();
+  reader_->WaitForCompletion();
+
+  LOG(INFO) << "Workload complete, num_writes: " << writer_->num_writes()
+            << ", num_write_errors: " << writer_->num_write_errors()
+            << ", num_reads: " << reader_->num_reads()
+            << ", num_read_errors:" << reader_->num_read_errors();
+  ASSERT_EQ(reader_->read_status_stopped(), load_generator::ReadStatus::kOk)
+      << " reader stopped due to: " << AsString(reader_->read_status_stopped());
+  ASSERT_LE(writer_->num_write_errors(), max_write_errors_);
+}
+
+TEST_F(CqlTabletSplitTest, SecondaryIndex) {
+  const auto kNumSplits = 10;
+
+  ASSERT_NO_FATALS(StartSecondaryIndexTest());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability) = 0.5;
+  ASSERT_NO_FATALS(CompleteSecondaryIndexTest(kNumSplits, 300s * kTimeMultiplier));
+}
+
+TEST_F(CqlTabletSplitTest, SecondaryIndexWithDrop) {
+  const auto kNumSplits = 3;
+  const auto kNumTestIters = 2;
+
+  for (auto iter = 1; iter <= kNumTestIters; ++iter) {
+    LOG(INFO) << "Iteration: " << iter;
+    ASSERT_NO_FATALS(StartSecondaryIndexTest());
+    ASSERT_NO_FATALS(CompleteSecondaryIndexTest(kNumSplits, 300s * kTimeMultiplier));
+
+    // TODO(tsplit): Remove this workaround after
+    // https://github.com/yugabyte/yugabyte-db/issues/8034 is fixed.
+    {
+      StopSplitsAndWait();
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     }
-  }
 
-  LOG(INFO) << "Number of active tablets: " << GetNumActiveTablets(cluster_.get());
+    LOG(INFO) << "Iteration: " << iter << " deleting test table";
+    ASSERT_OK(session_.ExecuteQuery("DROP TABLE t"));
+    LOG(INFO) << "Iteration: " << iter << " deleted test table";
+  }
 }
 
 }  // namespace yb

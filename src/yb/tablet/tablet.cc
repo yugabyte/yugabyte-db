@@ -3472,7 +3472,8 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
         IllegalState,
         "Failed to detect middle key (got \"$0\") for tablet $1 (key_bounds: $2 - $3), this can "
         "happen if post-split tablet wasn't fully compacted after split",
-        middle_key, tablet_id(), key_bounds_.lower, key_bounds_.upper);
+        middle_key_slice.ToDebugHexString(), tablet_id(),
+        Slice(key_bounds_.lower).ToDebugHexString(), Slice(key_bounds_.upper).ToDebugHexString());
   }
   return middle_key;
 }

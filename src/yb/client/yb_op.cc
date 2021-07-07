@@ -113,10 +113,6 @@ void YBOperation::MarkTablePartitionListAsStale() {
   table_->MarkPartitionsAsStale();
 }
 
-Result<bool> YBOperation::MaybeRefreshTablePartitionList() {
-  return table_->MaybeRefreshPartitions();
-}
-
 //--------------------------------------------------------------------------------------------------
 // YBRedisOp
 //--------------------------------------------------------------------------------------------------

@@ -720,7 +720,7 @@ class YBClient {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
-  void LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
+  void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,
                          CoarseTimePoint deadline,
                          LookupTabletCallback callback);
@@ -736,7 +736,7 @@ class YBClient {
                         LookupTabletRangeCallback callback);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
-      const std::shared_ptr<const YBTable>& table,
+      const std::shared_ptr<YBTable>& table,
       const std::string& partition_key,
       CoarseTimePoint deadline);
 

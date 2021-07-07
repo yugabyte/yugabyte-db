@@ -1769,7 +1769,7 @@ void YBClient::MaybeUpdateMinRunningRequestId(
   }
 }
 
-void YBClient::LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
+void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                  const std::string& partition_key,
                                  CoarseTimePoint deadline,
                                  LookupTabletCallback callback) {
@@ -1792,7 +1792,7 @@ void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
 }
 
 std::future<Result<internal::RemoteTabletPtr>> YBClient::LookupTabletByKeyFuture(
-    const std::shared_ptr<const YBTable>& table,
+    const std::shared_ptr<YBTable>& table,
     const std::string& partition_key,
     CoarseTimePoint deadline) {
   return data_->meta_cache_->LookupTabletByKeyFuture(table, partition_key, deadline);
