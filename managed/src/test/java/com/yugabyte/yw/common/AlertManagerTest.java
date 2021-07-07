@@ -85,7 +85,7 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendEmail() {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-    alert.setDefinitionUUID(definition.getUuid());
+    alert.setDefinitionUuid(definition.getUuid());
     alert.save();
 
     am.sendNotification(alert, report);
