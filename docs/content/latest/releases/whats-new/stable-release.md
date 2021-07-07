@@ -17,7 +17,7 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.6 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.6 stable release series.
 
-## v2.6.0.0 - July 6, 2021
+## v2.6.0.0 - July 7, 2021
 
 ### Downloads
 
