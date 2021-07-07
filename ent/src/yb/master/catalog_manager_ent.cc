@@ -357,7 +357,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 
   // Write the snapshot data descriptor to the system catalog (in "creating" state).
   RETURN_NOT_OK(CheckLeaderStatus(
-      sys_catalog_->AddItem(snapshot.get(), leader_ready_term()),
+      sys_catalog_->Upsert(leader_ready_term(), snapshot),
       "inserting snapshot into sys-catalog"));
   TRACE("Wrote snapshot to system catalog");
 
@@ -547,7 +547,7 @@ Status CatalogManager::RestoreNonTransactionAwareSnapshot(const string& snapshot
   // Update sys-catalog with the updated snapshot state.
   // The mutation will be aborted when 'l' exits the scope on early return.
   RETURN_NOT_OK(CheckLeaderStatus(
-      sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term()),
+      sys_catalog_->Upsert(leader_ready_term(), snapshot),
       "updating snapshot in sys-catalog"));
 
   // CataloManager lock 'lock_' is still locked here.
@@ -673,7 +673,7 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snaps
   // Update sys-catalog with the updated snapshot state.
   // The mutation will be aborted when 'l' exits the scope on early return.
   RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term()),
+      sys_catalog_->Upsert(leader_ready_term(), snapshot),
       "updating snapshot in sys-catalog"));
 
   // Send DeleteSnapshot requests to all TServers (one tablet - one request).
@@ -899,7 +899,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
 
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term()),
+      sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
       "updating cluster config in sys-catalog"));
   l.Commit();
 
@@ -1295,7 +1295,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
         l.mutable_data()->pb.set_version(l->pb.version() + 1);
         // Update sys-catalog with the new table schema.
-        RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
+        RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
         l.Commit();
         // Update the new table schema in tablets.
         SendAlterTableRequest(table);
@@ -1631,7 +1631,7 @@ void CatalogManager::CleanupHiddenTables(std::vector<TableInfoPtr> tables) {
     return;
   }
 
-  Status s = sys_catalog_->UpdateItems(tables, leader_ready_term());
+  Status s = sys_catalog_->Upsert(leader_ready_term(), tables);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to mark tables as deleted: " << s;
     return;
@@ -1725,7 +1725,7 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
           << " PB: " << l.mutable_data()->pb.DebugString()
           << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
 
-  const Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term());
+  const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
   if (!s.ok()) {
     return (void)CheckStatus(s, "updating snapshot in sys-catalog");
   }
@@ -1801,7 +1801,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
           << " PB: " << l.mutable_data()->pb.DebugString()
           << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
 
-  const Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term());
+  const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
   if (!s.ok()) {
     return (void)CheckStatus(s, "updating snapshot in sys-catalog");
   }
@@ -1856,7 +1856,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     l.mutable_data()->pb.set_state(SysSnapshotEntryPB::DELETED);
     LOG(INFO) << "Deleted snapshot " << snapshot->id();
 
-    const Status s = sys_catalog_->DeleteItem(snapshot.get(), leader_ready_term());
+    const Status s = sys_catalog_->Delete(leader_ready_term(), snapshot);
 
     LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
@@ -1878,7 +1878,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     l.mutable_data()->pb.set_state(SysSnapshotEntryPB::FAILED);
     LOG(WARNING) << "Failed snapshot " << snapshot->id() << " deletion on tablet " << tablet->id();
 
-    const Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term());
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
     if (!s.ok()) {
       return (void)CheckStatus(s, "updating snapshot in sys-catalog");
     }
@@ -2207,7 +2207,7 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
 
   // Update the on-disk system catalog.
   RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
-      sys_catalog_->AddItem(stream.get(), leader_ready_term()),
+      sys_catalog_->Upsert(leader_ready_term(), stream),
       "inserting CDC stream into sys-catalog", resp));
   TRACE("Wrote CDC stream to sys-catalog");
 
@@ -2273,7 +2273,7 @@ Status CatalogManager::MarkCDCStreamsAsDeleting(
   }
   // The mutation will be aborted when 'l' exits the scope on early return.
   RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->UpdateItems(streams_to_mark, leader_ready_term()),
+      sys_catalog_->Upsert(leader_ready_term(), streams_to_mark),
       "updating CDC streams in sys-catalog"));
   LOG(INFO) << "Successfully marked streams " << JoinStreamsCSVLine(streams_to_mark)
             << " as DELETING in sys catalog";
@@ -2388,7 +2388,7 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
 
   // The mutation will be aborted when 'l' exits the scope on early return.
   RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->DeleteItems(streams_to_delete, leader_ready_term()),
+      sys_catalog_->Delete(leader_ready_term(), streams_to_delete),
       "deleting CDC streams from sys-catalog"));
   LOG(INFO) << "Successfully deleted streams " << JoinStreamsCSVLine(streams_to_delete)
             << " from sys catalog";
@@ -2583,7 +2583,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   metadata->set_state(SysUniverseReplicationEntryPB::INITIALIZING);
 
   RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
-      sys_catalog_->AddItem(ri.get(), leader_ready_term()),
+      sys_catalog_->Upsert(leader_ready_term(), ri),
       "inserting universe replication info into sys-catalog", resp));
   TRACE("Wrote universe replication info to sys-catalog");
 
@@ -2643,7 +2643,7 @@ void CatalogManager::MarkUniverseReplicationFailed(
   }
 
   // Update sys_catalog.
-  const Status s = sys_catalog_->UpdateItem(universe.get(), leader_ready_term());
+  const Status s = sys_catalog_->Upsert(leader_ready_term(), universe);
   if (!s.ok()) {
     return (void)CheckStatus(s, "updating universe replication info in sys-catalog");
   }
@@ -2739,7 +2739,7 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
   auto res = universe->GetOrCreateCDCRpcTasks(master_addresses);
   if (!res.ok()) {
     l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
-    const Status s = sys_catalog_->UpdateItem(universe.get(), leader_ready_term());
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), universe);
     if (!s.ok()) {
       return CheckStatus(s, "updating universe replication info in sys-catalog");
     }
@@ -2769,7 +2769,7 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
   LOG(INFO) << "UpdateItem in AddValidatedTable";
 
   // Update sys_catalog.
-  Status status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term());
+  Status status = sys_catalog_->Upsert(leader_ready_term(), universe);
   if (!status.ok()) {
     LOG(ERROR) << "Error during UpdateItem: " << status;
     return CheckStatus(status, "updating universe replication info in sys-catalog");
@@ -3032,7 +3032,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     }
 
     // Update sys_catalog with new producer table id info.
-    Status status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term());
+    Status status = sys_catalog_->Upsert(leader_ready_term(), universe);
     if (!status.ok()) {
       return (void)CheckStatus(status, "updating universe replication info in sys-catalog");
     }
@@ -3093,7 +3093,7 @@ Status CatalogManager::InitCDCConsumer(
   (*producer_map)[producer_universe_uuid] = std::move(producer_entry);
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term()),
+      sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
       "updating cluster config in sys-catalog"));
   l.Commit();
 
@@ -3137,7 +3137,7 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       LOG(WARNING) << "Could not find both universes in Cluster Config: " << universe->id();
     }
     cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-    const Status s = sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term());
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
     if (!s.ok()) {
       return (void)CheckStatus(s, "updating cluster config in sys-catalog");
     }
@@ -3160,7 +3160,7 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
     alter_lock.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
     vector<UniverseReplicationInfo*> universes{original_universe.get(), universe.get()};
-    const Status s = sys_catalog_->UpdateItems(universes, leader_ready_term());
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), universes);
     if (!s.ok()) {
       return (void)CheckStatus(s, "updating universe replication entries in sys-catalog");
     }
@@ -3208,7 +3208,7 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
       producer_map->erase(it);
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term()),
+          sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
           "updating cluster config in sys-catalog"));
       cl.Commit();
     }
@@ -3245,7 +3245,7 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
 void CatalogManager::DeleteUniverseReplicationUnlocked(
     scoped_refptr<UniverseReplicationInfo> universe) {
   // Assumes that caller has locked universe.
-  Status s = sys_catalog_->DeleteItem(universe.get(), leader_ready_term());
+  Status s = sys_catalog_->Delete(leader_ready_term(), universe);
   if (!s.ok()) {
     LOG(ERROR) << "An error occurred while updating sys-catalog: " << s
                << ": universe_id: " << universe->id();
@@ -3305,7 +3305,7 @@ Status CatalogManager::SetUniverseReplicationEnabled(
         l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DISABLED);
     }
     RETURN_NOT_OK(CheckStatus(
-        sys_catalog_->UpdateItem(universe.get(), leader_ready_term()),
+        sys_catalog_->Upsert(leader_ready_term(), universe),
         "updating universe replication info in sys-catalog"));
     l.Commit();
   }
@@ -3323,7 +3323,7 @@ Status CatalogManager::SetUniverseReplicationEnabled(
     (*it).second.set_disable_stream(!req->is_enabled());
     l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
     RETURN_NOT_OK(CheckStatus(
-        sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term()),
+        sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
         "updating cluster config in sys-catalog"));
     l.Commit();
   }
@@ -3375,7 +3375,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       l.mutable_data()->pb.mutable_producer_master_addresses()->CopyFrom(
           req->producer_master_addresses());
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->UpdateItem(original_ri.get(), leader_ready_term()),
+          sys_catalog_->Upsert(leader_ready_term(), original_ri),
           "updating universe replication info in sys-catalog"));
       l.Commit();
     }
@@ -3392,7 +3392,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       (*it).second.mutable_master_addrs()->CopyFrom(req->producer_master_addresses());
       l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term()),
+          sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
           "updating cluster config in sys-catalog"));
       l.Commit();
     }
@@ -3450,7 +3450,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       }
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term()),
+          sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
           "updating cluster config in sys-catalog"));
       cl.Commit();
     }
@@ -3486,7 +3486,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         }
       }
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->UpdateItem(original_ri.get(), leader_ready_term()),
+          sys_catalog_->Upsert(leader_ready_term(), original_ri),
           "updating universe replication info in sys-catalog"));
       l.Commit();
     }
