@@ -1,7 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
 import RegisterForm from './RegisterForm';
-import { register, registerResponse } from '../../../../actions/customers';
+import { register, registerResponse, 
+  validate, 
+  validateResponse 
+} from '../../../../actions/customers';
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
@@ -14,7 +17,14 @@ const mapDispatchToProps = (dispatch) => {
         }
         dispatch(registerResponse(response.payload));
       });
-    }
+    },
+    validateRegistration: () => {
+      dispatch(validate()).then((response) => {
+        if (response.payload.status === 200) {
+          dispatch(validateResponse(response.payload));
+        }
+      });
+    },
   };
 };
 

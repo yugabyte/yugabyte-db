@@ -12,6 +12,20 @@ import * as Yup from 'yup';
 import './RegisterForm.scss';
 
 class RegisterForm extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { 
+      registrationValidation : {} 
+    };
+  }
+
+  componentDidMount() {
+    const { validateRegistration } = this.props;
+    validateRegistration().then((validationResult) => {
+      this.setState({ registrationValidation: validationResult });
+    });
+  }
+
   componentDidUpdate(prevProps) {
     const {
       customer: { authToken }
@@ -31,7 +45,7 @@ class RegisterForm extends Component {
     const {
       customer: { authToken }
     } = this.props;
-
+    const { registrationValidation } = this.state;
     const validationSchema = Yup.object().shape({
       code: Yup.string()
         .required('Enter Environment name')

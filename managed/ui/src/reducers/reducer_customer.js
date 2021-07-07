@@ -6,6 +6,8 @@ import {
   VALIDATE_FROM_TOKEN_RESPONSE,
   REGISTER,
   REGISTER_RESPONSE,
+  VALIDATE,
+  VALIDATE_RESPONSE,
   LOGIN,
   LOGIN_RESPONSE,
   INSECURE_LOGIN,
@@ -122,6 +124,11 @@ export default function (state = INITIAL_STATE, action) {
     case REGISTER:
       return setLoadingState(state, 'authToken', {});
     case REGISTER_RESPONSE:
+      return setPromiseResponse(state, 'authToken', action);
+
+    case VALIDATE:
+      return setLoadingState(state, 'authToken', {});
+    case VALIDATE_RESPONSE:
       return setPromiseResponse(state, 'authToken', action);
 
     case LOGIN:

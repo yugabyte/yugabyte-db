@@ -18,6 +18,12 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.ValidationError;
 import play.mvc.Result;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -26,11 +32,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class PasswordPolicyService {
+   public static final Logger LOG = LoggerFactory.getLogger(PasswordPolicyService.class);
 
   private static final char[] SPECIAL_CHARACTERS =
       "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".toCharArray();
@@ -106,5 +114,28 @@ public class PasswordPolicyService {
             .collect(Collectors.joining("; "));
 
     return ApiResponse.error(BAD_REQUEST, fullMessage);
+  }
+
+  // Method to return the password policy
+  public PasswordPolicyFormData getPasswordPolicyData() {
+    PasswordPolicyFormData effectivePolicy;
+    PasswordPolicyFormData policyData;
+    effectivePolicy = new PasswordPolicyFormData();
+    effectivePolicy.setMinLength(config.getInt(DEFAULT_MIN_LENGTH_PARAM));
+    effectivePolicy.setMinUppercase(config.getInt(DEFAULT_MIN_UPPERCASE_PARAM));
+    effectivePolicy.setMinLowercase(config.getInt(DEFAULT_MIN_LOWERCASE_PARAM));
+    effectivePolicy.setMinDigits(config.getInt(DEFAULT_MIN_DIGITS_PARAM));
+    effectivePolicy.setMinSpecialCharacters(config.getInt(DEFAULT_MIN_SPECIAL_CHAR_PARAM));
+
+    JsonNode policyJson = Json.toJson(effectivePolicy);
+    ObjectMapper mapper = new ObjectMapper();
+    
+     try {
+      policyData = mapper.treeToValue(policyJson, PasswordPolicyFormData.class);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Can not pretty print a Json object.");
+    }
+
+    return policyJson;
   }
 }

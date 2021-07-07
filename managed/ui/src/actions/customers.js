@@ -13,6 +13,10 @@ export const VALIDATE_FROM_TOKEN_RESPONSE = 'VALIDATE_FROM_TOKEN_RESPONSE';
 export const REGISTER = 'REGISTER';
 export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
 
+// Validate Customer registration
+export const VALIDATE = 'VALIDATE';
+export const VALIDATE_RESPONSE = 'VALIDATE_RESPONSE';
+
 // Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
@@ -163,6 +167,21 @@ export function register(formValues) {
 export function registerResponse(response) {
   return {
     type: REGISTER_RESPONSE,
+    payload: response
+  };
+}
+
+export function validate() {
+  const request = axios.get(`${ROOT_URL}/validate`);
+  return {
+    type: VALIDATE,
+    payload: request
+  };
+}
+
+export function validateResponse(response) {
+  return {
+    type: VALIDATE_RESPONSE,
     payload: response
   };
 }
