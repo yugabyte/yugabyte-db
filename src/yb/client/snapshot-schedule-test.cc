@@ -11,11 +11,12 @@
 // under the License.
 //
 
-#include "yb/client/snapshot_test_base.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_alterer.h"
 
 #include "yb/client/session.h"
 
+#include "yb/client/txn-test-base.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/mini_master.h"
@@ -37,124 +38,35 @@ DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 namespace yb {
 namespace client {
 
-using Schedules = google::protobuf::RepeatedPtrField<master::SnapshotScheduleInfoPB>;
-constexpr auto kSnapshotInterval = 10s * kTimeMultiplier;
-constexpr auto kSnapshotRetention = 20h;
-
-YB_STRONGLY_TYPED_BOOL(WaitSnapshot);
-
-class SnapshotScheduleTest : public SnapshotTestBase {
+class SnapshotScheduleTest : public TransactionTestBase<MiniCluster> {
  public:
   void SetUp() override {
     FLAGS_enable_history_cutoff_propagation = true;
     FLAGS_snapshot_coordinator_poll_interval_ms = 250;
     FLAGS_history_cutoff_propagation_interval_ms = 100;
     num_tablets_ = 1;
-    SnapshotTestBase::SetUp();
+    TransactionTestBase<MiniCluster>::SetUp();
+    snapshot_util_ = std::make_unique<SnapshotTestUtil>();
+    snapshot_util_->SetProxy(&client_->proxy_cache());
+    snapshot_util_->SetCluster(cluster_.get());
   }
-
-  Result<SnapshotScheduleId> CreateSchedule(
-      MonoDelta interval = kSnapshotInterval, MonoDelta retention = kSnapshotRetention) {
-    return CreateSchedule(WaitSnapshot::kFalse, interval, retention);
-  }
-
-  Result<SnapshotScheduleId> CreateSchedule(
-      WaitSnapshot wait_snapshot,
-      MonoDelta interval = kSnapshotInterval, MonoDelta retention = kSnapshotRetention) {
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    master::CreateSnapshotScheduleRequestPB req;
-    auto& options = *req.mutable_options();
-    options.set_interval_sec(interval.ToSeconds());
-    options.set_retention_duration_sec(retention.ToSeconds());
-    auto& tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
-    tables.Add()->set_table_id(table_.table()->id());
-    master::CreateSnapshotScheduleResponsePB resp;
-    RETURN_NOT_OK(MakeBackupServiceProxy().CreateSnapshotSchedule(req, &resp, &controller));
-    auto id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(resp.snapshot_schedule_id()));
-    if (wait_snapshot) {
-      RETURN_NOT_OK(WaitScheduleSnapshot(id));
-    }
-    return id;
-  }
-
-  Result<Schedules> ListSchedules(const SnapshotScheduleId& id = SnapshotScheduleId::Nil()) {
-    master::ListSnapshotSchedulesRequestPB req;
-    master::ListSnapshotSchedulesResponsePB resp;
-
-    if (!id.IsNil()) {
-      req.set_snapshot_schedule_id(id.data(), id.size());
-    }
-
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotSchedules(req, &resp, &controller));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-    LOG(INFO) << "Schedules: " << resp.ShortDebugString();
-    return std::move(resp.schedules());
-  }
-
-  Result<TxnSnapshotId> PickSuitableSnapshot(
-      const SnapshotScheduleId& schedule_id, HybridTime hybrid_time) {
-    auto schedules = VERIFY_RESULT(ListSchedules(schedule_id));
-    SCHECK_EQ(schedules.size(), 1, IllegalState,
-              Format("Expected exactly one schedule with id $0", schedule_id));
-    const auto& schedule = schedules[0];
-    for (const auto& snapshot : schedule.snapshots()) {
-      auto prev_ht = HybridTime::FromPB(snapshot.entry().previous_snapshot_hybrid_time());
-      auto cur_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
-      auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
-      if (hybrid_time > prev_ht && hybrid_time <= cur_ht) {
-        return id;
-      }
-      LOG(INFO) << __func__ << " rejected " << id << " (" << prev_ht << "-" << cur_ht << "] for "
-                << hybrid_time;
-    }
-    return STATUS_FORMAT(NotFound, "Not found suitable snapshot for $0", hybrid_time);
-  }
-
-  CHECKED_STATUS WaitScheduleSnapshot(
-      const SnapshotScheduleId& schedule_id, HybridTime min_hybrid_time) {
-    return WaitScheduleSnapshot(schedule_id, std::numeric_limits<int>::max(), min_hybrid_time);
-  }
-
-  CHECKED_STATUS WaitScheduleSnapshot(
-      const SnapshotScheduleId& schedule_id, int max_snapshots = 1,
-      HybridTime min_hybrid_time = HybridTime::kMin) {
-    return WaitFor([this, schedule_id, max_snapshots, min_hybrid_time]() -> Result<bool> {
-      auto snapshots = VERIFY_RESULT(ListSnapshots());
-      EXPECT_LE(snapshots.size(), max_snapshots);
-      LOG(INFO) << "Snapshots: " << AsString(snapshots);
-      for (const auto& snapshot : snapshots) {
-        EXPECT_EQ(TryFullyDecodeSnapshotScheduleId(snapshot.entry().schedule_id()), schedule_id);
-        if (snapshot.entry().state() == master::SysSnapshotEntryPB::COMPLETE
-            && HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time()) >= min_hybrid_time) {
-          return true;
-        }
-      }
-      return false;
-    },
-    ((max_snapshots == 1) ? 0s : kSnapshotInterval) + kSnapshotInterval / 2,
-    "Schedule snapshot");
-  }
+  std::unique_ptr<SnapshotTestUtil> snapshot_util_;
 };
 
 TEST_F(SnapshotScheduleTest, Create) {
   std::vector<SnapshotScheduleId> ids;
   for (int i = 0; i != 3; ++i) {
-    auto id = ASSERT_RESULT(CreateSchedule());
+    auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
     LOG(INFO) << "Schedule " << i << " id: " << id;
     ids.push_back(id);
 
     {
-      auto schedules = ASSERT_RESULT(ListSchedules(id));
+      auto schedules = ASSERT_RESULT(snapshot_util_->ListSchedules(id));
       ASSERT_EQ(schedules.size(), 1);
       ASSERT_EQ(TryFullyDecodeSnapshotScheduleId(schedules[0].id()), id);
     }
 
-    auto schedules = ASSERT_RESULT(ListSchedules());
+    auto schedules = ASSERT_RESULT(snapshot_util_->ListSchedules());
     LOG(INFO) << "Schedules: " << AsString(schedules);
     ASSERT_EQ(schedules.size(), ids.size());
     std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> ids_set(ids.begin(), ids.end());
@@ -172,18 +84,18 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
   FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
 
   ASSERT_NO_FATALS(WriteData());
-  auto schedule_id = ASSERT_RESULT(CreateSchedule());
-  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   // Write data to update history retention.
   ASSERT_NO_FATALS(WriteData());
 
-  auto schedules = ASSERT_RESULT(ListSchedules());
+  auto schedules = ASSERT_RESULT(snapshot_util_->ListSchedules());
   ASSERT_EQ(schedules.size(), 1);
   ASSERT_EQ(schedules[0].snapshots().size(), 1);
 
   std::this_thread::sleep_for(kSnapshotInterval / 4);
-  auto snapshots = ASSERT_RESULT(ListSnapshots());
+  auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots());
   ASSERT_EQ(snapshots.size(), 1);
 
   HybridTime first_snapshot_hybrid_time(schedules[0].snapshots()[0].entry().snapshot_hybrid_time());
@@ -200,7 +112,7 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
   }
 
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    auto snapshots = VERIFY_RESULT(snapshot_util_->ListSnapshots());
     return snapshots.size() == 2;
   }, kSnapshotInterval, "Second snapshot"));
 
@@ -221,11 +133,11 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
 TEST_F(SnapshotScheduleTest, GC) {
   FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
   // When retention matches snapshot interval we expect at most 2 snapshots for schedule.
-  ASSERT_RESULT(CreateSchedule(kSnapshotInterval, kSnapshotInterval));
+  ASSERT_RESULT(snapshot_util_->CreateSchedule(table_, kSnapshotInterval, kSnapshotInterval));
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
   while (all_snapshot_ids.size() < 4) {
-    auto snapshots = ASSERT_RESULT(ListSnapshots(TxnSnapshotId::Nil(), false));
+    auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots(TxnSnapshotId::Nil(), false));
     for (const auto& snapshot : snapshots) {
       all_snapshot_ids.insert(ASSERT_RESULT(FullyDecodeSnapshotScheduleId(snapshot.id())));
     }
@@ -237,8 +149,8 @@ TEST_F(SnapshotScheduleTest, GC) {
 TEST_F(SnapshotScheduleTest, Index) {
   FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
 
-  auto schedule_id = ASSERT_RESULT(CreateSchedule());
-  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   CreateIndex(Transactional::kTrue, 1, false);
   auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
@@ -265,7 +177,7 @@ TEST_F(SnapshotScheduleTest, Index) {
   });
 
   ASSERT_OK(WaitFor([this, peers, hybrid_time]() -> Result<bool> {
-    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    auto snapshots = VERIFY_RESULT(snapshot_util_->ListSnapshots());
     if (snapshots.size() == 2) {
       return true;
     }
@@ -285,11 +197,11 @@ TEST_F(SnapshotScheduleTest, Index) {
 
 TEST_F(SnapshotScheduleTest, Restart) {
   ASSERT_NO_FATALS(WriteData());
-  auto schedule_id = ASSERT_RESULT(CreateSchedule());
-  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
   ASSERT_OK(cluster_->RestartSync());
 
-  auto schedules = ASSERT_RESULT(ListSchedules());
+  auto schedules = ASSERT_RESULT(snapshot_util_->ListSchedules());
   ASSERT_EQ(schedules.size(), 1);
   ASSERT_EQ(schedules[0].snapshots().size(), 1);
   ASSERT_EQ(schedules[0].snapshots()[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
@@ -297,7 +209,7 @@ TEST_F(SnapshotScheduleTest, Restart) {
 
 TEST_F(SnapshotScheduleTest, RestoreSchema) {
   ASSERT_NO_FATALS(WriteData());
-  auto schedule_id = ASSERT_RESULT(CreateSchedule());
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
   auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
   auto old_schema = table_.schema();
   auto alterer = client_->NewTableAlterer(table_.name());
@@ -307,15 +219,16 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
   ASSERT_OK(table_.Reopen());
   ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
   ASSERT_NO_FATALS(VerifyData(WriteOpType::UPDATE));
-  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
-  auto schedules = ASSERT_RESULT(ListSchedules());
+  auto schedules = ASSERT_RESULT(snapshot_util_->ListSchedules());
   ASSERT_EQ(schedules.size(), 1);
   const auto& snapshots = schedules[0].snapshots();
   ASSERT_EQ(snapshots.size(), 1);
   ASSERT_EQ(snapshots[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
 
-  ASSERT_OK(RestoreSnapshot(TryFullyDecodeTxnSnapshotId(snapshots[0].id()), hybrid_time));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(
+      TryFullyDecodeTxnSnapshotId(snapshots[0].id()), hybrid_time));
 
   auto select_result = SelectRow(CreateSession(), 1, kValueColumn);
   ASSERT_NOK(select_result);
@@ -327,13 +240,14 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
 }
 
 TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
-  auto schedule_id = ASSERT_RESULT(CreateSchedule(WaitSnapshot::kTrue));
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_, WaitSnapshot::kTrue));
   auto before_index_ht = cluster_->mini_master(0)->master()->clock()->Now();
   CreateIndex(Transactional::kTrue, 1, false);
   auto after_time_ht = cluster_->mini_master(0)->master()->clock()->Now();
-  ASSERT_OK(WaitScheduleSnapshot(schedule_id, after_time_ht));
-  auto snapshot_id = ASSERT_RESULT(PickSuitableSnapshot(schedule_id, before_index_ht));
-  ASSERT_OK(RestoreSnapshot(snapshot_id, before_index_ht));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, after_time_ht));
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->PickSuitableSnapshot(schedule_id,
+                                                                        before_index_ht));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, before_index_ht));
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
