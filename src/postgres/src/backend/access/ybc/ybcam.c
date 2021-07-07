@@ -955,7 +955,8 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
  * Required columns are:
  * - all bound key columns
  * - all query targets columns (from index for Index Only Scan case and from table otherwise)
- * - all table columns required for filtering resulting rows on postgres' side
+ * - all qual columns (not bound to the scan keys), they are requirted for filtering results
+ *   on the postgres side
  *
  * Example:
  * SELECT <target columns from index or table> FROM t
@@ -985,14 +986,8 @@ ybcInitColumnFilter(YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_pla
 		items = bms_add_member(items, *sk_attno - min_attr + 1);
 
 	ListCell *lc;
-	Index target_relid = INDEX_VAR;
-	if (!ybScan->prepare_params.index_only_scan)
-	{
-		/* Collect table filtering attributes */
-		foreach(lc, pg_scan_plan->plan.qual)
-			pull_varattnos_min_attr((Node *) lfirst(lc), pg_scan_plan->scanrelid, &items, min_attr);
-		target_relid = pg_scan_plan->scanrelid;
-	}
+	Index target_relid =
+		ybScan->prepare_params.index_only_scan ? INDEX_VAR : pg_scan_plan->scanrelid;
 
 	/* Collect target attributes */
 	foreach(lc, pg_scan_plan->plan.targetlist)
@@ -1000,6 +995,10 @@ ybcInitColumnFilter(YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_pla
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
 		pull_varattnos_min_attr((Node *) tle->expr, target_relid, &items, min_attr);
 	}
+
+	/* Collect table filtering attributes */
+	foreach(lc, pg_scan_plan->plan.qual)
+		pull_varattnos_min_attr((Node *) lfirst(lc), target_relid, &items, min_attr);
 
 	/* In case InvalidAttrNumber is set whole row columns are required */
 	if (bms_is_member(InvalidAttrNumber - min_attr + 1, items))
@@ -1443,12 +1442,12 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	 *     it requires extra request to the main table.
 	 */
 	double tsp_cost = 0.0;
-	bool is_valid_tsp_cost = !is_uncovered_idx_scan 
-								&& get_yb_tablespace_cost(index_tablespace_oid, 
+	bool is_valid_tsp_cost = !is_uncovered_idx_scan
+								&& get_yb_tablespace_cost(index_tablespace_oid,
 															&tsp_cost);
 	Cost yb_per_tuple_cost_factor = YB_DEFAULT_PER_TUPLE_COST;
 
-	if (is_valid_tsp_cost && yb_per_tuple_cost_factor > tsp_cost) 
+	if (is_valid_tsp_cost && yb_per_tuple_cost_factor > tsp_cost)
 	{
 		yb_per_tuple_cost_factor = tsp_cost;
 	}
