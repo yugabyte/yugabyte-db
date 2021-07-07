@@ -1019,8 +1019,8 @@ help(const char *progname)
 	printf(_("  -c, --clean                  clean (drop) database objects before recreating\n"));
 	printf(_("  -C, --create                 include commands to create database in dump\n"));
 	printf(_("  -E, --encoding=ENCODING      dump the data in encoding ENCODING\n"));
-	printf(_("  -n, --schema=SCHEMA          dump the named schema(s) only\n"));
 	printf(_("  -m, --masters=HOST:PORT      comma-separated list of YB-Master hosts and ports\n"));
+	printf(_("  -n, --schema=SCHEMA          dump the named schema(s) only\n"));
 	printf(_("  -N, --exclude-schema=SCHEMA  do NOT dump the named schema(s)\n"));
 	printf(_("  -o, --oids                   include OIDs in dump\n"));
 	printf(_("  -O, --no-owner               skip restoration of object ownership in\n"
