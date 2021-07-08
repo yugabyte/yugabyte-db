@@ -975,6 +975,12 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
         if (s.IsShutdownInProgress()) {
           return;
         }
+        auto role = Role();
+        if (role != RaftPeerPB::LEADER) {
+          LOG_WITH_PREFIX(WARNING)
+              << "Cancel creating transaction because of role: " << RaftPeerPB::Role_Name(role);
+          return;
+        }
         SleepFor(MonoDelta::FromSeconds(1));
       }
       LOG_WITH_PREFIX(INFO) << "Finished creating transaction status table asynchronously";
@@ -8274,25 +8280,43 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     // If there was an error, abort any mutations started by the current task.
     // NOTE: Lock order should be lock_ -> table -> tablet.
     // We currently have a bunch of tablets locked and need to unlock first to ensure this holds.
-    map<TableId, TabletInfos> tablet_ids_to_remove;
-    for (scoped_refptr<TabletInfo>& new_tablet : new_tablets) {
-      tablet_ids_to_remove[new_tablet->table()->id()].push_back(new_tablet);
+    struct TabletToRemove {
+      TableInfoPtr table;
+      TabletId tablet_id;
+      std::string partition_key_start;
+    };
+    std::vector<TabletToRemove> tablets_to_remove;
+    for (const auto& new_tablet : new_tablets) {
+      tablets_to_remove.push_back(TabletToRemove {
+        .table = new_tablet->table(),
+        .tablet_id = new_tablet->tablet_id(),
+        .partition_key_start = new_tablet->metadata().dirty().pb.partition().partition_key_start(),
+      });
     }
 
-    unlocker_out.Abort(); // tablet.unlock
+    unlocker_out.Abort();  // tablet.unlock
     unlocker_in.Abort();
-    for (auto &tablet_id_to_remove : tablet_ids_to_remove) {
-      const auto& tablets = tablet_id_to_remove.second;
-      TableInfo::WriteLock lock;
-      for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-        if (!lock.locked()) {
-          lock = tablet->table()->LockForWrite(); // table.lock
+
+    std::sort(
+        tablets_to_remove.begin(), tablets_to_remove.end(),
+        [](const auto& lhs, const auto& rhs) {
+      return lhs.table->id() < rhs.table->id();
+    });
+    {
+      TableInfo::ReadLock lock;
+      TableInfoPtr current_table;
+      for (auto& tablet_to_remove : tablets_to_remove) {
+        if (current_table != tablet_to_remove.table) {
+          current_table = tablet_to_remove.table;
+          lock.Unlock();
         }
-        if (tablet->metadata().is_dirty()) {
-          if (tablet->table()->RemoveTablet(
-            tablet->metadata().dirty().pb.partition().partition_key_start())) {
-            VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
-              "table " << lock->name();
+        if (current_table->RemoveTablet(tablet_to_remove.partition_key_start)) {
+          if (VLOG_IS_ON(1)) {
+            if (!lock.locked()) {
+              lock = current_table->LockForRead();
+            }
+            LOG(INFO) << "Removed tablet " << tablet_to_remove.tablet_id << " from table "
+                      << lock->name();
           }
         }
       }
@@ -8300,12 +8324,9 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     {
       LockGuard lock(mutex_); // lock_.lock
       auto tablet_map_checkout = tablet_map_.CheckOut();
-      for (auto &tablet_id_to_remove : tablet_ids_to_remove) {
-        const auto& tablets = tablet_id_to_remove.second;
-        for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-          // Potential race condition above, but it's okay if a background thread deleted this.
-          tablet_map_checkout->erase(tablet->tablet_id());
-        }
+      for (auto& tablet_to_remove : tablets_to_remove) {
+        // Potential race condition above, but it's okay if a background thread deleted this.
+        tablet_map_checkout->erase(tablet_to_remove.tablet_id);
       }
     }
     return s;
