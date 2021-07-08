@@ -44,7 +44,7 @@ Refer to the [table of isolation levels](/latest/explore/transactions/isolation-
 
 {{< tip title="Read more about consistency" >}}
 
-- Achieving [consistency with Raft consensus](../docdb/replication/).
+- Achieving [consistency with Raft consensus](../docdb-replication/replication/).
 - How [fault tolerance and high availability](../core-functions/high-availability/) are achieved.
 - [Single-row linearizable transactions](../transactions/single-row-transactions/) in YugabyteDB.
 - The architecture of [distributed transactions](../transactions/single-row-transactions/).
