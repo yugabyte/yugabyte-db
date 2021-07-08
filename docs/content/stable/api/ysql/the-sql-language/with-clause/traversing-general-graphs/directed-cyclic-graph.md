@@ -37,7 +37,7 @@ Now reinstate the implementation of _"find_paths()"_ shown at [cr-find-paths-wit
 Find all the paths from _"n2"_ and create the filtered subset of shortest paths to the distinct terminal nodes:
 
 ```plpgsql
-call find_paths(seed => 'n2');
+call find_paths(start_node => 'n2');
 call restrict_to_shortest_paths('raw_paths', 'shortest_paths');
 ```
 
