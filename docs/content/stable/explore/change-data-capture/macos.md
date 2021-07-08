@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/change-data-capture/macos" class="nav-link active">
+    <a href="../macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/change-data-capture/linux" class="nav-link">
+    <a href="../linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

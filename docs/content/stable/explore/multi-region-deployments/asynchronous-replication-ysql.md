@@ -290,5 +290,5 @@ $ ./bin/yugabyted destroy \
 
 For more information, see the following in the Architecture section:
 
-- [Two data center (2DC) deployments](../../../architecture/2dc-deployments/)
-- [Change data capture (CDC)](../../../architecture/cdc-architecture)
+- [Asynchronous replication](../../../architecture/docdb-replication/async-replication/)
+- [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)

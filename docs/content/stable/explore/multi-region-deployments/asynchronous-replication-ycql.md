@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link">
+    <a href="../asynchronous-replication-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link active">
+    <a href="../asynchronous-replication-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -306,5 +306,5 @@ $ ./bin/yugabyted destroy \
 
 For more information, see the following in the Architecture section:
 
-- [Two data center (2DC) deployments](../../../architecture/2dc-deployments/)
-- [Change data capture (CDC)](../../../architecture/cdc-architecture)
+- [Asynchronous replication](../../../architecture/docdb-replication/async-replication/)
+- [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)
