@@ -8,12 +8,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
 
-import static org.junit.Assert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.*;
+import static org.junit.Assert.fail;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertRouteTest extends FakeDBApplication {
@@ -33,83 +32,23 @@ public class AlertRouteTest extends FakeDBApplication {
   @Test
   public void testGet() {
     AlertRoute route =
-        AlertRoute.create(
+        ModelFactory.createAlertRoute(
             defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
 
     AlertRoute fromDb = AlertRoute.get(defaultCustomer.getUuid(), route.getUuid());
-    assertNotNull(fromDb);
-    assertEquals(route, fromDb);
-  }
-
-  @Test
-  public void testListByCustomer() {
-    List<AlertRoute> routes = new ArrayList<>();
-    for (int i = 0; i < 10; i++) {
-      routes.add(
-          AlertRoute.create(
-              defaultCustomer.getUuid(),
-              ALERT_ROUTE_NAME + " " + i,
-              Collections.singletonList(receiver)));
-    }
-
-    List<AlertRoute> routes2 = AlertRoute.listByCustomer(defaultCustomer.uuid);
-    assertEquals(routes.size(), routes2.size());
-    for (AlertRoute route : routes) {
-      assertTrue(routes2.contains(route));
-    }
-  }
-
-  @Test
-  public void testCreateWithUnsavedReceiverFails() {
-    AlertReceiver receiver = new AlertReceiver();
-    receiver.setUuid(UUID.randomUUID());
-    try {
-      AlertRoute.create(
-          defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
-      fail("Missed expected exception.");
-    } catch (Exception e) {
-    }
-  }
-
-  @Test
-  public void testCreateWithoutReceiversFails() {
-    try {
-      AlertRoute.create(defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.emptyList());
-      fail("Missed expected exception.");
-    } catch (Exception e) {
-    }
-
-    try {
-      AlertRoute.create(defaultCustomer.getUuid(), ALERT_ROUTE_NAME, null);
-      fail("Missed expected exception.");
-    } catch (Exception e) {
-    }
-  }
-
-  @Test
-  public void testCreateNonDefaultRoute() {
-    AlertRoute.create(
-        defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
-    assertNull(AlertRoute.getDefaultRoute(defaultCustomer.uuid));
-  }
-
-  @Test
-  public void testCreateDefaultRoute() {
-    AlertRoute firstDefault =
-        AlertRoute.create(
-            defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver), true);
-    assertEquals(firstDefault, AlertRoute.getDefaultRoute(defaultCustomer.uuid));
+    assertThat(fromDb, notNullValue());
+    assertThat(fromDb, equalTo(route));
   }
 
   @Test
   public void testNameUniquenessCheck() {
     Customer secondCustomer = ModelFactory.testCustomer();
-    AlertRoute.create(
+    ModelFactory.createAlertRoute(
         defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
-    AlertRoute.create(
+    ModelFactory.createAlertRoute(
         secondCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
     try {
-      AlertRoute.create(
+      ModelFactory.createAlertRoute(
           defaultCustomer.getUuid(), ALERT_ROUTE_NAME, Collections.singletonList(receiver));
       fail("Missed expected exception.");
     } catch (Exception e) {

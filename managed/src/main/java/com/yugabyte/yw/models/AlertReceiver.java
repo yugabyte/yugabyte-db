@@ -82,6 +82,7 @@ public class AlertReceiver extends Model {
   })
   private AlertReceiverParams params;
 
+  @JsonIgnore
   @ToString.Exclude
   @EqualsAndHashCode.Exclude
   @ManyToMany(mappedBy = "receivers", fetch = FetchType.LAZY)

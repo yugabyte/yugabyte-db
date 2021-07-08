@@ -358,6 +358,18 @@ public class ModelFactory {
     return AlertReceiver.create(customer.uuid, name, params);
   }
 
+  public static AlertRoute createAlertRoute(
+      UUID customerUUID, String name, List<AlertReceiver> receivers) {
+    AlertRoute route =
+        new AlertRoute()
+            .generateUUID()
+            .setCustomerUUID(customerUUID)
+            .setName(name)
+            .setReceiversList(receivers);
+    route.save();
+    return route;
+  }
+
   /*
    * KMS Configuration creation helpers.
    */

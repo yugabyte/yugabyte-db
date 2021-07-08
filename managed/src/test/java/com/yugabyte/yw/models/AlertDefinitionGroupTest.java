@@ -49,7 +49,7 @@ public class AlertDefinitionGroupTest extends FakeDBApplication {
     ModelFactory.createUniverse("some other");
 
     alertRoute =
-        AlertRoute.create(
+        ModelFactory.createAlertRoute(
             customer.getUuid(),
             "My Route",
             Collections.singletonList(ModelFactory.createEmailReceiver(customer, "Test receiver")));

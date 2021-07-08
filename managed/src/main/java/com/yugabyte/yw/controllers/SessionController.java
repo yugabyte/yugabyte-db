@@ -22,6 +22,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
@@ -76,27 +77,29 @@ public class SessionController extends Controller {
 
   static final Pattern PROXY_PATTERN = Pattern.compile("^(.+):([0-9]{1,5})/.*$");
 
-  @Inject ValidatingFormFactory formFactory;
+  @Inject private ValidatingFormFactory formFactory;
 
-  @Inject Configuration appConfig;
+  @Inject private Configuration appConfig;
 
-  @Inject ConfigHelper configHelper;
+  @Inject private ConfigHelper configHelper;
 
-  @Inject Environment environment;
+  @Inject private Environment environment;
 
-  @Inject WSClient ws;
+  @Inject private WSClient ws;
 
   @Inject private PlaySessionStore playSessionStore;
 
-  @Inject ApiHelper apiHelper;
+  @Inject private ApiHelper apiHelper;
 
-  @Inject PasswordPolicyService passwordPolicyService;
+  @Inject private PasswordPolicyService passwordPolicyService;
 
-  @Inject AlertDefinitionGroupService alertDefinitionGroupService;
+  @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private AlertRouteService alertRouteService;
 
-  @Inject HttpExecutionContext ec;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject private HttpExecutionContext ec;
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
@@ -336,7 +339,7 @@ public class SessionController extends Controller {
         role = Role.SuperAdmin;
       }
       passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-      AlertRoute.createDefaultRoute(cust.uuid);
+      alertRouteService.createDefaultRoute(cust.uuid);
 
       List<AlertDefinitionGroup> alertGroups =
           Arrays.stream(AlertDefinitionTemplate.values())

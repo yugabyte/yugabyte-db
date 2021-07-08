@@ -29,6 +29,7 @@ public class AlertManager {
   private final EmailHelper emailHelper;
   private final AlertService alertService;
   private final AlertDefinitionGroupService alertDefinitionGroupService;
+  private final AlertRouteService alertRouteService;
   private final AlertReceiverManager receiversManager;
 
   @Inject
@@ -36,10 +37,12 @@ public class AlertManager {
       EmailHelper emailHelper,
       AlertService alertService,
       AlertDefinitionGroupService alertDefinitionGroupService,
+      AlertRouteService alertRouteService,
       AlertReceiverManager receiversManager) {
     this.emailHelper = emailHelper;
     this.alertService = alertService;
     this.alertDefinitionGroupService = alertDefinitionGroupService;
+    this.alertRouteService = alertRouteService;
     this.receiversManager = receiversManager;
   }
 
@@ -93,7 +96,7 @@ public class AlertManager {
     if (group.getRouteUUID() == null) {
       return Optional.empty();
     }
-    AlertRoute route = AlertRoute.get(group.getCustomerUUID(), group.getRouteUUID());
+    AlertRoute route = alertRouteService.get(group.getCustomerUUID(), group.getRouteUUID());
     if (route == null) {
       log.warn("Missing route {} for alert {}", group.getRouteUUID(), alert.getUuid());
       return Optional.empty();
@@ -115,7 +118,7 @@ public class AlertManager {
       }
 
       // Getting receivers from the default route.
-      AlertRoute defaultRoute = AlertRoute.getDefaultRoute(alert.getCustomerUUID());
+      AlertRoute defaultRoute = alertRouteService.getDefaultRoute(alert.getCustomerUUID());
       if (defaultRoute == null) {
         log.warn(
             "Unable to notify about alert {}, there is no default route specified.",
