@@ -2100,6 +2100,18 @@ message GetUniverseReplicationResponsePB {
   optional SysUniverseReplicationEntryPB entry = 2;
 }
 
+message IsSetupUniverseReplicationDoneRequestPB {
+  optional string producer_id = 1;
+}
+
+message IsSetupUniverseReplicationDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  // True if the universe is properly setup for replication, false otherwise.
+  optional bool done = 2;
+  // The more specific error that occurred during replication, or OK if we succeeded.
+  optional AppStatusPB replication_error = 3;
+}
+
 message SplitTabletRequestPB {
   required bytes tablet_id = 1;
 }
@@ -2267,6 +2279,8 @@ service MasterService {
       returns (SetUniverseReplicationEnabledResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
       returns (GetUniverseReplicationResponsePB);
+  rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
+      returns (IsSetupUniverseReplicationDoneResponsePB);
   rpc AddUniverseKeys(AddUniverseKeysRequestPB)  returns (AddUniverseKeysResponsePB);
   rpc GetUniverseKeyRegistry(GetUniverseKeyRegistryRequestPB)
       returns (GetUniverseKeyRegistryResponsePB);
