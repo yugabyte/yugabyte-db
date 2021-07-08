@@ -55,6 +55,8 @@ public class AlertController extends AuthenticatedController {
 
   @Inject private AlertService alertService;
 
+  @Inject private AlertRouteService alertRouteService;
+
   /** Lists alerts for given customer. */
   @ApiOperation(
       value = "listAlerts",
@@ -391,26 +393,21 @@ public class AlertController extends AuthenticatedController {
   public Result createAlertRoute(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertRouteFormData data = formFactory.getFormDataOrBadRequest(AlertRouteFormData.class).get();
-    List<AlertReceiver> receivers = AlertReceiver.getOrBadRequest(customerUUID, data.receivers);
-    try {
-      AlertRoute defaultRoute = AlertRoute.getDefaultRoute(customerUUID);
-      AlertRoute route = AlertRoute.create(customerUUID, data.name, receivers, data.defaultRoute);
-      if (data.defaultRoute && (defaultRoute != null)) {
-        defaultRoute.setDefaultRoute(false);
-        defaultRoute.save();
-        log.info("For customer {} switched default route to {}", customerUUID, route.getUuid());
-      }
-      auditService().createAuditEntryWithReqBody(ctx());
-      return YWResults.withData(route);
-    } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, "Unable to create alert route: " + e.getMessage());
-    }
+    AlertRoute route =
+        new AlertRoute()
+            .setCustomerUUID(customerUUID)
+            .setName(data.name)
+            .setReceiversList(AlertReceiver.getOrBadRequest(customerUUID, data.receivers))
+            .setDefaultRoute(data.defaultRoute);
+    alertRouteService.save(route);
+    auditService().createAuditEntryWithReqBody(ctx());
+    return YWResults.withData(route);
   }
 
   @ApiOperation(value = "getAlertRoute", response = AlertRoute.class)
   public Result getAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(AlertRoute.getOrBadRequest(customerUUID, alertRouteUUID));
+    return YWResults.withData(alertRouteService.getOrBadRequest(customerUUID, alertRouteUUID));
   }
 
   @ApiOperation(value = "updateAlertRoute", response = AlertRoute.class)
@@ -423,71 +420,20 @@ public class AlertController extends AuthenticatedController {
   public Result updateAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertRouteFormData data = formFactory.getFormDataOrBadRequest(AlertRouteFormData.class).get();
-    AlertRoute route = AlertRoute.getOrBadRequest(customerUUID, alertRouteUUID);
-
-    if (route.isDefaultRoute() && !data.defaultRoute) {
-      throw new YWServiceException(
-          BAD_REQUEST,
-          "Can't set the alert route as non-default. Make another route as default at first.");
-    }
-
-    List<AlertReceiver> receivers = AlertReceiver.getOrBadRequest(customerUUID, data.receivers);
-    try {
-      AlertRoute defaultRoute = AlertRoute.getDefaultRoute(customerUUID);
-      route.setName(data.name);
-      route.setReceiversList(receivers);
-      route.setDefaultRoute(data.defaultRoute);
-      route.save();
-      if (data.defaultRoute
-          && (defaultRoute != null)
-          && !defaultRoute.getUuid().equals(alertRouteUUID)) {
-        defaultRoute.setDefaultRoute(false);
-        defaultRoute.save();
-        log.info("For customer {} switched default route to {}", customerUUID, alertRouteUUID);
-      }
-      auditService().createAuditEntryWithReqBody(ctx());
-      return YWResults.withData(route);
-    } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, "Unable to update alert route: " + e.getMessage());
-    }
+    AlertRoute route = alertRouteService.getOrBadRequest(customerUUID, alertRouteUUID);
+    route
+        .setName(data.name)
+        .setDefaultRoute(data.defaultRoute)
+        .setReceiversList(AlertReceiver.getOrBadRequest(customerUUID, data.receivers));
+    alertRouteService.save(route);
+    auditService().createAuditEntryWithReqBody(ctx());
+    return YWResults.withData(route);
   }
 
   @ApiOperation(value = "deleteAlertRoute", response = YWResults.YWSuccess.class)
   public Result deleteAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
     Customer.getOrBadRequest(customerUUID);
-    AlertRoute route = AlertRoute.getOrBadRequest(customerUUID, alertRouteUUID);
-    if (route.isDefaultRoute()) {
-      throw new YWServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Unable to delete default alert route %s, make another route default at first.",
-              alertRouteUUID));
-    }
-
-    log.info("Deleting alert route {} for customer {}", alertRouteUUID, customerUUID);
-
-    AlertDefinitionGroupFilter groupFilter =
-        AlertDefinitionGroupFilter.builder().routeUuid(route.getUuid()).build();
-    List<AlertDefinitionGroup> groups = alertDefinitionGroupService.list(groupFilter);
-    if (!groups.isEmpty()) {
-      throw new YWServiceException(
-          BAD_REQUEST,
-          "Unable to delete alert route: "
-              + alertRouteUUID
-              + ". "
-              + groups.size()
-              + " alert definition groups are linked to it. Examples: "
-              + groups
-                  .stream()
-                  .limit(5)
-                  .map(AlertDefinitionGroup::getName)
-                  .collect(Collectors.toList()));
-    }
-    if (!route.delete()) {
-      throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to delete alert route: " + alertRouteUUID);
-    }
-
+    alertRouteService.delete(customerUUID, alertRouteUUID);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
   }
@@ -495,7 +441,7 @@ public class AlertController extends AuthenticatedController {
   @ApiOperation(value = "listAlertRoutes", response = AlertRoute.class, responseContainer = "List")
   public Result listAlertRoutes(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(AlertRoute.listByCustomer(customerUUID));
+    return YWResults.withData(alertRouteService.listByCustomer(customerUUID));
   }
 
   @VisibleForTesting

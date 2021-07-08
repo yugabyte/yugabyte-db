@@ -70,10 +70,11 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   private AlertDefinition definition;
 
-  AlertDefinitionGroupService alertDefinitionGroupService;
-  AlertDefinitionService alertDefinitionService;
-  AlertService alertService;
-  AlertManager alertManager;
+  private AlertDefinitionGroupService alertDefinitionGroupService;
+  private AlertDefinitionService alertDefinitionService;
+  private AlertService alertService;
+  private AlertRouteService alertRouteService;
+  private AlertManager alertManager;
 
   @Before
   public void setUp() {
@@ -90,8 +91,14 @@ public class QueryAlertsTest extends FakeDBApplication {
     alertDefinitionService = new AlertDefinitionService(alertService);
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(alertDefinitionService, configFactory);
+    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
     alertManager =
-        new AlertManager(emailHelper, alertService, alertDefinitionGroupService, receiversManager);
+        new AlertManager(
+            emailHelper,
+            alertService,
+            alertDefinitionGroupService,
+            alertRouteService,
+            receiversManager);
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     queryAlerts =
         new QueryAlerts(

@@ -70,6 +70,7 @@ public class AlertControllerTest extends FakeDBApplication {
   private AlertService alertService;
   private AlertDefinitionService alertDefinitionService;
   private AlertDefinitionGroupService alertDefinitionGroupService;
+  private AlertRouteService alertRouteService;
 
   private AlertDefinitionGroup alertDefinitionGroup;
   private AlertDefinition alertDefinition;
@@ -87,6 +88,7 @@ public class AlertControllerTest extends FakeDBApplication {
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
+    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
     alertDefinitionGroup = ModelFactory.createAlertDefinitionGroup(customer, universe);
     alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertDefinitionGroup);
 
@@ -445,12 +447,12 @@ public class AlertControllerTest extends FakeDBApplication {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
 
     AlertRoute firstRoute = createAlertRoute(true);
-    assertNotNull(firstRoute.getUuid());
-    assertEquals(firstRoute, AlertRoute.getDefaultRoute(customer.uuid));
+    assertThat(firstRoute.getUuid(), notNullValue());
+    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(firstRoute));
 
     AlertRoute secondRoute = createAlertRoute(true);
-    assertNotNull(secondRoute.getUuid());
-    assertEquals(secondRoute, AlertRoute.getDefaultRoute(customer.uuid));
+    assertThat(secondRoute.getUuid(), notNullValue());
+    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(secondRoute));
   }
 
   @Test
@@ -488,13 +490,13 @@ public class AlertControllerTest extends FakeDBApplication {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
 
     AlertRoute firstRoute = createAlertRoute(true);
-    assertNotNull(firstRoute.getUuid());
-    assertEquals(firstRoute, AlertRoute.getDefaultRoute(customer.uuid));
+    assertThat(firstRoute.getUuid(), notNullValue());
+    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(firstRoute));
 
     AlertRoute secondRoute = createAlertRoute(false);
-    assertNotNull(secondRoute.getUuid());
+    assertThat(secondRoute.getUuid(), notNullValue());
     // To be sure the default route hasn't been changed.
-    assertEquals(firstRoute, AlertRoute.getDefaultRoute(customer.uuid));
+    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(firstRoute));
 
     secondRoute.setDefaultRoute(true);
 
@@ -504,11 +506,11 @@ public class AlertControllerTest extends FakeDBApplication {
             "/api/customers/" + customer.uuid + "/alert_routes/" + secondRoute.getUuid().toString(),
             authToken,
             Json.toJson(secondRoute));
-    assertEquals(OK, result.status());
+    assertThat(result.status(), is(OK));
     AlertRoute receivedRoute = routeFromJson(Json.parse(contentAsString(result)));
 
-    assertTrue(receivedRoute.isDefaultRoute());
-    assertEquals(secondRoute, AlertRoute.getDefaultRoute(customer.uuid));
+    assertThat(receivedRoute.isDefaultRoute(), is(true));
+    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(secondRoute));
   }
 
   @Test
@@ -516,8 +518,8 @@ public class AlertControllerTest extends FakeDBApplication {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alert_routes");
 
     AlertRoute route = createAlertRoute(true);
-    assertNotNull(route.getUuid());
-    assertEquals(route, AlertRoute.getDefaultRoute(customer.uuid));
+    assertThat(route.getUuid(), notNullValue());
+    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(route));
 
     route.setDefaultRoute(false);
     Result result =
@@ -535,7 +537,7 @@ public class AlertControllerTest extends FakeDBApplication {
         result,
         "Can't set the alert route as non-default. Make another route as default at first.");
     route.setDefaultRoute(true);
-    assertEquals(route, AlertRoute.getDefaultRoute(customer.uuid));
+    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(route));
   }
 
   @Test
