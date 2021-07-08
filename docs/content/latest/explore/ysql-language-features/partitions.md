@@ -27,7 +27,7 @@ YSQL supports the following types of partitioning:
 - List partitioning, when a table is partitioned via listing key values to appear in each partition.
 - Hash partitioning, when a table is partitioned by specifying a modulus and remainder for each  partition.
 
-For supplementary information on partitioning, see [Row-Level Geo-Partitioning](../../multi-region-deployments/row-level-geo-partitioning/). 
+For supplementary information on partitioning, see [Row-Level Geo-Partitioning](../../multi-region-deployments/row-level-geo-partitioning/).
 
 ## Declarative Table Partitioning
 
@@ -56,14 +56,7 @@ CREATE TABLE order_changes (
   change_date date,
   type text,
   description text
-) 
-PARTITION BY RANGE (change_date);
-
-CREATE TABLE order_changes (
-  change_date date,
-  type text,
-  description text
-) 
+)
 PARTITION BY RANGE (change_date);
 ```
 
@@ -99,6 +92,12 @@ CREATE TABLE order_changes_2021_01 PARTITION OF order_changes
 Partitioning ranges are inclusive at the lower ( `FROM` ) bound and exclusive at the upper ( `TO` ) bound.
 Each month range in the preceding examples includes the start of the month, but does not include the start of the following month.
 
+To create a new partition that contains only the rows that don't match the specified partitions, add a default partition as follows:
+
+```sql
+CREATE TABLE order_changes_default PARTITION OF order_changes DEFAULT;
+```
+
 Optionally, you can create an index on the key columns and other indexes for every partition, as follows:
 
 ```sql
@@ -131,6 +130,7 @@ Note the following:
 - If you choose to define row triggers, you do so on individual partitions instead of the partitioned table.
 - A partition table does not inherit tablespaces from its parent. A partition table by default is placed according to cluster configuration.
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
+- If you have a default partition in the partitioning hierarchy, you can add new partitions only if there is no data in the default partition that matches the partition constraint of the new partition.
 
 ## Partition Pruning
 
