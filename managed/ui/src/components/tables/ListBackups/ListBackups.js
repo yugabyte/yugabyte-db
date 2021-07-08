@@ -421,6 +421,22 @@ export default class ListBackups extends Component {
             />
           </DropdownButton>
         );
+      } else {
+        return (
+          <DropdownButton
+            className="btn btn-default"
+            title="Actions"
+            id="bg-nested-dropdown"
+            pullRight
+          >
+            <TableAction
+              currentRow={row}
+              actionType="stop-backup"
+              onSubmit={(data) => this.handleModalSubmit('Stop', data)}
+              onError={() => console.log('Backup is stopped')}
+            />
+          </DropdownButton>
+        );
       }
     };
 
