@@ -48,7 +48,7 @@ This tutorial assumes that you have satisfied the following prerequisites.
 
 ### YugabyteDB
 
-YugabyteDB is up and running. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+YugabyteDB is up and running. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore/ysql/).
 
 ### Go
 
